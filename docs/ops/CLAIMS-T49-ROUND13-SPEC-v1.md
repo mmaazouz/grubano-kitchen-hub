@@ -1311,6 +1311,7 @@ ELIGIBILITY (C4 / CONVERGENCE « closure e-mails tied to actual new-build closur
 CLAIMS lease closed: every attempt is skipped with the logged reason 'claims_disabled' (H02, I-08); the operator toast says the e-mail was not sent because claims are closed.
 REFUNDED KIND: (iv) first calls reconcileClaimEvidence (R0, D7). It sends only when that call returns 'refund_still_standing' with stripeStatus 'succeeded' and an integer amountCents > 0 from a Stripe read made in the same request (H08). Otherwise no send and nothing marked beyond what R0 did (R-X0-1). It never sends over REVERTED_AFTER_REFUND, and never for E-13 claims.
 WHY NO MONEY: lib/claim-emails.ts imports neither lib/refund, lib/stripe nor lib/claims (H15 source guard). The closure-notice route calls only reconcileClaimEvidence, sendClaimClosureEmail and recordAdminAudit.
+IMPLEMENTATION NOTE (W6): (i)-(iv) landed (H07, H08). A record-write failure, a closure observed only through the C7 re-read and a webhook or recovery settlement attempt nothing. Pinned by tests/claim-emails-routes-closure.test.ts (J-M38) and tests/claims-resolve-stuck-route.test.ts (J-M39: the attempt runs with the audit boolean true and false).
 
 ### D11 [CORE] STUCK CLOSE — the declaration exit (resolve-stuck)
 ROUTE: POST /api/admin/claims/[id]/resolve-stuck {resolution: 'settled_out_of_band' | 'closed_no_payment', note}, ungated.
@@ -1331,6 +1332,7 @@ REACHED FROM: every E-01, E-02 and E-06 state.
 CONSOLE: « Clôturer ce dossier… » iff resolvable.
 WHY NO MONEY: no engine and no Stripe call. A declaration is never money evidence: claimClosureKind → settled_by_declaration or closed_by_declaration → customer closed_by_support (R-D4); N3 never counts a binder with a non-null refundError as explaining a refund; boundToWhere counts it as a binder, so a refundId it keeps cannot settle another claim.
 IMPLEMENTATION NOTE (W5 fixer): the terminal exemption lands with W5, the first slice that writes REVERTED_AFTER_REFUND (without it every E-06 marking offered « Clôturer ce dossier… », which the server refused). resolveStuckClaim admits refunded + startsWith(REVERTED_AFTER_REFUND) past its terminal guard; every other terminal claim keeps the existing « Cette réclamation est déjà clôturée. » refusal before the predicate (refunded + DECLARED_AFTER_REVERT and refunded + null error included: no re-declaration). The CAS is where {id, status: read, refundError: read}; settled_out_of_band on E-06 writes refunded + `${DECLARED_AFTER_REVERT} déclaration admin : payé autrement après l’échec chez Stripe du remboursement lié. ` + the original text; closed_no_payment writes refused_final and keeps refundError; count 0 → the D11 409 text for every declaration (the C9 (e) pin in tests/claims-r13-cas.test.ts now reads it); count 1 → recordClaimClosure (H05 site 7) for every declaration. The route is unchanged (recordAdminAudit → noteRecorded); the D10 (i) notice attempt belongs to the e-mail slice — until it lands, a declaration has its closure record and no notice, and is counted in census closure.missing (E-16). Pinned by tests/claims-r13-declaration-after-revert.test.ts: the listActionableRefundClaims flag equals the POST resolve-stuck verdict on the E-06 fixture, both resolutions 200, a count-0 fixture, P2002 silent, and the negative controls (DECLARED_AFTER_REVERT, null error) refused; break/restore run (removing `&& !settledThenReverted` turns both 200 fixtures red; the local name avoids the E0 REMOVED identifier revertedAfterRefund).
+IMPLEMENTATION NOTE (W6) on ER-R31: the WHY NO MONEY clause « boundToWhere counts it as a binder, so a refundId it keeps cannot settle another claim » is false for a declared resume_mismatch claim: resolveStuckClaim keeps its refundError and boundToWhere excludes resume_mismatch. Corrected statement: a declaration keeps a non-null refundError, so the declared claim never settles on its row; a declared resume_mismatch claim was already disowned and is not a binder of that row, which settles no other claim through it (attribution and settlement read the row's binders and stamp). No money consequence. Pinned by the ER-R31 case of tests/claim-closure-record.test.ts. The D10 (i) attempt after the audit landed with the e-mail slice (W6).
 
 ### D12 [CORE] WEBHOOK marking exit (non-operator)
 FILE: app/api/webhooks/stripe/route.ts handleRefundStatusEvent. The money writes and their order are byte-identical (WEBHOOK binding rule).
@@ -1706,6 +1708,8 @@ AUDIENCE: ADMIN; founder (census).
 CUSTOMER: nothing new; the app status per journey while claims are open.
 ALERT (write time): I-08 for an attempted send that did not go out; for a webhook or recovery settlement, the H05 console.error « [EMAIL MISS] [claim_decision_refunded] … settled by the Stripe webhook or the recovery sweep … »; for the C7 branch, the 409 shown to the acting operator names the list. Durable signals: the section count and the I-07 census line closure.missing.
 NO MONEY: NM0. D10 source guard; the closure-notice route calls only reconcileClaimEvidence (read-only), sendClaimClosureEmail and recordAdminAudit, with an empty body.
+IMPLEMENTATION NOTE (W6) on ER-C25: the ALERT field already names the H05 console line for webhook and recovery settlements; I-08 applies only to an attempted send. The « Avis client non envoyés » section and counts.closureNoticesMissing are the console slice's (H10); until they land, the durable signal is the census closure.missing.
+IMPLEMENTATION NOTE (W6 fixer) on E-16 SURFACE: the surface is absent in the W6 build, so W6 is never deployed with CLAIMS open: no CLAIMS lease opens on any environment before W7 lands H10 and J-C30 (docs/ops/CLAIMS-R13-OPERATOR-PRECHECK.md, Étape 0; see the H11 ordering note).
 
 ### E-17 [CORE] Non-terminal claim e-mail skipped as claims_disabled (B9)
 STATES: Track B B9 / J26.
@@ -1730,6 +1734,7 @@ AUDIENCE: founder; ADMIN.
 CUSTOMER: their existing app status; never a notice (R-D6(d)).
 ALERT: legacy population → I-07 (C3 pre-deploy census); this build's record-write failure → the H05 console.error at write time, then I-07.
 NO MONEY: the D10 sender refuses a claim without a record (H06 step 3) before any money read; no notice path calls the engine or writes to Stripe.
+IMPLEMENTATION NOTE (W6) on ER-C18: the section intro is H10's text, which J-C30 (console slice) pins; this entry adds no second text. The census count terminalWithoutRecord is measured from EmailDispatch only: tests/claim-emails-routes-closure.test.ts counts a legacy claim that carries a HEAD audit row.
 
 ## F. CUSTOMER / ADMIN COPY CONTRACT
 
@@ -1933,6 +1938,7 @@ NEW claims.admin.restaurantNote:
 - ar « ملاحظة المطعم (عند القبول) »
 
 Test: arbitrationReason is never in a consumer payload for a declaration kind; restaurantResponseReason only when restaurantResponse==='refused' (P3-21).
+IMPLEMENTATION NOTE (W6): landed. customerClaimReasons (lib/claim-action-rules) is spread into getClaimEligibility's existingClaim and every listConsumerClaims item; ClaimSection shows the restaurant reason whenever the payload carries it and Grubano's reason on its own line; the arbitration console labels a note written while accepting « Note du restaurant (en acceptant) ». Pinned by tests/claims-closure-copy.test.ts (F08).
 
 ### F09 [CORE] Customer client-copy rewordings (provenance-neutral, no promise)
 Replace in all 5 locales:
@@ -1980,6 +1986,7 @@ eat.help.claimFiledSub (was « …Vous serez informé de la suite. »):
 - ar « مطالبتك قيد المراجعة. »
 
 Caveat, stated in docs/ops: « Le restaurant l’examine » is true only while CLAIM_AUTO_RESOLVE_ENABLED is off. Reword before that flag opens.
+IMPLEMENTATION NOTE (W6): the values landed in 5 locales (tests/claims-closure-copy.test.ts, F09). The caveat on « Le restaurant l’examine » is stated in docs/ops/REFUND-FINANCIAL-CONTRACT.md §23.
 
 ### F10 [CORE] Forbidden customer sentences and their guards
 A customer string (claims.status.*, claims.client.*, eat.help.*, claimEmails.*) must never do any of the following:
@@ -1998,6 +2005,7 @@ Guards (new test, 5 locales):
 Negative control: the current values of ack.next, orderCancelledPaid.next, claimFiledSub, client.success and client.description fail (a).
 
 Extend tests/claims-t49-round12.test.ts PROMISES_BY_LOCALE to flatten m.claimEmails as well.
+IMPLEMENTATION NOTE (W6) on ER-C14: F10 (1) also covers five customer strings that promised a decision, a review or a reply the code cannot establish. They are reworded in 5 locales: claims.client.contestSuccess (« Contestation envoyée : la réclamation est transmise à Grubano pour arbitrage. »), claims.client.contestDescription (« En contestant, vous transmettez la réclamation à Grubano pour un arbitrage neutre. »), eat.help.refundEstimate (« sera examinée » removed), eat.help.refundOffBody (« nous vous répondrons personnellement » removed) and claimEmails.orderCancelledPaid.bodyExisting (« elle suit son circuit normal » removed). Guards (a)-(d), and a per-locale guard of that class with HEAD negative controls, are in tests/claims-closure-copy.test.ts (J-C12, J-C13); tests/claims-t49-round12.test.ts PROMISES_BY_LOCALE flattens m.claimEmails.
 
 ### F11 [CORE] Customer copy that stays wrong and must be disclosed, not claimed compliant
 Copy cannot fix these. They are stated in docs/ops/REFUND-FINANCIAL-CONTRACT.md and in the founder report:
@@ -2007,6 +2015,7 @@ Copy cannot fix these. They are stated in docs/ops/REFUND-FINANCIAL-CONTRACT.md 
 A-S31d (pending row, no failure signal read) and A-S10/A-S21 (pending row, Stripe read succeeded) are compliant: the code has read no failure.
 
 No admin or doc string may say that these states show only true copy.
+IMPLEMENTATION NOTE (W6): stated in docs/ops/REFUND-FINANCIAL-CONTRACT.md §22, pinned by J-C18 in tests/claims-closure-copy.test.ts. The adjacency scan covers the messages, lib/claims.ts, both consoles and docs/ops, except this specification, which states the rule itself.
 
 ### F12 [CORE] Approval toast contract (lib/claim-approval-toast.ts)
 Input type: `export type ApprovalRefundOutcome = { state?: string; amountCents?: number; error?: string; reason?: string; until?: string } | null | undefined`. RefundTriggerResult (lib/claims.ts ~284) gains `{ state: 'failed'; error: 'unconfirmed_within_window'; until: string }` (C3 (e')).
@@ -2543,6 +2552,7 @@ Order inside sendClaimClosureEmail: the closure-record check runs first (H06).
 The operator sees toast claims.admin.customerEmail.claimsDisabled (H11) on arbitrate, resolve-stuck, reconcile, attribute and closure-notice. Consumer and restaurant routes show no operator toast; that case is Track B J26, and there is no resend of a non-terminal e-mail.
 
 Test: a source scan flags any sender call without `claimsOpen: isClaimsEnabled()` (control: `claimsOpen: true` is flagged). A unit test proves no sendTransactional call when the flag is false.
+IMPLEMENTATION NOTE (W6): landed. Every call under app/ passes `claimsOpen: isClaimsEnabled()` (J-C21 in tests/claims-closure-imports.test.ts scans the call expressions of the 7 calling routes). While claimsOpen is false each claim sender traces one EmailLog row through logEmailSkipped(trigger, `claim ${id}`, context, 'claims_disabled') and returns {status:'skipped', why:'claims_disabled'} before any read (sendClaimClosureEmail after its record check). The operator toast is wired in both consoles for arbitrate, resolve-stuck, reconcile and attribute; the closure-notice control is the console slice's (H10). Pinned by tests/claim-emails.test.ts (J-C20).
 
 ### H03 [CORE] Decision e-mail at arbitrate (kind and evidence)
 app/api/admin/claims/[id]/arbitrate/route.ts, after a successful arbitrateClaim:
@@ -2569,6 +2579,7 @@ lib/claim-emails.ts:
 Sender return type: `{status: SendStatus|'not_applicable'; why?: ClaimEmailWhy}` with `ClaimEmailWhy = 'claims_disabled'|'no_recipient'|'smtp_disabled'|'refunded_row_unproven'|'refunded_row_failed'|'stripe_not_confirmed'|'claim_not_found'|'no_closure_record'|'not_a_closure'|'sender_error'`.
 
 Mapping from sendTransactional: 'skipped' → smtp_disabled; 'failed' → sender_error.
+IMPLEMENTATION NOTE (W6): lib/claim-emails exports ClaimEmailWhy, ClaimEmailResult ({status, why?}), ClosureEmailResult (the same plus kind), ClosureEvidence and DECISION_TRIGGER. sendClaimAckEmail and sendClaimDecisionEmail return ClaimEmailResult: no_recipient, a throw (sender_error), the rail's skipped (smtp_disabled) and failed (sender_error) carry why; sent and duplicate carry none. The two order-cancellation senders keep {status} and take no claimsOpen (H13). arbitrate/route.ts wraps the send (a throw gives customerEmail {failed, sender_error}) and returns customerEmail. Pinned by tests/claim-emails-routes.test.ts (J-C22).
 
 ### H04 [CORE] New e-mail templates (claimEmails.*), all 5 locales
 refusedByGrubano.title:
@@ -2690,6 +2701,8 @@ Rules:
 - No deploy-epoch constant. Legacy closures have no record; they are never listed and never sent (E-18).
 - Schema unchanged: EmailDispatch (id, trigger, dedupeKey, createdAt, @@unique([trigger, dedupeKey])). Only Prisma; lib/claims imports only the two constants from lib/claim-action-rules (H15).
 Pin: J-C23.
+IMPLEMENTATION NOTE (W6): all seven sites are wired. W6 adds (1) triggerClaimRefund after the T4 'ours' refunded CAS and (6) arbitrateClaim refuse_final after its CAS. (2) is reconcileClaimForRefund with noNoticeSource unless the caller passes closureRecordedByCaller (ER-R29, resolved in W5 in the inverted form so the webhook call stays byte-identical; applyRowTruth passes it and logs nothing). (3) applyRowTruth (W3); (4) and (5) attributeWithEvidence and its C7 helper bindingNotObserved (W4); (7) resolveStuckClaim (W5). tests/claim-closure-record.test.ts (J-C23) pins the call-site map by top-level function (bindingNotObserved names site 5), no call inside any $transaction callback, no writer, sender or deleter of the trigger elsewhere in lib/, app/, scripts/ or components/ (scripts/server/phase2-claims-gate.js only reads it), and the P2002 / error behaviour with the caller's return unchanged. ER-R28 was resolved at the freeze (AMF-2); J-M38 pins that an audit row never makes a claim eligible.
+IMPLEMENTATION NOTE (W6 fixer) on H05 site 2 / ER-R29: the caller's opt-out is scoped to one claim. reconcileClaimForRefund takes `closureRecordedFor?: string` (was `closureRecordedByCaller?: true`) and skips its own record only when that id equals the claim it settles; applyRowTruth passes its own claim.id. Any other claim the reconciler settles on the row (the « appliquée à une autre réclamation » branch of applyRowTruth, latent under the reconcile gate) still writes its record with noNoticeSource, so no closure by this build is left without a record. The console line of that case names the webhook or the recovery sweep although the reconcile route reached site 2; the operator signal for it is applyRowTruth's financial_verification park of the caller's claim. Pinned by tests/claim-closure-record.test.ts (the second-bound-claim regression and its negative control; break/restore: reverting to a boolean opt-out turns the regression red).
 
 ### H06 [CORE] sendClaimClosureEmail: check order and evidence
 lib/claim-emails.ts: `export type ClosureEvidence = { basis:'stripe_read'; amountCents:number }`.
@@ -2722,6 +2735,7 @@ Evidence sources (Stripe object read in that same request, never row.amountCents
 An outcome with evidence 'ledger_row', or none, → stripe_not_confirmed.
 
 Section E must extend refund_still_standing with stripeStatus and amountCents. Without that extension, the resend fails closed.
+IMPLEMENTATION NOTE (W6): landed in lib/claim-emails.ts. (1) Step 6 counts the binders before the failed-row check: a row with two or more binders (A-S43) answers refunded_row_unproven whatever its status, so the sender agrees with refundedRowTruth, where the customer reads the manual review (the J-C25 parity; ER-C22's binder half). Both answers map to the rowUnproven toast. The binder where is F03's (refundError null OR NOT startsWith 'resume_mismatch'), restated in the module because lib/claim-emails may not import lib/claims (H15). (2) A claim that is not a closure returns not_applicable and writes no EmailLog row; a claim whose read throws traces sender_error under the tag claim_closure_notice (its kind is unknown). (3) ER-C21: refund_still_standing already carries stripeStatus and amountCents (W5). Pinned by tests/claims-closure-emails.test.ts (J-C24, J-C25, J-C44).
 
 ### H07 [CORE] Closure send sites
 Each site runs after the route's own success and audit, inside `try { customerEmail = await sendClaimClosureEmail(...) } catch {}`. It never changes the HTTP status. The response adds `customerEmail`.
@@ -2733,6 +2747,7 @@ Each site runs after the route's own success and audit, inside `try { customerEm
 Operator console: after each success, `const e = customerEmailLine(body.customerEmail); if (e) toast[e.tone](…)`.
 - AdminClaimsArbitration uses t(`admin.customerEmail.${e.key}`).
 - AdminFinancialVerification uses CUSTOMER_EMAIL_FR[e.key].
+IMPLEMENTATION NOTE (W6): landed. resolve-stuck, reconcile and attribute (row and adopt branches) return customerEmail, null where no attempt is made; a sender throw is reported as {status:'failed', kind:null, why:'sender_error'} and never changes the HTTP status. Console: AdminClaimsArbitration toasts t(`admin.customerEmail.${key}`) after a decision and after a declaration; AdminFinancialVerification toasts CUSTOMER_EMAIL_FR[key] after reconcile, attribute, adopt and a declaration. Pinned by tests/claims-t49-routes.test.ts and tests/claims-resolve-stuck-route.test.ts (J-C26) and tests/claim-emails-routes-closure.test.ts (J-M38).
 
 ### H08 [CORE] Per-claim resend: POST /api/admin/claims/[id]/closure-notice (NEW)
 The route is NOT gated by CLAIMS_ENABLED; the sender enforces R-D7. Steps:
@@ -2751,6 +2766,7 @@ The route is NOT gated by CLAIMS_ENABLED; the sender enforces R-D7. Steps:
 Imports from lib/claims: only isClaimsEnabled and reconcileClaimEvidence. Never executeRefund. A guard test pins this.
 
 This resend is the only path for a closure whose notice was not dispatched. It covers what A-S31e cannot: a stale refunded claim is marked (409) and no notice goes out.
+IMPLEMENTATION NOTE (W6): landed as app/api/admin/claims/[id]/closure-notice/route.ts. (1) Step 3 reads the claim through prisma (a read only) to answer 404 or 409 before any Stripe read; beyond its guards and that read the route calls only reconcileClaimEvidence, sendClaimClosureEmail and recordAdminAudit. (2) reconcileClaimEvidence takes {claimId}: no adminId parameter exists. (3) A missing body and `{}` are both accepted; a non-JSON body or any field answers 400. (4) The reverted_after_refund marking written by the R0 read is audited as claim.reconcile_evidence {outcome, moneyMoved:false, via:'closure_notice'}, the same trail as the reconcile route, then 409; a 409 writes no claim.closure_notice audit. Pinned by tests/claims-closure-notice-route.test.ts (J-C27), tests/claims-reconcile-no-money.test.ts (the route joins the G14 run) and tests/claim-emails-routes-closure.test.ts (J-M38).
 
 ### H09 [CORE] What is never sent
 No customer e-mail is sent from any of these:
@@ -2889,6 +2905,8 @@ failed:
 - es « Correo al cliente NO enviado (error al preparar o enviar — traza en el registro de correos o en los registros del servidor): informe al cliente por otro medio. »
 - it « Email al cliente NON inviata (errore durante la preparazione o l’invio — traccia nel registro email o nei log del server): informi il cliente in altro modo. »
 - ar « لم يُرسَل بريد العميل (خطأ أثناء التحضير أو الإرسال — الأثر في سجل البريد أو سجلات الخادم): أبلغ العميل بوسيلة أخرى. »
+IMPLEMENTATION NOTE (W6): landed. logEmailSkipped takes an optional fourth why; without it, or with 'no_recipient', the console line and the row are byte-identical to HEAD, so a no_recipient skip keeps the recipient « (aucun destinataire) ». lib/claim-email-toast.ts has no import at all: its CustomerEmailWhy restates ClaimEmailWhy and a type test pins them equal. customerEmailLine maps a skipped why it does not name (sender_error, not_a_closure) to notSent and an unknown status to null. The stripeNotConfirmed text names « Envoyer l’avis au client », the control the console slice adds with H10. Pinned by tests/claim-email-toast.test.ts and tests/email-idempotency.test.ts (J-C31).
+IMPLEMENTATION NOTE (W6 fixer) on H11 / H06 (A-S43 copy gap): a refunded claim whose bound row has two or more binders answers refunded_row_unproven (H06 note (1)) even when the row is present, on the claim's own order, succeeded and has a usable amount, and that why maps to rowUnproven, whose frozen text lists missing, other order, failed, neither completed nor pending, or no usable amount, but not « liée à plusieurs réclamations ». The operator can read a wrong cause; no money truth is stated and the case is reachable only on legacy multi-binder rows. The copy change (adding « …ou est liée à plusieurs réclamations… » in 5 locales, with J-C31 updated) is DEFERRED to W7, together with the ER-C22 blocker fix of H10, so the toast, the list blocker and the sender change together. IMPLEMENTATION NOTE (W6 fixer) on H11 / H10 (ordering): the stripeNotConfirmed text names « Envoyer l’avis au client », which no console control calls before W7. It cannot surface while claims are closed (the sender answers claims_disabled at step 4, before stripe_not_confirmed at step 7), so W6 keeps the frozen copy. W7 must land H10 (both sections, the button wired to the closure-notice route, counts.closureNoticesMissing) and J-C30 before any CLAIMS lease opens on any environment; this is recorded as a blocking step in docs/ops/CLAIMS-R13-OPERATOR-PRECHECK.md (Étape 0) and in docs/ops/REFUND-FINANCIAL-CONTRACT.md §23. If W7 slips past a lease window, the trailing « Réessayez … plus tard » sentence is held until the control exists. Pinned by tests/claim-closure-record.test.ts (the claims_disabled-before-stripe_not_confirmed behaviour, and a conditional pin: while no component calls the route, the precheck must carry « AUCUN bail CLAIMS avant W7 (H10) »).
 
 ### H12 [CORE] Promise sentences in existing e-mail copy, reworded
 Nothing guarantees a later e-mail: webhook and recovery settlements send nothing, R-D7 skips sends while claims are closed, and review states never notify. The following are reworded in all 5 locales, rendered with {ref}.
@@ -2926,6 +2944,7 @@ app/api/orders/[id]/status/route.ts, send branch:
 Both variants keep trigger order_cancelled and dedupe `order:<id>`, so exactly one is sent. createSystemClaim gating (claimsOn at entry) is unchanged.
 
 Test: the lease closes between entry and send → the Off variant is sent, never the claim-mentioning one.
+IMPLEMENTATION NOTE (W6) on ER-C20: `if (paidCancellation && claimsOpenNow)` sends the claim-mentioning variant and `else if (paidCancelled)` sends the Off variant. A lease closed at entry but open at send, and a paid cancellation with no amount to claim, therefore get the Off variant, never the generic e-mail that says nothing about the money. createSystemClaim gating (the entry value) is unchanged. Pinned by tests/email-order-status-variant.test.ts (the four lease sequences) and the source pin in tests/email-order-status.test.ts (J-C33).
 
 ### H14 [CORE] Operator declaration panel copy
 AdminClaimsArbitration.tsx panel (~277) and AdminFinancialVerification.tsx panel (~460) literal: « Aucune de ces actions ne rembourse ni ne relance quoi que ce soit. Elles enregistrent votre déclaration, libèrent la commande pour le client et tentent de lui envoyer un e-mail de clôture, sans votre note ni aucun montant — aucun e-mail n’est envoyé tant que les réclamations sont fermées (le résultat de l’envoi s’affiche ensuite). »
@@ -2958,6 +2977,7 @@ The only importers of lib/claim-emails are these app routes:
 - app/api/admin/claims/[id]/closure-notice/route.ts
 
 Test: a static import walk from app/api/webhooks/stripe/route.ts, app/api/admin/claims/reconcile-refunds/route.ts and every app/api/cron/** route never reaches lib/claim-emails. Negative control: a synthetic import added to a temp copy of lib/claim-action-rules is detected. A source scan pins the importer list above.
+IMPLEMENTATION NOTE (W6) on ER-C17: the importer list stays the 8 routes above. The files that CALL a claim sender are these routes minus app/api/orders/[id]/status/route.ts, which imports only the order-cancellation senders. H10 / H16's missing-notice list is not in this slice: when it lands it must either live outside lib/claim-emails or extend this pinned list with its routes. The walk (tests/claims-closure-imports.test.ts, J-C29) follows '@/…' and relative static, re-export and dynamic imports from the webhook, reconcile-refunds and every route .github/workflows/cron.yml calls (ER-C23: app/api/cron does not exist), and pins that lib/claim-emails reaches none of lib/claims, lib/refund and lib/stripe transitively.
 
 ### H16 [CORE] No backlog; census counts in the operator precheck
 GET /api/admin/claims/census adds claims.closure with two counts:
@@ -3148,6 +3168,7 @@ Every customer claim e-mail attempt that does not send is recorded in the same r
 - plus console.error `[EMAIL MISS] [${template}] claim ${claimId} ${why}`;
 - plus the operator toast when the attempt came from an operator route (claimsDisabled, or the D10 skip text).
 An e-mail skip never changes claim state. No scheduled pass retries it: the only retry is D10(iv).
+IMPLEMENTATION NOTE (W6) on ER-C19: the why values are H03's ClaimEmailWhy; I-08's no_address, not_eligible and duplicate never occur (no_recipient, the not_applicable result and the rail's 'duplicate' status stand for them). Exactly one EmailLog row per attempt that reaches a template: traceMiss when sendTransactional is never reached, the rail's own row otherwise; a not_applicable claim and a duplicate leave none. The console line is logEmailSkipped's « [EMAIL MISS] [trigger] not sent (why) — SKIPPED » with the claim id in its context, or, after the rail, « [EMAIL MISS] [trigger] claim <id> <why> ». Pinned by tests/claims-closure-emails.test.ts (J-C44).
 
 ### I-09 [CORE] Durable ungated surfaces and the payload that backs them
 GET /api/admin/claims/financial-verification (resolveAdmin) returns:
@@ -3876,6 +3897,7 @@ ASSERTION:
 NEGATIVE CONTROL: eligible closure (record present), CLAIMS on, Stripe succeeded → exactly one send.
 BREAK/RESTORE: make the sender's eligibility read AdminAuditLog instead of the record → the legacy fixture sends (backlog) → red; remove the pre-send R0 read in (iv) → the reverted fixture sends → red; restore → green.
 FINDINGS: R-X0-1, R-B1-1, N-C-1, R-D6(d), R-D7, C4 (no clock).
+IMPLEMENTATION NOTE (W6): the fixture is tests/claim-emails-routes-closure.test.ts: tests/claim-emails-routes.test.ts mocks the senders, and these sites need the real sender. The record-write failure's console line and the webhook settlement are pinned in tests/claim-closure-record.test.ts and tests/claims-closure-webhook.test.ts. « listed in closureNotices » belongs to the console slice (H10); here the census closure.terminalWithoutRecord count is asserted. The break/restore « remove the pre-send R0 read » is witnessed by the assertion that reconcileClaimEvidence ran before the 409.
 
 ### J-M39 [CORE] Stuck close: the declaration exit
 FILE: tests/claims-resolve-stuck-route.test.ts (extended)
@@ -3893,6 +3915,7 @@ ASSERTION:
 NEGATIVE CONTROL: refunded + DECLARED_AFTER_REVERT → refused (no re-declaration).
 BREAK/RESTORE: gate the notice attempt on the audit boolean → the audit-false fixture sends nothing → red; drop the terminal exemption for REVERTED_AFTER_REFUND → A-S31-1 has no exit → red; restore → green.
 FINDINGS: R-X0-3, R-A1-1, R-B1-1, verifier A P1 (reverted refunded claim has an exit).
+IMPLEMENTATION NOTE (W6): the route half and the isStuckResolvable matrix are in tests/claims-resolve-stuck-route.test.ts; the lib half (the CAS on the pre-image, DECLARED_AFTER_REVERT, count 0 and 1, P2002, no money) runs on the real resolveStuckClaim in tests/claims-r13-declaration-after-revert.test.ts and tests/claim-closure-record.test.ts. The BREAK/RESTORE run gated the notice attempt on the audit boolean: the audit-false fixture turned red.
 
 ### J-M40 [CORE] Webhook marking: claim-only helper, 503 only on a DB throw
 FILE: tests/claims-t49-round13-reversal.test.ts (new)
@@ -4574,6 +4597,7 @@ ASSERTION:
 NEGATIVE CONTROL: a synthetic `sendClaimDecisionEmail({claimId, claimsOpen: true})` and a synthetic `claimsOpen: claimsOn` (entry value) are both flagged.
 BREAK/RESTORE CONTROL: in respond/route.ts replace `isClaimsEnabled()` with `true` → red; restore → green.
 FINDINGS: R-D7, R-B0-1
+IMPLEMENTATION NOTE (W6) on ER-C17: the files containing sender calls are the 7 claim routes; the orders status route is pinned separately (claimsOpenNow in the send branch).
 
 ### J-C22 [CORE] Arbitrate decision e-mail: kind by provenance, 'refunded' only on the engine's CAS-won result
 FILE: tests/claim-emails-routes.test.ts (extend) + tests/claims-c2-routes.test.ts
@@ -4613,6 +4637,8 @@ ASSERTION:
 NEGATIVE CONTROL: a synthetic `emailDispatch.create({data:{trigger:'claim_closure_record'…}})` in app/x.ts is flagged.
 BREAK/RESTORE: move the recordClaimClosure call in resolveStuckClaim before the count===1 check → the count-0 fixture writes → red; restore → green.
 FINDINGS: R-B1-1, N-C-1, P2-11.
+IMPLEMENTATION NOTE (W6): the site-5 call lives in bindingNotObserved, which attributeWithEvidence calls on a transaction error; the call-site map names it. The BREAK/RESTORE run moved the call in resolveStuckClaim before the count check: the count-0 fixture wrote a record and turned red.
+IMPLEMENTATION NOTE (W6 fixer) on J-C23: « no other site logs it » is pinned twice. Statically, the only recordClaimClosure call with an options argument is the one inside reconcileClaimForRefund (an AST scan by top-level function, with a synthetic negative control). In behaviour, sites 1, 6 and 7 assert no « [EMAIL MISS] [claim_decision_refunded] » line, and site 2 gains a count-0 fixture (claim rewritten before the CAS: no record, no line).
 
 ### J-C24 [CORE] sendClaimClosureEmail check order, one fixture per step, one EmailLog row per attempt
 FILE: tests/claims-closure-emails.test.ts (new; supersedes Track B's tests/claim-closure-email.test.ts)
@@ -4648,6 +4674,7 @@ ASSERTION, in order:
 NEGATIVE CONTROL: for the not-proven-at-Stripe refunded fixture with a succeeded row and evidence undefined, sendTransactional is called 0 times.
 BREAK/RESTORE CONTROL: delete the record check (step 3) → the legacy fixture sends, red; restore → green.
 FINDINGS: R-X0-1, R-X0-2, R-B0-4, R-B1-1, R-D4, P2-11
+IMPLEMENTATION NOTE (W6) on ER-C19: « exactly one EmailLog row » holds for every fixture that reaches a template; the not_applicable fixtures assert no row.
 
 ### J-C25 [CORE] Parity: customer refund_unconfirmed ⇔ closure sender refunded_row_unproven/failed
 FILE: tests/claims-closure-emails.test.ts
@@ -4739,6 +4766,7 @@ ASSERTION:
 NEGATIVE CONTROL: the walker over an in-memory tree where lib/claim-action-rules.ts gains `import '@/lib/claim-emails'` reports the webhook path.
 BREAK/RESTORE CONTROL: add `import { sendClaimClosureEmail } from '@/lib/claim-emails'` to lib/claims.ts → red; remove → green.
 FINDINGS: R-D3, R-D8
+IMPLEMENTATION NOTE (W6) on ER-C23: the roots are the webhook, reconcile-refunds and the routes read from .github/workflows/cron.yml (stale-alerts included); app/api/cron does not exist.
 
 ### J-C30 [CORE] Missing-notice and unproven-row lists, FV route counts, card sections
 FILE: tests/claim-closure-lists.test.ts (new) + tests/claims-t49-routes.test.ts + tests/claims-closure-ui.test.ts
@@ -4787,6 +4815,7 @@ ASSERTION:
 NEGATIVE CONTROL: 'duplicate' passed as a skip why is not a ClaimEmailWhy (type test expectTypeOf fails to compile on a synthetic literal, run via tsc).
 BREAK/RESTORE CONTROL: map stripe_not_confirmed to 'sent' → red; restore → green.
 FINDINGS: P2-11, R-D7
+IMPLEMENTATION NOTE (W6 fixer) on J-C31: the in-test « BREAK/RESTORE witness » built its own broken mapper and passed whatever the module contained, so it was removed. The break/restore is the mutation of lib/claim-email-toast.ts itself, caught by the mapping assertion (stripe_not_confirmed → error / stripeNotConfirmed).
 
 ### J-C32 [CORE] E-mail template values and rewordings, 5 locales
 FILE: tests/claims-closure-copy.test.ts
@@ -4813,6 +4842,7 @@ ASSERTION:
 NEGATIVE CONTROL: (true,false) never calls the claim-mentioning variant.
 BREAK/RESTORE CONTROL: choose the variant from the entry value claimsOn → (true,false) red; restore → green.
 FINDINGS: R-D7, R-B0-1
+IMPLEMENTATION NOTE (W6): the route-driven fixture is tests/email-order-status-variant.test.ts, because tests/email-order-status.test.ts mocks Prisma for the mail rail only; it also runs the (false, true) sequence of ER-C20. The source pin and the webhook text guard stay in tests/email-order-status.test.ts.
 
 ### J-C34 [CORE] Operator declaration panel copy
 FILE: tests/claims-closure-ui.test.ts
@@ -4865,6 +4895,7 @@ ASSERTION:
 NEGATIVE CONTROL: a call without claimsOpen fails with 'no send captured'.
 BREAK/RESTORE CONTROL: render closedBySupport with an amount placeholder → the no-« € » assertion red; restore → green.
 FINDINGS: P2-11, R-D4
+IMPLEMENTATION NOTE (W6): render ids CLAIM_DECISION_REFUSED_BY_GRUBANO (decision sender), CLAIM_DECISION_REFUSED_BY_GRUBANO_NOTICE, CLOSURE_REFUNDED_LINKED, CLOSURE_REFUND_RECORDED and CLOSED_BY_SUPPORT, in fr and __ar. EMAIL-MANIFEST.md carries the rows CLAIM_DECISION_REFUSED_BY_GRUBANO, CLAIM_CLOSURE_REFUND and CLAIM_CLOSED_BY_SUPPORT; EMAIL-TRIGGER-MAP.md carries the closure-notice paragraph, which names only the four send sites.
 
 ### J-C37 [CORE] At most two closure notices per claim, in the only permitted order
 FILE: tests/claim-closure-record.test.ts
@@ -4884,6 +4915,7 @@ ASSERTION:
 NEGATIVE CONTROL: sequence (2) without the REVERTED stage (refunded → closed_by_support) is impossible: claimClosureKind never moves refunded+null to a declaration without a resolve-stuck write, and resolveStuckClaim refuses refunded without the REVERTED prefix.
 BREAK/RESTORE CONTROL: let isStuckResolvable accept refunded with refundError null → (5)-style second notice appears, red; restore → green.
 FINDINGS: P2-11, R-X0-3
+IMPLEMENTATION NOTE (W6): the BREAK/RESTORE mutation as written cannot turn red: resolveStuckClaim refuses a terminal claim (« Cette réclamation est déjà clôturée. ») before the predicate runs (W5), so widening isStuckResolvable alone changes nothing. The run widened both the terminal exemption in resolveStuckClaim and isStuckResolvable (refunded with refundError null admitted): the declaration then went through on a settled claim and the negative control turned red. (5) is asserted through the closure sender: every attempt uses CLOSURE_TRIGGER[kind] of the claim's database state.
 
 ### J-C38 [DEFER] Off-variant cancellation body drops the process promise
 FILE: tests/claims-closure-copy.test.ts
@@ -5057,6 +5089,8 @@ ASSERTION:
 NEGATIVE CONTROL: the gate true + send true fixture sends once.
 BREAK/RESTORE CONTROL: read the lease once at entry and reuse it for the send → red; restore → green.
 FINDINGS: R-D7, R-B0-1
+IMPLEMENTATION NOTE (W6): the EmailLog row is written by the real logEmailSkipped on mocked Prisma, and the real senders run with the mail rail mocked (tests/claim-emails-routes.test.ts).
+IMPLEMENTATION NOTE (W6 fixer) on J-C47 / J-C44: the 201 body of POST /api/claims and the 200 body of POST respond are asserted to carry no customerEmail property (consumer and restaurant routes return none, I-08); the negative control is the arbitrate route under the same mid-request lease closure, whose 200 body carries customerEmail {skipped, claims_disabled}.
 
 ### J-C48 [CORE] No scheduled job, no infra change, alert kinds confined
 FILE: tests/claims-closure-imports.test.ts

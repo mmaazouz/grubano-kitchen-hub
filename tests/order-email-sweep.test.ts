@@ -141,6 +141,8 @@ describe('invariants source (règle d’or + périmètre)', () => {
   it('GOLDEN RULE — le webhook Stripe n’importe TOUJOURS aucun sender (le sweep est une route séparée)', () => {
     const wh = read('app/api/webhooks/stripe/route.ts')
     expect(/transactional-emails|sendOnce|order-email-sweep|sendOrderConfirmation|sendRestaurantNewOrderEmail/.test(wh)).toBe(false)
+    // ROUND 13 (J-C29, H15): ni les senders de réclamation.
+    expect(/claim-emails|sendClaimClosureEmail|sendClaimDecisionEmail/.test(wh)).toBe(false)
   })
 
   it('la route /confirm est INTOUCHÉE par P0-42 (ses invariants verrouillés tiennent tels quels)', () => {

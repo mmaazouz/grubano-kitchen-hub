@@ -39,6 +39,7 @@ vi.mock('@/lib/stripe', () => ({ getStripe: () => stripeMock }))
 
 import { attributeClaimRefund, adoptStripeRefundForClaim, resolveStuckClaim, recoverStrandedClaimReconciliations, arbitrateClaim, markClaimsForRevertedRefundRow, reverifySettledClaimRefunds } from '@/lib/claims'
 import { POST as RECONCILE } from '@/app/api/admin/claims/[id]/reconcile/route'
+import { POST as CLOSURE_NOTICE } from '@/app/api/admin/claims/[id]/closure-notice/route'
 import { MARKERS } from '@/lib/claim-action-rules'
 
 const CLASSES = ['A-S01', 'A-S01b', 'A-S02', 'A-S03', 'A-S06a', 'A-S07', 'A-S10b', 'A-S10c', 'A-S11', 'A-S14b', 'A-S19', 'A-S21', 'A-S22', 'A-S31b', 'A-S31d', 'A-S33-1', 'A-S42', 'A-S43']
@@ -179,10 +180,19 @@ describe('J-M49 — attribution, adoption, the declaration close and the recover
     })
   }
 
-  it('the closure-notice route (H) does not exist yet: the email slice adds it to this run', () => {
-    expect(readFileSync('lib/claims.ts', 'utf8')).toContain('export async function markClaimsForRevertedRefundRow(')
-    expect(() => readFileSync('app/api/admin/claims/[id]/closure-notice/route.ts', 'utf8')).toThrow()
-  })
+  // ROUND 13 (slice W6): the closure-notice route (H08) landed and joins the run — supersedes the W5 absence pin. It reads
+  // Stripe only through reconcileClaimEvidence (R0) and sends through the closure sender; neither may reach money.
+  for (const id of CLASSES) {
+    it(`${id} — POST closure-notice on every pre-image creates no money authority`, async () => {
+      expect(readFileSync('lib/claims.ts', 'utf8')).toContain('export async function markClaimsForRevertedRefundRow(')
+      for (const pre of Object.keys(PRE_IMAGES)) {
+        setWorld(id, pre)
+        const res = await CLOSURE_NOTICE(new Request('https://app.grubano.com/x', { method: 'POST' }), { params: { id: 'cl1' } })
+        expect([200, 409], `${id}/${pre}`).toContain(res.status)
+        expectNoMoney(`closure-notice ${id}/${pre}`)
+      }
+    })
+  }
 })
 
 // ══ the static call graph of reconcileClaimEvidence ════════════════════════════════════════════════════════

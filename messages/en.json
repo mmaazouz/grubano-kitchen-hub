@@ -2989,7 +2989,7 @@
       "refundWhat": "What happened?",
       "refundPlaceholder": "The item wasn't in the bag at delivery.",
       "refundAddPhoto": "Add a photo (optional)",
-      "refundEstimate": "Amount requested: <b>{amount} €</b>. Your request will be reviewed; no refund is guaranteed at this stage, and how long any refund takes to appear on your account then depends on your bank.",
+      "refundEstimate": "Amount requested: <b>{amount} €</b>. No refund is guaranteed at this stage, and how long any refund takes to appear on your account then depends on your bank.",
       "refundPickToEstimate": "Select the affected items to estimate the refund.",
       "refundEstimateCapped": "This amount is capped by what remains refundable on this order.",
       "refundSoon": "Refund requests are coming soon.",
@@ -2997,7 +2997,7 @@
       "refundSubmittedSoon": "Coming soon",
       "claimSending": "Sending…",
       "claimFiledTitle": "Claim submitted",
-      "claimFiledSub": "Your claim is under review. You'll be notified of the outcome.",
+      "claimFiledSub": "Your claim is under review.",
       "claimError": "Couldn't submit the claim. Please try again.",
       "claimWindowExpired": "The claim window has expired.",
       "claimNotPaid": "This order isn't paid — no claim possible.",
@@ -3021,7 +3021,7 @@
       "signInTitle": "Sign in to get help with this order",
       "signInCta": "Sign in",
       "refundOffTitle": "Refunds — human support",
-      "refundOffBody": "During the beta, refund requests are handled by our team. Email us at contact@grubano.com with your order number — we will reply personally."
+      "refundOffBody": "During the beta, refund requests are handled by our team. Email us at contact@grubano.com with your order number."
     },
     "home": {
       "seeAll": "See all",
@@ -7167,7 +7167,7 @@
     "client": {
       "reportProblem": "Report a problem",
       "title": "Request a refund",
-      "description": "Tell us what happened. The restaurant reviews your request and its response will appear here.",
+      "description": "Tell us what happened. The restaurant reviews your request.",
       "reasonLabel": "Reason",
       "amountLabel": "Amount to refund",
       "wholeOrder": "Whole order",
@@ -7178,21 +7178,22 @@
       "photoHint": "Add a photo to support your request.",
       "submit": "Submit claim",
       "submitting": "Submitting…",
-      "success": "Claim submitted. The restaurant is reviewing it — check this page for its response.",
-      "statusTitle": "Your claim",
+      "success": "Claim submitted. The restaurant is reviewing it.",
+      "statusTitle": "Case linked to this order",
       "refusedReason": "Refusal reason",
       "maxRefundable": "Maximum refundable: {amount}",
       "cancel": "Cancel",
       "errorGeneric": "Something went wrong. Please try again.",
       "contest": "Contest the decision",
       "contestTitle": "Contest the refusal",
-      "contestDescription": "Grubano will review your claim neutrally.",
+      "contestDescription": "By contesting, you pass the claim to Grubano for neutral arbitration.",
       "contestReasonLabel": "Why are you contesting?",
       "contestReasonPlaceholder": "Explain your disagreement…",
       "contestSubmit": "Submit contest",
-      "contestSuccess": "Contest submitted. Grubano will decide.",
-      "arbitrationInfo": "Your claim is being reviewed by Grubano.",
-      "refusalReasonShown": "Refusal reason"
+      "contestSuccess": "Contest submitted: the claim has been passed to Grubano for arbitration.",
+      "arbitrationInfo": "This case is being reviewed by Grubano.",
+      "refusalReasonShown": "Restaurant’s reason for refusal",
+      "grubanoDecisionReason": "Reason for Grubano’s decision"
     },
     "restaurant": {
       "title": "Customer claims",
@@ -7252,7 +7253,19 @@
       "pendingOverdue": "Response deadline exceeded",
       "arbitrationTitle": "In arbitration — to decide",
       "reasonSystem": "Reason (system)",
-      "systemDetails": "Details (system)"
+      "systemDetails": "Details (system)",
+      "customerEmail": {
+        "sent": "Customer email handed to the mail server.",
+        "duplicate": "No new email: an email of the same kind is already recorded for this claim (sent or being sent) — check the email log.",
+        "claimsDisabled": "Customer email NOT sent: claims are closed, and no claim email is sent while they are.",
+        "noRecipient": "Customer email NOT sent: this customer has no email address on file. Inform them another way.",
+        "smtpDisabled": "Customer email NOT sent: email sending is disabled on this server. Inform the customer another way.",
+        "rowUnproven": "Customer email NOT sent: the linked refund row is missing, belongs to another order, has failed, is neither completed nor pending, or has no usable amount — nothing can be announced to the customer.",
+        "stripeNotConfirmed": "Customer email NOT sent: Stripe was not re-read, or does not report this refund as completed in this read (pending or unreadable) — nothing is announced to the customer. Try « Envoyer l’avis au client » again later.",
+        "notSent": "Customer email NOT sent (trace in the email log): inform the customer another way.",
+        "failed": "Customer email NOT sent (error while preparing or sending — trace in the email log or the server logs): inform the customer another way."
+      },
+      "restaurantNote": "Restaurant’s note (when accepting)"
     }
   },
   "fiscal": {
@@ -8589,7 +8602,7 @@
       "subject": "Your claim {ref} has been received",
       "title": "Claim received",
       "body": "We have received your claim on order {ref} (requested amount: {euros}).",
-      "next": "You will be notified by email as soon as a decision is made."
+      "next": "If you have any questions, reply to this email quoting reference {ref}."
     },
     "accepted": {
       "subject": "Claim {ref}: accepted by the restaurant",
@@ -8600,7 +8613,7 @@
       "subject": "Claim {ref}: refused by the restaurant",
       "title": "Claim refused",
       "body": "{resto} refused your claim on order {ref}.",
-      "contest": "You can contest it from your order tracking page — Grubano will arbitrate."
+      "contest": "If contesting is offered on your order tracking page, you can contest it there: the claim is then passed to Grubano for arbitration. If you have any questions, reply to this email quoting reference {ref}."
     },
     "refunded": {
       "subject": "Claim {ref}: refund issued",
@@ -8621,13 +8634,33 @@
       "subject": "Order {ref} cancelled — refund request submitted",
       "title": "Order cancelled",
       "body": "{resto} cancelled your order {ref}, which had been paid. A refund request has been submitted to Grubano.",
-      "next": "It will be reviewed by a member of the Grubano team — you will be notified of the decision by email.",
-      "bodyExisting": "{resto} cancelled your order {ref}, which had been paid. Your existing claim on this order already carries the refund question — it follows its normal process."
+      "next": "If you have any questions, reply to this email quoting reference {ref}.",
+      "bodyExisting": "{resto} cancelled your order {ref}, which had been paid. Your existing claim on this order already carries the refund question."
     },
     "orderCancelledPaidOff": {
       "subject": "Order {ref} cancelled — about your payment",
       "body": "{resto} cancelled your order {ref}, which had been paid. To get the amount you paid refunded, contact our support: contact@grubano.com (or simply reply to this email) — every request is handled by a team member during the beta.",
       "next": "Please include reference {ref}."
+    },
+    "refusedByGrubano": {
+      "title": "Declined by Grubano",
+      "body": "Grubano reviewed the claim concerning your order {ref} and did not accept it. This decision is final."
+    },
+    "closedBySupport": {
+      "subject": "Claim {ref}: case closed by our team",
+      "title": "Case closed",
+      "body": "Our team has closed the claim concerning your order {ref}. This claim is no longer being processed.",
+      "next": "If you have any questions, reply to this email or write to contact@grubano.com, quoting reference {ref}."
+    },
+    "refundedLinked": {
+      "body": "A refund of {euros} has been issued to the payment method used for your order {ref}, and linked to this claim.",
+      "next": "If you have any questions about this refund, reply to this email quoting reference {ref}."
+    },
+    "refundRecorded": {
+      "subject": "Claim {ref}: refund linked",
+      "title": "Refund linked",
+      "body": "The claim concerning your order {ref} has been closed: it is linked to a refund recorded in our records.",
+      "next": "If this refund does not appear on your statement, reply to this email quoting reference {ref}."
     }
   }
 }

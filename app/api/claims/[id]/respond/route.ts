@@ -58,6 +58,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       decision:       parsed.data.action === 'accept' ? 'accepted' : 'refused',
       reason:         parsed.data.reason ?? null,
       restaurantName,
+      // ROUND 13 (H02, R-D7): the lease read at send time — one that closed since the entry gate skips the e-mail.
+      claimsOpen:     isClaimsEnabled(),
     })
   }
 

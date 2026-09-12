@@ -115,6 +115,8 @@ describe('wiring + invariants (source-scan)', () => {
   it('GOLDEN RULE — the Stripe webhook still imports no email sender', () => {
     const wh = read('app/api/webhooks/stripe/route.ts')
     expect(/transactional-emails|sendOnce|sendRestaurantNewOrderEmail|sendTransactional/.test(wh)).toBe(false)
+    // ROUND 13 (J-C29, H15): nor the claim senders.
+    expect(/claim-emails|sendClaimClosureEmail|sendClaimDecisionEmail/.test(wh)).toBe(false)
   })
 
   it('orders/route (creation, money engine) does NOT send the resto email here (cash flagged, untouched)', () => {

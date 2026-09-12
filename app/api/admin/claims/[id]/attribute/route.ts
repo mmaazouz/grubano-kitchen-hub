@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { resolveAdmin } from '@/lib/admin-guard'
-import { attributeClaimRefund, adoptStripeRefundForClaim, STRIPE_REFUND_ID_RE } from '@/lib/claims'
+import { attributeClaimRefund, adoptStripeRefundForClaim, STRIPE_REFUND_ID_RE, isClaimsEnabled } from '@/lib/claims'
+import { sendClaimClosureEmail, type ClosureEmailResult, type ClosureEvidence } from '@/lib/claim-emails'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -20,8 +21,8 @@ export const dynamic = 'force-dynamic'
 // row BEFORE any write (ROUND 13, G12), binding it only if Stripe reports it SUCCEEDED, on
 // Stripe's amount, in one Serializable transaction (C6). The operator states no outcome, states
 // no amount, and moves no money: there is no engine call, no Stripe write and no retry behind it.
-// OPEN (D8 / D10 (iii) / H07, email slice): the closure-notice attempt after an observed commit is
-// not wired yet — sendClaimClosureEmail does not exist in this tree.
+// ROUND 13 (D8 / D10 (iii) / H07, slice W6): after an OBSERVED commit (outcome 'refunded', never a preview, a refusal, a
+// lost race or the mirror-written 409), the closure notice is attempted on the Stripe refund object read by this request.
 //
 // A refund from another order is refused outright, so a claim can never be settled by an
 // unrelated payment. Every attribution is recorded in the admin audit log.
@@ -54,6 +55,15 @@ const schema = z.union([
   }).strict(),
 ])
 
+/** H07: the closure-notice attempt; the lease is read at send time. It never throws and never changes the HTTP result. */
+async function closureNotice(claimId: string, evidence: ClosureEvidence | undefined): Promise<ClosureEmailResult> {
+  try {
+    return await sendClaimClosureEmail({ claimId, evidence, claimsOpen: isClaimsEnabled() })
+  } catch {
+    return { status: 'failed', kind: null, why: 'sender_error' }
+  }
+}
+
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   const operator = await resolveAdmin()
   if (!operator) return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
@@ -71,7 +81,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     })
     // The facts travel with a refusal too: the operator sees WHAT Stripe said, not just "no".
     if (!result.ok) return NextResponse.json({ error: result.error, facts: result.facts ?? null, wrote: result.wrote ?? null }, { status: result.status })
-    return NextResponse.json({ result })
+    const customerEmail = parsed.data.dryRun !== true && result.outcome === 'refunded'
+      ? await closureNotice(params.id, result.evidence === 'stripe_read' ? { basis: 'stripe_read', amountCents: result.amountCents } : undefined)
+      : null
+    return NextResponse.json({ result, customerEmail })
   }
 
   const result = await attributeClaimRefund({
@@ -82,5 +95,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     note:        parsed.data.note,
   })
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
-  return NextResponse.json({ result })
+  const customerEmail = parsed.data.dryRun !== true && result.outcome === 'refunded'
+    ? await closureNotice(params.id, result.evidence === 'stripe_read' ? { basis: 'stripe_read', amountCents: result.amountCents } : undefined)
+    : null
+  return NextResponse.json({ result, customerEmail })
 }

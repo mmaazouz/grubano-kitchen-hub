@@ -96,6 +96,8 @@ export async function POST(req: NextRequest) {
       consumerId:           c.consumerId,
       orderId:              c.orderId,
       requestedAmountCents: c.requestedAmountCents,
+      // ROUND 13 (H02, R-D7): the lease read at send time — one that closed since the entry gate skips the e-mail.
+      claimsOpen:           isClaimsEnabled(),
     })
     // Revue T43 : le chemin de décision MACHINE auto_small (config post-pilote
     // CLAIM_AUTO_RESOLVE_ENABLED + plafond) n'envoyait AUCUN email — l'ack aurait
@@ -111,6 +113,7 @@ export async function POST(req: NextRequest) {
         decision:      auto.state === 'refunded' ? 'refunded' : 'approved',
         // Email truthfulness hotfix (2026-09-06): ENGINE amount, never the requested amount.
         refundedCents: auto.state === 'refunded' ? auto.amountCents : null,
+        claimsOpen:    isClaimsEnabled(),
       })
     }
   }

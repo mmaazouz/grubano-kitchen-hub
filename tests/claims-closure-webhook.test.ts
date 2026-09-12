@@ -158,7 +158,8 @@ describe('J-C28 — nothing is sent to a customer from the webhook, the recovery
 
   it('NEGATIVE CONTROL — the same spy records claim_decision_refunded when the decision sender runs (the spy works)', async () => {
     db.operator.findUnique.mockResolvedValue({ id: 'c1', email: 'client@x.test', name: 'Client', locale: 'fr', role: 'consumer' })
-    await sendClaimDecisionEmail({ claimId: 'cl1', consumerId: 'c1', orderId: 'o1', decision: 'refunded', refundedCents: 300 })
+    // W6 (H02): the lease is an explicit argument; open here so the spy has something to record.
+    await sendClaimDecisionEmail({ claimId: 'cl1', consumerId: 'c1', orderId: 'o1', decision: 'refunded', refundedCents: 300, claimsOpen: true })
     expect(customerSends()).toEqual(['claim_decision_refunded'])
   })
 })

@@ -158,5 +158,15 @@ describe('status route wiring + invariants (source-scan)', () => {
   it('GOLDEN RULE — the Stripe webhook still imports no email sender', () => {
     const wh = read('app/api/webhooks/stripe/route.ts')
     expect(/transactional-emails|sendOrderStatusEmail|sendOnce|sendTransactional/.test(wh)).toBe(false)
+    // ROUND 13 (J-C29, H15): nor the claim senders.
+    expect(/claim-emails|sendClaimClosureEmail|sendClaimDecisionEmail/.test(wh)).toBe(false)
+  })
+
+  it('ROUND 13 (J-C33, H13, ER-C20) — the paid-cancellation variant is chosen at send time (the route-driven fixture: tests/email-order-status-variant.test.ts)', () => {
+    expect(route).toMatch(/const claimsOpenNow = isClaimsEnabled\(\)/)
+    expect(route).toMatch(/if \(paidCancellation && claimsOpenNow\) \{/)
+    expect(route).toMatch(/\} else if \(paidCancelled\) \{\s*(\/\/[^\n]*\s*)*await sendOrderCancelledPaidOffEmail\(/)
+    // the entry value never chooses the claim-mentioning variant on its own
+    expect(route).not.toMatch(/if \(paidCancellation\) \{\s*(\/\/[^\n]*\s*)*await sendOrderCancelledPaidEmail\(/)
   })
 })

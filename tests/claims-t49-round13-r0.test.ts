@@ -102,7 +102,8 @@ describe('J-M36 — R0a: a settled claim on our row FAILED with its Stripe id (A
   it('→ reverted_after_refund with the failed-row text; claim only, no Stripe read', async () => {
     settled({ status: 'failed', stripeRefundId: 're_b' })
     const r = await reconcile()
-    expect(r).toEqual({ status: 200, body: { result: { ok: true, outcome: 'reverted_after_refund', refundId: 'rf_b' } } })
+    // W6 (H07, H09 (4)): a reversal sends nothing — customerEmail null.
+    expect(r).toEqual({ status: 200, body: { result: { ok: true, outcome: 'reverted_after_refund', refundId: 'rf_b' }, customerEmail: null } })
     expectMarked('failed', 're_b')
     expect(stripeMock.refunds.retrieve).not.toHaveBeenCalled()
     expectNoMoney()
@@ -111,7 +112,7 @@ describe('J-M36 — R0a: a settled claim on our row FAILED with its Stripe id (A
   it('C9 (f) / G10 — the claim’s refundError changes between the read and the CAS → 200 changed_during_read: the lost CAS writes nothing, no I-01 alert, no audit', async () => {
     settled({ status: 'failed', stripeRefundId: 're_b' })
     w.beforeClaimWrite = () => { claimOf(w).refundError = `${MARKERS.DECLARED_AFTER_REVERT} déclaration concurrente` }
-    expect(await reconcile()).toEqual({ status: 200, body: { result: { ok: true, outcome: 'changed_during_read' } } })
+    expect(await reconcile()).toEqual({ status: 200, body: { result: { ok: true, outcome: 'changed_during_read' }, customerEmail: null } })
     expect(w.writes.map((x) => x.count)).toEqual([0])
     expect(claimOf(w).refundError).toBe(`${MARKERS.DECLARED_AFTER_REVERT} déclaration concurrente`)
     expect(alertMock.mock.calls.filter((x) => x[0].kind === 'claim_payment_blocked')).toEqual([])

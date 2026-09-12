@@ -6,7 +6,7 @@
 // .github/workflows/cron.yml (stale-alerts and reconcile-refunds included). The J-C29 import walk belongs to the email slice.
 import { describe, it, expect } from 'vitest'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, posix } from 'node:path'
 import { createHash } from 'node:crypto'
 
 const read = (p: string) => readFileSync(p, 'utf8').replace(/\r\n/g, '\n')
@@ -80,5 +80,145 @@ describe('J-C48 — no scheduled job, no infra change, alert kinds confined', ()
       .toEqual([`${stale}: claim alert kind`, `${stale}: kind outside its senders`])
     const rr = 'app/api/admin/claims/reconcile-refunds/route.ts'
     expect(violations({ ...t, [rr]: t[rr] + "\nimport { markClaimsForRevertedRefundRow } from '@/lib/claims'\n" })).toEqual([`${rr}: closure reference`])
+  })
+})
+
+// ══ ROUND 13 (slice W6) — J-C29 (H15, H09, I-10): the senders are never in the webhook or a cron bundle ════════════
+// IMPLEMENTATION NOTE (W6) on ER-C17 / ER-C23: the roots are the webhook, reconcile-refunds and every route cron.yml calls
+// (app/api/cron does not exist). The importers of lib/claim-emails are the 8 H15 routes; H10 / H16's missing-notice list
+// (financial-verification and census routes) is not in this slice — census counts closure.missing from its own reads.
+type Reader = (p: string) => string | null
+const fsReader: Reader = (p) => { try { return statSync(p).isFile() ? read(p) : null } catch { return null } }
+const IMPORT_RE = /(?:^|[;\n])\s*(?:import|export)\s+(?:type\s+)?(?:[\w*{}\s,$]+\s+from\s+)?['"]([^'"]+)['"]|import\(\s*['"]([^'"]+)['"]\s*\)/g
+const specifiers = (src: string) => Array.from(stripComments(src).matchAll(IMPORT_RE)).map((m) => m[1] ?? m[2])
+function resolveImport(spec: string, from: string, rd: Reader): string | null {
+  let base: string
+  if (spec.startsWith('@/')) base = spec.slice(2)
+  else if (spec.startsWith('.')) base = posix.normalize(posix.join(posix.dirname(from), spec))
+  else return null
+  for (const c of [base, `${base}.ts`, `${base}.tsx`, `${base}.js`, `${base}/index.ts`, `${base}/index.tsx`]) {
+    if (/\.(ts|tsx|js|mjs)$/.test(c) && rd(c) !== null) return c
+  }
+  return null
+}
+/** Every file reachable from the roots, with the import chain that reaches it. */
+function reach(roots: string[], rd: Reader): Map<string, string[]> {
+  const seen = new Map<string, string[]>()
+  const queue = roots.filter((r) => rd(r) !== null).map((r) => [r, [r]] as [string, string[]])
+  for (const [f, chain] of queue) seen.set(f, chain)
+  while (queue.length) {
+    const [f, chain] = queue.shift()!
+    for (const spec of specifiers(rd(f) ?? '')) {
+      const target = resolveImport(spec, f, rd)
+      if (target && !seen.has(target)) {
+        seen.set(target, [...chain, target])
+        queue.push([target, [...chain, target]])
+      }
+    }
+  }
+  return seen
+}
+const walkIfExists = (d: string) => { try { return walk(d) } catch { return [] } }
+const ROOTS = () => Array.from(new Set(['app/api/webhooks/stripe/route.ts', 'app/api/admin/claims/reconcile-refunds/route.ts', ...cronRoutes(), ...walkIfExists('app/api/cron').filter((f) => f.endsWith('route.ts'))]))
+const SENDER_MODULES = ['lib/claim-emails.ts', 'lib/claim-email-toast.ts']
+const H15_IMPORTERS = [
+  'app/api/admin/claims/[id]/arbitrate/route.ts',
+  'app/api/admin/claims/[id]/attribute/route.ts',
+  'app/api/admin/claims/[id]/closure-notice/route.ts',
+  'app/api/admin/claims/[id]/reconcile/route.ts',
+  'app/api/admin/claims/[id]/resolve-stuck/route.ts',
+  'app/api/claims/[id]/respond/route.ts',
+  'app/api/claims/route.ts',
+  'app/api/orders/[id]/status/route.ts',
+]
+
+describe('J-C29 — import topology (H15)', () => {
+  it('no webhook, reconcile-refunds or cron root reaches lib/claim-emails.ts or lib/claim-email-toast.ts', () => {
+    expect(ROOTS()).toEqual(expect.arrayContaining(['app/api/webhooks/stripe/route.ts', 'app/api/admin/claims/reconcile-refunds/route.ts', 'app/api/admin/claims/stale-alerts/route.ts']))
+    const reached = reach(ROOTS(), fsReader)
+    expect(reached.has('lib/claims.ts')).toBe(true) // the walk does follow the webhook into lib/claims
+    expect(SENDER_MODULES.filter((m) => reached.has(m)).map((m) => reached.get(m)!.join(' → '))).toEqual([])
+  })
+
+  it('lib/claims.ts never names the senders; lib/claim-emails.ts imports exactly the six H15 modules and never reaches lib/claims, lib/refund or lib/stripe', () => {
+    expect(read('lib/claims.ts')).not.toMatch(/claim-emails|claim-email-toast/)
+    expect(Array.from(new Set(specifiers(read('lib/claim-emails.ts')))).sort()).toEqual(
+      ['@/lib/claim-action-rules', '@/lib/onboarding-nudge', '@/lib/order-ref', '@/lib/prisma', '@/lib/transactional-emails', 'next-intl/server'])
+    for (const m of SENDER_MODULES) expect(read(m), m).not.toMatch(/@\/lib\/(refund|stripe|claims)['"]/)
+    const fromSenders = reach(SENDER_MODULES, fsReader)
+    expect(['lib/claims.ts', 'lib/refund.ts', 'lib/stripe.ts'].filter((f) => fromSenders.has(f))).toEqual([])
+  })
+
+  it('the importers of lib/claim-emails are exactly the 8 H15 routes', () => {
+    const files = ['app', 'lib', 'components', 'scripts'].flatMap(walk).filter((f) => /\.(ts|tsx|js|mjs)$/.test(f))
+    const importers = files.filter((f) => specifiers(read(f)).some((s) => resolveImport(s, f, fsReader) === 'lib/claim-emails.ts'))
+    expect(importers.sort()).toEqual([...H15_IMPORTERS].sort())
+  })
+
+  it('NEGATIVE CONTROL — the walker over a tree where lib/claim-action-rules.ts gains `import \'@/lib/claim-emails\'` reports the webhook path', () => {
+    const patched: Reader = (p) => (p === 'lib/claim-action-rules.ts' ? `import '@/lib/claim-emails'\n${read(p)}` : fsReader(p))
+    const chain = reach(['app/api/webhooks/stripe/route.ts'], patched).get('lib/claim-emails.ts')
+    expect(chain?.[0]).toBe('app/api/webhooks/stripe/route.ts')
+    expect(chain).toEqual(expect.arrayContaining(['lib/claim-action-rules.ts', 'lib/claim-emails.ts']))
+    // BREAK/RESTORE witness: the same import added to lib/claims.ts is reached too, and trips the name pin.
+    const viaClaims: Reader = (p) => (p === 'lib/claims.ts' ? `import { sendClaimClosureEmail } from '@/lib/claim-emails'\n${read(p)}` : fsReader(p))
+    expect(reach(['app/api/webhooks/stripe/route.ts'], viaClaims).has('lib/claim-emails.ts')).toBe(true)
+  })
+})
+
+// ══ ROUND 13 (slice W6) — J-C21 (H02, H13): every claim sender call reads the lease at send time ════════════════════
+// IMPLEMENTATION NOTE (W6) on ER-C17: the files CALLING sendClaimAckEmail / sendClaimDecisionEmail / sendClaimClosureEmail are
+// the 8 H15 routes minus app/api/orders/[id]/status/route.ts, which imports only the order-cancellation senders (H13).
+function senderCalls(files: Record<string, string>): { callers: string[]; violations: string[] } {
+  const callers = new Set<string>()
+  const out: string[] = []
+  for (const [f, src] of Object.entries(files)) {
+    const code = stripComments(src)
+    for (const m of Array.from(code.matchAll(/\b(sendClaimAckEmail|sendClaimDecisionEmail|sendClaimClosureEmail)\s*\(/g))) {
+      callers.add(f)
+      let i = (m.index ?? 0) + m[0].length
+      while (/\s/.test(code[i] ?? '')) i++
+      if (code[i] !== '{') { out.push(`${f}: ${m[1]} without an object literal`); continue }
+      let depth = 0
+      let j = i
+      for (; j < code.length; j++) {
+        if (code[j] === '{') depth++
+        else if (code[j] === '}' && --depth === 0) break
+      }
+      if (!/\bclaimsOpen:\s*isClaimsEnabled\(\)/.test(code.slice(i, j + 1))) out.push(`${f}: ${m[1]} without claimsOpen: isClaimsEnabled()`)
+    }
+  }
+  return { callers: Array.from(callers).sort(), violations: out.sort() }
+}
+const appTree = () => Object.fromEntries(walk('app').filter((f) => /\.(ts|tsx)$/.test(f)).map((f) => [f, read(f)]))
+
+describe('J-C21 — the sender call sites', () => {
+  it('each call passes claimsOpen: isClaimsEnabled(); the calling files are the 7 claim routes', () => {
+    const { callers, violations: v } = senderCalls(appTree())
+    expect(v).toEqual([])
+    expect(callers).toEqual(H15_IMPORTERS.filter((f) => f !== 'app/api/orders/[id]/status/route.ts').sort())
+  })
+
+  it('orders status: the lease is read in the send branch (claimsOpenNow) and the claim-mentioning variant requires it', () => {
+    const code = stripComments(read('app/api/orders/[id]/status/route.ts'))
+    const def = code.indexOf('const claimsOpenNow = isClaimsEnabled()')
+    expect(def).toBeGreaterThan(code.indexOf('const claimsOn = isClaimsEnabled()'))
+    expect(def).toBeGreaterThan(code.indexOf("prisma.operator.findUnique({ where: { id: order.consumerId }, select: { email: true, name: true } })"))
+    expect(code).toMatch(/if \(paidCancellation && claimsOpenNow\) \{\s*await sendOrderCancelledPaidEmail\(/)
+    expect(code).toMatch(/\} else if \(paidCancelled\) \{\s*await sendOrderCancelledPaidOffEmail\(/)
+  })
+
+  it('NEGATIVE CONTROL — `claimsOpen: true` and the entry value `claimsOpen: claimsOn` are both flagged; so is respond/route.ts with isClaimsEnabled() replaced by true', () => {
+    const synthetic = {
+      'app/a/route.ts': 'await sendClaimDecisionEmail({ claimId, claimsOpen: true })',
+      'app/b/route.ts': 'const claimsOn = isClaimsEnabled()\nawait sendClaimAckEmail({ claimId, claimsOn, claimsOpen: claimsOn })',
+    }
+    expect(senderCalls(synthetic).violations).toEqual([
+      'app/a/route.ts: sendClaimDecisionEmail without claimsOpen: isClaimsEnabled()',
+      'app/b/route.ts: sendClaimAckEmail without claimsOpen: isClaimsEnabled()',
+    ])
+    const respond = 'app/api/claims/[id]/respond/route.ts'
+    const broken = { [respond]: read(respond).replace('claimsOpen:     isClaimsEnabled()', 'claimsOpen:     true') }
+    expect(senderCalls(broken).violations).toEqual([`${respond}: sendClaimDecisionEmail without claimsOpen: isClaimsEnabled()`])
   })
 })

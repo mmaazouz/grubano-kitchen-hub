@@ -183,19 +183,86 @@ describe('render — claim-emails', () => {
   it('fr + locale variants', async () => {
     const C = await import('@/lib/claim-emails')
     consumerLocale = null
-    await C.sendClaimAckEmail({ claimId: CLAIM, consumerId: ORDER.consumerId, orderId: ORDER.id, requestedAmountCents: 1250 }); take('CLAIM_RECEIVED')
-    for (const d of ['accepted', 'refused', 'refunded', 'approved', 'refused_final'] as const) {
-      await C.sendClaimDecisionEmail({ claimId: CLAIM, consumerId: ORDER.consumerId, orderId: ORDER.id, decision: d, reason: d === 'refused' ? 'Photo non concluante' : null, restaurantName: d.startsWith('ref') || d === 'accepted' ? RESTO : null, refundedCents: d === 'refunded' ? 1250 : null })
+    // ROUND 13 (J-C36, H02): every claim sender takes the lease; these renders run with claims open.
+    await C.sendClaimAckEmail({ claimId: CLAIM, consumerId: ORDER.consumerId, orderId: ORDER.id, requestedAmountCents: 1250, claimsOpen: true }); take('CLAIM_RECEIVED')
+    for (const d of ['accepted', 'refused', 'refunded', 'approved', 'refused_final', 'refused_by_grubano'] as const) {
+      await C.sendClaimDecisionEmail({ claimId: CLAIM, consumerId: ORDER.consumerId, orderId: ORDER.id, decision: d, reason: d === 'refused' ? 'Photo non concluante' : null, restaurantName: d === 'accepted' || d === 'refused' ? RESTO : null, refundedCents: d === 'refunded' ? 1250 : null, claimsOpen: true })
       take(`CLAIM_DECISION_${d.toUpperCase()}`)
     }
     await C.sendOrderCancelledPaidEmail({ orderId: ORDER.id, consumerId: ORDER.consumerId, restaurantName: RESTO }); take('CONSUMER_ORDER_CANCELLED_PAID_CLAIMS_ON')
     await C.sendOrderCancelledPaidEmail({ orderId: ORDER.id, consumerId: ORDER.consumerId, restaurantName: RESTO, existingClaim: true }); take('CONSUMER_ORDER_CANCELLED_PAID_CLAIMS_ON_EXISTING')
     await C.sendOrderCancelledPaidOffEmail({ orderId: ORDER.id, consumerId: ORDER.consumerId, restaurantName: RESTO }); take('CONSUMER_ORDER_CANCELLED_PAID_CLAIMS_OFF')
     consumerLocale = 'ar'
-    await C.sendClaimAckEmail({ claimId: CLAIM, consumerId: ORDER.consumerId, orderId: ORDER.id, requestedAmountCents: 1250 }); take('CLAIM_RECEIVED__ar')
+    await C.sendClaimAckEmail({ claimId: CLAIM, consumerId: ORDER.consumerId, orderId: ORDER.id, requestedAmountCents: 1250, claimsOpen: true }); take('CLAIM_RECEIVED__ar')
     consumerLocale = 'en'
-    await C.sendClaimDecisionEmail({ claimId: CLAIM, consumerId: ORDER.consumerId, orderId: ORDER.id, decision: 'refunded', refundedCents: 1250 }); take('CLAIM_DECISION_REFUNDED__en')
+    await C.sendClaimDecisionEmail({ claimId: CLAIM, consumerId: ORDER.consumerId, orderId: ORDER.id, decision: 'refunded', refundedCents: 1250, claimsOpen: true }); take('CLAIM_DECISION_REFUNDED__en')
     consumerLocale = null
+  })
+
+  it('ROUND 13 (J-C36, H04/H06) — the closure notices, fr and ar, on a closure recorded by this build', async () => {
+    const C = await import('@/lib/claim-emails')
+    const { orderRef } = await import('@/lib/order-ref')
+    const REF = orderRef(ORDER.id)
+    const fmt = (l: string, key: string, vars?: Record<string, unknown>) => {
+      let cur: unknown = MSG[l]
+      for (const p of `claimEmails.${key}`.split('.')) cur = (cur as Record<string, unknown>)?.[p]
+      return new IntlMessageFormat(String(cur), l).format(vars as never) as string
+    }
+    const h = db.__handlers
+    const claimRow = (o: Record<string, unknown>) => () => ({
+      id: CLAIM, consumerId: ORDER.consumerId, orderId: ORDER.id, refundId: 'rf_fixture01', refundError: null,
+      arbitrationDecision: 'approved', restaurantResponse: null, arbitrationReason: null, status: 'refunded', ...o,
+    })
+    h['emailDispatch.findFirst'] = () => ({ id: 'record_fixture' })
+    h['refund.findUnique'] = () => ({ orderId: ORDER.id, status: 'succeeded', amountCents: 1250, stripeRefundId: 're_FIXTURE01' })
+    h['claim.count'] = () => 1
+    try {
+      for (const loc of [null, 'ar'] as const) {
+        consumerLocale = loc
+        const l = loc ?? 'fr'
+        const sfx = loc ? `__${loc}` : ''
+        h['claim.findUnique'] = claimRow({ status: 'refused_final', refundId: null, arbitrationDecision: 'refused_final', arbitrationReason: 'Hors délai' })
+        await C.sendClaimClosureEmail({ claimId: CLAIM, claimsOpen: true })
+        let m = take(`CLAIM_DECISION_REFUSED_BY_GRUBANO_NOTICE${sfx}`)
+        expect(m.html).toContain(fmt(l, 'refusedByGrubano.title'))
+        expect(m.html).toContain(fmt(l, 'refusedByGrubano.body', { ref: REF }))
+
+        h['claim.findUnique'] = claimRow({})
+        await C.sendClaimClosureEmail({ claimId: CLAIM, evidence: { basis: 'stripe_read', amountCents: 1250 }, claimsOpen: true })
+        m = take(`CLOSURE_REFUNDED_LINKED${sfx}`)
+        expect(m.html).toContain(fmt(l, 'refunded.title'))
+        expect(m.html).toContain(fmt(l, 'refundedLinked.body', { ref: REF, euros: new Intl.NumberFormat(l, { style: 'currency', currency: 'EUR' }).format(12.5) }))
+
+        await C.sendClaimClosureEmail({ claimId: CLAIM, evidence: { basis: 'stripe_read', amountCents: 1300 }, claimsOpen: true })
+        m = take(`CLOSURE_REFUND_RECORDED${sfx}`)
+        expect(m.html).toContain(fmt(l, 'refundRecorded.title'))
+        expect(m.html).toContain(fmt(l, 'refundRecorded.body', { ref: REF }))
+        expect(m.html).not.toContain('€')
+
+        h['claim.findUnique'] = claimRow({ status: 'refused_final', refundId: null, refundError: 'engine_failed: x', arbitrationReason: 'note opérateur' })
+        await C.sendClaimClosureEmail({ claimId: CLAIM, claimsOpen: true })
+        m = take(`CLOSED_BY_SUPPORT${sfx}`)
+        expect(m.html).toContain(fmt(l, 'closedBySupport.title'))
+        expect(m.html).toContain(fmt(l, 'closedBySupport.body', { ref: REF }))
+        expect(m.html).not.toContain('€')
+        expect(m.html).not.toContain('note opérateur')
+        if (loc === 'ar') expect(m.html).toContain('dir="rtl"')
+      }
+      consumerLocale = null
+      // NEGATIVE CONTROL: a call without claimsOpen captures no send.
+      await C.sendClaimAckEmail({ claimId: CLAIM, consumerId: ORDER.consumerId, orderId: ORDER.id, requestedAmountCents: 1250 } as never)
+      expect(() => take('NEVER_WRITTEN')).toThrow(/no send captured/)
+    } finally {
+      for (const k of ['emailDispatch.findFirst', 'refund.findUnique', 'claim.count', 'claim.findUnique']) delete h[k]
+      consumerLocale = null
+    }
+    const manifest = readFileSync('EMAIL-FACTUAL-PACK/EMAIL-MANIFEST.md', 'utf8')
+    expect(manifest).toContain('CLAIM_CLOSED_BY_SUPPORT')
+    expect(manifest).toContain('CLAIM_CLOSURE_REFUND')
+    const map = readFileSync('EMAIL-FACTUAL-PACK/EMAIL-TRIGGER-MAP.md', 'utf8').split(/\r?\n/)
+    const closure = map.find((line) => line.startsWith('**CLAIM_CLOSURE_REFUND / CLAIM_CLOSED_BY_SUPPORT**'))
+    expect(closure).toBeTruthy()
+    expect(closure).not.toMatch(/webhook|cron|reconcile-refunds/i)
   })
 })
 

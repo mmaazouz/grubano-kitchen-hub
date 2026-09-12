@@ -27,7 +27,12 @@ vi.mock('@/lib/claims', () => ({
   listActionableRefundClaims:        actionableMock,
   // round 11: pending Refund rows whose claim moved on, listed on the same ungated payload
   listUnfinalizedClaimRefundRows:    unfinalizedMock,
+  // ROUND 13 (W6, H07): the closure-notice attempt reads the lease at send time.
+  isClaimsEnabled:                   closureFlag,
 }))
+// ROUND 13 (W6, J-C26): the closure sender at the reconcile and attribute send sites.
+const { closureMock, closureFlag } = vi.hoisted(() => ({ closureMock: vi.fn(), closureFlag: vi.fn(() => true) }))
+vi.mock('@/lib/claim-emails', () => ({ sendClaimClosureEmail: closureMock }))
 
 const { auditMock } = vi.hoisted(() => ({ auditMock: vi.fn() }))
 vi.mock('@/lib/admin-audit', () => ({ recordAdminAudit: auditMock }))
@@ -89,7 +94,8 @@ describe('POST /reconcile — the evidence exit', () => {
     reconcileMock.mockResolvedValue({ ok: true, outcome: 'changed_during_read' })
     const res = await post(RECONCILE)
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ result: { ok: true, outcome: 'changed_during_read' } })
+    // W6 (H07): only outcome 'refunded' attempts a closure notice — customerEmail null here.
+    expect(await res.json()).toEqual({ result: { ok: true, outcome: 'changed_during_read' }, customerEmail: null })
     expect(auditMock).not.toHaveBeenCalled()
     // NEGATIVE CONTROL: the park that DID write (refund_moved_unattributed) is audited with its ambiguity.
     reconcileMock.mockResolvedValue({ ok: true, outcome: 'financial_verification', reason: 'refund_moved_unattributed', detail: 'x' })
@@ -133,6 +139,90 @@ describe('POST /attribute — the escalation exit out of a permanent park', () =
   it('a cross-order refund refusal is surfaced as 400, not swallowed', async () => {
     attributeMock.mockResolvedValue({ ok: false, status: 400, error: 'autre commande' })
     expect((await post(ATTRIBUTE, { refundRowId: 'rf9' })).status).toBe(400)
+  })
+})
+
+// ══ ROUND 13 (slice W6) — J-C26 (H07, H06, R-D3, R-D4): the closure-notice attempts at reconcile and attribute ══════════
+describe('J-C26 — reconcile and attribute attempt a closure notice only for refunded, with the evidence their result carries', () => {
+  beforeEach(() => {
+    closureMock.mockReset().mockResolvedValue({ status: 'sent', kind: 'refunded' })
+    closureFlag.mockReset().mockReturnValue(true)
+  })
+
+  it('reconcile refunded / stripe_read 1300 → evidence {stripe_read, 1300}; refunded from our row only (ledger) → evidence undefined', async () => {
+    reconcileMock.mockResolvedValue({ ok: true, outcome: 'refunded', refundId: 'rf1', amountCents: 1300, evidence: 'stripe_read' })
+    let res = await post(RECONCILE)
+    expect(closureMock).toHaveBeenCalledWith({ claimId: 'cl1', evidence: { basis: 'stripe_read', amountCents: 1300 }, claimsOpen: true })
+    expect((await res.json()).customerEmail).toEqual({ status: 'sent', kind: 'refunded' })
+    closureMock.mockClear()
+    reconcileMock.mockResolvedValue({ ok: true, outcome: 'refunded', refundId: 'rf1', amountCents: 500 })
+    res = await post(RECONCILE)
+    expect(res.status).toBe(200)
+    expect(closureMock).toHaveBeenCalledWith({ claimId: 'cl1', evidence: undefined, claimsOpen: true })
+  })
+
+  it('every other outcome → customerEmail null and the sender never called (NEGATIVE CONTROL: reverted_after_refund, R-D3)', async () => {
+    const outcomes: Array<Record<string, unknown>> = [
+      { ok: true, outcome: 'reverted_after_refund', refundId: 'rf1' },
+      { ok: true, outcome: 'no_refund_proven', payableFrom: '2026-09-12T12:00:00.000Z' },
+      { ok: true, outcome: 'no_refund_proven_rail_locked' },
+      { ok: true, outcome: 'no_refund_proven_awaiting_finalization', rowIds: ['rf2'] },
+      { ok: true, outcome: 'refund_still_standing', refundId: 'rf1', stripeStatus: 'succeeded', amountCents: 500 },
+      { ok: true, outcome: 'financial_verification', reason: 'stripe_unreadable', detail: 'x' },
+      { ok: true, outcome: 'changed_during_read' },
+      { ok: true, outcome: 'refund_failed', refundId: 'rf1' },
+      { ok: true, outcome: 'still_pending', refundId: 'rf1' },
+    ]
+    for (const o of outcomes) {
+      reconcileMock.mockResolvedValue(o)
+      const res = await post(RECONCILE)
+      expect(res.status, String(o.outcome)).toBe(200)
+      expect((await res.json()).customerEmail, String(o.outcome)).toBeNull()
+    }
+    expect(closureMock).not.toHaveBeenCalled()
+  })
+
+  it('attribute: row and adoption branches send only for !dryRun ∧ refunded, with the result evidence; previews, refusals, the mirror-written 409 and a lost race send nothing', async () => {
+    attributeMock.mockResolvedValue({ ok: true, outcome: 'refunded', refundId: 'rf9', rowStatusBefore: 'pending', evidence: 'stripe_read', amountCents: 460 })
+    let res = await post(ATTRIBUTE, { refundRowId: 'rf9' })
+    expect(closureMock).toHaveBeenLastCalledWith({ claimId: 'cl1', evidence: { basis: 'stripe_read', amountCents: 460 }, claimsOpen: true })
+    expect((await res.json()).customerEmail).toEqual({ status: 'sent', kind: 'refunded' })
+    adoptMock.mockResolvedValue({ ok: true, outcome: 'refunded', refundId: 'rf_m', facts: {}, evidence: 'stripe_read', amountCents: 700 })
+    res = await post(ATTRIBUTE, { stripeRefundId: 're_1234567890' })
+    expect(closureMock).toHaveBeenLastCalledWith({ claimId: 'cl1', evidence: { basis: 'stripe_read', amountCents: 700 }, claimsOpen: true })
+
+    closureMock.mockClear()
+    attributeMock.mockResolvedValue({ ok: true, outcome: 'preview', refundId: 'rf9', rowStatusBefore: 'pending', evidence: 'stripe_read', amountCents: 460 })
+    res = await post(ATTRIBUTE, { refundRowId: 'rf9', dryRun: true })
+    expect((await res.json()).customerEmail).toBeNull()
+    adoptMock.mockResolvedValue({ ok: true, outcome: 'preview', facts: {}, wouldWrite: true })
+    res = await post(ATTRIBUTE, { stripeRefundId: 're_1234567890', dryRun: true })
+    expect((await res.json()).customerEmail).toBeNull()
+    attributeMock.mockResolvedValue({ ok: false, status: 409, error: 'refusé' })
+    expect((await post(ATTRIBUTE, { refundRowId: 'rf9' })).status).toBe(409)
+    adoptMock.mockResolvedValue({ ok: false, status: 409, error: 'La ligne miroir rf_m a été enregistrée, mais la réclamation n’a pas été modifiée.', facts: {}, wrote: true })
+    expect((await post(ATTRIBUTE, { stripeRefundId: 're_1234567890' })).status).toBe(409)
+    attributeMock.mockResolvedValue({ ok: false, status: 409, error: 'La liaison n’a pas pu être enregistrée (écriture concurrente ou erreur de la base) — rien n’a été écrit. Relisez sa ligne dans la file, puis réessayez.' })
+    expect((await post(ATTRIBUTE, { refundRowId: 'rf9' })).status).toBe(409)
+    expect(closureMock).not.toHaveBeenCalled()
+  })
+
+  it('a sender rejection → the same HTTP status and body plus customerEmail sender_error; 403 / 400 → not called', async () => {
+    closureMock.mockRejectedValue(new Error('boom'))
+    reconcileMock.mockResolvedValue({ ok: true, outcome: 'refunded', refundId: 'rf1', amountCents: 500, evidence: 'stripe_read' })
+    const res = await post(RECONCILE)
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ result: { ok: true, outcome: 'refunded', refundId: 'rf1', amountCents: 500, evidence: 'stripe_read' }, customerEmail: { status: 'failed', kind: null, why: 'sender_error' } })
+    attributeMock.mockResolvedValue({ ok: true, outcome: 'refunded', refundId: 'rf9', rowStatusBefore: 'pending', evidence: 'stripe_read', amountCents: 460 })
+    const a = await post(ATTRIBUTE, { refundRowId: 'rf9' })
+    expect(a.status).toBe(200)
+    expect((await a.json()).customerEmail).toEqual({ status: 'failed', kind: null, why: 'sender_error' })
+
+    closureMock.mockClear()
+    adminMock.mockResolvedValueOnce(null)
+    expect((await post(RECONCILE)).status).toBe(403)
+    expect((await post(ATTRIBUTE, {})).status).toBe(400)
+    expect(closureMock).not.toHaveBeenCalled()
   })
 })
 

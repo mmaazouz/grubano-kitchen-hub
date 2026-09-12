@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { resolveAdmin } from '@/lib/admin-guard'
-import { reconcileClaimEvidence } from '@/lib/claims'
+import { reconcileClaimEvidence, isClaimsEnabled } from '@/lib/claims'
 import { recordAdminAudit } from '@/lib/admin-audit'
+import { sendClaimClosureEmail, type ClosureEmailResult } from '@/lib/claim-emails'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -50,5 +51,22 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     })
   } catch { /* audit is best-effort; it must never undo a completed reconciliation */ }
 
-  return NextResponse.json({ result })
+  // ROUND 13 (D10 (ii), H07): a closure notice is attempted only for outcome 'refunded', after the audit. Its evidence is
+  // Stripe's own refund object read by this request (evidence 'stripe_read', Stripe's amount); a conclusion drawn from our
+  // bound row alone carries none, and the sender answers stripe_not_confirmed. Every other outcome sends nothing —
+  // reverted_after_refund, the proofs, the locks, the parks (H09 (4)(5)). It never changes the HTTP result.
+  let customerEmail: ClosureEmailResult | null = null
+  if (result.outcome === 'refunded') {
+    try {
+      customerEmail = await sendClaimClosureEmail({
+        claimId:    params.id,
+        evidence:   result.evidence === 'stripe_read' ? { basis: 'stripe_read', amountCents: result.amountCents } : undefined,
+        claimsOpen: isClaimsEnabled(),
+      })
+    } catch {
+      customerEmail = { status: 'failed', kind: null, why: 'sender_error' }
+    }
+  }
+
+  return NextResponse.json({ result, customerEmail })
 }

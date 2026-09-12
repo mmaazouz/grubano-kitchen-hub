@@ -8,6 +8,8 @@ import { cardMoneyLine, financialVerificationCardVisible } from '@/lib/claim-mon
 import { moneyStateGuidance, R0_TOASTS, refundStillStandingToast } from '@/lib/claim-action-rules'
 // ROUND 13 (G12, B10): the attribution success copy and the pending-row legend come from the shared pure module.
 import { attributionSuccessText, PENDING_ROW_LEGEND, adoptionRefusalWroteText } from '@/lib/claim-attribution-rules'
+// ROUND 13 (H07, H11): the customer e-mail result of a closing action, as a toast (the card is French-only).
+import { customerEmailLine, CUSTOMER_EMAIL_FR } from '@/lib/claim-email-toast'
 
 // ── T-49 — THE FINANCIAL VERIFICATION QUEUE (founder decision, 2026-09-10) ────────
 //
@@ -200,6 +202,9 @@ export default function AdminFinancialVerification() {
           : said[outcome ?? ''] ?? 'Réconciliation terminée.'
       if (needsAttention) toast.error(text)
       else toast.success(text)
+      // ROUND 13 (H07): the closure-notice attempt the server made after a 'refunded' outcome.
+      const e = customerEmailLine((body as { customerEmail?: { status?: string; why?: string } | null }).customerEmail)
+      if (e) toast[e.tone](CUSTOMER_EMAIL_FR[e.key])
       await load()
     } catch {
       toast.error('Échec de la réconciliation.')
@@ -229,6 +234,9 @@ export default function AdminFinancialVerification() {
         return
       }
       toast.success(attributionSuccessText(result.rowStatusBefore ?? ''))
+      // ROUND 13 (H07): the closure-notice attempt the server made after the observed commit.
+      const e = customerEmailLine((body as { customerEmail?: { status?: string; why?: string } | null }).customerEmail)
+      if (e) toast[e.tone](CUSTOMER_EMAIL_FR[e.key])
       await load()
     } catch {
       toast.error('Attribution refusée.')
@@ -270,6 +278,9 @@ export default function AdminFinancialVerification() {
         : 'Dossier clôturé sans paiement, sur votre déclaration. Cette action n’a déplacé aucun argent ; elle ne dit rien des remboursements déjà présents sur la commande.')
       // ROUND-11 AUDIT FIX (P3): the note lives only in the admin audit, which is best effort.
       if ((data as { noteRecorded?: boolean | null }).noteRecorded === false) toast.error('Votre note n’a pas pu être enregistrée dans le journal d’audit : conservez-la ailleurs.')
+      // ROUND 13 (H07): the closure-notice attempt the server made after the declaration.
+      const e = customerEmailLine((data as { customerEmail?: { status?: string; why?: string } | null }).customerEmail)
+      if (e) toast[e.tone](CUSTOMER_EMAIL_FR[e.key])
       setStuckId(null); setStuckReason('')
       await load()
     } catch {
@@ -307,6 +318,9 @@ export default function AdminFinancialVerification() {
       // ROUND 13 (B11 (a), W4 fixer): every adoption success is bound on the Stripe object read by this request (both
       // branches) — the former « Stripe n’a pas été relu » branch was unreachable and would now be false.
       toast.success('Remboursement Stripe lié : la réclamation reflète ce remboursement tel que Stripe vient de le rapporter.')
+      // ROUND 13 (H07): the closure-notice attempt the server made after the observed commit.
+      const e = customerEmailLine((body as { customerEmail?: { status?: string; why?: string } | null }).customerEmail)
+      if (e) toast[e.tone](CUSTOMER_EMAIL_FR[e.key])
       await load()
     } catch {
       toast.error(dryRun ? 'Vérification impossible.' : 'Liaison impossible.')

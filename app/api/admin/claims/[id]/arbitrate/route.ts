@@ -4,7 +4,8 @@ import { resolveAdmin } from '@/lib/admin-guard'
 import { isClaimsEnabled, arbitrateClaim } from '@/lib/claims'
 import { rateLimit } from '@/lib/rate-limit'
 import { recordAdminAudit } from '@/lib/admin-audit'
-import { sendClaimDecisionEmail } from '@/lib/claim-emails'
+import { sendClaimDecisionEmail, type ClaimEmailResult } from '@/lib/claim-emails'
+import { refusalEmailKind, type ClaimFacts } from '@/lib/claim-action-rules'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -54,28 +55,30 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     req,
   })
 
-  // ── T43 (vague 3) — notification de DÉCISION au client, STRICTEMENT ADDITIVE,
-  // post-succès, BEST-EFFORT (même position que recordAdminAudit ci-dessus : la
-  // décision, le moteur et la transition sont déjà JOUÉS et INTOUCHÉS — un échec
-  // d'email ne change rien à la réponse). L'email dit PAR QUI (Grubano) et CE QUI
-  // a été décidé : remboursement ÉMIS (refund.state 'refunded', montant), accepté
-  // sans émission encore (pending/failed — aucune promesse de délai), ou refus
-  // DÉFINITIF. Idempotent (trigger dédié par décision, dedupeKey claim:<id>).
-  {
-    const c = result.claim as { id: string; consumerId: string; orderId: string; requestedAmountCents: number }
-    const refunded = result.refund?.state === 'refunded'
-    // Email truthfulness hotfix (2026-09-06): the amount shown is the ENGINE's actual succeeded
-    // cash refund (result.refund.amountCents), never the claim's REQUESTED amount.
-    const refundedCents = result.refund?.state === 'refunded' ? result.refund.amountCents : null
-    await sendClaimDecisionEmail({
+  // ── T43 (vague 3) + ROUND 13 (H03) — the decision e-mail, post-success, best-effort: the decision, the engine and the
+  // transition are already played; an e-mail failure changes nothing in the response.
+  // Kind by provenance: a refuse_final is « Refus confirmé » (refused_final) only when the restaurant itself refused on
+  // record, otherwise refused_by_grubano. 'refunded' is sent only when triggerClaimRefund returned state 'refunded'
+  // (engine ok, T3 'ours', T4 CAS count 1), with the ENGINE's amount (never the requested amount). Every other approval —
+  // attempt_superseded, identity_unverified, resume_mismatch, 202 pending, every T2 outcome — sends claim_decision_approved,
+  // which states only the approval the arbitrate CAS wrote. The lease is read at send time (R-D7): one that closed since
+  // the entry gate skips the e-mail as claims_disabled. Idempotent (dedupeKey claim:<id>).
+  const c = result.claim as { id: string; consumerId: string; orderId: string }
+  const refunded = result.refund?.state === 'refunded'
+  let customerEmail: ClaimEmailResult
+  try {
+    customerEmail = await sendClaimDecisionEmail({
       claimId:       c.id,
       consumerId:    c.consumerId,
       orderId:       c.orderId,
-      decision:      parsed.data.decision === 'refuse_final' ? 'refused_final' : (refunded ? 'refunded' : 'approved'),
+      decision:      parsed.data.decision === 'refuse_final' ? refusalEmailKind(result.claim as ClaimFacts | null) : (refunded ? 'refunded' : 'approved'),
       reason:        parsed.data.reason ?? null,
-      refundedCents,
+      refundedCents: refunded && result.refund?.state === 'refunded' ? result.refund.amountCents : null,
+      claimsOpen:    isClaimsEnabled(),
     })
+  } catch {
+    customerEmail = { status: 'failed', why: 'sender_error' }
   }
 
-  return NextResponse.json({ claim: result.claim, refund: result.refund ?? null })
+  return NextResponse.json({ claim: result.claim, refund: result.refund ?? null, customerEmail })
 }

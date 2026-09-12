@@ -108,12 +108,16 @@ export async function resolveReservationRecipient(r: {
 }
 
 /** No recipient at all → we still leave a TRACE (EmailLog status='skipped')
- *  so a silently-missing send is visible in the audit table. */
-export async function logEmailSkipped(trigger: string, subject: string, context: Record<string, unknown>): Promise<void> {
-  console.error(`[EMAIL MISS] [${trigger}] no recipient — SKIPPED`, JSON.stringify(context))
+ *  so a silently-missing send is visible in the audit table.
+ *  ROUND 13 (H11, I-08): an optional `why` names a skip that is not a missing recipient (claims closed, no closure
+ *  record, a refunded row not established…). Without it — or with 'no_recipient' — the console line and the row are
+ *  byte-identical to the historical ones; the three other callers pass three arguments and are unchanged. */
+export async function logEmailSkipped(trigger: string, subject: string, context: Record<string, unknown>, why?: string): Promise<void> {
+  const named = !!why && why !== 'no_recipient'
+  console.error(`[EMAIL MISS] [${trigger}] ${named ? `not sent (${why})` : 'no recipient'} — SKIPPED`, JSON.stringify(context))
   try {
     await prisma.emailLog.create({
-      data: { recipient: '(aucun destinataire)', subject, trigger, status: 'skipped' },
+      data: { recipient: named ? `(non envoyé : ${why})` : '(aucun destinataire)', subject, trigger, status: 'skipped' },
     })
   } catch { /* audit log is best-effort */ }
 }

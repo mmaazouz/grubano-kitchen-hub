@@ -537,7 +537,8 @@ describe('D8 (6) — a row-branch preview reads Stripe and writes nothing (W4 fi
     world([fvClaim('C')], [rowOf('rs', { stripeRefundId: 're_s' })], [sRefund('re_s', { amount: 460 })])
     const res = await postAttribute({ refundRowId: 'rs', dryRun: true })
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ result: { ok: true, outcome: 'preview', refundId: 'rs', rowStatusBefore: 'succeeded', evidence: 'stripe_read', amountCents: 460 } })
+    // W6 (H07): a preview attempts no closure notice — customerEmail null.
+    expect(await res.json()).toEqual({ result: { ok: true, outcome: 'preview', refundId: 'rs', rowStatusBefore: 'succeeded', evidence: 'stripe_read', amountCents: 460 }, customerEmail: null })
     expectNothingWritten()
   })
 

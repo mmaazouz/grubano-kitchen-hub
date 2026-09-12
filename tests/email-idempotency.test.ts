@@ -105,6 +105,8 @@ describe('GOLDEN RULE + money engine — source invariants', () => {
   it('the Stripe webhook NEVER imports sendTransactional / sendOnce / transactional-emails', () => {
     const wh = read('app/api/webhooks/stripe/route.ts')
     expect(/transactional-emails|sendTransactional|sendOnce/.test(wh)).toBe(false)
+    // ROUND 13 (J-C29, H15): nor the claim senders.
+    expect(/claim-emails|sendClaimClosureEmail|sendClaimDecisionEmail/.test(wh)).toBe(false)
   })
 
   it('the confirm route deduplicates via EmailDispatch (not an EmailLog read) and passes dedupeKey', () => {
@@ -112,5 +114,44 @@ describe('GOLDEN RULE + money engine — source invariants', () => {
     expect(/emailDispatch/.test(c)).toBe(true)
     expect(/dedupeKey/.test(c)).toBe(true)
     expect(/emailLog\.findFirst/.test(c)).toBe(false) // old non-race-safe guard removed
+  })
+})
+
+// ══ ROUND 13 (J-C31, H11, I-08) — logEmailSkipped names a skip that is not a missing recipient ══════════════════
+describe('logEmailSkipped(trigger, subject, context, why?)', () => {
+  it('why claims_disabled → console « not sent (claims_disabled) » and recipient « (non envoyé : claims_disabled) »', async () => {
+    const { logEmailSkipped } = await import('@/lib/transactional-emails')
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    await logEmailSkipped('claim_ack', 'claim cl1', { claimId: 'cl1', reason: 'claims_disabled' }, 'claims_disabled')
+    expect(err).toHaveBeenCalledWith('[EMAIL MISS] [claim_ack] not sent (claims_disabled) — SKIPPED', JSON.stringify({ claimId: 'cl1', reason: 'claims_disabled' }))
+    expect(logCreate).toHaveBeenCalledWith({ data: { recipient: '(non envoyé : claims_disabled)', subject: 'claim cl1', trigger: 'claim_ack', status: 'skipped' } })
+    err.mockRestore()
+  })
+
+  it('why undefined or no_recipient → the console line and the row are byte-identical to HEAD', async () => {
+    const { logEmailSkipped } = await import('@/lib/transactional-emails')
+    for (const why of [undefined, 'no_recipient']) {
+      logCreate.mockClear()
+      const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+      await logEmailSkipped('reservation_confirmation', 'S', { reservationId: 'r1' }, why)
+      expect(err, String(why)).toHaveBeenCalledWith('[EMAIL MISS] [reservation_confirmation] no recipient — SKIPPED', JSON.stringify({ reservationId: 'r1' }))
+      expect(logCreate, String(why)).toHaveBeenCalledWith({ data: { recipient: '(aucun destinataire)', subject: 'S', trigger: 'reservation_confirmation', status: 'skipped' } })
+      err.mockRestore()
+    }
+  })
+
+  it('the three other callers still pass three arguments', async () => {
+    const ts = (await import('typescript')).default
+    for (const f of ['app/api/reservations/route.ts', 'app/api/reservations/[id]/cancel/route.ts', 'app/api/restaurants/[id]/closures/route.ts']) {
+      const sf = ts.createSourceFile(f, readFileSync(join(process.cwd(), f), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
+      const counts: number[] = []
+      const visit = (n: import('typescript').Node): void => {
+        if (ts.isCallExpression(n) && ts.isIdentifier(n.expression) && n.expression.text === 'logEmailSkipped') counts.push(n.arguments.length)
+        ts.forEachChild(n, visit)
+      }
+      visit(sf)
+      expect(counts.length, f).toBeGreaterThan(0)
+      expect(counts.every((c) => c === 3), `${f}: ${counts.join(',')}`).toBe(true)
+    }
   })
 })

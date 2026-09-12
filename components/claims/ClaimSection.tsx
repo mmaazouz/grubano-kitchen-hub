@@ -82,7 +82,8 @@ export default function ClaimSection({ orderId }: { orderId: string }) {
   if (el.existingClaim) {
     const ec = el.existingClaim
     const s = ec.status
-    const showRefusalReason = (s === 'refused' || s === 'refused_final') && ec.restaurantResponseReason
+    // ROUND 13 (F08): the server sends the restaurant's reason only for a restaurant refusal, whatever the status shown.
+    const showRefusalReason = !!ec.restaurantResponseReason
     const submitContest = async () => {
       setContestBusy(true)
       try {
@@ -109,6 +110,12 @@ export default function ClaimSection({ orderId }: { orderId: string }) {
           </p>
         )}
         {s === 'arbitration' && <p className="mt-2 text-[13px] text-[#F97316]">{t('client.arbitrationInfo')}</p>}
+        {/* ROUND 13 (F08): Grubano's decision reason — never sent for a declaration. */}
+        {ec.arbitrationReason && (
+          <p className="mt-2 text-[13px] text-[#666]">
+            <span className="font-semibold">{t('client.grubanoDecisionReason')}:</span> {ec.arbitrationReason}
+          </p>
+        )}
         {ec.canContest && !contesting && (
           <Button className="mt-3" size="sm" variant="secondary" onClick={() => setContesting(true)}>{t('client.contest')}</Button>
         )}

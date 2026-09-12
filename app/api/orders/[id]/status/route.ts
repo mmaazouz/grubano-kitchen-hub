@@ -239,7 +239,12 @@ export async function PATCH(
         prisma.operator.findUnique({ where: { id: order.consumerId }, select: { email: true, name: true } }),
         prisma.restaurant.findUnique({ where: { id: order.restaurantId }, select: { name: true } }),
       ])
-      if (paidCancellation) {
+      // ROUND 13 (H13, R-D7, ER-C20): the variant is chosen at SEND time. The claim-mentioning e-mail needs the system-claim
+      // branch at entry (paidCancellation) AND the lease still open now. Every other paid cancellation — lease closed at
+      // entry, closed since, or open only now, or no amount to claim — gets the Off variant, which names no claim and stays
+      // true whether or not a hidden system claim was created. Same trigger order_cancelled, dedupe order:<id>: one is sent.
+      const claimsOpenNow = isClaimsEnabled()
+      if (paidCancellation && claimsOpenNow) {
         // P0-08 — contenu VÉRIDIQUE pour une annulation PAYÉE : la demande de
         // remboursement vient d'être créée dans la même transaction ; l'ancien
         // email (« contactez directement le restaurant », muet sur l'argent) ne
@@ -256,7 +261,7 @@ export async function PATCH(
           // vérité : la réclamation EN COURS porte la question du remboursement.
           existingClaim:  systemClaim != null && !(systemClaim as Awaited<ReturnType<typeof createSystemClaim>>).created,
         })
-      } else if (paidCancelled && !claimsOn) {
+      } else if (paidCancelled) {
         // LOT C (P-1 M7) — annulation PAYÉE avec CLAIMS OFF (réglage bêta D4) :
         // AUCUNE demande système n'existe (branche gatée), donc l'email flag-ON
         // ci-dessus MENTIRAIT (« demande transmise ») et le générique ci-dessous

@@ -108,6 +108,8 @@ describe('wiring (source-scan)', () => {
   it('GOLDEN RULE — the Stripe webhook still imports no sender and NOT the sweep/scheduler', () => {
     const wh = read('app/api/webhooks/stripe/route.ts')
     expect(/transactional-emails|sendOnce|order-email-sweep|order-notification-scheduler/.test(wh)).toBe(false)
+    // ROUND 13 (J-C29, H15): nor the claim senders.
+    expect(/claim-emails|sendClaimClosureEmail|sendClaimDecisionEmail/.test(wh)).toBe(false)
   })
   it('the /confirm route (browser fast path) is untouched by the scheduler work', () => {
     expect(/order-email-sweep|order-notification-scheduler/.test(read('app/api/orders/[id]/confirm/route.ts'))).toBe(false)

@@ -784,6 +784,20 @@ export function refusalEmailKind(c: ClaimFacts | null | undefined): 'refused_fin
   return c && claimClosureKind(c) === 'refused_confirmed' ? 'refused_final' : 'refused_by_grubano'
 }
 
+/**
+ * F08: the reasons the CUSTOMER is shown, by who wrote them. The restaurant's reason only for a restaurant refusal
+ * (F10 (2)); Grubano's decision reason only for a Grubano decision, never on a declaration (R-D4: a declaration carries
+ * no operator note to the customer, legacy rows included).
+ */
+export function customerClaimReasons(c: ClaimFacts & { restaurantResponseReason?: string | null; arbitrationReason?: string | null }): { restaurantResponseReason: string | null; arbitrationReason: string | null } {
+  const k = claimClosureKind(c)
+  const declaration = k === 'settled_by_declaration' || k === 'closed_by_declaration'
+  return {
+    restaurantResponseReason: c.restaurantResponse === 'refused' ? (c.restaurantResponseReason ?? null) : null,
+    arbitrationReason: c.arbitrationDecision && !declaration ? (c.arbitrationReason ?? null) : null,
+  }
+}
+
 /** H05: this build's closure record — the only closure-notice eligibility source. */
 export const CLOSURE_RECORD_TRIGGER = 'claim_closure_record'
 export const closureRecordKey = (id: string) => `claim:${id}`

@@ -37,6 +37,8 @@ import { isStripeReverted } from '@/lib/claim-money-line'
 import { attributionRefusal, ownersOf, stampedClaimId } from '@/lib/claim-attribution-rules'
 // ROUND-9 AUDIT FIX (Class 3/4): every "may a human do X on this claim?" has one shared answer.
 import { reconcileRefusal, arbitrationRefusal, customerClaimStatus, boundRowShowsInProgress, RECONCILE_GRACE_MS, reconcileMarkerAge, claimClosureKind, refundedRowTruth, proofInstantFor, MARKERS, RECONCILE_MARKER_UNREADABLE_TEXT } from '@/lib/claim-action-rules'
+// ROUND 13 (F08): the reasons a customer payload carries, by who wrote them.
+import { customerClaimReasons } from '@/lib/claim-action-rules'
 // ROUND 13 (H05): the closure record's two constants.
 import { CLOSURE_RECORD_TRIGGER, closureRecordKey } from '@/lib/claim-action-rules'
 // ROUND 13 (slice W2): T1/T2/T4, the G3 loader, the G8 texts, I-01 facts and the B8 declaration predicate.
@@ -432,7 +434,9 @@ export async function listConsumerClaims(consumerId: string) {
     const refundedRow = claimClosureKind(c) !== 'refunded' ? null
       : !c.refundId ? false
         : rowsById && bindersByRow ? refundedRowTruth(row, bindersByRow.get(c.refundId) ?? 0, c.orderId) : null
-    const pub: Record<string, unknown> = { ...c, status: customerClaimStatus(c, inProgress, refundedRow) }
+    // ROUND 13 (F08): the reasons are the customer's own view — a restaurant reason only for its refusal, no Grubano
+    // reason on a declaration (a legacy declaration may still carry the operator's note in arbitrationReason).
+    const pub: Record<string, unknown> = { ...c, status: customerClaimStatus(c, inProgress, refundedRow), ...customerClaimReasons(c) }
     for (const k of CONSUMER_HIDDEN_CLAIM_FIELDS) delete pub[k]
     return pub
   })
@@ -507,7 +511,8 @@ export async function getClaimEligibility(input: { consumerId: string; orderId: 
     }
   }
   const existingClaim = existing
-    ? { id: existing.id, status: customerClaimStatus(existing, existingBoundConfirmed, existingRefundedRow), canContest, restaurantResponseReason: existing.restaurantResponseReason, arbitrationReason: existing.arbitrationReason }
+    // ROUND 13 (F08): reasons by who wrote them — no Grubano reason on a declaration, no restaurant reason unless it refused.
+    ? { id: existing.id, status: customerClaimStatus(existing, existingBoundConfirmed, existingRefundedRow), canContest, ...customerClaimReasons(existing) }
     : null
   if (order.paymentStatus !== 'paid') return { canClaim: false, reason: 'not_paid', maxRefundableCents, windowHours, existingClaim, scope: publicScope }
   if (Date.now() - order.updatedAt.getTime() > windowHours * 3600 * 1000) {
@@ -927,6 +932,8 @@ export async function triggerClaimRefund(claimId: string): Promise<RefundTrigger
         status: 'refunded', refundId: result.refundId, activeOrderKey: null, decidedAt: new Date(),
         refundError: null,
       }))) return await lostCas()
+      // H05 site 1: the T4 'ours' CAS to refunded won — this build's closure record, outside any transaction.
+      await recordClaimClosure(claimId)
       return { state: 'refunded', refundId: result.refundId, amountCents: result.amountCents }
     }
     // PHASE 2 (§15 A7) — Stripe accepted the refund but it is NOT succeeded yet: the claim stays refunding.
@@ -1301,6 +1308,8 @@ export async function arbitrateClaim(input: { claimId: string; adminId: string; 
       },
     })
     if (done.count !== 1) return { ok: false, status: 409, error: 'Cette réclamation a déjà été arbitrée.' }
+    // H05 site 6: a refuse_final decision is a closure by this build — the record follows the won CAS.
+    await recordClaimClosure(claim.id)
     const updated = await prisma.claim.findUnique({ where: { id: claim.id } })
     return { ok: true, claim: updated }
   }
@@ -1488,12 +1497,15 @@ export async function reconcileClaimForRefund(input: {
   /** Stripe's own id, for the audit trail only. */
   stripeRefundId?: string | null
   /**
+   * IMPLEMENTATION NOTE (W6 fixer): the opt-out names the ONE claim its caller records (closureRecordedFor === claim.id);
+   * any other claim this function settles on the row still writes its record with noNoticeSource, so no closure by this
+   * build is ever left without a record because a caller opted out for a different claim.
    * ROUND 13 (H05 site 2, ER-R29 — IMPLEMENTATION NOTE (W5)): applyRowTruth records the closure itself (site 3) and says
    * so here. Every other caller — the Stripe webhook and the recovery sweep — omits it, and a refunded CAS won here
    * writes the record with noNoticeSource. Inverted from ER-R29's « callers pass noNoticeSource » because binding rule 9
    * keeps the webhook's reconcileClaimForRefund call byte-identical.
    */
-  closureRecordedByCaller?: true
+  closureRecordedFor?: string
 }): Promise<ClaimReconcileResult> {
   // ROUND 13 (B9 (a), slice W4): EVERY claim bound to the row — a legacy row can bind several, and one Refund
   // settles at most one claim (B6). findFirst picked one of them arbitrarily.
@@ -1541,7 +1553,7 @@ export async function reconcileClaimForRefund(input: {
     })
     if (done.count !== 1) return { reconciled: false, reason: 'already_final' }
     // H05 site 2: the webhook / recovery settlement is this build's closure; no customer notice is sent from here.
-    if (!input.closureRecordedByCaller) await recordClaimClosure(claim.id, { noNoticeSource: true })
+    if (input.closureRecordedFor !== claim.id) await recordClaimClosure(claim.id, { noNoticeSource: true })
     return { reconciled: true, claimId: claim.id, from: claim.status, to: 'refunded' }
   }
 
@@ -2494,7 +2506,10 @@ export async function loadOrderMoneyFacts(orderId: string, claimId: string, requ
 /**
  * H05: this build's closure record — the only closure-notice eligibility source (AMF-2). Called only after a
  * closure compare-and-set matched 1 row, outside any transaction. It never throws and never changes the caller's
- * result. IMPLEMENTATION NOTE (W3): G2 wires site 3 (applyRowTruth); the other H05 sites land with their slices.
+ * result. The seven H05 sites (W6): (1) triggerClaimRefund T4 'ours' → refunded; (2) reconcileClaimForRefund's refunded
+ * CAS, with noNoticeSource unless the caller records it (ER-R29); (3) applyRowTruth row_terminal / at_stripe succeeded;
+ * (4) attributeWithEvidence after an observed commit; (5) its C7 re-read branch; (6) arbitrateClaim refuse_final;
+ * (7) resolveStuckClaim, every declaration. Nothing else writes, sends or deletes this trigger.
  */
 async function recordClaimClosure(claimId: string, opts?: { noNoticeSource?: true }): Promise<boolean> {
   let ok = false
@@ -2574,7 +2589,7 @@ async function applyRowTruth(
       data:  { refundId: row.id, ...(claim.status === FINANCIAL_VERIFICATION ? { status: 'refunding' } : {}) },
     })
     if (bound.count !== 1) return changed()
-    const applied = await reconcileClaimForRefund({ refundRowId: row.id, status: truth.status, stripeRefundId: row.stripeRefundId, closureRecordedByCaller: true })
+    const applied = await reconcileClaimForRefund({ refundRowId: row.id, status: truth.status, stripeRefundId: row.stripeRefundId, closureRecordedFor: claim.id })
     // A legacy row bound to several claims: the reconciler may have applied it to ANOTHER claim — never reported as this one's.
     if (!applied.reconciled || applied.claimId !== claim.id) {
       const detail = applied.reconciled

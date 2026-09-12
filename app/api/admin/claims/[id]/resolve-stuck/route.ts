@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { resolveAdmin } from '@/lib/admin-guard'
-import { resolveStuckClaim } from '@/lib/claims'
+import { resolveStuckClaim, isClaimsEnabled } from '@/lib/claims'
 import { recordAdminAudit } from '@/lib/admin-audit'
+import { sendClaimClosureEmail, type ClosureEmailResult } from '@/lib/claim-emails'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -70,5 +71,16 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     })
   } catch { /* recordAdminAudit never throws; kept as a belt — a lost note is reported below */ }
 
-  return NextResponse.json({ claim: result.claim, noteRecorded: parsed.data.reason ? noteRecorded : null })
+  // ROUND 13 (D10 (i), H07): the closure-notice attempt, after the declaration CAS (its H05 record was written inside
+  // resolveStuckClaim) and after the audit, WHATEVER the audit returned — that boolean only feeds noteRecorded, never
+  // eligibility. The sender receives the claim id and the gate: never the note, never an amount. It never changes the
+  // HTTP result; the lease is read at send time (R-D7).
+  let customerEmail: ClosureEmailResult
+  try {
+    customerEmail = await sendClaimClosureEmail({ claimId: params.id, claimsOpen: isClaimsEnabled() })
+  } catch {
+    customerEmail = { status: 'failed', kind: null, why: 'sender_error' }
+  }
+
+  return NextResponse.json({ claim: result.claim, noteRecorded: parsed.data.reason ? noteRecorded : null, customerEmail })
 }

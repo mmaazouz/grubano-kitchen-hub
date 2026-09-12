@@ -107,6 +107,9 @@ const FILES = [
   'lib/claim-action-rules.ts',
   'components/claims/AdminFinancialVerification.tsx',
   'components/claims/AdminClaimsArbitration.tsx',
+  // ROUND 13 (J-C14, slice W6): the customer e-mail toast copy and the closure-notice route texts.
+  'lib/claim-email-toast.ts',
+  'app/api/admin/claims/[id]/closure-notice/route.ts',
   'messages/fr.json',
   'messages/en.json',
   // ROUND-8: the other three locales carry the same admin and customer money copy.

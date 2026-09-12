@@ -571,7 +571,12 @@ describe('G2 / H05 site 3 — applyRowTruth records this build’s closure after
     const dropSecond = src.slice(0, second) + src.slice(second + call.length)
     expect(closureGateViolations(dropFirst)).toHaveLength(1)
     expect(closureGateViolations(dropSecond)).toHaveLength(1)
-    expect(closureGateViolations(dropFirst.replace(call, ''))).toHaveLength(2)
+    // W6 (H05 site 6): arbitrateClaim now carries the same call earlier in the file — remove applyRowTruth's second call by
+    // its position inside applyRowTruth, never the first occurrence in the file.
+    const secondInDropped = dropFirst.indexOf(call, dropFirst.indexOf('async function applyRowTruth('))
+    expect(secondInDropped).toBeGreaterThan(0)
+    const dropBoth = dropFirst.slice(0, secondInDropped) + dropFirst.slice(secondInDropped + call.length)
+    expect(closureGateViolations(dropBoth)).toHaveLength(2)
   })
 })
 

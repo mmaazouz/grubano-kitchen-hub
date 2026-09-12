@@ -9,6 +9,8 @@ import { useTranslations, useLocale } from 'next-intl'
 import { Button, Badge, EmptyState, useToast } from '@/components/design-system'
 import { formatEuros } from '@/lib/format-money'
 import { approvalToast } from '@/lib/claim-approval-toast'
+// ROUND 13 (H07, H11): the customer e-mail result of a decision or a declaration, as a toast.
+import { customerEmailLine } from '@/lib/claim-email-toast'
 
 import { moneyStateGuidance, absenceProvenPayableLabel } from '@/lib/claim-action-rules'
 import { amountLineKind, identityUnreadText, BOUND_REVERTED_TEXT } from '@/lib/claim-money-line'
@@ -17,6 +19,8 @@ type Stats = { recent?: number; approvalRate?: number; flagged?: boolean; refuse
 type Claim = {
   id: string; orderId: string; reason: string; requestedAmountCents: number
   description?: string | null; restaurantResponseReason?: string | null; contestReason?: string | null; photoUrl?: string | null
+  /** ROUND 13 (F08): whether the restaurant accepted or refused — its note is labelled accordingly. */
+  restaurantResponse?: string | null
   consumerStats?: Stats; restaurantStats?: Stats
   /** Server-side safety triage — this queue carries the decision buttons, so it says so here too. */
   safety?: boolean
@@ -115,6 +119,9 @@ export default function AdminClaimsArbitration() {
         if (m.tone === 'error') toast.error(text)
         else toast.success(text)
       }
+      // ROUND 13 (H07, H11): what happened to the customer e-mail of this decision.
+      const e = customerEmailLine((data as { customerEmail?: { status?: string; why?: string } | null }).customerEmail)
+      if (e) toast[e.tone](t(`admin.customerEmail.${e.key}`))
       setRefusingId(null); setReason('')
       await load()
     } catch {
@@ -144,12 +151,15 @@ export default function AdminClaimsArbitration() {
         : 'Dossier clôturé sans paiement, sur votre déclaration. Cette action n’a déplacé aucun argent ; elle ne dit rien des remboursements déjà présents sur la commande.')
       // ROUND-11 AUDIT FIX (P3): the note lives only in the admin audit, which is best effort.
       if ((data as { noteRecorded?: boolean | null }).noteRecorded === false) toast.error('Votre note n’a pas pu être enregistrée dans le journal d’audit : conservez-la ailleurs.')
+      // ROUND 13 (H07, H11): what happened to the closure notice of this declaration.
+      const e = customerEmailLine((data as { customerEmail?: { status?: string; why?: string } | null }).customerEmail)
+      if (e) toast[e.tone](t(`admin.customerEmail.${e.key}`))
       setStuckId(null); setStuckReason('')
       await load()
     } catch {
       toast.error('Échec de la clôture.')
     } finally { setBusyId(null) }
-  }, [load, stuckReason, toast])
+  }, [load, stuckReason, t, toast])
 
   // V5-3 — une demande dont le reason porte le marqueur P0-08 'system_' a été
   // créée par le SYSTÈME (rail remboursement d'annulation), pas par le client :
@@ -404,7 +414,8 @@ export default function AdminClaimsArbitration() {
             <dl className="mt-2 space-y-1 text-[13px] text-grubano-ink-muted">
               <p><span className="font-semibold">{t(isSystemClaim(c.reason) ? 'admin.reasonSystem' : 'admin.reason')}:</span> {t(`reason.${c.reason}`)}</p>
               {c.description && <p><span className="font-semibold">{t(isSystemClaim(c.reason) ? 'admin.systemDetails' : 'admin.clientDetails')}:</span> {c.description}</p>}
-              {c.restaurantResponseReason && <p><span className="font-semibold">{t('admin.refusalReason')}:</span> {c.restaurantResponseReason}</p>}
+              {/* ROUND 13 (F08): a note written while ACCEPTING is not a refusal reason. */}
+              {c.restaurantResponseReason && <p><span className="font-semibold">{t(c.restaurantResponse === 'accepted' ? 'admin.restaurantNote' : 'admin.refusalReason')}:</span> {c.restaurantResponseReason}</p>}
               {c.contestReason && <p><span className="font-semibold">{t('admin.contestReason')}:</span> {c.contestReason}</p>}
               {c.photoUrl && (
                 <a href={c.photoUrl} target="_blank" rel="noopener noreferrer" className="inline-block font-semibold text-grubano-primary underline">

@@ -382,7 +382,8 @@ describe('PROMISES — each locale scanned with its own language (round-11 P3)',
   for (const loc of LOCALES) {
     it(`${loc}: no claims or help string promises a webhook, a sweep or an automatic payment`, () => {
       const m = JSON.parse(read(`messages/${loc}.json`))
-      const strings = [...flatten(m.claims), ...flatten(m.eat?.help)]
+      // ROUND 13 (F10, J-C12, slice W6): the customer claim e-mails are scanned too.
+      const strings = [...flatten(m.claims), ...flatten(m.eat?.help), ...flatten(m.claimEmails)]
       const hits = strings.flatMap((s) => PROMISES_BY_LOCALE[loc].filter((re) => re.test(s)).map((re) => `${re} → « ${s} »`))
       expect(hits).toEqual([])
     })

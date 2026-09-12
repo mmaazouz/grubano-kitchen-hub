@@ -2989,7 +2989,7 @@
       "refundWhat": "Cos'è successo?",
       "refundPlaceholder": "L'articolo non era nel sacchetto alla consegna.",
       "refundAddPhoto": "Aggiunga una foto (facoltativo)",
-      "refundEstimate": "Importo richiesto: <b>{amount} €</b>. La Sua richiesta sarà esaminata; nessun rimborso è garantito in questa fase, e i tempi di accredito sul Suo conto dipendono poi dalla Sua banca.",
+      "refundEstimate": "Importo richiesto: <b>{amount} €</b>. Nessun rimborso è garantito in questa fase, e i tempi di accredito sul Suo conto dipendono poi dalla Sua banca.",
       "refundPickToEstimate": "Selezioni gli articoli interessati per stimare il rimborso.",
       "refundEstimateCapped": "Questo importo è limitato da ciò che resta rimborsabile su quest’ordine.",
       "refundSoon": "Le richieste di rimborso arrivano presto.",
@@ -2997,7 +2997,7 @@
       "refundSubmittedSoon": "Disponibile a breve",
       "claimSending": "Invio in corso…",
       "claimFiledTitle": "Reclamo inviato",
-      "claimFiledSub": "Il Suo reclamo è in fase di revisione. La informeremo dell'esito.",
+      "claimFiledSub": "Il Suo reclamo è in fase di revisione.",
       "claimError": "Impossibile inviare il reclamo. Riprovi.",
       "claimWindowExpired": "Il termine per il reclamo è scaduto.",
       "claimNotPaid": "Quest'ordine non è pagato: nessun reclamo possibile.",
@@ -3021,7 +3021,7 @@
       "signInTitle": "Acceda per ricevere assistenza su questo ordine",
       "signInCta": "Acceda",
       "refundOffTitle": "Rimborsi — assistenza umana",
-      "refundOffBody": "Durante la beta, le richieste di rimborso sono gestite dal nostro team. Ci scriva a contact@grubano.com indicando il numero d'ordine — Le risponderemo personalmente."
+      "refundOffBody": "Durante la beta, le richieste di rimborso sono gestite dal nostro team. Ci scriva a contact@grubano.com indicando il numero d'ordine."
     },
     "home": {
       "seeAll": "Veda tutto",
@@ -7167,7 +7167,7 @@
     "client": {
       "reportProblem": "Segnala un problema",
       "title": "Richiedi un rimborso",
-      "description": "Ci dica cosa è successo. Il ristorante esamina la richiesta e la risposta apparirà qui.",
+      "description": "Ci dica cosa è successo. Il ristorante esamina la richiesta.",
       "reasonLabel": "Motivo",
       "amountLabel": "Importo da rimborsare",
       "wholeOrder": "Tutto l’ordine",
@@ -7178,21 +7178,22 @@
       "photoHint": "Aggiunga una foto a supporto della richiesta.",
       "submit": "Invia il reclamo",
       "submitting": "Invio…",
-      "success": "Reclamo inviato. Il ristorante lo sta esaminando — la risposta apparirà su questa pagina.",
-      "statusTitle": "Il suo reclamo",
+      "success": "Reclamo inviato. Il ristorante lo sta esaminando.",
+      "statusTitle": "Pratica collegata a questo ordine",
       "refusedReason": "Motivo del rifiuto",
       "maxRefundable": "Massimo rimborsabile: {amount}",
       "cancel": "Annulla",
       "errorGeneric": "Si è verificato un errore. Riprovi.",
       "contest": "Contesta la decisione",
       "contestTitle": "Contesta il rifiuto",
-      "contestDescription": "Grubano esaminerà il suo reclamo in modo neutrale.",
+      "contestDescription": "Contestando, trasmette il reclamo a Grubano per un arbitrato neutrale.",
       "contestReasonLabel": "Perché contesta?",
       "contestReasonPlaceholder": "Spieghi il suo disaccordo…",
       "contestSubmit": "Invia contestazione",
-      "contestSuccess": "Contestazione inviata. Grubano deciderà.",
-      "arbitrationInfo": "Il Suo reclamo è in fase di esame da parte di Grubano.",
-      "refusalReasonShown": "Motivo del rifiuto"
+      "contestSuccess": "Contestazione inviata: il reclamo è stato trasmesso a Grubano per l’arbitrato.",
+      "arbitrationInfo": "Questa pratica è in fase di esame da parte di Grubano.",
+      "refusalReasonShown": "Motivo del rifiuto del ristorante",
+      "grubanoDecisionReason": "Motivo della decisione di Grubano"
     },
     "restaurant": {
       "title": "Reclami dei clienti",
@@ -7252,7 +7253,19 @@
       "pendingOverdue": "Termine di risposta superato",
       "arbitrationTitle": "In arbitrato — da decidere",
       "reasonSystem": "Motivo (sistema)",
-      "systemDetails": "Dettagli (sistema)"
+      "systemDetails": "Dettagli (sistema)",
+      "customerEmail": {
+        "sent": "Email al cliente consegnata al server di invio.",
+        "duplicate": "Nessuna nuova email: un’email dello stesso tipo è già registrata per questo reclamo (inviata o in corso di invio) — verifichi il registro email.",
+        "claimsDisabled": "Email al cliente NON inviata: i reclami sono chiusi e nessuna email di reclamo viene inviata finché lo sono.",
+        "noRecipient": "Email al cliente NON inviata: questo cliente non ha un indirizzo email registrato. Lo informi in altro modo.",
+        "smtpDisabled": "Email al cliente NON inviata: l’invio di email è disattivato su questo server. Informi il cliente in altro modo.",
+        "rowUnproven": "Email al cliente NON inviata: la riga di rimborso collegata è assente, riguarda un altro ordine, è fallita, non è né completata né in attesa, o non ha un importo utilizzabile — non si può annunciare nulla al cliente.",
+        "stripeNotConfirmed": "Email al cliente NON inviata: Stripe non è stato riletto, o in questa lettura non riporta questo rimborso come completato (in attesa o illeggibile) — nulla viene annunciato al cliente. Riprovi « Envoyer l’avis au client » più tardi.",
+        "notSent": "Email al cliente NON inviata (traccia nel registro email): informi il cliente in altro modo.",
+        "failed": "Email al cliente NON inviata (errore durante la preparazione o l’invio — traccia nel registro email o nei log del server): informi il cliente in altro modo."
+      },
+      "restaurantNote": "Nota del ristorante (all’accettazione)"
     }
   },
   "fiscal": {
@@ -8589,7 +8602,7 @@
       "subject": "Il Suo reclamo {ref} è stato registrato",
       "title": "Reclamo registrato",
       "body": "Abbiamo ricevuto il Suo reclamo sull’ordine {ref} (importo richiesto: {euros}).",
-      "next": "Sarà informato via email non appena verrà presa una decisione."
+      "next": "Per qualsiasi domanda, risponda a questa email indicando il riferimento {ref}."
     },
     "accepted": {
       "subject": "Reclamo {ref}: accettato dal ristorante",
@@ -8600,7 +8613,7 @@
       "subject": "Reclamo {ref}: rifiutato dal ristorante",
       "title": "Reclamo rifiutato",
       "body": "{resto} ha rifiutato il Suo reclamo sull’ordine {ref}.",
-      "contest": "Può contestarlo dalla pagina di monitoraggio del Suo ordine — Grubano arbitrerà."
+      "contest": "Se nella pagina di monitoraggio del Suo ordine Le viene proposta la contestazione, può contestarlo lì: il reclamo viene allora trasmesso a Grubano per l’arbitrato. Per qualsiasi domanda, risponda a questa email indicando il riferimento {ref}."
     },
     "refunded": {
       "subject": "Reclamo {ref}: rimborso emesso",
@@ -8621,13 +8634,33 @@
       "subject": "Ordine {ref} annullato — richiesta di rimborso trasmessa",
       "title": "Ordine annullato",
       "body": "{resto} ha annullato il Suo ordine {ref}, già pagato. Una richiesta di rimborso è stata trasmessa a Grubano.",
-      "next": "Sarà esaminata da un membro del team Grubano — sarà informato della decisione via email.",
-      "bodyExisting": "{resto} ha annullato il Suo ordine {ref}, già pagato. Il Suo reclamo in corso su questo ordine copre già la questione del rimborso — segue il suo iter normale."
+      "next": "Per qualsiasi domanda, risponda a questa email indicando il riferimento {ref}.",
+      "bodyExisting": "{resto} ha annullato il Suo ordine {ref}, già pagato. Il Suo reclamo in corso su questo ordine copre già la questione del rimborso."
     },
     "orderCancelledPaidOff": {
       "subject": "Ordine {ref} annullato — riguardo al Suo pagamento",
       "body": "{resto} ha annullato il Suo ordine {ref}, già pagato. Per il rimborso dell’importo pagato, contatti il nostro supporto: contact@grubano.com (o risponda a questa email) — ogni richiesta è gestita da un membro del team durante la beta.",
       "next": "Indichi il riferimento {ref}."
+    },
+    "refusedByGrubano": {
+      "title": "Rifiutata da Grubano",
+      "body": "Grubano ha esaminato il reclamo relativo al Suo ordine {ref} e non lo ha accettato. Questa decisione è definitiva."
+    },
+    "closedBySupport": {
+      "subject": "Reclamo {ref}: pratica chiusa dal nostro team",
+      "title": "Pratica chiusa",
+      "body": "Il nostro team ha chiuso il reclamo relativo al Suo ordine {ref}. Questo reclamo non è più in lavorazione.",
+      "next": "Per qualsiasi domanda, risponda a questa email o scriva a contact@grubano.com indicando il riferimento {ref}."
+    },
+    "refundedLinked": {
+      "body": "È stato emesso un rimborso di {euros} verso il metodo di pagamento utilizzato per il Suo ordine {ref}, collegato a questo reclamo.",
+      "next": "Per qualsiasi domanda su questo rimborso, risponda a questa email indicando il riferimento {ref}."
+    },
+    "refundRecorded": {
+      "subject": "Reclamo {ref}: rimborso collegato",
+      "title": "Rimborso collegato",
+      "body": "Il reclamo relativo al Suo ordine {ref} è stato chiuso: è collegato a un rimborso registrato nei nostri archivi.",
+      "next": "Se questo rimborso non compare sul Suo estratto conto, risponda a questa email indicando il riferimento {ref}."
     }
   }
 }
