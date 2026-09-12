@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useLocale } from 'next-intl'
 import { Button, Badge, useToast } from '@/components/design-system'
 import { formatEuros } from '@/lib/format-money'
-import { moneyLineFor, financialVerificationCardVisible } from '@/lib/claim-money-line'
+import { cardMoneyLine, financialVerificationCardVisible } from '@/lib/claim-money-line'
 import { moneyStateGuidance } from '@/lib/claim-action-rules'
 
 // ── T-49 — THE FINANCIAL VERIFICATION QUEUE (founder decision, 2026-09-10) ────────
@@ -34,7 +34,7 @@ type Row = {
   resolvable?: boolean
   reconcilable?: boolean
   /** ROUND-11 (other_unsettled rows): the bound Refund row, as our base records it. */
-  refund?: { id: string; status: string; stripeRefundId: string | null } | null
+  refund?: { id: string; status: string; stripeRefundId: string | null; reason?: string | null } | null
   /** The PaymentIntent that paid this order — which payment to open in the Stripe Dashboard. */
   orderStripePaymentIntentId?: string | null
   /** The refunds of THIS order, so the operator can attribute one without leaving the console. */
@@ -83,6 +83,9 @@ const REFUSAL_LEGEND: Record<string, string> = {
   own_stamp_exists:        'une autre ligne porte déjà l’identité de CETTE réclamation — sera refusé',
   bound_to_other_claim:    'déjà LIÉ à une autre réclamation — sera refusé',
   unusable_status:         'statut inexploitable — sera refusé',
+  // ROUND 13 (B10): the rule's full refusal order.
+  other_order:             'appartient à une autre commande — sera refusé',
+  row_failed:              'ligne échouée — ne peut solder aucune réclamation, sera refusé',
 }
 
 export default function AdminFinancialVerification() {
@@ -406,7 +409,9 @@ export default function AdminFinancialVerification() {
                 {/* ROUND-4 AUDIT FIX: the refundId branch was FALSE on exactly the rows where the
                     engine refused to attribute the refund (resume_mismatch) — a bound refund that
                     answers for somebody else. The decision is a pure, tested function now. */}
-                {moneyLineFor({ kind: r.kind, refundId: r.refundId, refundError: r.refundError }).text}
+                {/* ROUND 13 (F15): the claim id, the bound row's reason and the server's reconcile verdict
+                    travel in the payload; the line never names an exit the server refuses. */}
+                {cardMoneyLine(r).text}
               </p>
               <p><span className="font-semibold">Réclamation :</span> <code>{r.id}</code></p>
               <p>

@@ -200,8 +200,9 @@ describe('the money queue component keeps its audit fixes', () => {
 
   it('the money line comes from the tested pure function, not an inline ternary', () => {
     // ROUND-12: the same module also carries the card's visibility predicate.
-    expect(src).toContain("import { moneyLineFor, financialVerificationCardVisible } from '@/lib/claim-money-line'")
-    expect(src).toContain('moneyLineFor({ kind: r.kind, refundId: r.refundId, refundError: r.refundError })')
+    expect(src).toContain("import { cardMoneyLine, financialVerificationCardVisible } from '@/lib/claim-money-line'")
+    // ROUND 13 (F15): the card passes the whole row — claim id, bound row reason, reconcile verdict — to the pure helper.
+    expect(src).toContain('{cardMoneyLine(r).text}')
     expect(src).not.toContain('état connu mais NON SOLDÉ')
   })
 

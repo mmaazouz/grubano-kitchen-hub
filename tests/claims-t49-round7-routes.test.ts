@@ -208,7 +208,11 @@ describe('round-6 source pins — reverting a fix turns this red', () => {
 
   it('the arbitration card distinguishes "nothing bound" from "bound but not succeeded" from "bound but not ours"', () => {
     const src = readFileSync('components/claims/AdminClaimsArbitration.tsx', 'utf8')
-    expect(src).toContain('r.refund && r.refundNotOurs')
+    // ROUND 13 (F15): the branch is the pure amountLineKind; each kind keeps its own sentence.
+    expect(src).toContain('switch (amountLineKind(r)) {')
+    expect(src).toContain("case 'not_ours': return `non établi pour cette réclamation — un remboursement est lié (statut ${r.refund?.status}), mais le moteur a établi qu’il n’appartient PAS")
+    expect(src).toContain("case 'reverted': return `non établi pour cette réclamation — ${BOUND_REVERTED_TEXT}`")
+    expect(src).toContain("case 'identity_unread': return `non établi pour cette réclamation — ${identityUnreadText(r.reconcilable)}`")
     expect(src).toContain('rien n’a encore abouti sur la ligne liée')
     expect(src).toContain("r.actualRefundedCents === null && !r.refund && (")
   })
@@ -226,5 +230,57 @@ describe('round-6 source pins — reverting a fix turns this red', () => {
 
   it('check-flags no longer cites the removed transitive rule', () => {
     expect(readFileSync('scripts/check-flags.mjs', 'utf8')).not.toContain('transitivement')
+  })
+})
+
+// ══ ROUND 13 (F16, J-C14 — W1 part) — the refundError and admin text rules ══════════════════════
+// The F16 (1) list applies to every file W1 owns now. lib/claims.ts and AdminFinancialVerification.tsx
+// still carry round-12 ladder, T3 and F14 toast strings that the reconcile, T3 and console slices
+// rewrite; they are the ONLY files allowed to hit until then (subset pin), and they join FILES_F16 then.
+const F16_FORBIDDEN = [
+  /jamais déplacé/i, /aucun remboursement n[’']a déplacé d[’']argent/i, /relèvent d[’']AUTRES réclamations/i, /aucun code ne sort/i,
+  /dite définitive/i, /le moteur refusera tout remboursement/i, /redevient traitable/i, /rien ne sera payé par Grubano/i,
+  /quand le moteur la reprendra/i, /Le client lit désormais/i, /De l[’']argent A bougé/i, /exclusiveReason/,
+]
+const FILES_F16 = FILES.filter((f) => f !== 'lib/claims.ts' && f !== 'components/claims/AdminFinancialVerification.tsx')
+const F16_PENDING_LATER_SLICES = ['lib/claims.ts', 'components/claims/AdminFinancialVerification.tsx']
+
+describe('ROUND 13 (F16) — refundError and admin text rules (W1 files)', () => {
+  const f16Hits = (src: string) => F16_FORBIDDEN.flatMap((re) => { const m = src.match(re); return m ? [`${re} → « ${m[0]} »`] : [] })
+
+  for (const f of FILES_F16) {
+    it(`${f} carries none of the F16 (1) sentences`, () => {
+      expect(f16Hits(stripComments(readFileSync(f, 'utf8'))), f).toEqual([])
+    })
+  }
+
+  it('only the two files later slices rewrite may still hit', () => {
+    const offenders = FILES.filter((f) => f16Hits(stripComments(readFileSync(f, 'utf8'))).length > 0)
+    expect(offenders.every((f) => F16_PENDING_LATER_SLICES.includes(f)), offenders.join(', ')).toBe(true)
+  })
+
+  it('« n’appartient PAS » occurs only where F16 (2) allows it, counted per file', () => {
+    const count = (f: string) => (stripComments(readFileSync(f, 'utf8')).match(/n[’']appartient PAS/g) ?? []).length
+    expect({
+      claims: count('lib/claims.ts'), moneyLine: count('lib/claim-money-line.ts'), arbitration: count('components/claims/AdminClaimsArbitration.tsx'),
+      actionRules: count('lib/claim-action-rules.ts'), attributionRules: count('lib/claim-attribution-rules.ts'), toast: count('lib/claim-approval-toast.ts'),
+      fv: count('components/claims/AdminFinancialVerification.tsx'), fr: count('messages/fr.json'),
+    }).toEqual({ claims: 2, moneyLine: 1, arbitration: 1, actionRules: 0, attributionRules: 0, toast: 0, fv: 0, fr: 1 })
+  })
+
+  it('no E0 REMOVED identifier exists in lib/, app/ or components/ (W1 files)', () => {
+    const REMOVED = ['listRevertedAfterRefundClaims', 'refund_reverted_claim', 'apply-row-failure', 'revertedAfterRefund', 'terminalBeforeEpoch']
+    for (const f of [...FILES_F16.filter((x) => !x.startsWith('messages/')), 'lib/claims.ts', 'components/claims/AdminFinancialVerification.tsx']) {
+      const src = stripComments(readFileSync(f, 'utf8'))
+      for (const id of REMOVED) expect(src, `${f} ${id}`).not.toContain(id)
+    }
+  })
+
+  it('NEGATIVE CONTROL — the round-12 strings are caught', () => {
+    const caught = (s: string) => f16Hits(s).length > 0
+    expect(caught("De l'argent A bougé, mais pas au titre de cette réclamation.")).toBe(true)
+    expect(caught('aucun remboursement n’a jamais déplacé d’argent sur cette commande')).toBe(true)
+    expect(caught('Preuve d’absence : aucun remboursement n’a jamais déplacé d’argent et Stripe n’en rapporte aucun.')).toBe(true)
+    expect(caught('Approbation impossible : le moteur refusera tout remboursement sur cette commande.')).toBe(true)
   })
 })

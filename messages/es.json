@@ -3008,6 +3008,7 @@
       "claimRefunded": "Reclamación reembolsada.",
       "claimRefused": "Reclamación rechazada.",
       "claimClosedBySupport": "Expediente cerrado por nuestro equipo — contacte con el soporte para cualquier pregunta.",
+      "claimRefundUnconfirmed": "Reembolso no confirmado por nuestros registros — contacte con el soporte para cualquier pregunta.",
       "claimInReview": "Reclamación en revisión.",
       "soonBadge": "pronto",
       "supportTitle": "Soporte",
@@ -7159,8 +7160,8 @@
       "arbitration": "En arbitraje de Grubano",
       "refused_final": "Rechazo confirmado",
       "closed_by_support": "Expediente cerrado por nuestro equipo — contacte con el soporte para cualquier pregunta.",
-      "refund_failed": "Reembolso fallido — nuestro equipo se encarga",
-      "refund_pending_stripe": "Reembolso enviado al banco — pendiente de confirmación",
+      "refused_by_grubano": "Rechazada por Grubano — decisión definitiva",
+      "refund_unconfirmed": "Reembolso no confirmado por nuestros registros — contacte con el soporte para cualquier pregunta.",
       "financial_verification": "Su solicitud requiere una verificación manual por parte de nuestro equipo."
     },
     "client": {

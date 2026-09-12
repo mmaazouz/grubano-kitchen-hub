@@ -116,6 +116,8 @@ describe('evidence PROVES what happened → apply it, and only it', () => {
   })
 
   it('PROOF OF ABSENCE: no row anywhere and Stripe reports nothing → safely re-payable', async () => {
+    // ROUND 13 (C9, W1): the proof write CASes on the claim AS READ — the simulated row is that unbound claim.
+    fx.row = { status: 'refunding', refundId: null, refundError: null }
     db.refund.findMany.mockResolvedValue([])
     const r = await reconcileClaimEvidence({ claimId: 'cl1' })
     expect(r).toMatchObject({ ok: true, outcome: 'no_refund_proven' })
@@ -327,6 +329,7 @@ describe('the identity guard and the crash marker, exercised where they REFUSE',
   })
 
   it('PROOF OF ABSENCE survives a stale FAILED row that never reached Stripe', async () => {
+    fx.row = { status: 'refunding', refundId: null, refundError: null } // ROUND 13 (C9): the claim as read
     // A failed row with NO Stripe id does not lock the engine, so the claim is genuinely payable.
     db.refund.findMany.mockResolvedValue([row({ status: 'failed', reason: 'admin:x', stripeRefundId: null })])
     stripeMock.paymentIntents.retrieve.mockResolvedValue({
@@ -336,6 +339,7 @@ describe('the identity guard and the crash marker, exercised where they REFUSE',
   })
 
   it('…but a failed row WITH a Stripe id locks the engine, and the outcome says so', async () => {
+    fx.row = { status: 'refunding', refundId: null, refundError: null } // ROUND 13 (C9): the claim as read
     // ROUND-3 AUDIT FIX: executeRefund refuses every later refund on an order carrying a failed
     // row with a Stripe id. Reporting "payable again by the normal rail" was the opposite of what
     // the engine will do, and the honest reason was written to a field no human reads.
@@ -351,6 +355,7 @@ describe('the identity guard and the crash marker, exercised where they REFUSE',
   })
 
   it('NEGATIVE CONTROL — one outcome for both cases would be caught here', async () => {
+    fx.row = { status: 'refunding', refundId: null, refundError: null } // ROUND 13 (C9): the claim as read
     // The two states differ ONLY by whether the engine will accept a later refund. Collapsing them
     // (as the previous round did) is what let the console promise a payment that will be refused.
     const collapsed = () => 'no_refund_proven'
@@ -406,12 +411,16 @@ describe('attributeClaimRefund — the escalation exit out of a permanent park',
     expect(r).toMatchObject({ ok: false, status: 400 })
   })
 
-  it('the outcome follows the row: a FAILED row cannot be attributed as a success', async () => {
+  it('the outcome follows the row: a FAILED row cannot be attributed as a success — ROUND 13 (B10 (6)): it is refused before any write', async () => {
     db.refund.findUnique.mockResolvedValue({ id: 'rf9', orderId: 'o1', status: 'failed', amountCents: 500, stripeRefundId: 're_9' })
     db.claim.findFirst.mockReset()
     db.claim.findFirst.mockResolvedValueOnce(null).mockResolvedValue({ id: 'cl1', status: 'refunding', refundError: null })
+    db.claim.updateMany.mockClear()
     const r = await attributeClaimRefund({ claimId: 'cl1', refundRowId: 'rf9', adminId: 'op1' })
-    expect(r).toMatchObject({ ok: true, outcome: 'refund_failed' })
+    expect(r).toMatchObject({ ok: false, status: 409 })
+    expect((r as { error?: string }).error).toBe('Cette ligne est ÉCHOUÉE : elle ne verse rien et ne peut solder aucune réclamation. Rien n’a été écrit. « Réconcilier d’après la preuve » tient compte de cette ligne pour toute la commande.')
+    expect(db.claim.updateMany).not.toHaveBeenCalled()
+    expect(execMock).not.toHaveBeenCalled()
   })
 
   it('a PENDING row is attributed without any terminal verdict', async () => {

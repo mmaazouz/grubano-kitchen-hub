@@ -109,7 +109,9 @@ beforeEach(() => {
 describe('CUSTOMER — a claim closed unpaid on the operator’s declaration is not « refused »', () => {
   it('the rule: only arbitrateClaim’s refusal reads as a refusal', () => {
     const T: Array<[ClaimFacts, string]> = [
-      [{ status: 'refused_final', arbitrationDecision: 'refused_final' }, 'refused_final'],
+      // ROUND 13 (F02/F04): « Refus confirmé » needs the restaurant's refusal on record; otherwise the refusal is Grubano's own.
+      [{ status: 'refused_final', arbitrationDecision: 'refused_final', restaurantResponse: 'refused' }, 'refused_final'],
+      [{ status: 'refused_final', arbitrationDecision: 'refused_final' }, 'refused_by_grubano'],
       [{ status: 'refused_final', arbitrationDecision: 'approved' }, 'closed_by_support'],
       [{ status: 'refused_final', arbitrationDecision: null }, 'closed_by_support'],
       [{ status: 'refused', arbitrationDecision: null }, 'refused'],
@@ -126,8 +128,11 @@ describe('CUSTOMER — a claim closed unpaid on the operator’s declaration is 
     db.order.findUnique.mockResolvedValue({ consumerId: 'u1', paymentStatus: 'paid', total: 20, updatedAt: new Date(), items: [], stripePaymentIntentId: 'pi_1' })
     db.claim.findFirst.mockImplementation(async ({ select }: { select?: Record<string, unknown> }) => pick(CLAIM, select))
     expect((await getClaimEligibility({ consumerId: 'u1', orderId: 'o1' })).existingClaim?.status).toBe('closed_by_support')
-    db.claim.findFirst.mockImplementation(async ({ select }: { select?: Record<string, unknown> }) => pick({ ...CLAIM, arbitrationDecision: 'refused_final' }, select))
+    // ROUND 13 (F02/F04): « Refus confirmé » only with the restaurant's refusal on record; the eligibility select carries it.
+    db.claim.findFirst.mockImplementation(async ({ select }: { select?: Record<string, unknown> }) => pick({ ...CLAIM, arbitrationDecision: 'refused_final', restaurantResponse: 'refused' }, select))
     expect((await getClaimEligibility({ consumerId: 'u1', orderId: 'o1' })).existingClaim?.status).toBe('refused_final')
+    db.claim.findFirst.mockImplementation(async ({ select }: { select?: Record<string, unknown> }) => pick({ ...CLAIM, arbitrationDecision: 'refused_final', restaurantResponse: null }, select))
+    expect((await getClaimEligibility({ consumerId: 'u1', orderId: 'o1' })).existingClaim?.status).toBe('refused_by_grubano')
   })
 
   it('eligibility — SELECT-AWARE claim read: a resume-mismatch refunding claim is never « en cours » (round-11 P3)', async () => {

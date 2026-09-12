@@ -1,0 +1,414 @@
+// tests/claims-exit-parity.test.ts — T-49 round 13, J-M29 (D0, G1 list flags), B1 / B12 binder reads
+//
+// A console control is rendered iff the server function behind its route accepts. The payload flags
+// come from the SAME pure functions the routes call. This file drives the shipped list functions and
+// the shipped server functions on the same fixtures. Rendering the consoles and the unfinalized-row
+// payload (I-09) belong to the console slice.
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { readFileSync as readRaw } from 'node:fs'
+import { updateManyMock, matchWhere } from './support/prisma-where'
+
+const read = (p: string) => readRaw(p, 'utf8').replace(/\r\n/g, '\n')
+const stripComments = (s: string) =>
+  s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '').replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
+
+const { db } = vi.hoisted(() => ({
+  db: {
+    claim:  { findUnique: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), updateMany: vi.fn(), update: vi.fn(), count: vi.fn(), groupBy: vi.fn() },
+    refund: { findMany: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), create: vi.fn() },
+    order:  { findUnique: vi.fn(), findMany: vi.fn() },
+  },
+}))
+vi.mock('@/lib/prisma', () => ({ prisma: db }))
+const { execMock, refundsFlag } = vi.hoisted(() => ({ execMock: vi.fn(), refundsFlag: vi.fn() }))
+vi.mock('@/lib/refund', () => ({ executeRefund: execMock, isRefundsEnabled: refundsFlag, RESUME_CREATE_WINDOW_MS: 20 * 60 * 60 * 1000 }))
+vi.mock('@/lib/admin-alerts', () => ({ sendAdminMoneyReviewAlert: vi.fn().mockResolvedValue({ status: 'sent' }) }))
+vi.mock('@/lib/admin-audit', () => ({ recordAdminAudit: vi.fn().mockResolvedValue(undefined) }))
+const { stripeMock } = vi.hoisted(() => ({ stripeMock: { paymentIntents: { retrieve: vi.fn() }, refunds: { list: vi.fn(), retrieve: vi.fn(), create: vi.fn() } } }))
+vi.mock('@/lib/stripe', () => ({ getStripe: () => stripeMock }))
+
+import {
+  listActionableRefundClaims, listArbitrationQueue, listFinancialVerificationClaims, reconcileClaimEvidence, arbitrateClaim,
+  resolveStuckClaim, attributeClaimRefund, isStuckResolvable as serverStuckResolvable, boundToWhere, FINANCIAL_VERIFICATION, RECONCILE_REQUIRED,
+} from '@/lib/claims'
+import {
+  reconcileRefusal, arbitrationRefusal, acceptedExits, isStuckResolvable as pureStuckResolvable, deriveNoRowOutcome,
+  moneyStateGuidance, absenceProvenPayableLabel,
+  type ClaimFacts, type ReapprovalFacts,
+} from '@/lib/claim-action-rules'
+import { amountLineKind, cardMoneyLine, identityUnreadText, IDENTITY_UNREAD_TEXT, IDENTITY_UNREAD_NO_EXIT_TEXT } from '@/lib/claim-money-line'
+import { BINDER_OR } from '@/lib/claims'
+
+const fx: { row: Record<string, unknown> | null; forcedCount: number | null } = { row: null, forcedCount: null }
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  for (const m of [db.claim.findUnique, db.claim.findFirst, db.claim.findMany, db.claim.count, db.claim.groupBy, db.refund.findMany, db.refund.findUnique, db.refund.findFirst, db.order.findUnique, db.order.findMany, stripeMock.paymentIntents.retrieve, stripeMock.refunds.list, stripeMock.refunds.retrieve]) m.mockReset()
+  fx.row = null; fx.forcedCount = null
+  db.claim.updateMany.mockImplementation(updateManyMock(fx))
+  db.claim.findUnique.mockResolvedValue(null)
+  db.claim.findFirst.mockResolvedValue(null)
+  db.claim.findMany.mockResolvedValue([])
+  db.claim.count.mockResolvedValue(0)
+  db.claim.groupBy.mockResolvedValue([])
+  db.refund.findMany.mockResolvedValue([])
+  db.refund.findUnique.mockResolvedValue(null)
+  db.refund.findFirst.mockResolvedValue(null)
+  db.order.findUnique.mockResolvedValue({ id: 'o1', stripePaymentIntentId: null })
+  db.order.findMany.mockResolvedValue([])
+  stripeMock.paymentIntents.retrieve.mockResolvedValue({ latest_charge: { id: 'ch_1', amount: 2000, amount_captured: 2000, amount_refunded: 0 } })
+  stripeMock.refunds.list.mockResolvedValue({ data: [], has_more: false })
+  refundsFlag.mockReturnValue(false)
+})
+
+const OLD_MARKER = `${RECONCILE_REQUIRED}: tentative de remboursement démarrée à 2026-09-10T00:00:00.000Z — identité pas encore liée.`
+const freshMarker = () => `${RECONCILE_REQUIRED}: tentative de remboursement démarrée à ${new Date(Date.now() - 60_000).toISOString()} — identité pas encore liée.`
+const shape = (id: string, o: Partial<ClaimFacts> & { status: string }) => ({
+  id, orderId: 'o1', consumerId: 'u1', restaurantId: 'r1', reason: 'wrong_item', requestedAmountCents: 500, createdAt: new Date(),
+  refundAttempted: false, refundId: null, refundError: null, arbitrationDecision: 'approved', responseDeadlineAt: new Date(0), ...o,
+})
+
+// One fixture per G1 admission the arbitration list carries (approved / refunding), and the refused shapes.
+const GATE: Array<[string, ReturnType<typeof shape>, boolean]> = [
+  ['marker after grace', shape('g1', { status: 'refunding', refundAttempted: true, refundError: OLD_MARKER }), true],
+  ['marker in grace', shape('g2', { status: 'refunding', refundAttempted: true, refundError: freshMarker() }), false],
+  ['legacy stranded', shape('g3', { status: 'refunding', refundAttempted: true }), true],
+  ['bound, no error', shape('g4', { status: 'refunding', refundAttempted: true, refundId: 'rf1' }), true],
+  ['attempt taken, nothing recorded', shape('g5', { status: 'approved', refundAttempted: true }), true],
+  ['(i) v13 proof', shape('g6', { status: 'approved', refundError: 'no_refund_proven:v13: … payable au plus tôt le 2026-09-10T00:00:00.000Z (UTC).' }), true],
+  ['(i) legacy proof', shape('g7', { status: 'approved', refundError: 'no_refund_proven: x' }), true],
+  ['(i) rail locked', shape('g8', { status: 'approved', refundError: 'no_refund_proven_rail_locked: x' }), true],
+  ['(i) awaiting finalization', shape('g9', { status: 'approved', refundError: 'no_refund_proven_rail_locked:awaiting_finalization: x' }), true],
+  ['(i-b) safety hold', shape('g10', { status: 'approved', refundAttempted: true, refundError: 'refund_safety_hold: x' }), true],
+  ['approved unpaid, no error', shape('g11', { status: 'approved' }), false],
+  ['stripe failed, recorded', shape('g12', { status: 'approved', refundAttempted: true, refundId: 'rf1', refundError: 'stripe_failed: x' }), false],
+  ['NEGATIVE CONTROL — safety hold with refundId set', shape('g13', { status: 'approved', refundAttempted: true, refundId: 'rf1', refundError: 'refund_safety_hold: x' }), false],
+]
+
+describe('J-M29 — reconcilable: the list flag equals the server gate, one fixture per admission', () => {
+  it('list flag === reconcileRefusal === the server refused before reading anything', async () => {
+    db.claim.findMany.mockResolvedValue(GATE.map(([, s]) => s))
+    const listed = await listActionableRefundClaims()
+    expect(listed).toHaveLength(GATE.length)
+    fx.forcedCount = 0 // every CAS loses: an admitted claim writes nothing either way
+    for (const [name, s, expected] of GATE) {
+      const l = listed.find((x) => x.id === s.id)!
+      expect(l.reconcilable, name).toBe(expected)
+      expect(reconcileRefusal(s) === null, name).toBe(expected)
+      db.claim.findUnique.mockResolvedValue(s)
+      db.refund.findMany.mockClear(); db.refund.findUnique.mockClear()
+      const server = await reconcileClaimEvidence({ claimId: s.id })
+      const refusedBeforeReading = !server.ok && (server as { status?: number }).status === 409
+        && db.refund.findMany.mock.calls.length === 0 && db.refund.findUnique.mock.calls.length === 0
+      expect(refusedBeforeReading, name).toBe(!expected)
+      if (expected) expect(server.ok, name).toBe(true)
+    }
+    expect(execMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('J-M29 — resolvable: the list flag, the resolve-stuck server and the D14 suffix predicate agree', () => {
+  it('on every approved / refunding fixture', async () => {
+    db.claim.findMany.mockResolvedValue(GATE.map(([, s]) => s))
+    const listed = await listActionableRefundClaims()
+    fx.forcedCount = 0
+    for (const [name, s] of GATE) {
+      const l = listed.find((x) => x.id === s.id)!
+      expect(l.resolvable, name).toBe(serverStuckResolvable(s))
+      // the D14 « Clôturer » sentence reads the pure D11 predicate; on these shapes it names exactly the accepted close
+      expect(pureStuckResolvable(s), name).toBe(serverStuckResolvable(s))
+      db.claim.findUnique.mockResolvedValue(s)
+      const server = await resolveStuckClaim({ claimId: s.id, adminId: 'op1', resolution: 'closed_no_payment' })
+      const refusedByPredicate = !server.ok && (server as { error?: string }).error === 'Cette réclamation n’est pas bloquée sur un remboursement — utilisez l’arbitrage.'
+      expect(refusedByPredicate, name).toBe(!l.resolvable)
+    }
+  })
+})
+
+describe('J-M29 — approvable (D0): acceptedExits ∋ approve && the server verdict is null', () => {
+  it('the queue verdict is the server verdict, and approvable follows D0', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-09-12T12:00:00.000Z'))
+    try {
+      const now = new Date()
+      const shapes = [
+        ...GATE.map(([, s]) => s).filter((s) => s.status === 'approved'),
+        shape('v13future', { status: 'approved', refundError: `no_refund_proven:v13: … payable au plus tôt le ${new Date(now.getTime() + 3_600_000).toISOString()} (UTC).` }),
+        shape('arb', { status: 'arbitration', arbitrationDecision: null }),
+      ]
+      db.claim.findMany.mockImplementation(async (args?: { where?: { OR?: unknown } }) => (args?.where?.OR ? shapes : []))
+      const queue = await listArbitrationQueue()
+      fx.forcedCount = 0
+      let approvableCount = 0
+      for (const q of queue) {
+        const s = shapes.find((x) => x.id === q.id)!
+        expect(q.approveRefusal, s.id).toBe(arbitrationRefusal(s, 'approve', now)?.error ?? null)
+        const approvable = acceptedExits({ claim: s, now }).includes('approve') && q.approveRefusal === null
+        db.claim.findUnique.mockResolvedValue(s)
+        const server = await arbitrateClaim({ claimId: s.id, adminId: 'op1', decision: 'approve' })
+        // a CAS that loses is the only answer an approvable claim can get here
+        expect((server as { error?: string }).error === 'Cette réclamation a déjà été arbitrée.', s.id).toBe(approvable)
+        if (approvable) approvableCount++
+      }
+      expect(approvableCount).toBeGreaterThan(0)
+      expect(execMock).not.toHaveBeenCalled()
+    } finally { vi.useRealTimers() }
+  })
+
+  it('the financial-verification card never renders « Approuver »', () => {
+    expect(stripComments(read('components/claims/AdminFinancialVerification.tsx'))).not.toContain('Approuver')
+  })
+})
+
+// ══ B1 — one binder where for the server pre-check, the console binding and the no-row derivation ══
+describe('B1 (P3-22) — a binding disowned by resume_mismatch binds nothing, on every side', () => {
+  const PARKED = { id: 'cl1', orderId: 'o1', reason: 'wrong_item', requestedAmountCents: 500, refundId: null, refundError: 'financial_verification:refund_moved_unattributed: x', createdAt: new Date(), decidedAt: null, restaurantId: 'r1' }
+  const ROW_R = { id: 'rf_R', orderId: 'o1', status: 'succeeded', amountCents: 300, stripeRefundId: 're_R', reason: null, createdAt: new Date(), idempotencyKey: 'refund:o1:k' }
+
+  const arrange = (z: { status: string; refundError: string | null }) => {
+    const CLAIMS = [{ id: 'cl_Z', refundId: 'rf_R', ...z }]
+    db.claim.findMany.mockImplementation(async ({ where }: { where: Record<string, unknown> }) =>
+      (where.status === FINANCIAL_VERIFICATION ? [PARKED] : CLAIMS.filter((c) => matchWhere(where, c))))
+    db.claim.findFirst.mockImplementation(async ({ where }: { where: Record<string, unknown> }) => CLAIMS.find((c) => matchWhere(where, c)) ?? null)
+    db.refund.findMany.mockResolvedValue([ROW_R])
+    db.refund.findUnique.mockResolvedValue(ROW_R)
+    db.order.findMany.mockResolvedValue([{ id: 'o1', stripePaymentIntentId: 'pi_1' }])
+    db.claim.findUnique.mockResolvedValue({ id: 'cl1', orderId: 'o1', status: FINANCIAL_VERIFICATION })
+    fx.forcedCount = 0
+    return CLAIMS
+  }
+  const derivationNames = (claims: Array<{ id: string; refundId: string; status: string; refundError: string | null }>) => {
+    const binders = claims.filter((c) => matchWhere(boundToWhere('rf_R', 'cl1') as Record<string, unknown>, c)).map((c) => ({ ...c, refundId: c.refundId }))
+    const facts: ReapprovalFacts = {
+      orderId: 'o1', requestedAmountCents: 500, orderPaymentStatus: 'paid', hasPaymentIntent: true, piStatus: 'succeeded', chargeId: 'ch_1',
+      chargeAmountCents: 2000, amountCapturedCents: 2000, chargeDisputed: false, amountRefundedCents: 300, routed: false, royaltyStatus: null, stripeListLength: 1,
+      rows: [{ ...ROW_R, createdAt: new Date() }], L: [{ id: 're_R', status: 'succeeded', amount: 300, charge: 'ch_1', metadata: {} }], truths: {},
+      binders: { rf_R: binders }, stampedClaims: {}, succeededNotCounted: [], rowContradictions: [],
+    }
+    return JSON.stringify(deriveNoRowOutcome({ readable: true, facts }, 'cl1')).includes('cl_Z')
+  }
+
+  it('Z resume_mismatch: attribution is not refused bound_to_other_claim, the console binding is empty, the derivation never names Z', async () => {
+    const claims = arrange({ status: 'refunded', refundError: 'resume_mismatch: le moteur a repris …' })
+    const listed = await listFinancialVerificationClaims()
+    const cand = listed[0].candidateRefunds.find((c) => c.id === 'rf_R')!
+    expect(cand.alreadyBoundToAnotherClaim).toBe(false)
+    expect(cand.refusal).toBeNull()
+    const r = await attributeClaimRefund({ claimId: 'cl1', refundRowId: 'rf_R', adminId: 'op1' })
+    expect(JSON.stringify(r)).not.toContain('cl_Z')
+    expect(derivationNames(claims)).toBe(false)
+  })
+
+  it('NEGATIVE CONTROL — Z with a null error: all three name Z', async () => {
+    const claims = arrange({ status: 'refunded', refundError: null })
+    const listed = await listFinancialVerificationClaims()
+    const cand = listed[0].candidateRefunds.find((c) => c.id === 'rf_R')!
+    expect(cand.alreadyBoundToAnotherClaim).toBe(true)
+    expect(cand.refusal).toBe('bound_to_other_claim')
+    const r = await attributeClaimRefund({ claimId: 'cl1', refundRowId: 'rf_R', adminId: 'op1' })
+    expect(r).toMatchObject({ ok: false, status: 409 })
+    expect((r as { error?: string }).error).toContain('cl_Z')
+    expect(db.claim.updateMany).not.toHaveBeenCalled()
+    expect(derivationNames(claims)).toBe(true)
+  })
+
+  it('the server pre-check and the console bindings read the one binder where (source pins)', () => {
+    const src = stripComments(read('lib/claims.ts'))
+    const attr = src.slice(src.indexOf('export async function attributeClaimRefund'), src.indexOf('export async function attributeClaimRefund') + 4000)
+    expect(attr).toContain('where:  boundToWhere(row.id, claim.id),')
+    const fv = src.slice(src.indexOf('export async function listFinancialVerificationClaims'), src.indexOf('export async function listReconcileRequiredClaims'))
+    expect(fv).toContain('where:  { refundId: { in: rows.map((r) => r.id) }, OR: BINDER_OR },')
+  })
+})
+
+// ══ B12 — a failed identity read is never a negative identity ═══════════════════════════════════════
+describe('B12 — attribution: a failed binder or stamp read refuses before any write', () => {
+  const ROW = { id: 'rf1', orderId: 'o1', status: 'succeeded', amountCents: 300, stripeRefundId: 're_1', reason: null }
+  const TEXT = 'La base n’a pas pu être lue : l’identité du remboursement n’est pas établie et rien n’a été modifié. Réessayez.'
+
+  beforeEach(() => {
+    db.claim.findUnique.mockResolvedValue({ id: 'cl1', orderId: 'o1', status: FINANCIAL_VERIFICATION })
+    db.refund.findUnique.mockResolvedValue(ROW)
+  })
+
+  it('the binder read rejects → 409 with the B12 text, no claim write, never bound_to_other_claim', async () => {
+    db.claim.findFirst.mockRejectedValue(new Error('db down'))
+    expect(await attributeClaimRefund({ claimId: 'cl1', refundRowId: 'rf1', adminId: 'op1' })).toEqual({ ok: false, status: 409, error: TEXT })
+    expect(db.claim.updateMany).not.toHaveBeenCalled()
+  })
+
+  it('the order-rows (stamps) read rejects → the same', async () => {
+    db.refund.findMany.mockRejectedValue(new Error('db down'))
+    expect(await attributeClaimRefund({ claimId: 'cl1', refundRowId: 'rf1', adminId: 'op1' })).toEqual({ ok: false, status: 409, error: TEXT })
+    expect(db.claim.updateMany).not.toHaveBeenCalled()
+  })
+
+  it('the candidate row read (it carries the stamp) rejects → the same 409, no binder read, no write (round-1 fix)', async () => {
+    db.refund.findUnique.mockRejectedValue(new Error('db down'))
+    expect(await attributeClaimRefund({ claimId: 'cl1', refundRowId: 'rf1', adminId: 'op1' })).toEqual({ ok: false, status: 409, error: TEXT })
+    expect(db.claim.findFirst).not.toHaveBeenCalled()
+    expect(db.claim.updateMany).not.toHaveBeenCalled()
+  })
+
+  it('NEGATIVE CONTROL — with readable identity the same row proceeds past the pre-check (a write is attempted)', async () => {
+    fx.forcedCount = 0
+    await attributeClaimRefund({ claimId: 'cl1', refundRowId: 'rf1', adminId: 'op1' })
+    expect(db.claim.updateMany).toHaveBeenCalled()
+  })
+})
+
+// ══ C9 (W1 round-1 fix) — the round-12 proof write is a compare-and-set on the claim as read ═══════════
+describe('C9 — G1 (i) admits approved proofs into the round-12 ladder: its proof write CASes on the pre-image', () => {
+  const LEGACY = 'no_refund_proven: aucun remboursement n’a été créé …'
+  const PROOF = shape('lp1', { status: 'approved', refundError: LEGACY })
+
+  beforeEach(() => {
+    db.claim.findUnique.mockResolvedValue(PROOF)
+    db.order.findUnique.mockResolvedValue({ id: 'o1', stripePaymentIntentId: 'pi_1' })
+    db.refund.findMany.mockResolvedValue([])
+  })
+
+  it('a T1 that moved the claim to refunding between the read and the write → nothing written, no proof reported', async () => {
+    fx.row = { status: 'refunding', refundAttempted: true, refundId: null, refundError: `${RECONCILE_REQUIRED}: tentative de remboursement démarrée à 2026-09-12T08:00:00.000Z — identité pas encore liée.` }
+    const r = await reconcileClaimEvidence({ claimId: 'lp1' })
+    expect(r).toMatchObject({ ok: true, outcome: 'financial_verification', reason: 'already_parked_or_moved' })
+    const proofWrites = db.claim.updateMany.mock.calls.filter((c) => c[0]?.data?.refundAttempted === false)
+    expect(proofWrites).toHaveLength(1)
+    expect(proofWrites[0][0].where).toEqual({ id: 'lp1', status: 'approved', refundAttempted: false, refundId: null, refundError: LEGACY })
+    expect(execMock).not.toHaveBeenCalled()
+  })
+
+  it('NEGATIVE CONTROL — the claim unchanged since the read → the proof is written and reported', async () => {
+    fx.row = { status: 'approved', refundAttempted: false, refundId: null, refundError: LEGACY }
+    expect(await reconcileClaimEvidence({ claimId: 'lp1' })).toEqual({ ok: true, outcome: 'no_refund_proven' })
+  })
+})
+
+// ══ D2 (1)(b) — an approval already BOUND to a row is not re-driven by « Approuver » ══════════════════
+describe('D2 (1)(b) — approved, not attempted, refundId SET, null error: approve refused before any write; exits [reconcile]', () => {
+  it('decided and undecided variants are refused with the existing texts, and neither reaches the CAS or the engine', async () => {
+    const decided = shape('b1', { status: 'approved', refundId: 'rf1' })
+    const undecided = shape('b2', { status: 'approved', refundId: 'rf1', arbitrationDecision: null })
+    for (const s of [decided, undecided]) {
+      db.claim.findUnique.mockResolvedValue(s)
+      expect(await arbitrateClaim({ claimId: s.id, adminId: 'op1', decision: 'approve' }), s.id).toMatchObject({ ok: false, status: 409 })
+      expect(acceptedExits({ claim: s, now: new Date() }), s.id).toEqual(['reconcile'])
+    }
+    expect(db.claim.updateMany).not.toHaveBeenCalled()
+    expect(execMock).not.toHaveBeenCalled()
+    expect(arbitrationRefusal(decided, 'approve', new Date())?.error).toBe('Cette réclamation a déjà été arbitrée — décision définitive.')
+    expect(arbitrationRefusal(undecided, 'approve', new Date())?.error).toBe('Cette réclamation n’est pas en arbitrage.')
+  })
+
+  it('NEGATIVE CONTROL — the same claim UNBOUND is approvable, and the legacy CAS itself requires refundId null', async () => {
+    const s = shape('b3', { status: 'approved' })
+    db.claim.findUnique.mockResolvedValue(s)
+    fx.forcedCount = 0
+    const r = await arbitrateClaim({ claimId: s.id, adminId: 'op1', decision: 'approve' })
+    expect((r as { error?: string }).error).toBe('Cette réclamation a déjà été arbitrée.')
+    expect(db.claim.updateMany.mock.calls[0][0].where).toEqual({ id: 'b3', status: 'approved', refundAttempted: false, refundId: null })
+  })
+})
+
+// ══ F15 (A-S24-1) — a reversal marker pays nothing ═════════════════════════════════════════════════════
+describe('F15 (A-S24-1) — STRIPE_REVERTED / REVERTED_AFTER_REFUND on a succeeded row: no « Montant réellement remboursé »', () => {
+  const ROW = { id: 'rf1', status: 'succeeded', amountCents: 500, stripeRefundId: 're_1', createdAt: new Date(), reason: null }
+
+  it('actualRefundedCents is null, the arbitration amount line is « reverted », the card line bound_reverted', async () => {
+    db.claim.findMany.mockResolvedValue([
+      shape('c_rev', { status: 'approved', refundAttempted: true, refundId: 'rf1', refundError: 'stripe_reverted: la ligne rf1 est marquée ABOUTIE dans notre base …' }),
+      shape('c_rev2', { status: 'refunding', refundAttempted: true, refundId: 'rf1', refundError: 'stripe_reverted_after_refund: la réclamation a été soldée …' }),
+    ])
+    db.refund.findMany.mockResolvedValue([ROW])
+    const listed = await listActionableRefundClaims()
+    expect(listed).toHaveLength(2)
+    for (const l of listed) {
+      expect(l.actualRefundedCents, l.id).toBeNull()
+      expect(amountLineKind(l), l.id).toBe('reverted')
+      expect(cardMoneyLine({ ...l, kind: 'other_unsettled' }).certainty, l.id).toBe('bound_reverted')
+    }
+  })
+
+  it('NEGATIVE CONTROL — the same succeeded row with a null error prints its amount', async () => {
+    db.claim.findMany.mockResolvedValue([shape('c_ok', { status: 'approved', refundAttempted: true, refundId: 'rf1' })])
+    db.refund.findMany.mockResolvedValue([ROW])
+    const [l] = await listActionableRefundClaims()
+    expect(l.actualRefundedCents).toBe(500)
+    expect(amountLineKind(l)).toBe('amount')
+  })
+})
+
+// ══ D0 / F16 (7) — a rendered text naming « Réconcilier » sits on a row the server lets reconcile ═══════
+describe('D0 / F16 (7) — names « Réconcilier d’après la preuve » ⇒ reconcilable (or refused only for the marker grace)', () => {
+  const OWN = { id: 'rf_own', status: 'succeeded', amountCents: 500, stripeRefundId: 're_own', createdAt: new Date(), reason: 'claim:m_own' }
+  const OTHER = { id: 'rf_oth', status: 'succeeded', amountCents: 500, stripeRefundId: 're_oth', createdAt: new Date(), reason: 'claim:someone_else' }
+  const PENDING_RF1 = { id: 'rf1', status: 'pending', amountCents: 500, stripeRefundId: null, createdAt: new Date(), reason: null }
+  const FIXTURES = () => [
+    ...GATE.map(([, s]) => s),
+    shape('m_own', { status: 'refunding', refundAttempted: true, refundId: 'rf_own', refundError: 'resume_mismatch: le moteur a repris un remboursement antérieur …' }),
+    shape('m_oth', { status: 'refunding', refundAttempted: true, refundId: 'rf_oth', refundError: 'resume_mismatch: le moteur a abouti sur un remboursement …' }),
+  ]
+  type Listed = Awaited<ReturnType<typeof listActionableRefundClaims>>[number]
+  const renderedTexts = (l: Listed, idText: (r: boolean | undefined) => string) => [
+    moneyStateGuidance(l.moneyState),
+    l.moneyState === 'absence_proven_payable' ? absenceProvenPayableLabel(l.refundError) : '',
+    amountLineKind(l) === 'identity_unread' ? idText(l.reconcilable) : '',
+    cardMoneyLine({ ...l, kind: 'other_unsettled' }).text,
+  ]
+  const violations = (listed: Listed[], idText: (r: boolean | undefined) => string = identityUnreadText) => listed.filter((l) => {
+    const names = renderedTexts(l, idText).some((t) => t.includes('Réconcilier'))
+    const graceOnly = reconcileRefusal(l)?.error.includes('moins de 5 minutes') === true
+    return names && l.reconcilable !== true && !graceOnly
+  }).map((l) => l.id)
+  const arrange = async () => {
+    db.claim.findMany.mockResolvedValue(FIXTURES())
+    db.refund.findMany.mockResolvedValue([OWN, OTHER, PENDING_RF1])
+    return listActionableRefundClaims()
+  }
+
+  it('no listed row names reconcile while the server refuses it — the own-row resume_mismatch included (reconcile refused in W1: no boundRow read)', async () => {
+    const listed = await arrange()
+    const own = listed.find((l) => l.id === 'm_own')!
+    expect(own.refundIdentityUnread).toBe(true)
+    expect(own.reconcilable).toBe(false)
+    expect(violations(listed)).toEqual([])
+  })
+
+  it('NEGATIVE CONTROL — the round-1 defect (A-S36-1 sentence whatever the verdict) is caught on the own-row resume_mismatch', async () => {
+    const listed = await arrange()
+    expect(violations(listed, () => IDENTITY_UNREAD_TEXT)).toEqual(['m_own'])
+  })
+
+  it('F15 card line: the own row → identity_unread naming no exit; another claim’s row → bound_but_not_ours; a payload without the reason → INDÉTERMINÉ', async () => {
+    const listed = await arrange()
+    const own = listed.find((l) => l.id === 'm_own')!
+    const oth = listed.find((l) => l.id === 'm_oth')!
+    expect(cardMoneyLine({ ...own, kind: 'other_unsettled' })).toEqual({ certainty: 'identity_unread', text: IDENTITY_UNREAD_NO_EXIT_TEXT })
+    expect(cardMoneyLine({ ...own, kind: 'other_unsettled', reconcilable: true }).text).toBe(IDENTITY_UNREAD_TEXT)
+    expect(cardMoneyLine({ ...oth, kind: 'other_unsettled' }).certainty).toBe('bound_but_not_ours')
+    expect(cardMoneyLine({ ...oth, kind: 'other_unsettled', refund: { reason: undefined } }).certainty).toBe('unknown')
+    expect(stripComments(read('components/claims/AdminFinancialVerification.tsx'))).toContain('{cardMoneyLine(r).text}')
+  })
+})
+
+// ══ tests/support/prisma-where — the emulation the binder where relies on ═══════════════════════════════
+describe('prisma-where — SQL NULL under NOT, undefined is no filter', () => {
+  it('NOT { f: scalar } on a NULL column is UNKNOWN (no match); on another value it matches', () => {
+    expect(matchWhere({ NOT: { refundError: 'x' } }, { refundError: null })).toBe(false)
+    expect(matchWhere({ NOT: { refundError: 'x' } }, { refundError: 'y' })).toBe(true)
+    expect(matchWhere({ NOT: { refundError: 'x' } }, { refundError: 'x' })).toBe(false)
+  })
+
+  it('NOT { f: null } is IS NOT NULL — never UNKNOWN', () => {
+    expect(matchWhere({ NOT: { refundError: null } }, { refundError: null })).toBe(false)
+    expect(matchWhere({ NOT: { refundError: null } }, { refundError: 'x' })).toBe(true)
+  })
+
+  it('a field set to undefined filters nothing (Prisma semantics)', () => {
+    expect(matchWhere({ status: 'approved', refundAttempted: undefined }, { status: 'approved', refundAttempted: true })).toBe(true)
+  })
+
+  it('NEGATIVE CONTROL — the binder where still needs its explicit null branch', () => {
+    expect(matchWhere({ OR: [{ NOT: { refundError: { startsWith: 'resume_mismatch' } } }] }, { refundError: null })).toBe(false)
+    expect(matchWhere({ OR: BINDER_OR as unknown as Record<string, unknown>[] }, { refundError: null })).toBe(true)
+  })
+})

@@ -142,11 +142,15 @@ describe('FAILED AT STRIPE, STILL PENDING HERE — a lock cause, never proof of 
     })
   }
 
-  it('NEGATIVE CONTROL — with nothing on the order, the same claim is the plain, re-approvable proof of absence', async () => {
+  it('NEGATIVE CONTROL — with nothing on the order, the same claim is the plain proof of absence, not a lock', async () => {
     db.refund.findMany.mockResolvedValue([])
     expect(await reconcileClaimEvidence({ claimId: 'cl1' })).toEqual({ ok: true, outcome: 'no_refund_proven' })
     const after: ClaimFacts = { status: 'approved', refundAttempted: false, refundError: String(fx.row!.refundError), arbitrationDecision: 'approved' }
-    expect(arbitrationRefusal(after, 'approve', new Date())).toBeNull()
+    expect(isRailLocked(after.refundError)).toBe(false)
+    // ROUND 13 (D14 (1), G1 (i)): a proof without the v13 tag was written by a ladder that did not check every
+    // engine condition — approval is suspended, and reconcile (which admits it) re-proves it first.
+    expect(arbitrationRefusal(after, 'approve', new Date())?.error).toContain('Approbation suspendue')
+    expect(reconcileRefusal(after)).toBeNull()
   })
 })
 
@@ -250,7 +254,11 @@ describe('DEAD ROW COPY — the window end is the engine’s; the margin is said
 
   it('the approve refusal no longer asserts a permanence that not every cause has', () => {
     const r = arbitrationRefusal({ status: 'approved', refundAttempted: false, refundError: 'no_refund_proven_rail_locked: x', arbitrationDecision: 'approved' }, 'approve', new Date())
-    expect(r?.error).toContain('refusera tout remboursement')
+    // ROUND 13 (D14 (2), F16 (1)): « le moteur refusera tout remboursement » is a forbidden sentence — the lock
+    // is REVISABLE (reconcile re-evaluates every condition) and the declaration close is named.
+    expect(r?.error).toContain('Approbation impossible dans l’état enregistré')
+    expect(r?.error).toContain('« Clôturer ce dossier… » enregistre votre déclaration.')
+    expect(r?.error).not.toContain('refusera tout remboursement')
     expect(r?.error).not.toMatch(/définitivement/i)
   })
 })

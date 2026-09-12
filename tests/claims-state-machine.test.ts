@@ -281,7 +281,8 @@ describe('negative control — a CLAIMS_ENABLED-gated reconciliation would be ca
 describe('AUDIT FIX P1 — an UNPAID approval stays visible and payable', () => {
   it('a claim approved while REFUNDS was off can still be re-driven (the lock must not strand money owed)', async () => {
     // the CAS is now evaluated against this simulated row, so a wrong where clause fails here
-    fx.row = { status: 'approved', refundAttempted: false, arbitrationDecision: 'approved' }
+    // ROUND 13 (D2 (1)(b)): the legacy CAS also requires refundId null — the simulated row carries the column.
+    fx.row = { status: 'approved', refundAttempted: false, refundId: null, arbitrationDecision: 'approved' }
     db.claim.findUnique
       .mockResolvedValueOnce({ id: 'cl1', status: 'approved', refundAttempted: false, responseDeadlineAt: past(), arbitrationDecision: 'approved' })
       .mockResolvedValueOnce({ orderId: 'o1', requestedAmountCents: 500 })

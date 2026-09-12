@@ -58,6 +58,7 @@ import {
 } from '@/lib/claims'
 import {
   MARKERS, TERMINAL, reconcileRefusal, arbitrationRefusal, customerClaimStatus, moneyStateGuidance, type ClaimFacts,
+  acceptedExits as pureAcceptedExits, exitRegistry, REFUSE_APPROVED_AM_B3, type BoundRowFacts, type ExitNote,
 } from '@/lib/claim-action-rules'
 import { attributionRefusal } from '@/lib/claim-attribution-rules'
 import { GET as CENSUS } from '@/app/api/admin/claims/census/route'
@@ -98,8 +99,17 @@ beforeEach(() => {
 // ══ THE SHARED MODULE SPEAKS THE LIBRARY'S MARKERS ═══════════════════════════════════════
 describe('the shared rules module speaks the library’s own markers', () => {
   it('every prefix and the terminal set are the library’s', () => {
-    expect(MARKERS).toEqual({
-      FINANCIAL_VERIFICATION, RECONCILE_REQUIRED, NO_REFUND_PROVEN, RAIL_LOCKED: NO_REFUND_PROVEN_RAIL_LOCKED, ENGINE_ROW_DEAD,
+    // ROUND 13: the five family names stay pinned to lib/claims' exports; the full prefixes the round adds
+    // are pinned to the spec (G8 PROOF_PAYABLE_V13 / AWAITING, C3 SAFETY_HOLD, G8 STRIPE_REVERTED, G11, F02).
+    const { FINANCIAL_VERIFICATION: fv, RECONCILE_REQUIRED: rr, NO_REFUND_PROVEN: np, RAIL_LOCKED: rl, ENGINE_ROW_DEAD: rd, ...round13 } = MARKERS
+    expect({ fv, rr, np, rl, rd }).toEqual({ fv: FINANCIAL_VERIFICATION, rr: RECONCILE_REQUIRED, np: NO_REFUND_PROVEN, rl: NO_REFUND_PROVEN_RAIL_LOCKED, rd: ENGINE_ROW_DEAD })
+    expect(round13).toEqual({
+      PROOF_PAYABLE_V13: 'no_refund_proven:v13:',
+      AWAITING_FINALIZATION: 'no_refund_proven_rail_locked:awaiting_finalization:',
+      SAFETY_HOLD: 'refund_safety_hold:',
+      STRIPE_REVERTED: 'stripe_reverted:',
+      REVERTED_AFTER_REFUND: 'stripe_reverted_after_refund:',
+      DECLARED_AFTER_REVERT: 'declared_settled_after_revert:',
     })
     expect([...TERMINAL]).toEqual([...TERMINAL_STATUSES])
   })
@@ -112,72 +122,131 @@ describe('the shared rules module speaks the library’s own markers', () => {
   })
 })
 
-// ══ EXIT TABLE — every non-terminal state has a way out the server accepts ════════════════
+// ══ EXIT TABLE (ROUND 13, J-M30 / D1) — the sets lib/claim-action-rules acceptedExits returns ════
 // Round 11: NOW follows the real clock (to the second), because the reconcile gate now reads a crash
 // marker's AGE — a fixed date would put fresh markers in the future relative to the routes' own clock.
 const NOW = new Date(Math.floor(Date.now() / 1000) * 1000)
 const PAST = new Date(NOW.getTime() - 3_600_000)
 const FUTURE = new Date(NOW.getTime() + 3_600_000)
 const S = (o: Partial<ClaimFacts> & { status: string }): ClaimFacts =>
-  ({ refundAttempted: false, refundId: null, refundError: null, arbitrationDecision: null, responseDeadlineAt: PAST, ...o })
+  ({ id: 'cl1', orderId: 'o1', refundAttempted: false, refundId: null, refundError: null, arbitrationDecision: null, responseDeadlineAt: PAST, ...o })
 
-type Exit = 'reconcile' | 'stuck_close' | 'approve' | 'refuse_final' | 'attribute_or_adopt'
-/** What the SERVER accepts on this claim — computed from the same rules the routes apply. */
-function acceptedExits(c: ClaimFacts, now = NOW): Exit[] {
-  const out: Exit[] = []
-  if (reconcileRefusal(c, now.getTime()) === null) out.push('reconcile')
-  if (isStuckResolvable({ status: c.status, refundError: c.refundError ?? null })) out.push('stuck_close')
-  if (arbitrationRefusal(c, 'approve', now) === null) out.push('approve')
-  if (arbitrationRefusal(c, 'refuse_final', now) === null) out.push('refuse_final')
-  // attributeClaimRefund and adoptStripeRefundForClaim accept exactly this status.
-  if (c.status === FINANCIAL_VERIFICATION) out.push('attribute_or_adopt')
-  return out
+type Exit = ReturnType<typeof pureAcceptedExits>[number]
+/** What the SERVER accepts on this claim — the shared rule every route and list applies (D0). */
+function acceptedExits(c: ClaimFacts, now = NOW, extra: { boundRow?: BoundRowFacts | null; attributableRows?: number } = {}): Exit[] {
+  return pureAcceptedExits({ claim: c, now, ...extra })
 }
 
 const A = 'approved'
-const EXIT_TABLE: Array<{ state: string; claim: ClaimFacts; exits: Exit[]; note?: 'awaits_refund_rail' | 'deadline_then_arbitration' | 'decision_state_not_money' | 'grace_then_reconcile' }> = [
-  // Round 11 (round-10 audit, P2): an attempt in flight is refused by the reconcile GATE until its grace passes.
-  { state: 'refunding — crash marker written a minute ago (attempt in flight)', claim: S({ status: 'refunding', refundAttempted: true, arbitrationDecision: 'approved', refundError: `${RECONCILE_REQUIRED}: tentative de remboursement démarrée à ${new Date(NOW.getTime() - 60_000).toISOString()} — identité pas encore liée.` }), exits: [], note: 'grace_then_reconcile' },
-  { state: 'restaurant_review — delay running', claim: S({ status: 'restaurant_review', responseDeadlineAt: FUTURE }), exits: [], note: 'deadline_then_arbitration' },
-  { state: 'restaurant_review — delay expired', claim: S({ status: 'restaurant_review' }), exits: ['approve', 'refuse_final'] },
-  { state: 'arbitration', claim: S({ status: 'arbitration' }), exits: ['approve', 'refuse_final'] },
-  { state: 'approved, unpaid — legacy, no decision', claim: S({ status: A }), exits: ['approve', 'refuse_final'], note: 'awaits_refund_rail' },
-  { state: 'approved, unpaid — admin-decided', claim: S({ status: A, arbitrationDecision: A }), exits: ['approve'], note: 'awaits_refund_rail' },
-  { state: 'absence proven, payable', claim: S({ status: A, arbitrationDecision: A, refundError: `${NO_REFUND_PROVEN}: x` }), exits: ['approve'], note: 'awaits_refund_rail' },
-  { state: 'rail locked — admin-decided', claim: S({ status: A, arbitrationDecision: A, refundError: `${NO_REFUND_PROVEN_RAIL_LOCKED}: x` }), exits: ['stuck_close'] },
-  { state: 'rail locked — legacy, no decision', claim: S({ status: A, refundError: `${NO_REFUND_PROVEN_RAIL_LOCKED}: x` }), exits: ['stuck_close', 'refuse_final'] },
-  { state: 'engine row dead', claim: S({ status: A, refundAttempted: true, refundId: 'rf1', arbitrationDecision: A, refundError: `${ENGINE_ROW_DEAD}: x` }), exits: ['stuck_close'] },
-  { state: 'stripe failed, recorded', claim: S({ status: A, refundAttempted: true, refundId: 'rf1', arbitrationDecision: A, refundError: 'stripe_failed: x' }), exits: ['stuck_close'] },
-  { state: 'engine failed, recorded', claim: S({ status: A, refundAttempted: true, arbitrationDecision: A, refundError: 'engine_failed: x' }), exits: ['stuck_close'] },
-  { state: 'approved — attempt taken, nothing recorded', claim: S({ status: A, refundAttempted: true, arbitrationDecision: A }), exits: ['reconcile'] },
-  { state: 'approved — bound, no error', claim: S({ status: A, refundAttempted: true, refundId: 'rf1', arbitrationDecision: A }), exits: ['reconcile'] },
-  { state: 'refunding — crash marker', claim: S({ status: 'refunding', refundAttempted: true, arbitrationDecision: A, refundError: MARKER }), exits: ['reconcile'] },
-  { state: 'refunding — legacy stranded', claim: S({ status: 'refunding', refundAttempted: true }), exits: ['reconcile'] },
-  { state: 'refunding — bound, no error (pending, failed, succeeded or missing row)', claim: S({ status: 'refunding', refundAttempted: true, refundId: 'rf1' }), exits: ['reconcile'] },
-  { state: 'refunding — resume mismatch', claim: S({ status: 'refunding', refundAttempted: true, refundId: 'rf9', refundError: 'resume_mismatch: x' }), exits: ['stuck_close'] },
-  { state: 'financial verification', claim: S({ status: FINANCIAL_VERIFICATION, refundAttempted: true, refundError: 'financial_verification:stripe_unreadable: x' }), exits: ['reconcile', 'attribute_or_adopt'] },
-  { state: 'refused by the restaurant', claim: S({ status: 'refused' }), exits: [], note: 'decision_state_not_money' },
+const v13At = (at: Date) => `${MARKERS.PROOF_PAYABLE_V13} Stripe ne rapporte aujourd’hui aucun remboursement abouti ni en attente sur ce paiement (liste complète lue). … Elle est payable au plus tôt le ${at.toISOString()} (UTC).`
+const OWN_ROW: BoundRowFacts = { id: 'rf1', orderId: 'o1', status: 'pending', stripeRefundId: null, reason: 'claim:cl1' }
+type TableRow = { state: string; d1: string; claim: ClaimFacts; boundRow?: BoundRowFacts | null; attributableRows?: number; exits: Exit[]; registry: ExitNote | null }
+const EXIT_TABLE: TableRow[] = [
+  { d1: '1', state: 'approved, unpaid — admin-decided', claim: S({ status: A, arbitrationDecision: A }), exits: ['approve'], registry: 'E-10' },
+  { d1: '1', state: 'approved, unpaid — legacy, no decision', claim: S({ status: A }), exits: ['approve'], registry: 'E-10' },
+  { d1: '2', state: 'absence proven (v13), instant passed', claim: S({ status: A, arbitrationDecision: A, refundError: v13At(new Date(NOW.getTime() - 60_000)) }), exits: ['approve', 'reconcile'], registry: 'E-10' },
+  { d1: '2', state: 'absence proven (v13), before its instant', claim: S({ status: A, arbitrationDecision: A, refundError: v13At(FUTURE) }), exits: ['approve', 'reconcile'], registry: 'E-10' },
+  // W1 round-1 fix (D1 row 2 / D3): an unreadable instant refuses approval until reconcile re-derives it — not revisable.
+  { d1: '2', state: 'absence proven (v13), instant unreadable', claim: S({ status: A, arbitrationDecision: A, refundError: `${MARKERS.PROOF_PAYABLE_V13} Stripe ne rapporte aujourd’hui aucun remboursement … (sans instant)` }), exits: ['reconcile'], registry: 'E-10' },
+  // W1 round-1 fix (D2 (1)(b)): an approval BOUND to a row is not re-driven by approve, whatever refundAttempted says.
+  { d1: 'D2(1)(b)', state: 'approved — not attempted but bound, no error', claim: S({ status: A, arbitrationDecision: A, refundId: 'rf1' }), exits: ['reconcile'], registry: null },
+  { d1: '3', state: 'legacy proof of absence', claim: S({ status: A, arbitrationDecision: A, refundError: `${NO_REFUND_PROVEN}: x` }), exits: ['reconcile'], registry: 'E-01' },
+  { d1: '4', state: 'rail locked — admin-decided', claim: S({ status: A, arbitrationDecision: A, refundError: `${NO_REFUND_PROVEN_RAIL_LOCKED}: x` }), exits: ['reconcile', 'stuck_close'], registry: 'E-01' },
+  { d1: '4', state: 'rail locked — legacy, no decision', claim: S({ status: A, refundError: `${NO_REFUND_PROVEN_RAIL_LOCKED}: x` }), exits: ['reconcile', 'stuck_close'], registry: 'E-01' },
+  { d1: '4', state: 'awaiting finalization', claim: S({ status: A, arbitrationDecision: A, refundError: `${MARKERS.AWAITING_FINALIZATION} x` }), exits: ['reconcile', 'stuck_close'], registry: 'E-01' },
+  { d1: '5', state: 'safety hold', claim: S({ status: A, refundAttempted: true, arbitrationDecision: A, refundError: `${MARKERS.SAFETY_HOLD} x` }), exits: ['reconcile', 'stuck_close'], registry: 'E-01' },
+  { d1: '6', state: 'engine row dead', claim: S({ status: A, refundAttempted: true, refundId: 'rf1', arbitrationDecision: A, refundError: `${ENGINE_ROW_DEAD}: x` }), exits: ['stuck_close'], registry: 'E-02' },
+  { d1: '6', state: 'stripe failed, recorded', claim: S({ status: A, refundAttempted: true, refundId: 'rf1', arbitrationDecision: A, refundError: 'stripe_failed: x' }), exits: ['stuck_close'], registry: 'E-02' },
+  { d1: '6', state: 'engine failed, recorded', claim: S({ status: A, refundAttempted: true, arbitrationDecision: A, refundError: 'engine_failed: x' }), exits: ['stuck_close'], registry: 'E-02' },
+  { d1: '6', state: 'stripe reverted', claim: S({ status: A, refundAttempted: true, refundId: 'rf1', arbitrationDecision: A, refundError: `${MARKERS.STRIPE_REVERTED} x` }), exits: ['stuck_close'], registry: 'E-02' },
+  { d1: '7', state: 'refunding — resume mismatch, bound row read and not this claim’s', claim: S({ status: 'refunding', refundAttempted: true, refundId: 'rf9', refundError: 'resume_mismatch: x' }), boundRow: { id: 'rf9', orderId: 'o1', status: 'succeeded', stripeRefundId: 're_9', reason: 'claim:cl_OTHER' }, exits: ['stuck_close'], registry: 'E-02' },
+  { d1: '8', state: 'refunding — resume mismatch on the claim’s OWN row', claim: S({ status: 'refunding', refundAttempted: true, refundId: 'rf1', refundError: 'resume_mismatch: x' }), boundRow: { ...OWN_ROW, status: 'succeeded', stripeRefundId: 're_1' }, exits: ['reconcile'], registry: 'E-05' },
+  { d1: '9', state: 'refunding — crash marker written a minute ago (attempt in flight)', claim: S({ status: 'refunding', refundAttempted: true, arbitrationDecision: A, refundError: `${RECONCILE_REQUIRED}: tentative de remboursement démarrée à ${new Date(NOW.getTime() - 60_000).toISOString()} — identité pas encore liée.` }), exits: [], registry: 'E-05' },
+  { d1: '9', state: 'refunding — crash marker', claim: S({ status: 'refunding', refundAttempted: true, arbitrationDecision: A, refundError: MARKER }), exits: ['reconcile'], registry: 'E-05' },
+  { d1: '10', state: 'financial verification, an attributable row', claim: S({ status: FINANCIAL_VERIFICATION, refundAttempted: true, refundError: 'financial_verification:stripe_unreadable: x' }), attributableRows: 1, exits: ['reconcile', 'attribute', 'adopt'], registry: 'E-03' },
+  { d1: '10', state: 'financial verification, no attributable row', claim: S({ status: FINANCIAL_VERIFICATION, refundAttempted: true, refundError: 'financial_verification:stripe_unreadable: x' }), attributableRows: 0, exits: ['reconcile', 'adopt'], registry: 'E-03' },
+  { d1: '11', state: 'refunded — bound row failed with a Stripe id', claim: S({ status: 'refunded', refundAttempted: true, refundId: 'rf1', arbitrationDecision: A }), boundRow: { ...OWN_ROW, status: 'failed', stripeRefundId: 're_1' }, exits: ['reconcile'], registry: 'E-07' },
+  { d1: '11', state: 'refunded — bound row pending', claim: S({ status: 'refunded', refundAttempted: true, refundId: 'rf1', arbitrationDecision: A }), boundRow: OWN_ROW, exits: ['reconcile'], registry: 'E-07' },
+  { d1: '11', state: 'refunded — bound row succeeded (route-only)', claim: S({ status: 'refunded', refundAttempted: true, refundId: 'rf1', arbitrationDecision: A }), boundRow: { ...OWN_ROW, status: 'succeeded', stripeRefundId: 're_1' }, exits: ['reconcile'], registry: 'E-09' },
+  { d1: '12', state: 'refunded + REVERTED_AFTER_REFUND', claim: S({ status: 'refunded', refundAttempted: true, refundId: 'rf1', arbitrationDecision: A, refundError: `${MARKERS.REVERTED_AFTER_REFUND} x` }), exits: ['stuck_close'], registry: 'E-06' },
+  { d1: '13', state: 'refused_final', claim: S({ status: 'refused_final', arbitrationDecision: 'refused_final' }), exits: [], registry: 'terminal' },
+  { d1: '13', state: 'refunded after a declaration', claim: S({ status: 'refunded', refundError: `${MARKERS.DECLARED_AFTER_REVERT} x` }), exits: [], registry: 'terminal' },
+  { d1: '13', state: 'refunded — bound row failed WITHOUT a Stripe id', claim: S({ status: 'refunded', refundAttempted: true, refundId: 'rf1', arbitrationDecision: A }), boundRow: { ...OWN_ROW, status: 'failed' }, exits: [], registry: 'terminal' },
+  { d1: '14', state: 'refunding — resume mismatch, bound row NOT read', claim: S({ status: 'refunding', refundAttempted: true, refundId: 'rf9', refundError: 'resume_mismatch: x' }), exits: [], registry: 'unread:bound_row' },
+  { d1: '14', state: 'refunded — bound row NOT read', claim: S({ status: 'refunded', refundAttempted: true, refundId: 'rf1', arbitrationDecision: A }), exits: [], registry: 'unread:bound_row' },
+  // ER-M06: the non-terminal shapes D1 omitted — kept exactly as G1 and arbitrateClaim accept them.
+  { d1: 'ER-M06', state: 'approved — bound, no error', claim: S({ status: A, refundAttempted: true, refundId: 'rf1', arbitrationDecision: A }), exits: ['reconcile'], registry: null },
+  { d1: 'ER-M06', state: 'approved — attempt taken, nothing recorded', claim: S({ status: A, refundAttempted: true, arbitrationDecision: A }), exits: ['reconcile'], registry: null },
+  { d1: 'ER-M06', state: 'refunding — legacy stranded', claim: S({ status: 'refunding', refundAttempted: true }), exits: ['reconcile'], registry: null },
+  { d1: 'ER-M06', state: 'refunding — bound to its own row pending at Stripe, no error (the 202 outcome)', claim: S({ status: 'refunding', refundAttempted: true, refundId: 'rf1' }), boundRow: { ...OWN_ROW, stripeRefundId: 're_1' }, exits: ['reconcile'], registry: null },
+  { d1: 'ER-M06', state: 'arbitration', claim: S({ status: 'arbitration' }), exits: ['approve', 'refuse_final'], registry: 'not_money:awaiting_decision' },
+  { d1: 'ER-M06', state: 'restaurant_review — delay expired', claim: S({ status: 'restaurant_review' }), exits: ['approve', 'refuse_final'], registry: 'not_money:awaiting_decision' },
+  { d1: 'ER-M06', state: 'restaurant_review — delay running', claim: S({ status: 'restaurant_review', responseDeadlineAt: FUTURE }), exits: [], registry: 'not_money:restaurant_delay' },
+  { d1: 'ER-M06', state: 'refused by the restaurant', claim: S({ status: 'refused' }), exits: [], registry: 'not_money:refused_contestable' },
 ]
+const extraOf = (r: TableRow) => ({ ...(r.boundRow !== undefined ? { boundRow: r.boundRow } : {}), attributableRows: r.attributableRows })
 
-describe('EXIT TABLE — every non-terminal claim state has a way out the server accepts', () => {
+describe('EXIT TABLE (ROUND 13, J-M30) — acceptedExits returns exactly the D1 sets', () => {
   for (const row of EXIT_TABLE) {
-    it(`${row.state} → ${row.exits.join(' + ') || row.note}`, () => {
-      expect(acceptedExits(row.claim)).toEqual(row.exits)
-      expect(row.exits.length > 0 || !!row.note, 'a state no action leads out of must name its documented path').toBe(true)
+    it(`D1 ${row.d1}: ${row.state} → ${row.exits.join(' + ') || row.registry}`, () => {
+      expect(acceptedExits(row.claim, NOW, extraOf(row))).toEqual(row.exits)
+      expect(exitRegistry({ claim: row.claim, now: NOW, ...extraOf(row) })).toBe(row.registry)
     })
   }
+
+  it('every empty or gated-only set names its registry entry (or its terminal / non-money note)', () => {
+    for (const row of EXIT_TABLE) {
+      const gatedOnly = row.exits.every((x) => x === 'approve' || x === 'refuse_final')
+      if (gatedOnly) expect(row.registry, row.state).not.toBeNull()
+    }
+    const rowsFor = (d1: string) => EXIT_TABLE.filter((r) => r.d1 === d1).map((r) => r.registry)
+    expect(new Set([...rowsFor('1'), ...rowsFor('2')])).toEqual(new Set(['E-10']))
+    expect(rowsFor('3')).toEqual(['E-01'])
+    expect(EXIT_TABLE.find((r) => r.state.includes('attempt in flight'))!.registry).toBe('E-05')
+    expect(EXIT_TABLE.find((r) => r.state.includes('route-only'))!.registry).toBe('E-09')
+    expect(new Set(rowsFor('13'))).toEqual(new Set(['terminal']))
+  })
+
+  it('refuse_final on EVERY approved claim → the exact AM-B3 text (D13)', () => {
+    const approvedRows = EXIT_TABLE.filter((r) => r.claim.status === A)
+    expect(approvedRows.length).toBeGreaterThan(8)
+    for (const r of approvedRows) {
+      expect(arbitrationRefusal(r.claim, 'refuse_final', NOW)?.error, r.state).toBe('Cette réclamation a été approuvée — elle ne peut plus être refusée. Selon son état : approuvez-la à nouveau (réclamations et remboursements ouverts), réconciliez-la, ou clôturez le dossier (« Clôturer ce dossier… ») si le détail le propose.')
+    }
+    expect(REFUSE_APPROVED_AM_B3).toBe(arbitrationRefusal(S({ status: A }), 'refuse_final', NOW)?.error)
+  })
+
+  it('markers are matched with startsWith — a marker quoted inside another text is not that marker (an includes mutant is red)', () => {
+    const quoting = S({ status: A, refundError: 'engine_failed: le texte cite no_refund_proven_rail_locked: et no_refund_proven: et refund_safety_hold:' })
+    expect(acceptedExits(quoting)).toEqual(['stuck_close'])
+    const includesMutant = (e: string) => e.includes('no_refund_proven')
+    expect(includesMutant(quoting.refundError!)).toBe(true) // ← a mutant would admit it to reconcile and refuse the close
+  })
+
+  it('no row offers a power that does not exist: no « annuler », no apply_row_failure, no declaration from FV', () => {
+    const ALLOWED: Exit[] = ['approve', 'refuse_final', 'reconcile', 'attribute', 'adopt', 'stuck_close']
+    for (const r of EXIT_TABLE) {
+      for (const x of acceptedExits(r.claim, NOW, extraOf(r))) expect(ALLOWED, r.state).toContain(x)
+      if (r.claim.status === FINANCIAL_VERIFICATION) expect(acceptedExits(r.claim, NOW, extraOf(r)), r.state).not.toContain('stuck_close')
+    }
+  })
+
+  it('NEGATIVE CONTROL — an FV claim with no attributable row → reconcile + adopt, never attribute', () => {
+    const fv = EXIT_TABLE.find((r) => r.state === 'financial verification, no attributable row')!
+    expect(acceptedExits(fv.claim, NOW, extraOf(fv))).toEqual(['reconcile', 'adopt'])
+  })
 
   it('terminal states, and only they, carry neither an exit nor a note', () => {
     for (const status of TERMINAL_STATUSES) expect(acceptedExits(S({ status })), status).toEqual([])
   })
 
   it('the grace note is real: five minutes later the reconcile gate admits the same claim', () => {
-    const inFlight = EXIT_TABLE.find((r) => r.note === 'grace_then_reconcile')!.claim
+    const inFlight = EXIT_TABLE.find((r) => r.state.includes('attempt in flight'))!.claim
     expect(acceptedExits(inFlight, new Date(NOW.getTime() + 5 * 60 * 1000))).toEqual(['reconcile'])
   })
 
   it('the documented non-human path is real: once the restaurant’s delay passes, arbitration accepts both decisions', () => {
-    const running = EXIT_TABLE.find((r) => r.note === 'deadline_then_arbitration')!.claim
+    const running = EXIT_TABLE.find((r) => r.state === 'restaurant_review — delay running')!.claim
     const after = new Date(FUTURE.getTime() + 1)
     expect(arbitrationRefusal(running, 'approve', after)).toBeNull()
     expect(arbitrationRefusal(running, 'refuse_final', after)).toBeNull()
@@ -242,7 +311,10 @@ describe('ARBITRATION PARITY — the queue carries exactly the refusal the serve
         successes++
       }
     }
-    expect(successes).toBeGreaterThanOrEqual(8)
+    // ROUND 13 (J-M30): AM-B3 removes refuse_final on approved claims and D14 refuses approval on recorded
+    // errors — the enabled decisions are exactly: approve on the two unpaid approvals and the v13 proof past
+    // its instant, and both decisions on arbitration and on an expired restaurant delay.
+    expect(successes).toBe(7)
     expect(execMock).not.toHaveBeenCalled()
   })
 
@@ -393,7 +465,8 @@ describe('OUR PENDING ROW WITH A STRIPE ID — read by that id, as the engine do
     stripeMock.refunds.retrieve.mockRejectedValue(Object.assign(new Error('No such refund'), { statusCode: 404, code: 'resource_missing' }))
     expect(await reconcileClaimEvidence({ claimId: 'cl1' })).toMatchObject({ ok: true, outcome: 'financial_verification', reason: 'stripe_refund_contradiction' })
     expect(fx.row!.status).toBe(FINANCIAL_VERIFICATION)
-    expect(acceptedExits(fx.row as ClaimFacts)).toEqual(['reconcile', 'attribute_or_adopt'])
+    // ROUND 13 (D1 row 10): 'attribute' needs an attributable row, which the FV list decides; adoption is always offered.
+    expect(acceptedExits(fx.row as ClaimFacts)).toEqual(['reconcile', 'adopt'])
   })
 
   it('the refund sits on ANOTHER payment → parked, never applied', async () => {
@@ -563,7 +636,8 @@ describe('GUIDANCE — one fact-only line per money state, shared by both consol
 // ══ THE CUSTOMER — « en cours » only when a refund is bound to a row Stripe confirmed ══════
 describe('CUSTOMER STATUS — never the raw recovery state', () => {
   it('the table', () => {
-    const T: Array<[ClaimFacts, boolean | null, string]> = [
+    // ROUND 13 (F04): the third input is the F03 row proof of a settled claim.
+    const T: Array<[ClaimFacts, boolean | null, string, (boolean | null)?]> = [
       [{ status: 'refunding', refundId: 'rf1', refundError: null }, true, 'refunding'],
       [{ status: 'refunding', refundId: 'rf1', refundError: null }, false, FINANCIAL_VERIFICATION],
       [{ status: 'refunding', refundId: 'rf1', refundError: null }, null, FINANCIAL_VERIFICATION],
@@ -573,12 +647,16 @@ describe('CUSTOMER STATUS — never the raw recovery state', () => {
       [{ status: 'approved', refundError: `${ENGINE_ROW_DEAD}: x` }, null, FINANCIAL_VERIFICATION],
       [{ status: 'approved', refundError: null }, null, 'approved'],
       [{ status: FINANCIAL_VERIFICATION, refundError: 'x' }, null, FINANCIAL_VERIFICATION],
-      [{ status: 'refunded' }, null, 'refunded'],
+      [{ status: 'refunded', refundId: 'rfE', refundError: null }, null, 'refunded', true],
+      [{ status: 'refunded', refundId: 'rfE', refundError: null }, null, 'refund_unconfirmed', false],
+      [{ status: 'refunded', refundId: 'rfE', refundError: null }, null, FINANCIAL_VERIFICATION, null],
       // Round 12: only arbitrateClaim's refusal (which records the decision) reads as « refused ».
-      [{ status: 'refused_final', arbitrationDecision: 'refused_final' }, null, 'refused_final'],
+      // ROUND 13 (F02): « Refus confirmé » needs the restaurant's own refusal on record.
+      [{ status: 'refused_final', arbitrationDecision: 'refused_final', restaurantResponse: 'refused' }, null, 'refused_final'],
+      [{ status: 'refused_final', arbitrationDecision: 'refused_final' }, null, 'refused_by_grubano'],
       [{ status: 'restaurant_review' }, null, 'restaurant_review'],
     ]
-    for (const [c, confirmed, want] of T) expect(customerClaimStatus(c, confirmed), `${JSON.stringify(c)} ${confirmed}`).toBe(want)
+    for (const [c, confirmed, want, refundedRow] of T) expect(customerClaimStatus(c, confirmed, refundedRow ?? null), `${JSON.stringify(c)} ${confirmed} ${refundedRow}`).toBe(want)
   })
 
   it('the customer list carries the derived status and none of the internal recovery fields', async () => {
@@ -587,10 +665,14 @@ describe('CUSTOMER STATUS — never the raw recovery state', () => {
       { id: 'b', status: 'refunding', refundId: 'rfB', refundError: null, refundAttempted: true, activeOrderKey: 'o2', arbitratedBy: null },
       { id: 'c', status: 'approved', refundId: null, refundError: 'engine_failed: Erreur paiement', refundAttempted: true, activeOrderKey: 'o3', arbitratedBy: 'op1' },
       { id: 'd', status: 'refunding', refundId: null, refundError: MARKER, refundAttempted: true, activeOrderKey: 'o4', arbitratedBy: null },
-      { id: 'e', status: 'refunded', refundId: 'rfE', refundError: null, refundAttempted: true, activeOrderKey: null, arbitratedBy: null },
+      { id: 'e', orderId: 'o5', status: 'refunded', refundId: 'rfE', refundError: null, refundAttempted: true, activeOrderKey: null, arbitratedBy: null },
     ])
     // Round 11: « en cours » needs the bound row PENDING and recorded at Stripe — the row read carries its status.
-    db.refund.findMany.mockResolvedValue([{ id: 'rfA', status: 'pending', stripeRefundId: 're_A' }, { id: 'rfB', status: 'pending', stripeRefundId: null }])
+    // ROUND 13 (F03): « Remboursée » needs the settled claim's bound row proven (same order, succeeded, amount > 0).
+    db.refund.findMany.mockResolvedValue([
+      { id: 'rfA', status: 'pending', stripeRefundId: 're_A' }, { id: 'rfB', status: 'pending', stripeRefundId: null },
+      { id: 'rfE', orderId: 'o5', status: 'succeeded', amountCents: 500, stripeRefundId: 're_E' },
+    ])
     const out = await listConsumerClaims('u1')
     expect(out.map((c) => [c.id, c.status])).toEqual([
       ['a', 'refunding'], ['b', FINANCIAL_VERIFICATION], ['c', FINANCIAL_VERIFICATION], ['d', FINANCIAL_VERIFICATION], ['e', 'refunded'],
@@ -599,7 +681,7 @@ describe('CUSTOMER STATUS — never the raw recovery state', () => {
   })
 
   it('eligibility derives the status too, the help page reads the review state as a review, and every locale has its line', () => {
-    expect(read('lib/claims.ts')).toContain('status: customerClaimStatus(existing, existingBoundConfirmed)')
+    expect(read('lib/claims.ts')).toContain('status: customerClaimStatus(existing, existingBoundConfirmed, existingRefundedRow)')
     expect(read('app/[locale]/eat/order/[orderId]/help/page.tsx')).toContain("if (ex.status === 'financial_verification') return t('claimInReview')")
     for (const loc of LOCALES) expect(typeof JSON.parse(read(`messages/${loc}.json`)).claims.status.financial_verification, loc).toBe('string')
   })

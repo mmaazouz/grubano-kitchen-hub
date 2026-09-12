@@ -10,7 +10,8 @@ import { Button, Badge, EmptyState, useToast } from '@/components/design-system'
 import { formatEuros } from '@/lib/format-money'
 import { approvalToast } from '@/lib/claim-approval-toast'
 
-import { moneyStateGuidance } from '@/lib/claim-action-rules'
+import { moneyStateGuidance, absenceProvenPayableLabel } from '@/lib/claim-action-rules'
+import { amountLineKind, identityUnreadText, BOUND_REVERTED_TEXT } from '@/lib/claim-money-line'
 
 type Stats = { recent?: number; approvalRate?: number; flagged?: boolean; refused?: number; overturned?: number }
 type Claim = {
@@ -52,6 +53,8 @@ type ActionableRefundClaim = {
   reconcilable?: boolean
   /** ROUND-6 AUDIT FIX (P1): a refund is bound, and the engine established it is NOT this claim's. */
   refundNotOurs?: boolean
+  /** ROUND 13 (F15, A-S36-1): a resume_mismatch on a row that carries THIS claim's stamp. */
+  refundIdentityUnread?: boolean
   actualRefundedCents: number | null
   refund: { id: string; status: string; actualAmountCents: number; stripeRefundId: string | null } | null
 }
@@ -183,7 +186,8 @@ export default function AdminClaimsArbitration() {
     reconcile_required:                   { text: 'Vérification financière requise — l’argent n’est pas établi (ni parti, ni non parti)', tone: 'danger' },
     // ROUND-7 AUDIT FIX (P1): « sera versée par le rail » promised a payment nothing performs —
     // the auto-approve sweep is flag-gated OFF for the beta and its cron is gone. A human pays it.
-    absence_proven_payable:               { text: 'Absence de remboursement PROUVÉE (lignes + Stripe) — approuvée, non payée. Rien ne la paiera automatiquement : nouvelle approbation admin requise, réclamations et remboursements ouverts', tone: 'warning' },
+    // ROUND 13 (F15): the proof's own instant is part of the label — the row lookup below renders it per claim.
+    absence_proven_payable:               { text: absenceProvenPayableLabel(null), tone: 'warning' },
   }
 
   return (
@@ -201,7 +205,10 @@ export default function AdminClaimsArbitration() {
           </p>
           <div className="space-y-3">
             {actionableRefunds.map((r) => {
-              const label = MONEY_LABEL[r.moneyState] ?? { text: r.moneyState, tone: 'neutral' as const }
+              // ROUND 13 (F15): the absence_proven_payable label states the proof's own instant (C4).
+              const label = r.moneyState === 'absence_proven_payable'
+                ? { text: absenceProvenPayableLabel(r.refundError), tone: 'warning' as const }
+                : MONEY_LABEL[r.moneyState] ?? { text: r.moneyState, tone: 'neutral' as const }
               return (
                 <div key={r.id} className="rounded-grubano-xl border border-grubano-border bg-grubano-surface p-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
@@ -222,13 +229,19 @@ export default function AdminClaimsArbitration() {
                           nothing bound; something bound but not succeeded; something bound that
                           succeeded for SOMEBODY ELSE (the engine disowned it). One sentence claimed
                           the first for all three, two lines above « Statut Stripe : pending ». */}
-                      {r.actualRefundedCents !== null
-                        ? formatEuros(r.actualRefundedCents / 100, locale)
-                        : r.refund && r.refundNotOurs
-                          ? `non établi pour cette réclamation — un remboursement est lié (statut ${r.refund.status}), mais le moteur a établi qu’il n’appartient PAS à cette réclamation : son montant n’est pas le sien`
-                          : r.refund
-                            ? `rien n’a encore abouti sur la ligne liée (statut de notre ligne : ${r.refund.status})`
-                            : 'non déterminé ici — aucun remboursement n’est LIÉ à cette réclamation'}
+                      {/* ROUND 13 (F15): the branch is the tested pure amountLineKind (lib/claim-money-line) — a
+                          reversal marker pays nothing, and the A-S36-1 sentence names reconcile only when the
+                          server's reconcile verdict for this claim accepts it. */}
+                      {(() => {
+                        switch (amountLineKind(r)) {
+                          case 'amount': return formatEuros((r.actualRefundedCents ?? 0) / 100, locale)
+                          case 'reverted': return `non établi pour cette réclamation — ${BOUND_REVERTED_TEXT}`
+                          case 'identity_unread': return `non établi pour cette réclamation — ${identityUnreadText(r.reconcilable)}`
+                          case 'not_ours': return `non établi pour cette réclamation — un remboursement est lié (statut ${r.refund?.status}), mais le moteur a établi qu’il n’appartient PAS à cette réclamation : son montant n’est pas le sien`
+                          case 'bound_not_succeeded': return `rien n’a encore abouti sur la ligne liée (statut de notre ligne : ${r.refund?.status})`
+                          default: return 'non déterminé ici — aucun remboursement n’est LIÉ à cette réclamation'
+                        }
+                      })()}
                     </p>
                     {r.actualRefundedCents === null && !r.refund && (
                       // AUDIT FIX (gate T-49). This block used to read « aucun (rien n’a encore

@@ -458,11 +458,17 @@ describe('listActionableRefundClaims after round 6', () => {
     expect(out[0].refundNotOurs).toBe(false)
   })
 
-  it('proof of absence classifies as absence_proven_payable, not as a recorded error', async () => {
-    db.claim.findMany.mockResolvedValue([claimRow({ status: 'approved', refundId: null, refundAttempted: false, refundError: NO_REFUND_PROVEN + ': aucun remboursement …' })])
-    const out = await listActionableRefundClaims()
+  it('proof of absence classifies as absence_proven_payable, not as a recorded error — ROUND 13 (F15): only a proof written by this build (v13)', async () => {
+    db.claim.findMany.mockResolvedValue([claimRow({ status: 'approved', refundId: null, refundAttempted: false, refundError: NO_REFUND_PROVEN + ':v13: aucun remboursement …' })])
+    let out = await listActionableRefundClaims()
     expect(out[0].moneyState).toBe('absence_proven_payable')
     expect(out[0].resolvable).toBe(false)
+    // ROUND 13 (F15, A-S32): a legacy proof is not payable as written — reconcile re-proves it first.
+    db.claim.findMany.mockResolvedValue([claimRow({ status: 'approved', refundId: null, refundAttempted: false, refundError: NO_REFUND_PROVEN + ': aucun remboursement …' })])
+    out = await listActionableRefundClaims()
+    expect(out[0].moneyState).toBe('reconcile_required')
+    expect(out[0].resolvable).toBe(false)
+    expect(out[0].reconcilable).toBe(true)
   })
 
   it('the rail-locked variant stays a human matter', async () => {

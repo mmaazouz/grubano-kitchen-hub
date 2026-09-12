@@ -104,9 +104,11 @@ describe('attribution PARITY — the console disables exactly the rows the serve
         R('rCanceled', { status: 'canceled' }),
         R('rPendNoId', { status: 'pending', stripeRefundId: null }),
         R('rPendWithId', { status: 'pending' }),
+        // ROUND 13 (B10 (6)): a failed row pays nothing and settles no claim — refused on both sides.
+        R('rFailed', { status: 'failed' }),
       ],
       bindings: [{ id: 'cl_Z', refundId: 'rBound' }],
-      expected: { rFree: null, rBound: 'bound_to_other_claim', rCanceled: 'unusable_status', rPendNoId: null, rPendWithId: null },
+      expected: { rFree: null, rBound: 'bound_to_other_claim', rCanceled: 'unusable_status', rPendNoId: null, rPendWithId: null, rFailed: 'row_failed' },
     },
   ]
 
@@ -142,7 +144,8 @@ describe('attribution PARITY — the console disables exactly the rows the serve
   it('the fixtures exercise EVERY refusal code — parity over a subset would prove nothing', () => {
     const seen = new Set(SETS.flatMap((s) => Object.values(s.expected)).filter(Boolean))
     // ROUND-12: 'pending_unconfirmed' is gone — a pending row's link is decided by Stripe's evidence.
-    for (const code of ['stamped_for_other_claim', 'own_stamp_exists', 'bound_to_other_claim', 'unusable_status']) {
+    // ROUND 13 (B10 (6)): a failed row is refused on both sides too.
+    for (const code of ['stamped_for_other_claim', 'own_stamp_exists', 'bound_to_other_claim', 'unusable_status', 'row_failed']) {
       expect(seen.has(code), code).toBe(true)
     }
   })
@@ -160,7 +163,9 @@ describe('RAIL LOCK — permanent, said so, and approve refused on both sides', 
     db.claim.findUnique.mockResolvedValue({ id: 'cl1', status: 'approved', refundAttempted: false, responseDeadlineAt: new Date(0), arbitrationDecision: 'approved', refundError: RAIL })
     const r = await arbitrateClaim({ claimId: 'cl1', adminId: 'op1', decision: 'approve' })
     expect(r).toMatchObject({ ok: false, status: 409 })
-    expect(String((r as { error?: string }).error)).toContain('refusera tout remboursement')
+    // ROUND 13 (D14 (2), F16 (1)): the refusal is REVISABLE — reconcile re-evaluates — and names the declaration close.
+    expect(String((r as { error?: string }).error)).toContain('Approbation impossible dans l’état enregistré')
+    expect(String((r as { error?: string }).error)).toContain('« Clôturer ce dossier… » enregistre votre déclaration.')
     expect(db.claim.updateMany).not.toHaveBeenCalled()
     expect(db.claim.update).not.toHaveBeenCalled()
     expect(execMock).not.toHaveBeenCalled()
@@ -243,13 +248,17 @@ describe('RECONCILE GATE — only the population the console offers the button o
     expect(db.claim.updateMany).not.toHaveBeenCalled()
   })
 
-  it('a proven-absence claim and a rail-locked claim are refused too', async () => {
-    for (const refundError of [`${NO_REFUND_PROVEN}: aucun …`, 'no_refund_proven_rail_locked: …', 'engine_failed: …']) {
+  it('ROUND 13 (G1 (i)): a proof of absence (legacy or v13) and a lock are ADMITTED — reconcile re-proves them; a recorded engine failure is still refused', async () => {
+    for (const refundError of [`${NO_REFUND_PROVEN}: aucun …`, 'no_refund_proven_rail_locked: …', 'no_refund_proven:v13: …']) {
       db.refund.findMany.mockClear()
-      db.claim.findUnique.mockResolvedValue({ id: 'cl1', orderId: 'o1', status: 'approved', refundId: null, requestedAmountCents: 500, refundError })
-      expect(await reconcileClaimEvidence({ claimId: 'cl1' }), refundError).toMatchObject({ ok: false, status: 409 })
-      expect(db.refund.findMany).not.toHaveBeenCalled()
+      db.claim.findUnique.mockResolvedValue({ id: 'cl1', orderId: 'o1', status: 'approved', refundAttempted: false, refundId: null, requestedAmountCents: 500, refundError })
+      await reconcileClaimEvidence({ claimId: 'cl1' })
+      expect(db.refund.findMany, refundError).toHaveBeenCalled()
     }
+    db.refund.findMany.mockClear()
+    db.claim.findUnique.mockResolvedValue({ id: 'cl1', orderId: 'o1', status: 'approved', refundAttempted: true, refundId: null, requestedAmountCents: 500, refundError: 'engine_failed: …' })
+    expect(await reconcileClaimEvidence({ claimId: 'cl1' })).toMatchObject({ ok: false, status: 409 })
+    expect(db.refund.findMany).not.toHaveBeenCalled()
   })
 
   it('admitted: parked, crash-marked, legacy stranded', async () => {
@@ -342,7 +351,8 @@ describe('round-9 source pins', () => {
   it('attribution disables on the server verdict and has a legend for every refusal code', () => {
     expect(fv).toContain('disabled={busyId === r.id || c.refusal != null}')
     // ROUND-12: 'pending_unconfirmed' is gone — a pending row's link is decided by Stripe's evidence.
-    for (const code of ['stamped_for_other_claim', 'own_stamp_exists', 'bound_to_other_claim', 'unusable_status']) {
+    // ROUND 13 (B10 (6)): a failed row is refused on both sides too.
+    for (const code of ['stamped_for_other_claim', 'own_stamp_exists', 'bound_to_other_claim', 'unusable_status', 'row_failed']) {
       expect(fv, code).toMatch(new RegExp(`^  ${code}:`, 'm'))
     }
   })

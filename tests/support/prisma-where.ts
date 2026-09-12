@@ -46,6 +46,29 @@ export function matchOp(op: string, expected: unknown, actual: unknown): boolean
  */
 export function matchWhere(where: Record<string, unknown>, row: Record<string, unknown>): boolean {
   for (const [field, expected] of Object.entries(where)) {
+    // Prisma semantics: a field whose value is `undefined` is no filter at all.
+    if (expected === undefined) continue
+    // Round 13 (B1): the binder where combines clauses. SQL semantics are kept: under NOT, a clause whose
+    // field is NULL is UNKNOWN, so NOT(...) does not match — which is exactly why the binder where needs its
+    // explicit { refundError: null } branch.
+    if (field === 'OR') {
+      if (!(expected as Record<string, unknown>[]).some((w) => matchWhere(w, row))) return false
+      continue
+    }
+    if (field === 'AND') {
+      if (!(expected as Record<string, unknown>[]).every((w) => matchWhere(w, row))) return false
+      continue
+    }
+    if (field === 'NOT') {
+      const clauses = (Array.isArray(expected) ? expected : [expected]) as Record<string, unknown>[]
+      for (const w of clauses) {
+        // Any non-null comparison on a NULL column is UNKNOWN in SQL — an operator object AND a scalar equality
+        // (NOT { f: 'x' } with f NULL matches nothing in MySQL). A null value is IS NULL, which is never UNKNOWN.
+        const touchesNull = Object.entries(w).some(([f, v]) => f !== 'OR' && f !== 'AND' && f !== 'NOT' && v !== null && v !== undefined && row[f] == null)
+        if (touchesNull || matchWhere(w, row)) return false
+      }
+      continue
+    }
     // ROUND-8 AUDIT FIX (P3): `id` used to be skipped unconditionally, so a guard such as
     // `id: { not: row.id }` was never evaluated. It is still skipped when it merely ADDRESSES the row
     // (a scalar, or a fixture without an id), and evaluated when it is an operator on a row that has one.

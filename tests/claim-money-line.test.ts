@@ -8,9 +8,12 @@
 //
 // The audit also found that NONE of the component fixes was pinned by any test: reverting each
 // left the suite green. The decision is a pure function now, so it can be.
+//
+// ROUND 13 (F15): a resume_mismatch is decided by the bound row's stamp — the row read is an input.
+// Unread → INDÉTERMINÉ; the claim's own stamp → identity_unread (A-S36-1); another → bound_but_not_ours.
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { moneyLineFor, isResumeMismatch, RESUME_MISMATCH } from '@/lib/claim-money-line'
+import { moneyLineFor, isResumeMismatch, RESUME_MISMATCH, IDENTITY_UNREAD_TEXT, IDENTITY_UNREAD_NO_EXIT_TEXT, identityUnreadText, BOUND_REVERTED_TEXT } from '@/lib/claim-money-line'
 import { RECONCILE_REQUIRED } from '@/lib/claims'
 
 // ROUND-5 AUDIT FIX: this fixture was a hand-typed string, so the module's contract was bound to
@@ -44,6 +47,8 @@ const SHIPPED_OTHER_WRITERS = ALL_WRITERS.filter((w) => !w.engineSaysMismatch).m
 /** The prefixes every writer family must start with. A family missing from the source is RED. */
 const EXPECTED_OTHER_PREFIXES = ['stripe_failed', '${FINANCIAL_VERIFICATION}', 'no_refund_proven_rail_locked', '${NO_REFUND_PROVEN}', 'engine_failed']
 const MISMATCH = SHIPPED_MISMATCH_WRITERS[0] ?? ''
+/** F15: the bound row as read, NOT stamped for the claim — the engine's disowned binding. */
+const NOT_OURS_ROW = { reason: 'claim:cl_OTHER' }
 
 describe('the two ambiguous buckets never claim to know anything', () => {
   it('a claim parked in financial verification reads INDETERMINATE, bound or not', () => {
@@ -62,7 +67,7 @@ describe('the two ambiguous buckets never claim to know anything', () => {
 
 describe('RESUME-MISMATCH — a bound refund that answers for somebody else', () => {
   it('is NOT reported as settling this claim, even though a refund is bound', () => {
-    const l = moneyLineFor({ kind: 'other_unsettled', refundId: 'rf9', refundError: MISMATCH })
+    const l = moneyLineFor({ kind: 'other_unsettled', refundId: 'rf9', refundError: MISMATCH, claimId: 'cl1', boundRow: NOT_OURS_ROW })
     expect(l.certainty).toBe('bound_but_not_ours')
     expect(l.text).toContain('n’appartient PAS')
     expect(l.text).not.toContain('fait foi')
@@ -71,7 +76,7 @@ describe('RESUME-MISMATCH — a bound refund that answers for somebody else', ()
   it('the mismatch test wins over the binding test — order matters', () => {
     // Both conditions are true on this row. If the binding branch were checked first, the card
     // would say the refund's state is authoritative, which is the defect the audit found.
-    const l = moneyLineFor({ kind: 'other_unsettled', refundId: 'rf9', refundError: MISMATCH })
+    const l = moneyLineFor({ kind: 'other_unsettled', refundId: 'rf9', refundError: MISMATCH, claimId: 'cl1', boundRow: NOT_OURS_ROW })
     expect(l.certainty).not.toBe('bound')
   })
 
@@ -81,6 +86,49 @@ describe('RESUME-MISMATCH — a bound refund that answers for somebody else', ()
     expect(isResumeMismatch('reconcile_required: …')).toBe(false)
     expect(isResumeMismatch(null)).toBe(false)
     expect(isResumeMismatch(undefined)).toBe(false)
+  })
+})
+
+describe('ROUND 13 (F15) — the bound row decides a resume_mismatch line; a reversal pays nothing', () => {
+  it('A-S36-1: the row carries THIS claim’s stamp → identity_unread, never « n’appartient PAS »; the A-S36-1 sentence only when reconcile is accepted', () => {
+    const l = moneyLineFor({ kind: 'other_unsettled', refundId: 'rf1', refundError: MISMATCH, claimId: 'cl1', boundRow: { reason: 'claim:cl1' }, reconcilable: true })
+    expect(l).toEqual({ certainty: 'identity_unread', text: IDENTITY_UNREAD_TEXT })
+    expect(IDENTITY_UNREAD_TEXT).toBe('un remboursement est lié et sa ligne porte l’identité de cette réclamation ; une version antérieure a écrit le contraire après un échec de lecture. Seule la preuve (« Réconcilier d’après la preuve ») établira ce qui a été versé.')
+    expect(l.text).not.toContain('n’appartient PAS')
+  })
+
+  it('F16 (7), round-1 fix: while the server refuses reconcile (or its verdict is absent), the line states the fact and names NO exit', () => {
+    for (const reconcilable of [false, undefined, null]) {
+      const l = moneyLineFor({ kind: 'other_unsettled', refundId: 'rf1', refundError: MISMATCH, claimId: 'cl1', boundRow: { reason: 'claim:cl1' }, reconcilable })
+      expect(l, String(reconcilable)).toEqual({ certainty: 'identity_unread', text: IDENTITY_UNREAD_NO_EXIT_TEXT })
+      expect(l.text).not.toContain('Réconcilier')
+    }
+    expect(IDENTITY_UNREAD_NO_EXIT_TEXT).toBe('un remboursement est lié et sa ligne porte l’identité de cette réclamation ; une version antérieure a écrit le contraire après un échec de lecture. Ce qui a été versé au titre de cette réclamation n’est pas établi ici.')
+    // NEGATIVE CONTROL: the accepted verdict is what switches the exit on.
+    expect(identityUnreadText(true)).toContain('« Réconcilier d’après la preuve »')
+    expect(identityUnreadText(false)).not.toContain('Réconcilier')
+  })
+
+  it('the row not read → INDÉTERMINÉ (no identity is claimed either way)', () => {
+    expect(moneyLineFor({ kind: 'other_unsettled', refundId: 'rf1', refundError: MISMATCH, claimId: 'cl1' }))
+      .toEqual({ certainty: 'unknown', text: 'INDÉTERMINÉ — à établir par preuve Stripe.' })
+  })
+
+  it('a row read and absent is not this claim’s: bound_but_not_ours', () => {
+    expect(moneyLineFor({ kind: 'other_unsettled', refundId: 'rf1', refundError: MISMATCH, claimId: 'cl1', boundRow: null }).certainty).toBe('bound_but_not_ours')
+  })
+
+  it('A-S24-1: REVERTED_AFTER_REFUND and STRIPE_REVERTED → bound_reverted', () => {
+    for (const e of ['stripe_reverted_after_refund: la réclamation a été soldée sur la ligne rf1…', 'stripe_reverted: la ligne rf1 est marquée ABOUTIE…']) {
+      expect(moneyLineFor({ kind: 'other_unsettled', refundId: 'rf1', refundError: e }), e).toEqual({ certainty: 'bound_reverted', text: BOUND_REVERTED_TEXT })
+    }
+    expect(BOUND_REVERTED_TEXT).toBe('un remboursement est lié, mais Stripe rapporte ce remboursement échoué ou annulé : il ne verse rien au titre de cette ligne. Lisez le détail enregistré.')
+  })
+
+  it('NEGATIVE CONTROL — a resume_mismatch on the claim’s own row must not yield bound_but_not_ours; a stamp for ANOTHER claim must not yield identity_unread', () => {
+    expect(moneyLineFor({ kind: 'other_unsettled', refundId: 'rf1', refundError: MISMATCH, claimId: 'cl1', boundRow: { reason: 'claim:cl1' } }).certainty).not.toBe('bound_but_not_ours')
+    expect(moneyLineFor({ kind: 'other_unsettled', refundId: 'rf1', refundError: MISMATCH, claimId: 'cl1', boundRow: { reason: 'claim:cl10' } }).certainty).not.toBe('identity_unread')
+    expect(moneyLineFor({ kind: 'other_unsettled', refundId: 'rf1', refundError: MISMATCH, claimId: null, boundRow: { reason: 'claim:null' } }).certainty).not.toBe('identity_unread')
   })
 })
 
@@ -108,7 +156,9 @@ describe('no line ever asserts a cash outcome', () => {
     { kind: 'financial_verification' as const, refundId: null,  refundError: null },
     { kind: 'reconcile_required' as const,     refundId: null,  refundError: 'reconcile_required: …' },
     { kind: 'other_unsettled' as const,        refundId: 'rf1', refundError: null },
-    { kind: 'other_unsettled' as const,        refundId: 'rf9', refundError: MISMATCH },
+    { kind: 'other_unsettled' as const,        refundId: 'rf9', refundError: MISMATCH, claimId: 'cl1', boundRow: NOT_OURS_ROW },
+    { kind: 'other_unsettled' as const,        refundId: 'rf9', refundError: MISMATCH, claimId: 'cl1', boundRow: { reason: 'claim:cl1' } },
+    { kind: 'other_unsettled' as const,        refundId: 'rf1', refundError: 'stripe_reverted: x' },
     { kind: 'other_unsettled' as const,        refundId: null,  refundError: null },
   ]
 
@@ -132,7 +182,7 @@ describe('negative control — the shipped-and-audited refundId proxy would be c
   it('the round-3 rule calls a mismatch row authoritative; the real rule does not', () => {
     const roundThreeRule = (row: { refundId: string | null }) =>
       row.refundId ? 'son état fait foi' : 'rien n’est lié'
-    const mismatchRow = { kind: 'other_unsettled' as const, refundId: 'rf9', refundError: MISMATCH }
+    const mismatchRow = { kind: 'other_unsettled' as const, refundId: 'rf9', refundError: MISMATCH, claimId: 'cl1', boundRow: NOT_OURS_ROW }
     expect(roundThreeRule(mismatchRow)).toBe('son état fait foi')          // ← the defect
     expect(moneyLineFor(mismatchRow).certainty).toBe('bound_but_not_ours') // ← fixed
   })
@@ -155,11 +205,11 @@ describe('every mismatch string the engine actually writes is recognised', () =>
     for (const w of SHIPPED_MISMATCH_WRITERS) expect(isResumeMismatch(w)).toBe(true)
   })
 
-  it('EVERY one of them produces the not-ours line, pending path included', () => {
+  it('EVERY one of them produces the not-ours line on a row not stamped for the claim, pending path included', () => {
     // Two of the writers sit on the PENDING path. They must get the same treatment: a bound
     // refund that is not this claim's, with no assertion about what moved.
     for (const w of SHIPPED_MISMATCH_WRITERS) {
-      const l = moneyLineFor({ kind: 'other_unsettled', refundId: 'rf9', refundError: w })
+      const l = moneyLineFor({ kind: 'other_unsettled', refundId: 'rf9', refundError: w, claimId: 'cl1', boundRow: NOT_OURS_ROW })
       expect(l.certainty).toBe('bound_but_not_ours')
     }
   })
@@ -168,7 +218,7 @@ describe('every mismatch string the engine actually writes is recognised', () =>
     // The check is on the assertion, not on vocabulary: the honest line legitimately contains the
     // words "a été versé" inside a NEGATION ("it says nothing about what was paid"). A blunt
     // keyword match would fail on the correct text and pass on a reworded wrong one.
-    const l = moneyLineFor({ kind: 'other_unsettled', refundId: 'rf9', refundError: MISMATCH })
+    const l = moneyLineFor({ kind: 'other_unsettled', refundId: 'rf9', refundError: MISMATCH, claimId: 'cl1', boundRow: NOT_OURS_ROW })
     expect(l.text).not.toContain('de l’argent a bougé')       // the round-4 over-claim, verbatim
     // ROUND-6 AUDIT FIX (P3): the assertion here was /^(?!.*ne dit rien).*a été versé/, which the
     // NEXT line made unmatchable — inert. The check is now on the text OUTSIDE the negation:
@@ -199,5 +249,6 @@ describe('every mismatch string the engine actually writes is recognised', () =>
     const handTyped = 'resume_mismatch: something I made up'
     expect(isResumeMismatch(handTyped)).toBe(true)   // passes regardless of what ships
     expect(SHIPPED_MISMATCH_WRITERS.every((w) => isResumeMismatch(w))).toBe(true) // ← bound to source
+    expect(RESUME_MISMATCH).toBe('resume_mismatch')
   })
 })

@@ -249,9 +249,11 @@ export default function OrderHelpScreen() {
       if (ex.status === 'refunding') return t('claimRefunding')
       if (ex.status === 'approved') return t('claimApproved')
       if (ex.status === 'refunded') return t('claimRefunded')
+      // ROUND 13 (F07): « Remboursée » needs a proven row (F03); otherwise the customer reads it unconfirmed.
+      if (ex.status === 'refund_unconfirmed') return t('claimRefundUnconfirmed')
       // ROUND-11 AUDIT FIX (P1): a declaration close is not a refusal (lib/claim-action-rules customerClaimStatus).
       if (ex.status === 'closed_by_support') return t('claimClosedBySupport')
-      if (ex.status === 'refused' || ex.status === 'refused_final') return t('claimRefused')
+      if (ex.status === 'refused' || ex.status === 'refused_final' || ex.status === 'refused_by_grubano') return t('claimRefused')
       if (ex.status === 'arbitration') return t('claimInReview')
     }
     switch (eligibility?.reason) {

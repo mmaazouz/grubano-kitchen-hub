@@ -1,15 +1,22 @@
-// ── WHICH HUMAN ACTIONS THE SERVER ACCEPTS ON A CLAIM (T-49, round-9 audit fix) ──
+// ── WHICH HUMAN ACTIONS THE SERVER ACCEPTS ON A CLAIM, AND WHAT ITS MONEY FACTS ALLOW (T-49) ──
 //
 // WHY THIS IS A MODULE. Round 9 was the fourth round in which a server guard and the console
 // control that exercises it disagreed (Class 3), and the first in which a claim could reach a state
 // that no accepted action leads out of (Class 4). Both come from answering the same question in two
 // places. Every question "may a human do X on this claim?" now has ONE pure answer here: the server
 // asks it before it writes, the lists the consoles read carry its verdict, parity tests hold the two
-// sides together, and an exit-table test asserts that every non-terminal state has a way out
-// (tests/claims-t49-round10.test.ts, tests/claims-t49-round11.test.ts).
+// sides together, and an exit-table test asserts that every non-terminal state has a way out.
+//
+// ROUND 13 (docs/ops/CLAIMS-T49-ROUND13-SPEC-v1.md, slice W1) adds the pure layer the spec freezes:
+// the engine mirror, holds and verdict (G5), temporary versus permanent locks (G9), the quiescence
+// instant of a payable proof (C4), the exit table (D1), the refusal copy (D14), the reconcile gate
+// admissions (G1), the no-row derivation (G6/G7), the customer status contract (F01-F05) and the
+// closure-record constants (H05). Rule ids are cited next to the code that implements them.
 //
 // No I/O, and no import from lib/claims (which imports this module): the marker prefixes are
 // repeated here and pinned equal to lib/claims' exports by the round-10 test.
+
+import { ownersOf, stampedClaimId } from '@/lib/claim-attribution-rules'
 
 export const MARKERS = {
   FINANCIAL_VERIFICATION: 'financial_verification',
@@ -17,100 +24,239 @@ export const MARKERS = {
   NO_REFUND_PROVEN:       'no_refund_proven',
   RAIL_LOCKED:            'no_refund_proven_rail_locked',
   ENGINE_ROW_DEAD:        'engine_row_dead',
+  // ── ROUND 13: full prefixes, matched with startsWith (never includes) ──
+  /** G8: a proof of absence written by this build, payable from its quiescence instant (C4). */
+  PROOF_PAYABLE_V13:      'no_refund_proven:v13:',
+  /** G8/G9: the only TEMPORARY lock. It still starts with the rail-locked prefix. */
+  AWAITING_FINALIZATION:  'no_refund_proven_rail_locked:awaiting_finalization:',
+  /** C3 (b')/(c): a pre-engine safety hold. */
+  SAFETY_HOLD:            'refund_safety_hold:',
+  /** G8: STRIPE_REVERTED_TEXT on a non-terminal claim. */
+  STRIPE_REVERTED:        'stripe_reverted:',
+  /** G11: a settled claim whose refund later failed or was canceled at Stripe. */
+  REVERTED_AFTER_REFUND:  'stripe_reverted_after_refund:',
+  /** D11/F02: a declaration made on a REVERTED_AFTER_REFUND claim. */
+  DECLARED_AFTER_REVERT:  'declared_settled_after_revert:',
 } as const
 
 export const TERMINAL: readonly string[] = ['refunded', 'refused_final']
 
+/** B8/G1/F03: the bound Refund row as read. Every field is optional so a partial select stays typed. */
+export type BoundRowFacts = {
+  id?: string
+  orderId?: string | null
+  status?: string | null
+  stripeRefundId?: string | null
+  reason?: string | null
+  amountCents?: number | null
+  createdAt?: Date | string | null
+}
+
 /** The claim fields these rules read. Prisma rows satisfy it as they are. */
 export type ClaimFacts = {
+  id?: string
+  orderId?: string
   status: string
   refundAttempted?: boolean | null
   refundId?: string | null
   refundError?: string | null
   arbitrationDecision?: string | null
   responseDeadlineAt?: Date | string | null
+  /** F02: the restaurant's answer ('refused' has one writer, respondToClaim). */
+  restaurantResponse?: string | null
+  reason?: string | null
+  /** B8/G1: the bound row. undefined = NOT READ (every rule that needs it refuses); null = read, absent. */
+  boundRow?: BoundRowFacts | null
 }
 
 export type Refusal = { status: 409; error: string }
 
-const isReconcileMarker = (e?: string | null) => typeof e === 'string' && e.startsWith(MARKERS.RECONCILE_REQUIRED)
-const isRailLockedMarker = (e?: string | null) => typeof e === 'string' && e.startsWith(`${MARKERS.RAIL_LOCKED}:`)
+const starts = (e: string | null | undefined, prefix: string): boolean => typeof e === 'string' && e.startsWith(prefix)
+const isReconcileMarker = (e?: string | null) => starts(e, MARKERS.RECONCILE_REQUIRED)
+/** 'no_refund_proven:' — a legacy proof OR a v13 proof. Never the rail-locked prefix (its prefix is `no_refund_proven_`). */
+const isNoRefundProofText = (e?: string | null) => starts(e, `${MARKERS.NO_REFUND_PROVEN}:`)
+const isRailLockedText = (e?: string | null) => starts(e, `${MARKERS.RAIL_LOCKED}:`)
+const isResumeMismatchText = (e?: string | null) => starts(e, 'resume_mismatch')
 
 /**
  * How long a refund attempt may legitimately be in flight before its marker means something is
  * wrong. The marker is written at the START of every attempt: without this a healthy refund would be
  * listed as interrupted — and reconciled — while Stripe is still answering.
- * ROUND-10 AUDIT FIX (P2): the window only filtered ONE list, so round 10's ungated card offered
- * « Réconcilier » on an attempt in flight. It lives here now and the reconcile GATE applies it.
  */
 export const RECONCILE_GRACE_MS = 5 * 60 * 1000
 
-/** The age of a crash marker, or null when its timestamp cannot be read. A timestamp in the future
- *  (clock skew) is unreadable, never "healthy" — it fails visible. */
-export function reconcileMarkerAge(refundError: string | null | undefined, nowMs = Date.now()): number | null {
+/** The raw timestamp of a crash marker (the FIRST ISO instant after the prefix), or null. */
+function markerTimestampMs(refundError: string | null | undefined): number | null {
   if (!isReconcileMarker(refundError)) return null
   // A regex literal keeps its escapes visible: a shell-mangled copy of this once shipped inert.
   const m = /(\d{4}-\d{2}-\d{2}T[\d:.]+Z)/.exec(refundError as string)
   if (!m) return null
   const t = Date.parse(m[1])
-  if (!Number.isFinite(t)) return null
+  return Number.isFinite(t) ? t : null
+}
+
+/** The age of a crash marker, or null when its timestamp cannot be read. A timestamp in the future
+ *  (clock skew) is unreadable, never "healthy" — it fails visible. */
+export function reconcileMarkerAge(refundError: string | null | undefined, nowMs = Date.now()): number | null {
+  const t = markerTimestampMs(refundError)
+  if (t === null) return null
   const age = nowMs - t
   return age < 0 ? null : age
 }
 
+// ══ C4 — QUIESCENCE INSTANT OF A PAYABLE PROOF (replaces E5b) ═══════════════════════════════════
+
+/** C4: at least 60 min (ENGINE_DEAD_MARGIN_MS), far above the ~4 min Stripe budget of the pre-insert path. */
+export const ATTEMPT_QUIESCENCE_MS = 60 * 60 * 1000
+
+/** C4/D3: THE instant parser — one regex literal, no second parser anywhere. null when absent or unparsable. */
+export function proofInstant(e: string | null | undefined): Date | null {
+  if (typeof e !== 'string') return null
+  const m = /payable au plus tôt le (\d{4}-\d{2}-\d{2}T[\d:.]+Z) \(UTC\)/.exec(e)
+  if (!m) return null
+  const t = Date.parse(m[1])
+  return Number.isFinite(t) ? new Date(t) : null
+}
+
 /**
- * May `reconcileClaimEvidence` run on this claim? Admits exactly:
- *   - a claim parked in FINANCIAL VERIFICATION;
- *   - a claim carrying the crash marker, once its grace window has passed;
- *   - the legacy stranded shape (refunding, no binding, no error);
- *   - a claim BOUND to a refund row with no recorded error — reconcile applies that row's truth,
- *     reading Stripe for a pending row. Without this, a bound refund whose webhook never came had
- *     no human exit at all;
- *   - an approval whose refund attempt was taken with nothing recorded (no binding, no error).
- * NOT a healthy approved-but-unpaid claim (no binding): reconciling it could park a case whose
- * money truth is not in question — the round-8 finding this gate was written for.
+ * C4 proofInstantFor(preImage, now), used by N8 and T2(e') when they write PROOF_PAYABLE_V13:
+ * (1) the crash-marker timestamp in the pre-image + Q; (2) otherwise the instant a v13 pre-image
+ * already carries; (3) otherwise now + Q. Rule (1) needs the marker PREFIX: a v13 text carries an ISO
+ * instant too, and reading it as a marker would push the instant a second Q later.
+ */
+export function proofInstantFor(preImage: string | null | undefined, now: Date): Date {
+  const marker = markerTimestampMs(preImage)
+  if (marker !== null) return new Date(marker + ATTEMPT_QUIESCENCE_MS)
+  if (starts(preImage, MARKERS.PROOF_PAYABLE_V13)) {
+    const carried = proofInstant(preImage)
+    if (carried) return carried
+  }
+  return new Date(now.getTime() + ATTEMPT_QUIESCENCE_MS)
+}
+
+/** A v13 proof in the canonical shape D14 (0) and D2 (1)(c) name: approved, not attempted, unbound. */
+const isCanonicalV13 = (c: ClaimFacts) =>
+  c.status === 'approved' && !c.refundAttempted && !c.refundId && starts(c.refundError, MARKERS.PROOF_PAYABLE_V13)
+
+// ══ B8 / G1 — THE RECONCILE GATE ═════════════════════════════════════════════════════════════════
+
+/** B8: a legacy resume_mismatch on the claim's OWN stamped row. Identity is established: reconcile, never a declaration. */
+export function ownRowMismatch(c: ClaimFacts): boolean {
+  return c.status === 'refunding' && !!c.refundId && isResumeMismatchText(c.refundError)
+    && !!c.id && c.boundRow !== undefined && c.boundRow?.reason === `claim:${c.id}`
+}
+
+const RECONCILE_NOT_PENDING = 'Cette réclamation n’est pas en attente de réconciliation.'
+const RECONCILE_GRACE_TEXT = 'Une tentative de remboursement a démarré il y a moins de 5 minutes : la réconciliation est refusée jusqu’à la fin de cette fenêtre.'
+
+/** G1: admitted, and whether the only refusal is the marker grace (D14 (2) reads it). */
+function reconcileVerdict(c: ClaimFacts, nowMs: number): { admitted: boolean; graceOnly: boolean } {
+  const e = c.refundError
+  const reconcilable = c.status === 'refunding' || c.status === 'approved' || c.status === MARKERS.FINANCIAL_VERIFICATION
+  const legacyStranded = c.status === 'refunding' && !c.refundId && !e
+  const bound = (c.status === 'refunding' || c.status === 'approved') && !!c.refundId && !e
+  // An approval whose single refund attempt WAS taken with nothing recorded (no binding, no error).
+  const attemptedUnrecorded = c.status === 'approved' && c.refundAttempted === true && !c.refundId && !e
+  const existing = reconcilable && (c.status === MARKERS.FINANCIAL_VERIFICATION || isReconcileMarker(e) || legacyStranded || bound || attemptedUnrecorded)
+  // (i) a proof of absence (v13 or legacy) or a lock, AWAITING included.
+  const proofOrLock = c.status === 'approved' && !c.refundAttempted && !c.refundId && (isNoRefundProofText(e) || isRailLockedText(e))
+  // (i-b) a pre-engine safety hold.
+  const safetyHold = c.status === 'approved' && c.refundAttempted === true && !c.refundId && starts(e, MARKERS.SAFETY_HOLD)
+  // (iii) a settled claim whose bound row is on its own order and may carry a reversal (R0).
+  const row = c.boundRow
+  const settledBound = c.status === 'refunded' && !e && !!c.refundId && !!row && !!c.orderId && row.orderId === c.orderId
+    && (row.status === 'pending' || row.status === 'succeeded' || (row.status === 'failed' && !!row.stripeRefundId))
+  const admitted = existing || proofOrLock || safetyHold || ownRowMismatch(c) || settledBound
+  if (!admitted) return { admitted: false, graceOnly: false }
+  const age = reconcileMarkerAge(e, nowMs)
+  return { admitted: true, graceOnly: age !== null && age < RECONCILE_GRACE_MS }
+}
+
+/**
+ * G1: may `reconcileClaimEvidence` run on this claim? Admits exactly: FINANCIAL VERIFICATION; the crash
+ * marker once its grace has passed; the legacy stranded shape; a claim bound with no error; an attempt
+ * taken with nothing recorded; (i) an approved proof or lock; (i-b) a safety hold; (ii) the own-row
+ * legacy mismatch (B8); (iii) a settled claim bound to a row of its own order that is pending, succeeded,
+ * or failed with a Stripe id. A rule that needs the bound row refuses when it was not read.
+ * NOT a healthy approved-but-unpaid claim: reconciling it could park a case whose money truth is not in question.
  */
 export function reconcileRefusal(c: ClaimFacts, nowMs: number = Date.now()): Refusal | null {
-  const reconcilable = c.status === 'refunding' || c.status === 'approved' || c.status === MARKERS.FINANCIAL_VERIFICATION
-  const legacyStranded = c.status === 'refunding' && !c.refundId && !c.refundError
-  const bound = (c.status === 'refunding' || c.status === 'approved') && !!c.refundId && !c.refundError
-  // An approval whose single refund attempt WAS taken (refundAttempted) with nothing recorded about it
-  // — no binding, no error. No current writer leaves it; a legacy row can, and no human action accepted
-  // it at all (found by the round-10 exit table). Its money truth is unknown: evidence decides.
-  const attemptedUnrecorded = c.status === 'approved' && c.refundAttempted === true && !c.refundId && !c.refundError
-  if (reconcilable && (c.status === MARKERS.FINANCIAL_VERIFICATION || isReconcileMarker(c.refundError) || legacyStranded || bound || attemptedUnrecorded)) {
-    const age = reconcileMarkerAge(c.refundError, nowMs)
-    if (age !== null && age < RECONCILE_GRACE_MS) {
-      return { status: 409, error: 'Une tentative de remboursement a démarré il y a moins de 5 minutes : la réconciliation est refusée jusqu’à la fin de cette fenêtre.' }
-    }
-    return null
-  }
-  return { status: 409, error: 'Cette réclamation n’est pas en attente de réconciliation.' }
+  const v = reconcileVerdict(c, nowMs)
+  if (!v.admitted) return { status: 409, error: RECONCILE_NOT_PENDING }
+  if (v.graceOnly) return { status: 409, error: RECONCILE_GRACE_TEXT }
+  return null
 }
+
+// ══ D11 — THE DECLARATION EXIT PREDICATE ═════════════════════════════════════════════════════════
+
+/**
+ * D11 isStuckResolvable({claim, boundRow}). A declaration is a judgement, not evidence: never on a
+ * money-unknown marker, never on a proof of absence (v13 or legacy), never on a resume_mismatch whose
+ * identity is unread or is the claim's own row. It accepts a settled claim only when Stripe reversed it.
+ */
+export function isStuckResolvable(c: ClaimFacts): boolean {
+  const e = c.refundError
+  if (isReconcileMarker(e)) return false
+  if (isNoRefundProofText(e)) return false
+  if (c.status === 'refunded') return starts(e, MARKERS.REVERTED_AFTER_REFUND)
+  if (!e || (c.status !== 'approved' && c.status !== 'refunding')) return false
+  if (isResumeMismatchText(e)) return !!c.id && c.boundRow !== undefined && c.boundRow?.reason !== `claim:${c.id}`
+  return true
+}
+
+// ══ D14 / C4 / D13 — ARBITRATION REFUSALS ════════════════════════════════════════════════════════
+
+export const APPROVE_INSTANT_UNREADABLE =
+  'Approbation impossible : l’heure à partir de laquelle cette preuve d’absence permet un paiement n’a pas pu être lue. Relancez « Réconcilier d’après la preuve » (section « Vérification financière requise »).'
+export const approvePrematureText = (iso: string) =>
+  `Approbation prématurée : la preuve d’absence de cette réclamation ne permet un paiement qu’à partir du ${iso} (UTC) ; ce délai sépare toute nouvelle tentative de remboursement d’une éventuelle tentative antérieure. Rien n’est payé avant cette heure ; approuvez-la à nouveau ensuite.`
+export const APPROVE_LEGACY_PROOF =
+  'Approbation suspendue : la preuve d’absence de cette réclamation a été écrite par une version antérieure de la réconciliation, qui ne vérifiait pas toutes les conditions du moteur. Relancez « Réconcilier d’après la preuve » (section « Vérification financière requise ») avant toute approbation.'
+export const approveRevisableText = (stuckResolvable: boolean) =>
+  'Approbation impossible dans l’état enregistré : une nouvelle approbation ne paierait pas cette réclamation, ou n’est pas établie comme sûre (la cause est dans le détail de la réclamation). Rien n’est payé tant que cet état est enregistré. « Réconcilier d’après la preuve » (section « Vérification financière requise ») relit Stripe et nos lignes et réévalue toutes les conditions.'
+  + (stuckResolvable ? ' « Clôturer ce dossier… » enregistre votre déclaration.' : '')
+export const approvePermanentText = (stuckResolvable: boolean) =>
+  'Approbation impossible : une nouvelle approbation ne paierait pas cette réclamation (la cause est dans le détail de la réclamation). Rien ne sera payé par le rail pour elle.'
+  + (stuckResolvable ? ' Clôturez le dossier (« Clôturer ce dossier… »).' : ' Aucune action de l’application ne la clôt : vérifiez la commande dans Stripe.')
+/** D13 AM-B3: no refuse_final on any approved claim, arbitrationDecision null included. */
+export const REFUSE_APPROVED_AM_B3 =
+  'Cette réclamation a été approuvée — elle ne peut plus être refusée. Selon son état : approuvez-la à nouveau (réclamations et remboursements ouverts), réconciliez-la, ou clôturez le dossier (« Clôturer ce dossier… ») si le détail le propose.'
 
 /**
  * `arbitrateClaim`'s pre-checks — same checks, same order, same messages. The arbitration queue
  * emits both verdicts so the console disables exactly the decisions this refuses.
+ *   refuse_final on an approved claim → AM-B3 (D13).
+ *   approve on an approved claim, D14 in order:
+ *     (0) canonical v13 proof → only the C4 instant checks (unreadable; premature, REVISABLE);
+ *     (1) LEGACY proof → suspended until reconcile re-proves it;
+ *     (2) REVISABLE: any recorded error the reconcile gate admits (or refuses only for the marker grace);
+ *     (3) PERMANENT: any other recorded error.
+ *   then the existing checks (finalization lock, terminal, restaurant delay, not in arbitration).
  */
 export function arbitrationRefusal(c: ClaimFacts, decision: 'approve' | 'refuse_final', now: Date): Refusal | null {
-  // A rail-locked claim: the engine refuses every refund on the order. ROUND-10 AUDIT FIX (P3): the
-  // marker has several causes (a failed row, a failed refund still pending here, a dead pending row),
-  // not all permanent in the same way — the claim's own detail says which, so this line does not.
-  if (decision === 'approve' && isRailLockedMarker(c.refundError)) {
-    return { status: 409, error: 'Approbation impossible : le moteur refusera tout remboursement sur cette commande (la cause, et si elle est définitive, sont dans le détail de la réclamation). Clôturez le dossier (« Clôturer ce dossier… »).' }
+  if (decision === 'refuse_final' && c.status === 'approved') return { status: 409, error: REFUSE_APPROVED_AM_B3 }
+  if (decision === 'approve' && c.status === 'approved') {
+    if (isCanonicalV13(c)) {
+      const instant = proofInstant(c.refundError)
+      if (!instant) return { status: 409, error: APPROVE_INSTANT_UNREADABLE }
+      if (now.getTime() < instant.getTime()) return { status: 409, error: approvePrematureText(instant.toISOString()) }
+    } else if (isNoRefundProofText(c.refundError) && !starts(c.refundError, MARKERS.PROOF_PAYABLE_V13)) {
+      return { status: 409, error: APPROVE_LEGACY_PROOF }
+    } else if (c.refundError) {
+      const v = reconcileVerdict(c, now.getTime())
+      return { status: 409, error: v.admitted ? approveRevisableText(isStuckResolvable(c)) : approvePermanentText(isStuckResolvable(c)) }
+    }
   }
   // FINALIZATION LOCK: a decided outcome is not rewritten — except an UNPAID approval, which may be re-driven.
-  const awaitingRefundActivation = c.status === 'approved' && !c.refundAttempted
-  if (c.arbitrationDecision && !awaitingRefundActivation) {
+  // ROUND 13 (D2 (1)(b)): unpaid means UNBOUND too. An approval already bound to a Refund row (refundId set)
+  // is never re-driven by arbitration: approving it would call the engine on a claim a row already answers.
+  const legacyApproved = c.status === 'approved' && !c.refundAttempted && !c.refundId
+  if (c.arbitrationDecision && !legacyApproved) {
     return { status: 409, error: 'Cette réclamation a déjà été arbitrée — décision définitive.' }
-  }
-  if (c.arbitrationDecision === 'approved' && decision === 'refuse_final') {
-    return { status: 409, error: 'Cette réclamation a déjà été approuvée — elle ne peut plus être refusée (le client en a été informé).' }
   }
   if (TERMINAL.includes(c.status)) {
     return { status: 409, error: 'Cette réclamation est clôturée — elle ne peut plus être arbitrée.' }
   }
-  const legacyApproved = c.status === 'approved' && !c.refundAttempted
   const deadline = c.responseDeadlineAt instanceof Date ? c.responseDeadlineAt : null
   const silenceExpired = c.status === 'restaurant_review' && !!deadline && deadline.getTime() <= now.getTime()
   if (c.status === 'restaurant_review' && !silenceExpired) {
@@ -122,10 +268,513 @@ export function arbitrationRefusal(c: ClaimFacts, decision: 'approve' | 'refuse_
   return null
 }
 
+// ══ D1 — THE EXIT TABLE ══════════════════════════════════════════════════════════════════════════
+
+export type Exit = 'approve' | 'refuse_final' | 'reconcile' | 'attribute' | 'adopt' | 'stuck_close'
+const EXIT_ORDER: readonly Exit[] = ['approve', 'refuse_final', 'reconcile', 'attribute', 'adopt', 'stuck_close']
+
+export type RegistryId =
+  | 'E-01' | 'E-02' | 'E-03' | 'E-04' | 'E-05' | 'E-06' | 'E-07' | 'E-08' | 'E-09'
+  | 'E-10' | 'E-11' | 'E-12' | 'E-13' | 'E-14' | 'E-15' | 'E-16' | 'E-17' | 'E-18'
+/** What names a state whose exit set is empty or gated-only (D1 TEST). E ids for money states; the
+ *  decision states that are not money (IMPLEMENTATION NOTE (W1) on D1, ER-M06) carry their own note. */
+export type ExitNote =
+  | RegistryId
+  | 'terminal'
+  | 'not_money:awaiting_decision'
+  | 'not_money:restaurant_delay'
+  | 'not_money:refused_contestable'
+  | 'unread:bound_row'
+  | 'unknown_status'
+
+export type ExitInput = {
+  claim: ClaimFacts
+  /** undefined = not read. Overrides claim.boundRow when given. */
+  boundRow?: BoundRowFacts | null
+  orderId?: string
+  now: Date
+  /** D1 row 10: how many rows of the order pass the attributionRefusal pre-check. */
+  attributableRows?: number
+}
+
+const factsOf = (input: ExitInput): ClaimFacts => ({
+  ...input.claim,
+  ...(input.boundRow !== undefined ? { boundRow: input.boundRow } : {}),
+  ...(input.orderId !== undefined ? { orderId: input.orderId } : {}),
+})
+
+/**
+ * D1 acceptedExits({claim, boundRow, orderId, now}). Computed from the SAME predicates the routes
+ * apply (reconcileRefusal, isStuckResolvable, arbitrationRefusal, the FV-only attribution routes), so
+ * control parity (D0) holds by construction; tests/claims-t49-round10.test.ts pins the D1 sets.
+ * 'approve' is in the set for a canonical v13 proof before its instant too (D3: REVISABLE, the table keeps it) —
+ * but only when that instant can be READ: an unreadable instant refuses approval until reconcile re-derives
+ * it (C4/D3), so it is not a revisable approval (D1 row 2).
+ */
+export function acceptedExits(input: ExitInput): Exit[] {
+  const c = factsOf(input)
+  const out = new Set<Exit>()
+  const v13BeforeInstant = isCanonicalV13(c) && proofInstant(c.refundError) !== null
+  if (arbitrationRefusal(c, 'approve', input.now) === null || v13BeforeInstant) out.add('approve')
+  if (arbitrationRefusal(c, 'refuse_final', input.now) === null) out.add('refuse_final')
+  if (reconcileRefusal(c, input.now.getTime()) === null) out.add('reconcile')
+  if (c.status === MARKERS.FINANCIAL_VERIFICATION) {
+    if ((input.attributableRows ?? 0) > 0) out.add('attribute')
+    out.add('adopt')
+  }
+  if (isStuckResolvable(c)) out.add('stuck_close')
+  return EXIT_ORDER.filter((x) => out.has(x))
+}
+
+/** D1: the registry entry (or note) that names a state. The D1 TEST requires one for every empty or gated-only set. */
+export function exitRegistry(input: ExitInput): ExitNote | null {
+  const c = factsOf(input)
+  const e = c.refundError
+  switch (c.status) {
+    case 'restaurant_review': {
+      const d = c.responseDeadlineAt instanceof Date ? c.responseDeadlineAt : null
+      return d && d.getTime() <= input.now.getTime() ? 'not_money:awaiting_decision' : 'not_money:restaurant_delay'
+    }
+    case 'arbitration': return 'not_money:awaiting_decision'
+    case 'refused': return 'not_money:refused_contestable'
+    case MARKERS.FINANCIAL_VERIFICATION: return 'E-03' // E-03 ∪ E-04: the recorded reason decides
+    case 'approved':
+      if (!e) return c.refundAttempted || c.refundId ? null : 'E-10'
+      if (isReconcileMarker(e)) return 'E-05'
+      if (starts(e, MARKERS.PROOF_PAYABLE_V13)) return 'E-10'
+      if (isNoRefundProofText(e) || isRailLockedText(e) || starts(e, MARKERS.SAFETY_HOLD)) return 'E-01'
+      return 'E-02'
+    case 'refunding':
+      if (!e) return null
+      if (isReconcileMarker(e)) return 'E-05'
+      if (isResumeMismatchText(e)) {
+        if (c.boundRow === undefined) return 'unread:bound_row'
+        return ownRowMismatch(c) ? 'E-05' : 'E-02'
+      }
+      return 'E-02'
+    case 'refunded':
+      if (starts(e, MARKERS.REVERTED_AFTER_REFUND)) return 'E-06'
+      if (!e && c.refundId) {
+        if (c.boundRow === undefined) return 'unread:bound_row'
+        const row = c.boundRow
+        if (row && row.orderId === c.orderId) {
+          if (row.status === 'succeeded') return 'E-09'
+          if (row.status === 'pending' || (row.status === 'failed' && !!row.stripeRefundId)) return 'E-07'
+        }
+      }
+      return 'terminal'
+    case 'refused_final': return 'terminal'
+    default: return 'unknown_status'
+  }
+}
+
+// ══ G5 — ENGINE MIRROR, HOLDS AND VERDICT ════════════════════════════════════════════════════════
+
+/** G4: what a PENDING row's evidence says (loader output). */
+export type PendingRowTruth =
+  | { kind: 'at_stripe'; refundId: string; status: string }
+  | { kind: 'absent_within_window'; until: Date }
+  | { kind: 'absent_dead' }
+  | { kind: 'contradiction'; detail: string }
+  | { kind: 'unreadable' }
+
+export type MoneyRow = {
+  id: string
+  status: string
+  amountCents: number
+  stripeRefundId: string | null
+  reason: string | null
+  idempotencyKey: string | null
+  createdAt: Date
+  royaltyRefundCents?: number | null
+}
+
+export type StripeRefundFact = {
+  id: string
+  status: string
+  amount: number
+  /** The charge id the refund sits on (the loader normalizes an expanded object to its id). */
+  charge?: string | null
+  metadata?: { grubano_refund_row?: string | null } | null
+}
+
+/** A claim counted by boundToWhere(owner, claimId) (B1). */
+export type BinderFact = { id: string; status: string; refundError: string | null; refundId: string | null }
+
+/** G4/G5 H1: a row marked succeeded here that Stripe does not count on this payment. */
+export type SucceededNotCounted = {
+  rowId: string
+  how: 'reverted' | 'absent' | 'other_payment' | 'pending_at_stripe'
+  refundId: string | null
+  stripeStatus?: string | null
+}
+/** G4/G5 H3: a row whose Stripe read contradicts itself. */
+export type RowContradiction = { rowId: string; rowStatus: string; detail: string }
+
+/** G3 ReapprovalFacts, the fields the pure derivation reads (no ownStampedRowIds: E5b is deleted). */
+export type ReapprovalFacts = {
+  orderId: string
+  requestedAmountCents: number
+  orderPaymentStatus: string
+  hasPaymentIntent: boolean
+  piStatus: string
+  chargeId: string | null
+  chargeAmountCents: number
+  amountCapturedCents: number
+  chargeDisputed: boolean
+  amountRefundedCents: number
+  /** true / false, or null when unknown (ROUTED copy has an « unknown » form). */
+  routed: boolean | null
+  royaltyStatus: string | null
+  stripeListLength: number
+  rows: MoneyRow[]
+  /** L: every refund of the PaymentIntent (complete list). */
+  L: StripeRefundFact[]
+  /** Evidence for each PENDING row, by row id. */
+  truths: Record<string, PendingRowTruth>
+  /** Binders of each owner row (boundToWhere(owner.id, claimId)), by row id. */
+  binders: Record<string, BinderFact[]>
+  /** A stamp's claim Y when Y is not among the binders: null = not found. */
+  stampedClaims: Record<string, { status: string; refundId: string | null } | null>
+  succeededNotCounted: SucceededNotCounted[]
+  rowContradictions: RowContradiction[]
+}
+
+export type PendingEvidence =
+  | 'failed_at_stripe' | 'dead' | 'within_window' | 'pending_at_stripe'
+  | 'succeeded_at_stripe_clawback' | 'succeeded_at_stripe'
+  /** contradiction or unreadable evidence: never classified as a class above (N6 / N1 decide first). */
+  | 'unclassified'
+
+/** G5 pendingEvidence per pending row. The clawback class applies at ANY age (fail closed, R-A0-2). */
+export function pendingEvidenceOf(row: MoneyRow, truth: PendingRowTruth | undefined, royaltyStatus: string | null): PendingEvidence {
+  if (!truth) return 'unclassified'
+  if (truth.kind === 'absent_dead') return 'dead'
+  if (truth.kind === 'absent_within_window') return 'within_window'
+  if (truth.kind !== 'at_stripe') return 'unclassified'
+  if (truth.status === 'failed' || truth.status === 'canceled') return 'failed_at_stripe'
+  if (truth.status === 'pending' || truth.status === 'requires_action') return 'pending_at_stripe'
+  if (truth.status === 'succeeded') {
+    const clawback = (row.royaltyRefundCents ?? 0) > 0 && (royaltyStatus === 'settled' || royaltyStatus === 'settling')
+    return clawback ? 'succeeded_at_stripe_clawback' : 'succeeded_at_stripe'
+  }
+  return 'unclassified'
+}
+
+export type EngineRefusal =
+  | { step: 'E1'; paymentStatus: string; hasPaymentIntent: boolean }
+  | { step: 'E2'; rowIds: string[] }
+  | { step: 'E1b'; piStatus: string }
+  | { step: 'E3'; oldestRowIds: string[]; evidenceByRow: Record<string, PendingEvidence>; otherPendingRowIds: string[]; engineListTruncated: boolean }
+  | { step: 'E4'; refundedCents: number; chargeAmountCents: number }
+  | { step: 'E5'; requestedAmountCents: number; refundableCents: number }
+  | { step: 'E6'; key: string; rowId: string }
+
+/**
+ * G5 engineRefusalOnReapproval: the FIRST refusal lib/refund.ts executeRefund reaches on these facts,
+ * in its own order (724-839). PIX and E1c are not returned: the loader makes them unreadable / no_charge.
+ */
+export function engineRefusalOnReapproval(f: ReapprovalFacts): EngineRefusal | null {
+  if ((f.orderPaymentStatus !== 'paid' && f.orderPaymentStatus !== 'reconcile_manual') || !f.hasPaymentIntent) {
+    return { step: 'E1', paymentStatus: f.orderPaymentStatus, hasPaymentIntent: f.hasPaymentIntent }
+  }
+  const failedWithId = f.rows.filter((r) => r.status === 'failed' && !!r.stripeRefundId)
+  if (failedWithId.length) return { step: 'E2', rowIds: failedWithId.map((r) => r.id) }
+  if (f.piStatus !== 'succeeded') return { step: 'E1b', piStatus: f.piStatus }
+  const pending = f.rows.filter((r) => r.status === 'pending')
+  if (pending.length) {
+    const min = Math.min(...pending.map((r) => r.createdAt.getTime()))
+    const oldest = pending.filter((r) => r.createdAt.getTime() === min)
+    const evidenceByRow: Record<string, PendingEvidence> = {}
+    for (const r of pending) evidenceByRow[r.id] = pendingEvidenceOf(r, f.truths[r.id], f.royaltyStatus)
+    return {
+      step: 'E3',
+      oldestRowIds: oldest.map((r) => r.id),
+      evidenceByRow,
+      otherPendingRowIds: pending.filter((r) => r.createdAt.getTime() !== min).map((r) => r.id),
+      engineListTruncated: oldest.some((r) => !r.stripeRefundId) && f.stripeListLength > 100,
+    }
+  }
+  const refundable = f.chargeAmountCents - f.amountRefundedCents
+  if (refundable <= 0) return { step: 'E4', refundedCents: f.amountRefundedCents, chargeAmountCents: f.chargeAmountCents }
+  const req = f.requestedAmountCents
+  if (!Number.isInteger(req) || req <= 0 || req > refundable) {
+    return { step: 'E5', requestedAmountCents: req, refundableCents: refundable }
+  }
+  const key = `refund:${f.orderId}:${f.amountRefundedCents}`
+  const holder = f.rows.find((r) => r.idempotencyKey === key)
+  if (holder) return { step: 'E6', key, rowId: holder.id }
+  return null
+}
+
+export type SafetyHold =
+  | { hold: 'H1'; rowId: string; how: SucceededNotCounted['how']; refundId: string | null; stripeStatus: string | null }
+  | { hold: 'H2'; refundId: string; status: string }
+  | { hold: 'H3'; rowId: string; rowStatus: string; detail: string }
+  | { hold: 'H5'; cause: 'disputed'; chargeId: string | null }
+  | { hold: 'H5'; cause: 'captured'; requestedAmountCents: number; remainingCapturedCents: number }
+
+/** G5 reapprovalSafetyHolds: Claims-side holds the engine does not model. H2 counts ZERO-owner refunds only (B3). */
+export function reapprovalSafetyHolds(f: ReapprovalFacts): SafetyHold[] {
+  const holds: SafetyHold[] = []
+  for (const s of f.succeededNotCounted) {
+    holds.push({ hold: 'H1', rowId: s.rowId, how: s.how, refundId: s.refundId, stripeStatus: s.stripeStatus ?? null })
+  }
+  if (f.routed === true) {
+    for (const r of f.L) {
+      if ((r.status === 'failed' || r.status === 'canceled') && ownersOf(r, f.rows).length === 0) {
+        holds.push({ hold: 'H2', refundId: r.id, status: r.status })
+      }
+    }
+  }
+  for (const k of f.rowContradictions) holds.push({ hold: 'H3', rowId: k.rowId, rowStatus: k.rowStatus, detail: k.detail })
+  if (f.chargeDisputed === true) holds.push({ hold: 'H5', cause: 'disputed', chargeId: f.chargeId })
+  const remaining = f.amountCapturedCents - f.amountRefundedCents
+  if (f.requestedAmountCents > remaining) {
+    holds.push({ hold: 'H5', cause: 'captured', requestedAmountCents: f.requestedAmountCents, remainingCapturedCents: remaining })
+  }
+  return holds
+}
+
+export type LockedVerdict = { locked: true; refusal: EngineRefusal | null; holds: SafetyHold[] }
+export type ReapprovalVerdict = 'payable' | LockedVerdict
+
+/** G5: payable only with no engine refusal and no hold. */
+export function reapprovalVerdict(f: ReapprovalFacts): ReapprovalVerdict {
+  const refusal = engineRefusalOnReapproval(f)
+  const holds = reapprovalSafetyHolds(f)
+  return refusal === null && holds.length === 0 ? 'payable' : { locked: true, refusal, holds }
+}
+
+/**
+ * G9 lockIsTemporary: the ONLY lock whose cause can cease without a Claims action — no hold, the
+ * refusal is E3, every oldest row's Stripe refund succeeded with no settled-royalty clawback, and the
+ * engine's list is not truncated. Every other lock is permanent (LOCKED tail).
+ */
+export function lockIsTemporary(v: ReapprovalVerdict): boolean {
+  if (v === 'payable') return false
+  if (v.holds.length > 0 || !v.refusal || v.refusal.step !== 'E3') return false
+  const e3 = v.refusal
+  return !e3.engineListTruncated && e3.oldestRowIds.length > 0 && e3.oldestRowIds.every((id) => e3.evidenceByRow[id] === 'succeeded_at_stripe')
+}
+
+export type ProofPrefix =
+  | typeof MARKERS.PROOF_PAYABLE_V13
+  | typeof MARKERS.AWAITING_FINALIZATION
+  | 'no_refund_proven_rail_locked:'
+
+/** G8: verdict → prefix. */
+export function proofPrefixFor(v: ReapprovalVerdict): ProofPrefix {
+  if (v === 'payable') return MARKERS.PROOF_PAYABLE_V13
+  return lockIsTemporary(v) ? MARKERS.AWAITING_FINALIZATION : 'no_refund_proven_rail_locked:'
+}
+
+// ══ G6 / G7 — N1-N8: THE PURE NO-ROW DERIVATION ══════════════════════════════════════════════════
+
+/** G3 loader output: readable facts, or why they are not readable. */
+export type OrderMoneyRead =
+  | { readable: true; facts: ReapprovalFacts }
+  /** Transient: Stripe or a row read failed. refundedCents when the charge was read before the failure. */
+  | { readable: false; permanent: null; refundedCents?: number | null }
+  | { readable: false; permanent: 'list_over_cap'; refundedCents?: number | null }
+  | { readable: false; permanent: 'no_charge'; rows: MoneyRow[]; paymentStatus: string; piStatus: string }
+
+/** A standing refund explained by another settled claim (G7 N3). */
+export type ExplainedRefund = { refundId: string; rowId: string; claimId: string; stamped: boolean; amountCents: number; status: string }
+
+export type NoRowPark = { kind: 'park'; reason: 'refund_moved_unattributed' | 'stripe_refund_contradiction'; detail: string }
+export type NoRowOutcome =
+  | NoRowPark
+  /** G6: the canonical no-charge lock; its refusal is the first of E1 / E1b / E1c on the facts. */
+  | { kind: 'proof'; basis: 'no_charge'; prefix: 'no_refund_proven_rail_locked:'; noChargeStep: 'E1' | 'E1b' | 'E1c' }
+  /** G7 N8 → G8. The text is rendered by the G8 writer from these fields (IMPLEMENTATION NOTE (W1) on G7). */
+  | { kind: 'proof'; basis: 'verdict'; prefix: ProofPrefix; verdict: ReapprovalVerdict; explained: ExplainedRefund[] }
+  | { kind: 'no_write'; outcome: 'stripe_unreadable_retry' }
+  | { kind: 'no_write'; outcome: 'unconfirmed_within_window'; until: Date }
+  /** A standing refund owned by a row stamped for THIS claim: the no-row branch no longer applies. */
+  | { kind: 'no_write'; outcome: 'changed_during_read' }
+
+const STANDING = ['succeeded', 'pending', 'requires_action']
+const park = (reason: NoRowPark['reason'], detail: string): NoRowPark => ({ kind: 'park', reason, detail })
+const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0)
+
+/**
+ * G6 N1 + G7 N2-N7 + the N8 verdict, on the loader's facts. Pure: reconcile (N0-N8) and T2 (e') call it
+ * on the same facts and must reach the same outcome. It never reads a claim's identity from anything
+ * but a stamp or a binding (B2), and never turns an unreadable fact into a proof.
+ */
+export function deriveNoRowOutcome(read: OrderMoneyRead, claimId: string): NoRowOutcome {
+  if (!read.readable) {
+    if (read.permanent === 'no_charge') {
+      const variant = read.rows.find((r) => !!r.stripeRefundId) ?? read.rows.find((r) => r.status === 'pending')
+      if (variant) {
+        return park('stripe_refund_contradiction', `La ligne ${variant.id} enregistre un remboursement alors que le paiement Stripe de cette commande n’a pas de charge. Aucune conclusion tirée.`)
+      }
+      const noChargeStep = read.paymentStatus !== 'paid' && read.paymentStatus !== 'reconcile_manual' ? 'E1'
+        : read.piStatus !== 'succeeded' ? 'E1b' : 'E1c'
+      return { kind: 'proof', basis: 'no_charge', prefix: 'no_refund_proven_rail_locked:', noChargeStep }
+    }
+    if (read.permanent === 'list_over_cap') {
+      return park('refund_moved_unattributed', 'Stripe rapporte plus de 1 000 remboursements sur ce paiement : leur liste complète ne peut pas être lue, aucune attribution n’est établie.')
+    }
+    const r = read.refundedCents
+    if (!r) return { kind: 'no_write', outcome: 'stripe_unreadable_retry' }
+    return park('refund_moved_unattributed', `Stripe rapporte ${r} c remboursés sur ce paiement, mais la liste complète de ses remboursements, ou la lecture d’une ligne de remboursement, n’a pas pu être lue : aucune attribution n’est établie. Relancez « Réconcilier d’après la preuve ».`)
+  }
+
+  const f = read.facts
+  const r = f.amountRefundedCents
+  const standing = f.L.filter((s) => STANDING.includes(s.status))
+
+  // N2 — a standing refund on another charge than the one Stripe counts.
+  const offCharge = standing.filter((s) => s.charge != null && f.chargeId != null && s.charge !== f.chargeId)
+  if (offCharge.length) {
+    return park('stripe_refund_contradiction', `Stripe rapporte sur ce paiement ${offCharge.map((s) => s.id).join(', ')} sur une autre charge que ${f.chargeId}, la charge dont il compte ${r} c remboursés. Aucune conclusion tirée.`)
+  }
+
+  // N3 — owners, the explanation rule, AM-A5.
+  const explained: ExplainedRefund[] = []
+  const unexplained: string[] = []
+  for (const s of standing) {
+    const owners = ownersOf(s, f.rows)
+    const failedOwner = owners.find((o) => o.status === 'failed')
+    if (failedOwner) {
+      return park('stripe_refund_contradiction', `La ligne ${failedOwner.id} est ÉCHOUÉE dans notre base, mais Stripe rapporte son remboursement ${s.id} « ${s.status} ». Aucune conclusion tirée.`)
+    }
+    if (owners.length !== 1) { unexplained.push(s.id); continue }
+    const owner = owners[0]
+    const binders = f.binders[owner.id] ?? []
+    const stamp = stampedClaimId(owner.reason)
+    if (stamp === claimId) return { kind: 'no_write', outcome: 'changed_during_read' }
+    const x = binders.length === 1 && binders[0].status === 'refunded' && binders[0].refundError === null ? binders[0] : null
+    if (x && (stamp === null || stamp === x.id)) {
+      explained.push({ refundId: s.id, rowId: owner.id, claimId: x.id, stamped: stamp !== null, amountCents: s.amount, status: s.status })
+      continue
+    }
+    if (stamp !== null) {
+      const y = binders.find((b) => b.id === stamp) ?? f.stampedClaims[stamp] ?? null
+      const other = binders.find((b) => b.id !== stamp) ?? null
+      const settledElsewhere = !!y && y.status === 'refunded' && !!y.refundId && y.refundId !== owner.id
+      return park('refund_moved_unattributed',
+        `Le remboursement ${s.id} (ligne ${owner.id}) porte l’identité de la réclamation ${stamp}`
+        + (y ? `, dont le statut est « ${y.status} »${settledElsewhere ? ` et qui est soldée sur une autre ligne (${y.refundId})` : ''}` : ', introuvable')
+        + (other ? ` ; il est lié à la réclamation ${other.id}` : '')
+        + ' : cet argent n’est ni attribuable à cette réclamation ni, de façon établie, à une autre. Anomalie à instruire ; aucune conclusion tirée.')
+    }
+    unexplained.push(s.id)
+  }
+
+  const sumSucc = sum(standing.filter((s) => s.status === 'succeeded').map((s) => s.amount))
+  const sumPend = sum(standing.filter((s) => s.status !== 'succeeded').map((s) => s.amount))
+  const sumAll = sumSucc + sumPend
+  const explainedList = explained.map((x) => `${x.refundId} → ${x.claimId}`).join(', ')
+  const detailUnattributed = (ids: string[] = unexplained, stillPending: boolean = standing.some((s) => s.status !== 'succeeded')) =>
+    `Des remboursements existent sur cette commande (Stripe : ${r} c remboursés ; liste du paiement : ${sumSucc} c aboutis, ${sumPend} c en attente ; ${f.rows.length} ligne(s) Refund). `
+    + `Au moins un remboursement (${ids.length ? ids.join(', ') : 'non identifié dans la liste'}) n’est rattaché ni à l’identité de cette réclamation ni, de façon établie, à une autre réclamation soldée`
+    + (explained.length ? ' ; rattachés à d’autres réclamations soldées : ' + explainedList : '')
+    + '. L’attribution ne peut pas être prouvée.'
+    + (stillPending ? ' Un remboursement de ce paiement est encore en attente chez Stripe : relancez « Réconcilier d’après la preuve » lorsqu’il sera terminal.' : '')
+
+  // N4 — Σsucceeded ≤ refunded ≤ Σstanding.
+  if (!(sumSucc <= r && r <= sumAll)) {
+    if (r === 0) {
+      return park('stripe_refund_contradiction', `Stripe rapporte ${r} c remboursés sur la charge ${f.chargeId}, mais la liste complète des remboursements du paiement totalise ${sumSucc} c aboutis et ${sumAll} c aboutis ou en attente. Les deux lectures se contredisent ; aucune conclusion tirée. Relancez la réconciliation.`)
+    }
+    return park('refund_moved_unattributed', detailUnattributed())
+  }
+
+  // N5 — any standing refund not explained.
+  if (unexplained.length) return park('refund_moved_unattributed', detailUnattributed())
+
+  // N6 — a row whose Stripe reads contradict each other.
+  if (f.rowContradictions.length) return park('stripe_refund_contradiction', f.rowContradictions[0].detail)
+
+  // N7 — in flight, within the window, unclassifiable.
+  const pendingRows = f.rows.filter((row) => row.status === 'pending')
+  const inflight = new Set<string>(standing.filter((s) => s.status !== 'succeeded').map((s) => s.id))
+  for (const row of pendingRows) {
+    const t = f.truths[row.id]
+    if (t && t.kind === 'at_stripe' && (t.status === 'pending' || t.status === 'requires_action')) inflight.add(t.refundId)
+  }
+  for (const s of f.succeededNotCounted) if (s.how === 'pending_at_stripe' && s.refundId) inflight.add(s.refundId)
+  if (inflight.size) {
+    const ids = Array.from(inflight)
+    // IMPLEMENTATION NOTE (W1) on G7 N7: an in-flight refund that no settled claim explains (a pending
+    // row at Stripe absent from L by read skew) is not « rattaché à une AUTRE réclamation » — that
+    // attribution is not established. It parks with DETAIL_UNATTRIBUTED naming it instead.
+    const explainedIds = new Set(explained.map((x) => x.refundId))
+    const unexplainedInflight = ids.filter((id) => !explainedIds.has(id))
+    if (unexplainedInflight.length) return park('refund_moved_unattributed', detailUnattributed(unexplainedInflight, true))
+    const map =explained.filter((x) => inflight.has(x.refundId)).map((x) => `${x.refundId} → ${x.claimId}`).join(', ')
+    return park('refund_moved_unattributed', `Stripe rapporte ${r} c remboursés sur ce paiement ; ${ids.join(', ')} est rattaché à une AUTRE réclamation (${map}) mais encore EN ATTENTE chez Stripe : aucune conclusion pour cette réclamation avant qu’il soit terminal. Relancez alors « Réconcilier d’après la preuve ».`)
+  }
+  const within = pendingRows.map((row) => f.truths[row.id]).filter((t): t is Extract<PendingRowTruth, { kind: 'absent_within_window' }> => !!t && t.kind === 'absent_within_window')
+  if (within.length) {
+    return { kind: 'no_write', outcome: 'unconfirmed_within_window', until: new Date(Math.max(...within.map((t) => t.until.getTime()))) }
+  }
+  const CLASSIFIED: PendingEvidence[] = ['failed_at_stripe', 'dead', 'succeeded_at_stripe', 'succeeded_at_stripe_clawback']
+  const unclassifiable = pendingRows.find((row) => !CLASSIFIED.includes(pendingEvidenceOf(row, f.truths[row.id], f.royaltyStatus)))
+  if (unclassifiable) {
+    return park('stripe_refund_contradiction', `La ligne ${unclassifiable.id} est en attente sans preuve classable ; aucune conclusion tirée.`)
+  }
+
+  // N8 — verdict → proof (G8 writes it).
+  const verdict = reapprovalVerdict(f)
+  return { kind: 'proof', basis: 'verdict', prefix: proofPrefixFor(verdict), verdict, explained }
+}
+
+// ══ F01-F05 — THE CUSTOMER STATUS CONTRACT ═══════════════════════════════════════════════════════
+
+/** F01: the closed set. ClaimSection renders `status.${s}` from customerClaimStatus only. */
+export const CUSTOMER_STATUSES = [
+  'restaurant_review', 'refused', 'arbitration', 'approved', 'refunding', 'refunded', 'refund_unconfirmed',
+  'refused_final', 'refused_by_grubano', 'closed_by_support', 'financial_verification',
+] as const
+export type CustomerStatus = typeof CUSTOMER_STATUSES[number]
+
+/** F02: how a terminal claim was closed. null for a non-terminal claim and for a reverted settlement. */
+export type ClosureKind = 'refunded' | 'settled_by_declaration' | 'closed_by_declaration' | 'refused_confirmed' | 'refused_by_grubano'
+export function claimClosureKind(c: ClaimFacts): ClosureKind | null {
+  if (c.status === 'refunded') {
+    if (typeof c.refundError === 'string' && c.refundError.startsWith(MARKERS.REVERTED_AFTER_REFUND)) return null
+    return c.refundError ? 'settled_by_declaration' : 'refunded'
+  }
+  if (c.status === 'refused_final') {
+    if (c.arbitrationDecision !== 'refused_final') return 'closed_by_declaration'
+    return c.restaurantResponse === 'refused' ? 'refused_confirmed' : 'refused_by_grubano'
+  }
+  return null
+}
+export const CLOSURE_TRIGGER: Record<ClosureKind, string> = {
+  refunded: 'claim_decision_refunded',
+  settled_by_declaration: 'claim_closed_by_support',
+  closed_by_declaration: 'claim_closed_by_support',
+  refused_confirmed: 'claim_decision_refused_final',
+  refused_by_grubano: 'claim_decision_refused_final',
+}
+export function refusalEmailKind(c: ClaimFacts | null | undefined): 'refused_final' | 'refused_by_grubano' {
+  return c && claimClosureKind(c) === 'refused_confirmed' ? 'refused_final' : 'refused_by_grubano'
+}
+
+/** H05: this build's closure record — the only closure-notice eligibility source. */
+export const CLOSURE_RECORD_TRIGGER = 'claim_closure_record'
+export const closureRecordKey = (id: string) => `claim:${id}`
+
+/** F03: the bound row proves a settlement the customer may read as « Remboursée ». */
+export function refundedRowProven(row: { orderId?: string | null; status?: string | null; amountCents?: number | null } | null | undefined, claimOrderId: string): boolean {
+  return !!row && row.orderId === claimOrderId && (row.status === 'succeeded' || row.status === 'pending')
+    && typeof row.amountCents === 'number' && Number.isInteger(row.amountCents) && row.amountCents > 0
+}
+/** F03: null when unreadable (binders null) or ambiguous (≥ 2 non-mismatch binders, A-S43). */
+export function refundedRowTruth(row: Parameters<typeof refundedRowProven>[0], binders: number | null, claimOrderId: string): boolean | null {
+  if (binders === null) return null
+  if (binders >= 2) return null // A-S43: never « Remboursée » for any claim on an ambiguous row
+  return refundedRowProven(row, claimOrderId)
+}
+
 /**
  * Whether a bound refund row lets the customer read « remboursement en cours »: it carries a Stripe
- * refund id AND is still pending in our base. ROUND-10 AUDIT FIX (P1): the Stripe id alone was used,
- * so a row that had already FAILED read « en cours ». null = the row could not be read.
+ * refund id AND is still pending in our base. null = the row could not be read.
  */
 export function boundRowShowsInProgress(row: { status?: string | null; stripeRefundId?: string | null } | null | undefined): boolean | null {
   if (!row) return null
@@ -133,29 +782,31 @@ export function boundRowShowsInProgress(row: { status?: string | null; stripeRef
 }
 
 /**
- * The status the CUSTOMER is shown. The raw status of a recovery state is not a statement the
- * customer can read truthfully: « remboursement en cours » only when a refund is bound to a row
- * that is pending and recorded at Stripe; every state whose money truth is open, or whose engine run
- * failed, reads as the neutral manual review.
+ * F04: the status the CUSTOMER is shown — the single merged body. A money state whose truth is open
+ * reads as the neutral manual review; « Remboursée » needs the F03 proof; an unknown raw status fails
+ * closed (never a raw key path).
  */
-export function customerClaimStatus(c: ClaimFacts, boundRowInProgress: boolean | null): string {
-  if (c.status === MARKERS.FINANCIAL_VERIFICATION) return MARKERS.FINANCIAL_VERIFICATION
-  if (c.status === 'refunding') {
-    return !c.refundError && !!c.refundId && boundRowInProgress === true ? 'refunding' : MARKERS.FINANCIAL_VERIFICATION
-  }
-  if (c.status === 'approved' && c.refundError) return MARKERS.FINANCIAL_VERIFICATION
-  // ROUND-11 AUDIT FIX (P1): 'refused_final' has two writers. arbitrateClaim's refusal records
-  // arbitrationDecision 'refused_final'; the declaration close (resolveStuckClaim, « Clôturer sans
-  // paiement ») leaves the decision as it was — often 'approved'. That second claim was never refused:
-  // telling the customer « Refus confirmé » was false. It reads as a closure by the team.
-  if (c.status === 'refused_final' && c.arbitrationDecision !== 'refused_final') return 'closed_by_support'
-  return c.status
+export function customerClaimStatus(c: ClaimFacts, boundRowInProgress: boolean | null, refundedRow: boolean | null = null): CustomerStatus {
+  const FV = MARKERS.FINANCIAL_VERIFICATION as 'financial_verification'
+  if (c.status === FV) return FV
+  if (c.status === 'refunding') return !c.refundError && !!c.refundId && boundRowInProgress === true ? 'refunding' : FV
+  if (c.status === 'approved') return (c.refundError || c.refundAttempted === true) ? FV : 'approved'
+  const kind = claimClosureKind(c)
+  if (c.status === 'refunded' && kind === null) return FV // REVERTED_AFTER_REFUND
+  if (kind === 'refunded') return refundedRow === true ? 'refunded' : refundedRow === false ? 'refund_unconfirmed' : FV
+  if (kind === 'settled_by_declaration' || kind === 'closed_by_declaration') return 'closed_by_support'
+  if (kind === 'refused_confirmed') return 'refused_final'
+  if (kind === 'refused_by_grubano') return 'refused_by_grubano'
+  if (c.status === 'restaurant_review' || c.status === 'refused' || c.status === 'arbitration') return c.status
+  return FV
 }
+
+// ══ F15 — GUIDANCE AND THE absence_proven_payable MONEY LABEL ════════════════════════════════════
 
 /**
  * The line an operator reads for a money state the stuck-money hatch does NOT accept: the fact, and
  * the one accepted action that moves it. Never a mechanism the code does not run, and never a Stripe
- * state this list did not read (ROUND-10 AUDIT FIX, P2: the money states below come from OUR rows).
+ * state this list did not read.
  */
 const GUIDANCE: Record<string, string> = {
   reconcile_required:
@@ -170,14 +821,25 @@ const GUIDANCE: Record<string, string> = {
     'Notre ligne liée est marquée ABOUTIE (statut enregistré d’après Stripe) ; la réclamation n’est pas encore réconciliée. « Réconcilier d’après la preuve » l’applique.',
   stale_refunding_no_refund_row:
     'La réclamation est liée à une ligne de remboursement introuvable. « Réconcilier d’après la preuve » la place en vérification financière, où un remboursement existant peut être lié.',
+  // F15.
   approved_not_driven:
-    'Approuvée, jamais payée. Elle ne se paie que par l’approbation admin (file d’arbitrage), réclamations et remboursements ouverts. Aucune clôture manuelle sur cet état.',
+    'Approuvée, jamais payée. Elle ne se paie que par l’approbation admin (file d’arbitrage), réclamations et remboursements ouverts, et seulement si la vérification avant moteur le permet à ce moment. Aucune clôture manuelle sur cet état.',
+  // F15 + ER-R27: « abouti ou en attente » — an ownerless FAILED Dashboard refund can stand beside a v13 proof (A-S08b).
   absence_proven_payable:
-    'Rien à clôturer : approuvée et non payée, aucun remboursement n’a déplacé d’argent. Elle ne se paie que par une nouvelle approbation admin, réclamations et remboursements ouverts.',
+    'Rien à clôturer : approuvée et non payée ; à la preuve, Stripe ne rapportait aucun remboursement abouti ou en attente non expliqué. Elle ne se paie que par une nouvelle approbation admin, réclamations et remboursements ouverts, au plus tôt à l’instant écrit dans son détail, et seulement si la relecture avant moteur confirme encore la preuve.',
   refund_error_recorded:
     'Erreur de remboursement enregistrée : lisez le détail. « Clôturer ce dossier… » enregistre votre déclaration ; aucune action ici ne déplace d’argent.',
 }
 
 export function moneyStateGuidance(moneyState: string): string {
   return GUIDANCE[moneyState] ?? 'État non reconnu : aucune action proposée ici. Vérifiez la commande dans Stripe.'
+}
+
+/** F15 (+ ER-R27): AdminClaimsArbitration's MONEY label for absence_proven_payable, with the C4 instant. */
+export function absenceProvenPayableLabel(refundError: string | null | undefined): string {
+  const head = 'Aucun remboursement abouti ou en attente non expliqué rapporté par Stripe à la preuve (liste complète lue) — approuvée, non payée. Rien ne la paiera automatiquement : nouvelle approbation admin, réclamations et remboursements ouverts'
+  const instant = proofInstant(refundError)
+  return instant
+    ? `${head}, au plus tôt le ${instant.toISOString()} (UTC), relue avant le moteur`
+    : `${head} — instant illisible : approbation refusée, relancez « Réconcilier d’après la preuve »`
 }

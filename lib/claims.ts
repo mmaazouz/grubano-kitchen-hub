@@ -29,10 +29,14 @@ import { recordAdminAudit } from '@/lib/admin-audit'
 // ROUND-6 AUDIT FIX: the "is this bound refund actually ours?" predicate lives in ONE place. It
 // used to be re-derived here from `refundId` alone, which is exactly the proxy four rounds removed.
 import { isResumeMismatch } from '@/lib/claim-money-line'
+// ROUND 13 (B1): the binder where excludes the engine's disowned bindings by this prefix.
+import { RESUME_MISMATCH } from '@/lib/claim-money-line'
+// ROUND 13 (F15, A-S24-1): a reversal marker means the bound refund pays nothing — never « réellement remboursé ».
+import { isStripeReverted } from '@/lib/claim-money-line'
 // ROUND-8 AUDIT FIX (P1, Class 3): the server and the console ask the SAME rule which row may be attributed.
 import { attributionRefusal } from '@/lib/claim-attribution-rules'
 // ROUND-9 AUDIT FIX (Class 3/4): every "may a human do X on this claim?" has one shared answer.
-import { reconcileRefusal, arbitrationRefusal, customerClaimStatus, boundRowShowsInProgress, RECONCILE_GRACE_MS, reconcileMarkerAge } from '@/lib/claim-action-rules'
+import { reconcileRefusal, arbitrationRefusal, customerClaimStatus, boundRowShowsInProgress, RECONCILE_GRACE_MS, reconcileMarkerAge, claimClosureKind, refundedRowTruth, proofInstantFor, MARKERS } from '@/lib/claim-action-rules'
 
 export type { ClaimSelection, StripeCashTruth } from '@/lib/claim-scope'
 // The canonical reason taxonomy and its authority scopes live in lib/claim-reasons and are
@@ -242,6 +246,22 @@ export function isReconcileRequired(refundError?: string | null): boolean {
 
 /** The identity stamped on a Refund row created BY a claim (lib/refund.ts persists it). */
 export const claimRefundReason = (claimId: string) => `claim:${claimId}`
+/**
+ * ROUND 13 (B1): THE binder where. A claim matched by it is a BINDER of the row, whatever its status,
+ * terminal ones included (fail closed). A resume_mismatch claim is never a binder: the engine disowned
+ * that binding. The explicit null branch is required — NOT startsWith drops NULL rows in SQL. Every binder
+ * read uses it: the attribution pre-check, the console bindings and the customer binder count.
+ */
+export const BINDER_OR: Prisma.ClaimWhereInput[] = [
+  { refundError: null },
+  { NOT: { refundError: { startsWith: RESUME_MISMATCH } } },
+]
+export const boundToWhere = (rowId: string, exceptClaimId: string): Prisma.ClaimWhereInput =>
+  ({ refundId: rowId, id: { not: exceptClaimId }, OR: BINDER_OR })
+/** C4: the pure instant rule, re-exported for the N8 / T2 writers. */
+export { proofInstantFor }
+/** B12: a failed identity read refuses before any write; it is never a negative identity. */
+const IDENTITY_READ_FAILED = 'La base n’a pas pu être lue : l’identité du remboursement n’est pas établie et rien n’a été modifié. Réessayez.'
 // T-52 — WRITERS of this stamp, so the identity rule has a single, auditable list:
 //   1. lib/refund.ts at Refund row creation, from the claim that DRIVES the refund (the rail);
 //   2. adoptStripeRefundForClaim below, when it mirrors a Stripe-Dashboard refund into a local
@@ -366,18 +386,39 @@ export async function listConsumerClaims(consumerId: string) {
   const claims = await prisma.claim.findMany({ where: { consumerId }, orderBy: { createdAt: 'desc' }, take: 100 })
   // ROUND-9 AUDIT FIX (P1): the status the customer reads is derived, never the raw recovery state —
   // « en cours » only for a refund bound to a row Stripe confirmed (lib/claim-action-rules).
-  const boundIds = claims.filter((c) => c.status === 'refunding' && c.refundId).map((c) => c.refundId as string)
-  let confirmed = new Set<string>()
+  // ROUND 13 (F03/F04): « Remboursée » needs the bound row proven too, and a row with two or more binders
+  // (A-S43) reads as a manual check for EVERY claim on it. One row read and one binder count per page; a
+  // throw leaves the status unknown (financial_verification), never « Remboursée ».
+  const boundIds = Array.from(new Set(claims
+    .filter((c) => !!c.refundId && (c.status === 'refunding' || claimClosureKind(c) === 'refunded'))
+    .map((c) => c.refundId as string)))
+  const refundedIds = Array.from(new Set(claims
+    .filter((c) => !!c.refundId && claimClosureKind(c) === 'refunded')
+    .map((c) => c.refundId as string)))
+  type BoundRow = { id: string; orderId: string; status: string; amountCents: number; stripeRefundId: string | null }
+  let rowsById: Map<string, BoundRow> | null = new Map()
   if (boundIds.length) {
     try {
-      const rows = await prisma.refund.findMany({ where: { id: { in: boundIds } }, select: { id: true, status: true, stripeRefundId: true } })
-      confirmed = new Set(rows.filter((r) => boundRowShowsInProgress(r) === true).map((r) => r.id))
-    } catch { /* unknown → never « en cours » */ }
+      const rows = await prisma.refund.findMany({ where: { id: { in: boundIds } }, select: { id: true, orderId: true, status: true, amountCents: true, stripeRefundId: true } })
+      rowsById = new Map(rows.map((r) => [r.id, r] as const))
+    } catch { rowsById = null /* unknown → never « en cours », never « Remboursée » */ }
+  }
+  let bindersByRow: Map<string, number> | null = new Map()
+  if (refundedIds.length) {
+    try {
+      const groups = await prisma.claim.groupBy({ by: ['refundId'], where: { refundId: { in: refundedIds }, OR: BINDER_OR }, _count: { _all: true } })
+      bindersByRow = new Map(groups.map((g) => [g.refundId as string, g._count._all] as const))
+    } catch { bindersByRow = null }
   }
   // The internal recovery fields never reach the customer: refundError carries engine and Stripe text and
   // ids written for operators (found in round 10 while deriving the status; no UI reads them).
   return claims.map((c) => {
-    const pub: Record<string, unknown> = { ...c, status: customerClaimStatus(c, c.refundId ? confirmed.has(c.refundId) : null) }
+    const row = c.refundId && rowsById ? rowsById.get(c.refundId) ?? null : null
+    const inProgress = c.refundId ? boundRowShowsInProgress(row) === true : null
+    const refundedRow = claimClosureKind(c) !== 'refunded' ? null
+      : !c.refundId ? false
+        : rowsById && bindersByRow ? refundedRowTruth(row, bindersByRow.get(c.refundId) ?? 0, c.orderId) : null
+    const pub: Record<string, unknown> = { ...c, status: customerClaimStatus(c, inProgress, refundedRow) }
     for (const k of CONSUMER_HIDDEN_CLAIM_FIELDS) delete pub[k]
     return pub
   })
@@ -421,7 +462,8 @@ export async function getClaimEligibility(input: { consumerId: string; orderId: 
   const existing = await prisma.claim.findFirst({
     where:   { orderId: input.orderId, consumerId: input.consumerId },
     orderBy: { createdAt: 'desc' },
-    select:  { id: true, status: true, decidedAt: true, restaurantResponseReason: true, arbitrationReason: true, refundError: true, refundId: true, refundAttempted: true, arbitrationDecision: true },
+    // ROUND 13 (F02/F04): restaurantResponse and reason feed claimClosureKind.
+    select:  { id: true, status: true, decidedAt: true, restaurantResponseReason: true, arbitrationReason: true, refundError: true, refundId: true, refundAttempted: true, arbitrationDecision: true, restaurantResponse: true, reason: true },
   })
   // C2: a refused claim can be contested while within the contest window.
   const canContest = !!existing && existing.status === 'refused' && !!existing.decidedAt &&
@@ -437,8 +479,21 @@ export async function getClaimEligibility(input: { consumerId: string; orderId: 
       existingBoundConfirmed = boundRowShowsInProgress(bound)
     } catch { existingBoundConfirmed = null }
   }
+  // ROUND 13 (F03/F04): a settled claim reads « Remboursée » only on a proven bound row with at most one
+  // binder. A failed read leaves it unknown (financial_verification), never « Remboursée ».
+  let existingRefundedRow: boolean | null = null
+  if (existing && claimClosureKind(existing) === 'refunded') {
+    if (!existing.refundId) existingRefundedRow = false
+    else {
+      try {
+        const row = await prisma.refund.findUnique({ where: { id: existing.refundId }, select: { id: true, orderId: true, status: true, amountCents: true } })
+        const binders = row ? await prisma.claim.count({ where: { refundId: row.id, OR: BINDER_OR } }) : 0
+        existingRefundedRow = refundedRowTruth(row, binders, input.orderId)
+      } catch { existingRefundedRow = null }
+    }
+  }
   const existingClaim = existing
-    ? { id: existing.id, status: customerClaimStatus(existing, existingBoundConfirmed), canContest, restaurantResponseReason: existing.restaurantResponseReason, arbitrationReason: existing.arbitrationReason }
+    ? { id: existing.id, status: customerClaimStatus(existing, existingBoundConfirmed, existingRefundedRow), canContest, restaurantResponseReason: existing.restaurantResponseReason, arbitrationReason: existing.arbitrationReason }
     : null
   if (order.paymentStatus !== 'paid') return { canClaim: false, reason: 'not_paid', maxRefundableCents, windowHours, existingClaim, scope: publicScope }
   if (Date.now() - order.updatedAt.getTime() > windowHours * 3600 * 1000) {
@@ -750,11 +805,16 @@ export async function runClaimAutoApproval(): Promise<ClaimSweepSummary> {
   if (isRefundsEnabled()) {
     const pending = await prisma.claim.findMany({
       where:  { status: 'approved', refundAttempted: false },
-      select: { id: true },
+      // ROUND 13 (C4): the sweep reads refundError so it can skip every recorded state.
+      select: { id: true, refundError: true },
       take:   500,
     })
     summary.scannedPending = pending.length
     for (const c of pending) {
+      // ROUND 13 (C4, J-M21/J-M47): the sweep never drives a claim carrying a refundError — a proof of
+      // absence (v13 before or after its instant, or legacy), a lock, a safety hold, a recorded failure.
+      // Only a human approval re-drives those, through the arbitration checks.
+      if (c.refundError) continue
       const r = await triggerClaimRefund(c.id)
       if (r.state === 'refunded') summary.refundsTriggered++
       else if (r.state === 'pending') summary.refundsPending++
@@ -861,7 +921,8 @@ export async function contestClaim(input: { claimId: string; consumerId: string;
 export async function arbitrateClaim(input: { claimId: string; adminId: string; decision: 'approve' | 'refuse_final'; reason?: string | null }): Promise<ClaimActionResult> {
   const claim = await prisma.claim.findUnique({
     where:  { id: input.claimId },
-    select: { id: true, status: true, refundAttempted: true, responseDeadlineAt: true, arbitrationDecision: true, refundError: true },
+    // ROUND 13 (D14 (0), D2 (1)(c)): a payable proof is approvable only unbound — the rule reads refundId.
+    select: { id: true, status: true, refundAttempted: true, responseDeadlineAt: true, arbitrationDecision: true, refundError: true, refundId: true },
   })
   if (!claim) return { ok: false, status: 404, error: 'Réclamation introuvable.' }
 
@@ -884,7 +945,8 @@ export async function arbitrateClaim(input: { claimId: string; adminId: string; 
   const now = new Date()
   const refusal = arbitrationRefusal(claim, input.decision, now)
   if (refusal) return { ok: false, status: refusal.status, error: refusal.error }
-  const legacyApproved = claim.status === 'approved' && !claim.refundAttempted // héritage pré-P0-24
+  // ROUND 13 (D2 (1)(b)): unpaid AND unbound — the same admission as arbitrationRefusal.
+  const legacyApproved = claim.status === 'approved' && !claim.refundAttempted && !claim.refundId // héritage pré-P0-24
   // RESTAURANT SILENCE (Claims batch 1): once the response deadline has passed the claim is
   // ADMIN-ACTIONABLE. Silence never triggers a refund by itself.
   const deadline = claim.responseDeadlineAt instanceof Date ? claim.responseDeadlineAt : null
@@ -901,7 +963,7 @@ export async function arbitrateClaim(input: { claimId: string; adminId: string; 
       // and only the pre-CAS half of the fix was real. `refundAttempted: false` here, plus the
       // atomic flip inside triggerClaimRefund, already guarantee at most one refund per claim,
       // so this branch needs no second-admin filter. The other two branches keep theirs.
-      ? { id: claim.id, status: 'approved', refundAttempted: false }
+      ? { id: claim.id, status: 'approved', refundAttempted: false, refundId: null }
       : { id: claim.id, status: 'arbitration', arbitrationDecision: null }
 
   if (input.decision === 'refuse_final') {
@@ -1169,7 +1231,7 @@ export async function listActionableRefundClaims() {
   const rows = rowIds.length
     ? await prisma.refund.findMany({
         where:  { id: { in: rowIds } },
-        select: { id: true, status: true, amountCents: true, stripeRefundId: true, createdAt: true },
+        select: { id: true, status: true, amountCents: true, stripeRefundId: true, createdAt: true, reason: true },
       })
     : []
   const byId = new Map(rows.map((r) => [r.id, r]))
@@ -1191,7 +1253,9 @@ export async function listActionableRefundClaims() {
       | 'local_pending_unconfirmed'
     if (isReconcileRequired(c.refundError)) moneyState = 'reconcile_required'
     else if (c.status === FINANCIAL_VERIFICATION) moneyState = 'reconcile_required'
-    else if (isNoRefundProven(c.refundError)) moneyState = 'absence_proven_payable'
+    // ROUND 13 (F15): only a proof written by this build is payable; a legacy proof is re-proved first (A-S32).
+    else if (typeof c.refundError === 'string' && c.refundError.startsWith(MARKERS.PROOF_PAYABLE_V13)) moneyState = 'absence_proven_payable'
+    else if (isNoRefundProven(c.refundError)) moneyState = 'reconcile_required'
     else if (c.refundError) moneyState = 'refund_error_recorded'
     // ROUND-8 AUDIT FIX (P2): 'refunding' with NO binding and no error is the legacy stranded shape
     // the FV console lists as money-unknown; this console called it « sans aucun remboursement
@@ -1215,14 +1279,20 @@ export async function listActionableRefundClaims() {
       /** ROUND-9 AUDIT FIX (parity): whether « Réconcilier d’après la preuve » would run on this claim —
        *  the same rule reconcileClaimEvidence applies before it reads anything. */
       reconcilable: reconcileRefusal(c) === null,
-      refund: row ? { id: row.id, status: row.status, actualAmountCents: row.amountCents, stripeRefundId: row.stripeRefundId, createdAt: row.createdAt } : null,
+      // ROUND 13 (F15): the bound row's reason is its identity stamp — the card's money line reads it (cardMoneyLine).
+      refund: row ? { id: row.id, status: row.status, actualAmountCents: row.amountCents, stripeRefundId: row.stripeRefundId, createdAt: row.createdAt, reason: row.reason } : null,
       /** ROUND-6 AUDIT FIX (P1): the bound row exists, but the engine established it is NOT this
        *  claim's refund (RESUME-FIRST disowned it). Its amount is somebody else's money. */
-      refundNotOurs: isResumeMismatch(c.refundError),
+      refundNotOurs: isResumeMismatch(c.refundError) && !(row && row.reason === claimRefundReason(c.id)),
+      /** ROUND 13 (F15, A-S36-1): a resume_mismatch on a row that carries THIS claim's stamp — identity established, not reconciled. */
+      refundIdentityUnread: isResumeMismatch(c.refundError) && !!row && row.reason === claimRefundReason(c.id),
       /** The amount that ACTUALLY moved FOR THIS CLAIM, or null while nothing succeeded — or
        *  while what succeeded is not this claim's. `refundId` alone was used as the proxy here,
        *  which printed another claim's cash under « Montant réellement remboursé ». */
-      actualRefundedCents: row && row.status === 'succeeded' && !isResumeMismatch(c.refundError) ? row.amountCents : null,
+      // ROUND 13 (F15, A-S24-1): a claim marked STRIPE_REVERTED / REVERTED_AFTER_REFUND keeps a 'succeeded' row
+      // whose Stripe refund failed or was canceled: that row pays nothing, whatever our base records.
+      actualRefundedCents: isStripeReverted(c.refundError) ? null
+        : row && row.status === 'succeeded' && !isResumeMismatch(c.refundError) ? row.amountCents : null,
     }
   })
 }
@@ -1486,7 +1556,8 @@ export async function listFinancialVerificationClaims() {
   // "every parked claim", which could diverge from the server's verdict.
   const bindings = rows.length
     ? await prisma.claim.findMany({
-        where:  { refundId: { in: rows.map((r) => r.id) } },
+        // ROUND 13 (B1): the one binder where — a resume_mismatch claim is not a binder of the row.
+        where:  { refundId: { in: rows.map((r) => r.id) }, OR: BINDER_OR },
         select: { id: true, refundId: true },
       })
     : []
@@ -1514,7 +1585,8 @@ export async function listFinancialVerificationClaims() {
       const boundToOther = (boundClaimsByRow.get(r.id) ?? []).find((id) => id !== c.id) ?? null
       const refusal = attributionRefusal({
         claimId: c.id,
-        row: { id: r.id, status: r.status, reason: r.reason ?? null, stripeRefundId: r.stripeRefundId ?? null },
+        claimOrderId: c.orderId,
+        row: { id: r.id, orderId: r.orderId, status: r.status, reason: r.reason ?? null, stripeRefundId: r.stripeRefundId ?? null },
         orderRows: rows.filter((x) => x.orderId === c.orderId),
         boundToOtherClaimId: boundToOther,
       })
@@ -1891,31 +1963,43 @@ export async function attributeClaimRefund(input: {
   if (claim.status !== FINANCIAL_VERIFICATION) {
     return { ok: false, status: 409, error: 'Cette réclamation n’est pas en vérification financière — utilisez la réconciliation par preuve.' }
   }
-  const row = await prisma.refund.findUnique({
-    where:  { id: input.refundRowId },
-    select: { id: true, orderId: true, status: true, amountCents: true, stripeRefundId: true, reason: true },
-  })
-  if (!row) return { ok: false, status: 404, error: 'Remboursement introuvable.' }
-  // THE anchor: a claim may only ever be attributed a refund of its OWN order.
-  if (row.orderId !== claim.orderId) {
-    return { ok: false, status: 400, error: 'Ce remboursement appartient à une autre commande — attribution refusée.' }
+  // ROUND 13 (B12): the row read carries the identity stamp (reason) — a failed read refuses before any write.
+  let row: Prisma.RefundGetPayload<{ select: { id: true; orderId: true; status: true; amountCents: true; stripeRefundId: true; reason: true } }> | null
+  try {
+    row = await prisma.refund.findUnique({
+      where:  { id: input.refundRowId },
+      select: { id: true, orderId: true, status: true, amountCents: true, stripeRefundId: true, reason: true },
+    })
+  } catch {
+    return { ok: false, status: 409, error: IDENTITY_READ_FAILED }
   }
+  if (!row) return { ok: false, status: 404, error: 'Remboursement introuvable.' }
+  // THE anchor (a refund of the claim's OWN order) is the first refusal of the shared rule (B10 (1)).
   // ROUND-8 AUDIT FIX (P1, Class 3 — the third time): every row refusal lives in ONE pure rule the
   // console also applies (lib/claim-attribution-rules): another claim's stamp (T-51), a row stamped
   // for THIS claim existing beside an unstamped one, a binding to another claim, an unusable status,
   // and our row pending with no Stripe id. Rounds 3, 7 and 8 each added a refusal here without its
   // console disable; the rule cannot be applied on one side only now.
-  const orderRows = await prisma.refund.findMany({
-    where:  { orderId: claim.orderId },
-    select: { id: true, reason: true },
-  })
-  const boundTo = await prisma.claim.findFirst({
-    where:  { refundId: row.id, id: { not: claim.id } },
-    select: { id: true },
-  })
+  // ROUND 13 (B1, B12): the binder read uses the one binder where, and a failed identity read is never a
+  // negative identity — it refuses before any write.
+  let orderRows: Array<{ id: string; reason: string | null }>
+  let boundTo: { id: string } | null
+  try {
+    orderRows = await prisma.refund.findMany({
+      where:  { orderId: claim.orderId },
+      select: { id: true, reason: true },
+    })
+    boundTo = await prisma.claim.findFirst({
+      where:  boundToWhere(row.id, claim.id),
+      select: { id: true },
+    })
+  } catch {
+    return { ok: false, status: 409, error: IDENTITY_READ_FAILED }
+  }
   const refusal = attributionRefusal({
     claimId: claim.id,
-    row: { id: row.id, status: row.status, reason: row.reason ?? null, stripeRefundId: row.stripeRefundId ?? null },
+    claimOrderId: claim.orderId,
+    row: { id: row.id, orderId: row.orderId, status: row.status, reason: row.reason ?? null, stripeRefundId: row.stripeRefundId ?? null },
     orderRows,
     boundToOtherClaimId: boundTo?.id ?? null,
   })
@@ -2364,8 +2448,11 @@ export async function reconcileClaimEvidence(input: { claimId: string }): Promis
     // POSITIVE PROOF OF ABSENCE: Stripe reports zero refunded and zero pending, and no row on the order
     // can still move money. Nothing was created and no cash moved. This is the ONLY branch that
     // resets refundAttempted, and it is gated on proof, never on a missing binding.
-    await prisma.claim.updateMany({
-      where: { id: claim.id, status: { in: RECONCILABLE_STATUSES } },
+    // ROUND 13 (C9, W1): the write is a compare-and-set on the claim AS READ. Round 13 admits approved,
+    // not-attempted proofs and locks into this gate (G1 (i)); a status-only CAS would overwrite a claim that
+    // an approval moved to 'refunding' (T1) between the read and this write, resetting refundAttempted.
+    const proven = await prisma.claim.updateMany({
+      where: { id: claim.id, status: claim.status, refundAttempted: claim.refundAttempted, refundId: claim.refundId, refundError: claim.refundError },
       data:  {
         status:          'approved',
         refundAttempted: false,
@@ -2384,6 +2471,10 @@ export async function reconcileClaimEvidence(input: { claimId: string }): Promis
             : `${NO_REFUND_PROVEN}: aucun remboursement n’a jamais déplacé d’argent sur cette commande et Stripe n’en rapporte aucun (ni abouti, ni en attente). La tentative interrompue n’a rien créé — la réclamation repasse en « approuvée, non payée ». Rien ne la paiera automatiquement : elle devra être approuvée à nouveau par un admin, réclamations et remboursements ouverts.`,
       },
     })
+    // Nothing written: the claim changed while the evidence was read. Its new state is not reported as a proof.
+    if (proven.count !== 1) {
+      return { ok: true, outcome: 'financial_verification', reason: 'already_parked_or_moved', detail: 'Rien n’a été écrit : la réclamation a changé d’état pendant la lecture des preuves. Relisez sa ligne dans la file.' }
+    }
     return { ok: true, outcome: railLocked || failedAtStripeRows.length || deadRows.length ? 'no_refund_proven_rail_locked' : 'no_refund_proven' }
   }
   const park = async (reason: AmbiguityReason, detail: string): Promise<ClaimEvidenceOutcome> => {
