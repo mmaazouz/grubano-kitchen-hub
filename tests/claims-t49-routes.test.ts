@@ -235,8 +235,10 @@ describe('the money queue component keeps its audit fixes', () => {
   it('BOTH handlers pick their tone from the outcome — not just reconcile', () => {
     // Round 4 fixed reconcile() and left attribute() green on a failed refund.
     expect(src).toContain("if (needsAttention) toast.error(text)")
-    // ROUND-12: attribution now returns the evidence outcomes too; every non-success one is an error tone.
-    expect(src).toContain("if (outcome === 'refund_failed' || outcome === 'unconfirmed_within_window' || outcome === 'engine_row_dead'")
+    // ROUND 13 (G12 / D8, slice W4): attribution has ONE success outcome ('refunded', an observed commit on Stripe
+    // evidence); every refusal is a 409 whose server text the handler renders with the error tone.
+    expect(src).toContain("if (!res.ok) { toast.error((body as { error?: string }).error || 'Attribution refusée.'); return }")
+    expect(src).toContain("if (result?.outcome !== 'refunded') {")
     // ROUND-5: and neither handler may make a blanket cash claim about the CUSTOMER from one
     // ROW's status — the assertion I added in round 4 and the audit removed in round 5.
     expect(src).not.toContain('Aucun argent n’a atteint le client')

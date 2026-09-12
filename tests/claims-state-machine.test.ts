@@ -63,7 +63,17 @@ beforeEach(() => {
   // suite can never again be quietly blind to a clause shape it does not understand.
   db.claim.updateMany.mockImplementation(updateManyMock(fx))
   db.claim.update.mockResolvedValue({})
-  db.claim.findMany.mockResolvedValue([])
+  // ROUND 13 (B9 (a), slice W4): reconcileClaimForRefund reads EVERY claim bound to the row (findMany where { refundId }).
+  // These fixtures give the bound claim through findFirst; that binder read answers with the same fixture (J-M13 pins
+  // the two-binder case). Every other findMany keeps answering [] unless a test says otherwise.
+  db.claim.findMany.mockImplementation(async (args?: { where?: Record<string, unknown> }) => {
+    const where = args?.where
+    if (where && typeof where.refundId === 'string' && Object.keys(where).length === 1) {
+      const bound = await db.claim.findFirst(args)
+      return bound ? [bound] : []
+    }
+    return []
+  })
   db.claim.count.mockResolvedValue(0)
   db.claim.groupBy.mockResolvedValue([])
   db.refund.findMany.mockResolvedValue([])
@@ -449,7 +459,10 @@ describe('BATCH 2 — RECOVERY when the reconciliation webhook never arrived', (
   })
 
   it('it is IDEMPOTENT: a second pass over an already-reconciled claim changes nothing', async () => {
-    db.claim.findMany.mockResolvedValue([{ id: 'cl1', refundId: 'rf1', status: 'refunding' }])
+    // ROUND 13 (B9 (a), slice W4): the sweep's selection and the reconciler's binder read are two findMany queries —
+    // the sweep sees the stale refunding snapshot, the binder read sees the claim as it is now (already refunded).
+    db.claim.findMany.mockImplementation(async (args?: { where?: Record<string, unknown> }) =>
+      (args?.where && typeof args.where.refundId === 'string' ? [{ id: 'cl1', status: 'refunded', refundError: null }] : [{ id: 'cl1', refundId: 'rf1', status: 'refunding' }]))
     db.refund.findMany.mockResolvedValue([{ id: 'rf1', status: 'succeeded', stripeRefundId: 're_1' }])
     db.claim.findFirst.mockResolvedValue({ id: 'cl1', status: 'refunded', refundError: null }) // already done
     const out = await recoverStrandedClaimReconciliations()

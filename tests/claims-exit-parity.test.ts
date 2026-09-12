@@ -18,6 +18,9 @@ const { db } = vi.hoisted(() => ({
     refund: { findMany: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), create: vi.fn() },
     order:  { findUnique: vi.fn(), findMany: vi.fn() },
     franchiseRoyalty: { findFirst: vi.fn() },
+    // ROUND 13 (C6, H05, slice W4): the attribution binds in a Serializable transaction and records the closure.
+    emailDispatch: { create: vi.fn() },
+    $transaction: vi.fn(),
   },
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
@@ -270,7 +273,8 @@ describe('B1 (P3-22) — a binding disowned by resume_mismatch binds nothing, on
 
   it('the server pre-check and the console bindings read the one binder where (source pins)', () => {
     const src = stripComments(read('lib/claims.ts'))
-    const attr = src.slice(src.indexOf('export async function attributeClaimRefund'), src.indexOf('export async function attributeClaimRefund') + 4000)
+    // ROUND 13 (C6, slice W4): the pre-check moved with the binding into attributeWithEvidence (attributeClaimRefund delegates to it).
+    const attr = src.slice(src.indexOf('export async function attributeWithEvidence('), src.indexOf('export async function attributeClaimRefund('))
     expect(attr).toContain('where:  boundToWhere(row.id, claim.id),')
     const fv = src.slice(src.indexOf('export async function listFinancialVerificationClaims'), src.indexOf('export async function listReconcileRequiredClaims'))
     expect(fv).toContain('where:  { refundId: { in: rows.map((r) => r.id) }, OR: BINDER_OR },')
@@ -308,8 +312,16 @@ describe('B12 — attribution: a failed binder or stamp read refuses before any 
 
   it('NEGATIVE CONTROL — with readable identity the same row proceeds past the pre-check (a write is attempted)', async () => {
     fx.forcedCount = 0
+    // ROUND 13 (G12 / C6, slice W4): past the pre-check, Stripe proves the row, then the binding transaction writes.
+    db.order.findUnique.mockResolvedValue({ id: 'o1', stripePaymentIntentId: 'pi_1' })
+    stripeMock.refunds.retrieve.mockResolvedValue({ id: 're_1', status: 'succeeded', amount: 300, payment_intent: 'pi_1', metadata: {} })
+    db.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => fn(db))
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
     await attributeClaimRefund({ claimId: 'cl1', refundRowId: 'rf1', adminId: 'op1' })
+    expect(stripeMock.refunds.retrieve).toHaveBeenCalledWith('re_1')
+    expect(db.$transaction).toHaveBeenCalledTimes(1)
     expect(db.claim.updateMany).toHaveBeenCalled()
+    vi.mocked(console.warn).mockRestore()
   })
 })
 

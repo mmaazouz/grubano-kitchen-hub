@@ -10,6 +10,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { readFileSync as readRaw } from 'node:fs'
 import { updateManyMock, matchWhere } from './support/prisma-where'
+import { adoptionRefusalWroteText } from '@/lib/claim-attribution-rules'
 
 /** CRLF-safe: the founder's checkout has core.autocrlf=true. */
 const read = (p: string) => readRaw(p, 'utf8').replace(/\r\n/g, '\n')
@@ -24,6 +25,8 @@ const { db } = vi.hoisted(() => ({
     refund: { findMany: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), create: vi.fn() },
     order:  { findUnique: vi.fn(), findMany: vi.fn() },
     franchiseRoyalty: { findFirst: vi.fn() },
+    // ROUND 13 (C6 / C8, slice W4): attribution and adoption write inside Serializable transactions (run here on the same mocks).
+    $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(db)),
   },
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
@@ -135,10 +138,13 @@ describe('attribution PARITY — the console disables exactly the rows the serve
           const b = set.bindings.find((x) => x.refundId === where.refundId && (!where.id?.not || x.id !== where.id.not))
           return b ? { id: b.id, status: 'refunding', refundError: null } : null
         })
+        for (const m of [stripeMock.refunds.retrieve, stripeMock.refunds.list, stripeMock.paymentIntents.retrieve, db.$transaction]) m.mockClear()
         const r = await attributeClaimRefund({ claimId: 'cl1', refundRowId: row.id, adminId: 'op1' })
-        // "Refused" = refused BEFORE any write. A later 409 (after the bind CAS) is not a refusal
-        // the console could have predicted, and is not what the button's disable is for.
-        const serverRefused = !r.ok && db.claim.updateMany.mock.calls.length === 0
+        // "Refused" = refused by the shared pre-check. ROUND 13 (G12, slice W4): Stripe is read BEFORE any write, so a
+        // 409 after that read (evidence not proven) writes nothing either — the pre-check verdict is the refusal that
+        // comes before any Stripe read and any write. That is what the button's disable predicts.
+        const stripeRead = stripeMock.refunds.retrieve.mock.calls.length + stripeMock.refunds.list.mock.calls.length + stripeMock.paymentIntents.retrieve.mock.calls.length
+        const serverRefused = !r.ok && stripeRead === 0 && db.$transaction.mock.calls.length === 0 && db.claim.updateMany.mock.calls.length === 0
         expect(serverRefused, `${row.id}: server refused=${serverRefused}, console refusal=${listVerdict[row.id]}`).toBe(listVerdict[row.id] !== null)
       }
     })
@@ -374,8 +380,13 @@ describe('round-9 source pins', () => {
   })
 
   it('« Rien n’a été écrit » only when proven; the « Lier » toast depends on where the facts came from', () => {
-    expect(fv).toContain("refusedFacts[r.id]!.wrote === false ? 'Rien n’a été écrit.'")
-    expect(fv).toContain("body.result?.facts?.source === 'local_row'")
+    // ROUND 13 (B11 (a), W4 fixer): the wrote sentence is one shared pure mapping (null → neutral); the preview toast still
+    // says when Stripe was not read, while every adoption success is bound on the Stripe object read by that request.
+    expect(fv).toContain('{adoptionRefusalWroteText(refusedFacts[r.id]!.wrote)}')
+    expect(adoptionRefusalWroteText(false)).toBe('Rien n’a été écrit.')
+    expect(adoptionRefusalWroteText(null)).not.toMatch(/Rien n’a été écrit|la liaison n’a pas abouti/)
+    expect(fv).toContain("toast.success(facts?.source === 'local_row'")
+    expect(fvCode).not.toContain('Stripe n’a pas été relu par cette action')
     expect(fvCode).not.toContain('tel que Stripe le rapporte.')
   })
 

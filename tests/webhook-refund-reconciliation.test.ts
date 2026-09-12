@@ -31,6 +31,9 @@ const { db, stripe, ledgerStore } = vi.hoisted(() => {
       payout:           { findUnique: vi.fn() },
       loyaltyTransaction: { findFirst: vi.fn() },
       reservation:      { findFirst: vi.fn(), findUnique: vi.fn() },
+      // ROUND 13 (J-M13, B9): the claim reconciler behind the webhook reads every binder of the row.
+      claim:            { findMany: vi.fn(), findUnique: vi.fn(), updateMany: vi.fn(), count: vi.fn(), groupBy: vi.fn() },
+      emailDispatch:    { create: vi.fn() },
       $transaction:     vi.fn(),
     },
     stripe: {
@@ -118,6 +121,12 @@ beforeEach(() => {
   db.courierEarning.findMany.mockResolvedValue([{ id: 'ce_tip', status: 'pending' }])
   db.courierEarning.updateMany.mockResolvedValue({ count: 1 })
   db.payout.findUnique.mockResolvedValue(null)
+  // ROUND 13 (B9): no claim is bound to the refund rows of these fixtures unless a test says so.
+  db.claim.findMany.mockResolvedValue([])
+  db.claim.updateMany.mockResolvedValue({ count: 0 })
+  db.claim.count.mockResolvedValue(0)
+  db.claim.groupBy.mockResolvedValue([])
+  db.emailDispatch.create.mockResolvedValue({})
   stripe.transfers.list.mockResolvedValue({ data: [] })
   stripe.transfers.listReversals.mockResolvedValue({ data: [] })
 })
@@ -432,5 +441,110 @@ describe('refund.updated / refund.failed — the status oracle (§16 B1)', () =>
     const res = await fire('refund.updated', { id: 're_x', object: 'refund', status: 'succeeded', amount: 5000, payment_intent: 'pi_1', charge: 'ch_1', metadata: {} })
     expect(res.status).toBe(503)
     expect(ledgerData().length).toBe(0)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────────────
+// ROUND 13 (J-M13, slice W4) — B9, A-S43, E-12: a Refund row bound to two or more claims settles nothing. The webhook's
+// money writes are untouched; only the claim reconciler behind it reads EVERY binder (findMany) and refuses to choose.
+describe('J-M13 — a row with two or more binders settles nothing (B9, A-S43, E-12)', () => {
+  type Bound = { id: string; orderId: string; consumerId: string; refundId: string; status: string; refundError: string | null; refundAttempted?: boolean; requestedAmountCents?: number }
+  type Where = Record<string, unknown>
+  let row: Record<string, unknown>
+  const PI_OK = () => ({ id: 'pi_1', status: 'succeeded', transfer_data: { destination: 'acct_r' }, latest_charge: CHARGE({ amount_refunded: 5000, refunded: true }) })
+
+  async function arrange(claims: Bound[]) {
+    const { matchWhere } = await import('./support/prisma-where')
+    row = { id: 'rfR', orderId: 'o1', restaurantId: 'r1', idempotencyKey: 'refund:o1:0', amountCents: 5000, restaurantReverseCents: 4100, applicationFeeRefundCents: 900, royaltyRefundCents: 0, stripeRefundId: 're_R', status: 'pending', reason: null, createdAt: new Date() }
+    db.refund.findUnique.mockImplementation(async () => ({ ...row }))
+    db.refund.update.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => { Object.assign(row, data); return { ...row } })
+    // The customer read loads the bound rows (the webhook route and the engine never call refund.findMany).
+    ;(db.refund as Record<string, unknown>).findMany = vi.fn(async () => [{ ...row }])
+    db.order.findUnique.mockResolvedValue({ id: 'o1', restaurantId: 'r1', stripePaymentIntentId: 'pi_1' })
+    const refundObj = re('re_R', 5000, 10, 'succeeded', { grubano_refund_row: 'rfR', orderId: 'o1' })
+    fx.refunds = [refundObj]; fx.feeRefunds = [fee(900, 10)]
+    stripe.refunds.list.mockImplementation(() => {
+      const p = Promise.resolve({ data: fx.refunds, has_more: false }) as Promise<unknown> & { autoPagingToArray?: () => Promise<R[]> }
+      p.autoPagingToArray = async () => fx.refunds
+      return p
+    })
+    stripe.refunds.retrieve.mockResolvedValue(refundObj)
+    stripe.paymentIntents.retrieve.mockResolvedValue(PI_OK())
+    db.claim.findMany.mockImplementation(async ({ where }: { where: Where }) => claims.filter((c) => matchWhere(where, c)).map((c) => ({ ...c })))
+    // W4 fixer (P3): findFirst answers from the same world, so J-M13's break/restore (the reconciler reverted to findFirst)
+    // reaches the settling CAS and fails on the invariant itself, not on a missing mock.
+    ;(db.claim as Record<string, unknown>).findFirst = vi.fn(async ({ where }: { where: Where }) => {
+      const c = claims.find((x) => (typeof where.id !== 'string' || x.id === where.id) && matchWhere(where, x))
+      return c ? { ...c } : null
+    })
+    db.claim.findUnique.mockImplementation(async ({ where }: { where: Where }) => { const c = claims.find((x) => x.id === where.id); return c ? { ...c } : null })
+    db.claim.count.mockImplementation(async ({ where }: { where: Where }) => claims.filter((c) => matchWhere(where, c)).length)
+    db.claim.updateMany.mockImplementation(async ({ where, data }: { where: Where; data: Record<string, unknown> }) => {
+      const hits = claims.filter((c) => c.id === where.id && matchWhere(where, c))
+      for (const h of hits) Object.assign(h, data)
+      return { count: hits.length }
+    })
+    db.claim.groupBy.mockImplementation(async ({ where }: { where: Where }) => {
+      const ids = ((where.refundId as { in: string[] }).in)
+      return ids.map((id) => ({ refundId: id, _count: { _all: claims.filter((c) => matchWhere({ ...where, refundId: id }, c)).length } }))
+    })
+    return claims
+  }
+  const fireFinalize = () => fire('refund.updated', { id: 're_R', object: 'refund', status: 'succeeded', amount: 5000, payment_intent: 'pi_1', charge: 'ch_1', metadata: { grubano_refund_row: 'rfR' } })
+  const bound = (id: string, status: string): Bound => ({ id, orderId: 'o1', consumerId: 'u1', refundId: 'rfR', status, refundError: null, refundAttempted: true, requestedAmountCents: 5000 })
+
+  it('webhook: R bound to C1 (refunding) and C2 (approved), both null error → the reconciler reads every binder (findMany) → ambiguous_binding, no claim write, [MONEY REVIEW]; 200', async () => {
+    const claims = await arrange([bound('C1', 'refunding'), bound('C2', 'approved')])
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const res = await fireFinalize()
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ finalized: 'rfR', claim: { reconciled: false, reason: 'ambiguous_binding' } })
+    expect(db.claim.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { refundId: 'rfR' } }))
+    expect(db.claim.updateMany).not.toHaveBeenCalled()
+    expect(claims.map((c) => c.status)).toEqual(['refunding', 'approved'])
+    expect(err.mock.calls.some((c) => c[0] === '[MONEY REVIEW] ambiguous_binding' && c[1] === 'rfR')).toBe(true)
+    err.mockRestore()
+  })
+
+  it('applyRowTruth: reconcile of C1 on its bound row, with C2 also bound → counts boundToWhere(R, C1) > 0 → park reconcile_not_applied with the B9 (b) detail; nothing refunded', async () => {
+    const claims = await arrange([bound('C1', 'refunding'), bound('C2', 'approved')])
+    row.status = 'succeeded'
+    const { reconcileClaimEvidence } = await import('@/lib/claims')
+    const r = await reconcileClaimEvidence({ claimId: 'C1' })
+    expect(r).toMatchObject({ ok: true, outcome: 'financial_verification', reason: 'reconcile_not_applied' })
+    expect((r as { detail: string }).detail).toBe('La ligne rfR est liée à au moins une autre réclamation : cette réclamation ne peut pas être soldée sur elle sans décision humaine. Aucune conclusion tirée.')
+    expect(claims.filter((c) => c.status === 'refunded')).toEqual([])
+  })
+
+  // IMPLEMENTATION NOTE (W4, fixer round 1) on J-M13: the second fixture « C1 FV reconciled with R as its bound row » does
+  // not reach applyRowTruth — reconcileClaimEvidence takes the bound path only for approved / refunding with a null error
+  // (G2 (2)); an FV pre-image takes G2 (3) (mine, then N0-N8), where the unstamped R is not its row. The B9 (b) count is
+  // pinned on the refunding entry above; the FV variant is pinned as never settled on R.
+  it('the J-M13 second fixture as written — C1 in FINANCIAL VERIFICATION with R as its bound row, C2 also bound: never settled on R, no claim refunded', async () => {
+    const claims = await arrange([{ ...bound('C1', 'financial_verification'), refundError: 'financial_verification:stripe_unreadable: earlier read' }, bound('C2', 'approved')])
+    row.status = 'succeeded'
+    const { reconcileClaimEvidence } = await import('@/lib/claims')
+    const r = await reconcileClaimEvidence({ claimId: 'C1' })
+    expect(r).toMatchObject({ ok: true })
+    expect((r as { outcome?: string }).outcome).not.toBe('refunded')
+    expect(claims.map((c) => [c.id, c.status, c.refundId])).toEqual([['C1', 'financial_verification', 'rfR'], ['C2', 'approved', 'rfR']])
+  })
+
+  it('customer read: C1 and C2 both refunded on R (legacy) → the binder count is 2 → refundedRow null → both read financial_verification, never « refunded »', async () => {
+    const claims = await arrange([bound('C1', 'refunded'), bound('C2', 'refunded')])
+    row.status = 'succeeded'
+    const { listConsumerClaims } = await import('@/lib/claims')
+    const listed = await listConsumerClaims('u1')
+    expect(listed.map((c) => [c.id, c.status])).toEqual([['C1', 'financial_verification'], ['C2', 'financial_verification']])
+    expect(claims.length).toBe(2)
+  })
+
+  it('NEGATIVE CONTROL — only C1 bound → the webhook settles C1, and its customer reads refunded', async () => {
+    const claims = await arrange([bound('C1', 'refunding')])
+    const res = await fireFinalize()
+    expect(await res.json()).toMatchObject({ claim: { reconciled: true, claimId: 'C1', to: 'refunded' } })
+    expect(claims[0]).toMatchObject({ status: 'refunded', refundError: null, activeOrderKey: null })
+    const { listConsumerClaims } = await import('@/lib/claims')
+    expect((await listConsumerClaims('u1')).map((c) => [c.id, c.status])).toEqual([['C1', 'refunded']])
   })
 })

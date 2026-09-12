@@ -18,6 +18,8 @@ const { db } = vi.hoisted(() => ({
     order:  { findUnique: vi.fn(), findMany: vi.fn() },
     // ROUND 13 (G2 (3), W3): reconcile's no-row branch reads the ONE loader (G3), which reads the royalty status.
     franchiseRoyalty: { findFirst: vi.fn() },
+    // ROUND 13 (C6, slice W4): attribution binds in ONE Serializable transaction (run here on the same mocks).
+    $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(db)),
   },
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
@@ -71,7 +73,16 @@ beforeEach(() => {
   // evaluates the clause against a simulated row instead.
   db.claim.updateMany.mockImplementation(updateManyMock(fx))
   db.claim.update.mockResolvedValue({})
-  db.claim.findMany.mockResolvedValue([])
+  // ROUND 13 (B9 (a), slice W4): reconcileClaimForRefund reads EVERY claim bound to the row (findMany where { refundId }).
+  // These fixtures give the bound claim through findFirst; that binder read answers with the same fixture.
+  db.claim.findMany.mockImplementation(async (args?: { where?: Record<string, unknown> }) => {
+    const where = args?.where
+    if (where && typeof where.refundId === 'string' && Object.keys(where).length === 1) {
+      const bound = await db.claim.findFirst(args)
+      return bound ? [bound] : []
+    }
+    return []
+  })
   db.refund.findMany.mockResolvedValue([])
   db.refund.findUnique.mockResolvedValue({ status: 'succeeded' })
   // ROUND 13 (G3 / G5 E1, W3): the loader reads the order's payment status; a claim's order is paid.
@@ -406,17 +417,19 @@ describe('attributeClaimRefund — the escalation exit out of a permanent park',
   beforeEach(() => {
     db.claim.findUnique.mockResolvedValue({ id: 'cl1', orderId: 'o1', status: FINANCIAL_VERIFICATION })
     db.refund.findUnique.mockResolvedValue({ id: 'rf9', orderId: 'o1', status: 'succeeded', amountCents: 500, stripeRefundId: 're_9' })
-    // findFirst serves TWO callers here: the double-attribution guard (must find nothing) and
-    // reconcileClaimForRefund (must find this claim). Order matters, so drive it explicitly.
-    db.claim.findFirst
-      .mockResolvedValueOnce(null) // no OTHER claim already holds this refund
-      .mockResolvedValue({ id: 'cl1', status: 'refunding', refundError: null })
+    // ROUND 13 (C6, slice W4): findFirst is the binder read only (pre-check, then inside the transaction) — no OTHER
+    // claim holds this refund. The attribution no longer reaches reconcileClaimForRefund.
+    db.claim.findFirst.mockReset()
+    db.claim.findFirst.mockResolvedValue(null)
+    // ROUND 13 (G12): the row's Stripe refund is read before any write — it succeeded on this order's payment.
+    stripeMock.refunds.retrieve.mockResolvedValue({ id: 're_9', status: 'succeeded', amount: 500, payment_intent: 'pi_1', metadata: {} })
     fx.row = { status: FINANCIAL_VERIFICATION, refundId: 'rf9', refundError: null }
   })
 
-  it('an operator-supplied link is applied with the ROW’s truth, not the operator’s', async () => {
+  it('an operator-supplied link is applied with STRIPE’s truth for that row (G12), not the operator’s', async () => {
     const r = await attributeClaimRefund({ claimId: 'cl1', refundRowId: 'rf9', adminId: 'op1' })
-    expect(r).toMatchObject({ ok: true, outcome: 'refunded', refundId: 'rf9' })
+    expect(r).toMatchObject({ ok: true, outcome: 'refunded', refundId: 'rf9', evidence: 'stripe_read', amountCents: 500 })
+    expect(stripeMock.refunds.retrieve).toHaveBeenCalledWith('re_9')
     expect(execMock).not.toHaveBeenCalled() // still no money authority
   })
 
@@ -438,14 +451,17 @@ describe('attributeClaimRefund — the escalation exit out of a permanent park',
     expect(execMock).not.toHaveBeenCalled()
   })
 
-  it('a PENDING row is attributed without any terminal verdict', async () => {
-    // ROUND-8: a pending row must carry a Stripe id to be attributable — without one nothing is
-    // confirmed at Stripe and the shared rule refuses it (pinned in tests/claims-t49-round9.test.ts).
+  it('a PENDING row Stripe reports still pending is NOT attributed: no terminal verdict and no write (G12 NOT PROVEN)', async () => {
     db.refund.findUnique.mockResolvedValue({ id: 'rf9', orderId: 'o1', status: 'pending', amountCents: 500, stripeRefundId: 're_9' })
     // ROUND-12: a pending row's link is decided by Stripe's evidence — here Stripe reports it pending.
     stripeMock.refunds.retrieve.mockResolvedValue({ id: 're_9', status: 'pending', amount: 500, payment_intent: 'pi_1', metadata: {} })
-    expect(await attributeClaimRefund({ claimId: 'cl1', refundRowId: 'rf9', adminId: 'op1' }))
-      .toMatchObject({ ok: true, outcome: 'still_pending' })
+    // ROUND 13 (G12, slice W4): the evidence is read BEFORE any write — pending proves nothing, so nothing is bound.
+    expect(await attributeClaimRefund({ claimId: 'cl1', refundRowId: 'rf9', adminId: 'op1' })).toEqual({
+      ok: false, status: 409,
+      error: 'Stripe rapporte le remboursement re_9 de la ligne rf9 EN ATTENTE : rien n’est prouvé, la réclamation n’a pas été modifiée. Réessayez lorsqu’il sera terminal.',
+    })
+    expect(db.claim.updateMany).not.toHaveBeenCalled()
+    expect(db.$transaction).not.toHaveBeenCalled()
   })
 
   it('it refuses a claim that is not parked, so it cannot be used as a general override', async () => {
@@ -457,8 +473,9 @@ describe('attributeClaimRefund — the escalation exit out of a permanent park',
   it('NEGATIVE CONTROL — a park with no exit at all would be caught here', async () => {
     const absorbing = (status: string) => status === FINANCIAL_VERIFICATION // ← the defect: no way out
     expect(absorbing(FINANCIAL_VERIFICATION)).toBe(true)
+    // ROUND 13 (C6, slice W4): both binder reads (the pre-check and the one inside the transaction) find no other claim.
     db.claim.findFirst.mockReset()
-    db.claim.findFirst.mockResolvedValueOnce(null).mockResolvedValue({ id: 'cl1', status: 'refunding', refundError: null })
+    db.claim.findFirst.mockResolvedValue(null)
     const r = await attributeClaimRefund({ claimId: 'cl1', refundRowId: 'rf9', adminId: 'op1' })
     expect(r.ok).toBe(true) // ← fixed: there is a way out
   })

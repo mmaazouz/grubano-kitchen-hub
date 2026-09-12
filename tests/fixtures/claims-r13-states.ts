@@ -1605,7 +1605,7 @@ const TEXT: Record<string, { registry: RegistryId[]; expected: StateExpected }> 
       safeExit: "winner terminal; loser REG-3 → reconcile (N3 explains by the winner) or attribute/adopt another.",
       newMoney: "NO.",
       customer: "winner RFc; loser FVc.",
-      admin: "loser « Cette réclamation, ou ce remboursement, a changé entre-temps — rien n’a été écrit. Relisez sa ligne dans la file. » or bound_to_other_claim text.",
+      admin: "loser « La liaison n’a pas pu être enregistrée (écriture concurrente ou erreur de la base) — rien n’a été écrit. Relisez sa ligne dans la file, puis réessayez. » (C7, IMPLEMENTATION NOTE (W4, fixer round 1)) or bound_to_other_claim text.",
       reconciliation: "attributeClaimRefund; two-connection rehearsal on disposable MariaDB.",
     },
   },

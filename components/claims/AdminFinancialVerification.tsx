@@ -6,6 +6,8 @@ import { Button, Badge, useToast } from '@/components/design-system'
 import { formatEuros } from '@/lib/format-money'
 import { cardMoneyLine, financialVerificationCardVisible } from '@/lib/claim-money-line'
 import { moneyStateGuidance } from '@/lib/claim-action-rules'
+// ROUND 13 (G12, B10): the attribution success copy and the pending-row legend come from the shared pure module.
+import { attributionSuccessText, PENDING_ROW_LEGEND, adoptionRefusalWroteText } from '@/lib/claim-attribution-rules'
 
 // ── T-49 — THE FINANCIAL VERIFICATION QUEUE (founder decision, 2026-09-10) ────────
 //
@@ -206,34 +208,18 @@ export default function AdminFinancialVerification() {
         body: JSON.stringify({ refundRowId }),
       })
       const body = await res.json().catch(() => ({}))
+      // ROUND 13 (D8, G12): every refusal — identity, Stripe evidence not proven, a lost race (C7) — is a 409 whose
+      // server text says exactly what was established. The console renders it verbatim.
       if (!res.ok) { toast.error((body as { error?: string }).error || 'Attribution refusée.'); return }
-      const result = (body as { result?: { outcome?: string; until?: string } }).result
-      const outcome = result?.outcome
-      // ROUND-4 AUDIT FIX: the tone fix was applied to reconcile() only, so attributing a FAILED
-      // refund still announced itself with a green tick. Same rule on both handlers.
-      const text = outcome === 'refunded'
-        ? 'Remboursement attribué : la réclamation reflète désormais ce remboursement réel.'
-        : outcome === 'refund_failed'
-          // ROUND-5 AUDIT FIX: I added "Aucun argent n'a atteint le client" here in the round-4
-          // pass — a blanket cash claim about the CUSTOMER derived from one ROW's status. The row
-          // failing means that refund paid nothing; it says nothing about other refunds on the
-          // order. Four rounds were spent removing exactly this shape and I reintroduced it.
-          ? 'Remboursement attribué : cette ligne de remboursement avait ÉCHOUÉ, elle n’a donc rien versé. La réclamation redevient traitable. (Cela ne dit rien des autres remboursements de la commande.)'
-          // ROUND-11 AUDIT FIX (P1): a pending row's link is now decided by Stripe's evidence for that row.
-          : outcome === 'still_pending'
-            ? 'Remboursement attribué : Stripe rapporte ce remboursement EN ATTENTE. Rien n’est clos ; relancez « Réconcilier d’après la preuve » lorsqu’il sera terminal.'
-            : outcome === 'unconfirmed_within_window'
-              ? `Remboursement attribué : Stripe ne connaît pas encore de remboursement pour cette ligne. Rien n’est clos ; conclusion possible à partir du ${result?.until ? new Date(result.until).toLocaleString('fr-FR') : '—'} (relancez alors la réconciliation).`
-              : outcome === 'engine_row_dead'
-                ? 'Remboursement attribué : Stripe ne connaît aucun remboursement pour cette ligne et le moteur ne la créera plus — elle n’a rien versé. Le dossier est clôturable (« Clôturer ce dossier… »).'
-                : outcome === 'stripe_unreadable_retry'
-                  ? 'Remboursement attribué : Stripe n’a pas pu être lu. Rien n’est conclu ; relancez « Réconcilier d’après la preuve ».'
-                  : outcome === 'financial_verification'
-                    ? 'Remboursement attribué, mais la preuve Stripe contredit cette ligne : la réclamation reste en vérification financière (voir la cause).'
-                    : 'Remboursement attribué.'
-      if (outcome === 'refund_failed' || outcome === 'unconfirmed_within_window' || outcome === 'engine_row_dead'
-        || outcome === 'stripe_unreadable_retry' || outcome === 'financial_verification') toast.error(text)
-      else toast.success(text)
+      const result = (body as { result?: { outcome?: string; rowStatusBefore?: string } }).result
+      // ROUND 13 (G12): the only success is 'refunded' — a binding committed on Stripe evidence read before any write.
+      // No other outcome exists; anything else is shown as unconfirmed, never as a success.
+      if (result?.outcome !== 'refunded') {
+        toast.error('Réponse inattendue : rien n’est confirmé. Relisez sa ligne dans la file.')
+        await load()
+        return
+      }
+      toast.success(attributionSuccessText(result.rowStatusBefore ?? ''))
       await load()
     } catch {
       toast.error('Attribution refusée.')
@@ -304,15 +290,14 @@ export default function AdminFinancialVerification() {
         setRefusedFacts((p) => ({ ...p, [claimId]: null }))
         setStripePreview((p) => ({ ...p, [claimId]: facts ? { ...facts, wouldWrite: body.result?.wouldWrite !== false } : null }))
         toast.success(facts?.source === 'local_row'
-          ? 'Ce remboursement est déjà enregistré ici pour cette réclamation — Stripe n’a pas été relu. « Lier » ne fera que la liaison.'
+          ? 'Ce remboursement est déjà enregistré ici pour cette réclamation — Stripe n’a pas été relu par cette vérification. « Lier » le relira chez Stripe, puis ne fera que la liaison.'
           : 'Vérifié chez Stripe — rien n’a été écrit. Relisez les faits ci-dessous avant de lier.')
         return
       }
       setStripePreview((p) => ({ ...p, [claimId]: null }))
-      // ROUND-8 AUDIT FIX (P3): on the crash-resume branch Stripe is NOT re-read — say which it was.
-      toast.success(body.result?.facts?.source === 'local_row'
-        ? 'Remboursement lié : la réclamation reflète la ligne enregistrée plus tôt depuis Stripe. Stripe n’a pas été relu par cette action.'
-        : 'Remboursement Stripe lié : la réclamation reflète ce remboursement tel que Stripe vient de le rapporter.')
+      // ROUND 13 (B11 (a), W4 fixer): every adoption success is bound on the Stripe object read by this request (both
+      // branches) — the former « Stripe n’a pas été relu » branch was unreachable and would now be false.
+      toast.success('Remboursement Stripe lié : la réclamation reflète ce remboursement tel que Stripe vient de le rapporter.')
       await load()
     } catch {
       toast.error(dryRun ? 'Vérification impossible.' : 'Liaison impossible.')
@@ -555,7 +540,7 @@ export default function AdminFinancialVerification() {
                     <p>
                       {stripePreview[r.id]!.wouldWrite
                         ? 'Ce sont les valeurs qui seront enregistrées et liées telles quelles. « Lier » ne les modifie pas.'
-                        : 'La ligne existe déjà : « Lier » ne fera que la liaison, sans rien écrire d’autre.'}
+                        : 'La ligne existe déjà : « Lier » relira ce remboursement chez Stripe, puis ne fera que la liaison, sans rien écrire d’autre.'}
                     </p>
                   </dl>
                 )}
@@ -563,10 +548,10 @@ export default function AdminFinancialVerification() {
                   <p className="mt-2 text-[12px] text-red-700">
                     {/* ROUND-8 AUDIT FIX (P2): « Rien n’a été écrit » was printed on refusals that come AFTER
                         the mirror row was created. It is said only when the server proved it. */}
-                    Refusé — ce qui a été lu : <code>{refusedFacts[r.id]!.stripeRefundId}</code>, statut <code>{refusedFacts[r.id]!.stripeStatus}</code>, paiement <code>{refusedFacts[r.id]!.paymentIntentId ?? '—'}</code>.{' '}
-                    {refusedFacts[r.id]!.wrote === false ? 'Rien n’a été écrit.'
-                      : refusedFacts[r.id]!.wrote === true ? 'La ligne miroir a été enregistrée ; la liaison n’a pas abouti — relisez la ligne dans la file.'
-                      : 'L’état a pu changer : relisez la ligne dans la file.'}
+                    {/* ROUND 13 (B11 (a), W4 fixer): the facts say where they were read, and the wrote sentence comes from
+                        the shared pure mapping (null after a binding commit reported lost or a failed re-read). */}
+                    Refusé — {refusedFacts[r.id]!.source === 'local_row' ? 'notre ligne enregistre' : 'Stripe rapporte'} : <code>{refusedFacts[r.id]!.stripeRefundId}</code>, statut <code>{refusedFacts[r.id]!.stripeStatus}</code>, paiement <code>{refusedFacts[r.id]!.paymentIntentId ?? '—'}</code>.{' '}
+                    {adoptionRefusalWroteText(refusedFacts[r.id]!.wrote)}
                   </p>
                 )}
               </div>
@@ -579,8 +564,9 @@ export default function AdminFinancialVerification() {
                 </p>
                 <p className="mt-1 text-[12px] text-grubano-ink-muted">
                   À utiliser quand vous savez, hors système, lequel de ces remboursements correspond
-                  à cette réclamation. Vous choisissez le LIEN, pas le résultat : le statut et le
-                  montant sont lus sur la ligne elle-même. Aucun argent n’est déplacé.
+                  à cette réclamation. Vous choisissez le LIEN, pas le résultat : Stripe est lu avant
+                  toute écriture, et le lien n’est écrit que si Stripe rapporte ce remboursement ABOUTI.
+                  Aucun argent n’est déplacé.
                 </p>
                 <ul className="mt-2 space-y-2">
                   {r.candidateRefunds!.map((c) => (
@@ -596,6 +582,10 @@ export default function AdminFinancialVerification() {
                           can no longer be added on one side only. */}
                       {c.refusal && (
                         <Badge tone="danger">{REFUSAL_LEGEND[c.refusal] ?? 'sera refusé'}</Badge>
+                      )}
+                      {/* ROUND 13 (B10, G12): a pending row is bound only on Stripe evidence read before any write. */}
+                      {c.status === 'pending' && c.refusal == null && (
+                        <Badge tone="neutral">{PENDING_ROW_LEGEND}</Badge>
                       )}
                       <Button
                         size="sm"

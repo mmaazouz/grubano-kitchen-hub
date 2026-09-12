@@ -83,7 +83,16 @@ beforeEach(() => {
   db.claim.findFirst.mockResolvedValue(null)
   db.claim.updateMany.mockImplementation(updateManyMock(fx))
   db.claim.update.mockResolvedValue({})
-  db.claim.findMany.mockResolvedValue([])
+  // ROUND 13 (B9 (a), slice W4): reconcileClaimForRefund reads EVERY claim bound to the row (findMany where { refundId }).
+  // These fixtures give the bound claim through findFirst; that binder read answers with the same fixture.
+  db.claim.findMany.mockImplementation(async (args?: { where?: Record<string, unknown> }) => {
+    const where = args?.where
+    if (where && typeof where.refundId === 'string' && Object.keys(where).length === 1) {
+      const bound = await db.claim.findFirst(args)
+      return bound ? [bound] : []
+    }
+    return []
+  })
   db.claim.count.mockResolvedValue(0)
   db.claim.groupBy.mockResolvedValue([])
   db.refund.findMany.mockResolvedValue([])

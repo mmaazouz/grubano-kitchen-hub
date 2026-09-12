@@ -23,6 +23,8 @@ const { db } = vi.hoisted(() => ({
     order:  { findUnique: vi.fn(), findMany: vi.fn() },
     // ROUND 13 (G2 (3), W3): the no-row branch reads the ONE loader (G3), which reads the royalty status.
     franchiseRoyalty: { findFirst: vi.fn() },
+    // ROUND 13 (C6, slice W4): attribution binds in ONE Serializable transaction (run here on the same mocks).
+    $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(db)),
   },
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
@@ -184,36 +186,43 @@ describe('ATTRIBUTION OF A PENDING ROW — Stripe’s evidence for that row deci
     db.refund.findUnique.mockResolvedValue(row)
     db.refund.findMany.mockResolvedValue([row])
     stripeMock.refunds.list.mockResolvedValue({ data: [tagged('rf_e', 'succeeded')], has_more: false })
-    expect(await attributeClaimRefund({ claimId: 'cl1', refundRowId: 'rf_e', adminId: 'op1' })).toMatchObject({ ok: true, outcome: 'refunded', refundId: 'rf_e' })
+    // ROUND 13 (G12 / C6, slice W4): the evidence is read first, then ONE Serializable transaction binds and settles.
+    expect(await attributeClaimRefund({ claimId: 'cl1', refundRowId: 'rf_e', adminId: 'op1' })).toMatchObject({ ok: true, outcome: 'refunded', refundId: 'rf_e', rowStatusBefore: 'pending', evidence: 'stripe_read', amountCents: 300 })
     expect(fx.row).toMatchObject({ status: 'refunded', refundId: 'rf_e', activeOrderKey: null })
+    expect(db.$transaction).toHaveBeenCalledTimes(1)
   })
 
-  it('…FAILED at Stripe → refund_failed, closable; not at Stripe yet → from when to conclude, nothing closed', async () => {
+  it('ROUND 13 (G12): …FAILED at Stripe, or not at Stripe yet → NOT PROVEN, a 409 that says so; nothing is written (no bind-first write any more)', async () => {
     const row = engineRow('rf_e')
     db.refund.findUnique.mockResolvedValue(row)
     db.refund.findMany.mockResolvedValue([row])
     stripeMock.refunds.list.mockResolvedValue({ data: [tagged('rf_e', 'failed')], has_more: false })
-    expect(await attributeClaimRefund({ claimId: 'cl1', refundRowId: 'rf_e', adminId: 'op1' })).toMatchObject({ ok: true, outcome: 'refund_failed' })
-    expect(String(fx.row!.refundError).startsWith('stripe_failed:')).toBe(true)
+    expect(await attributeClaimRefund({ claimId: 'cl1', refundRowId: 'rf_e', adminId: 'op1' })).toEqual({
+      ok: false, status: 409,
+      error: 'Stripe rapporte le remboursement re_rf_e de la ligne rf_e « failed » : cette ligne ne verse rien et ne peut solder aucune réclamation. La réclamation n’a pas été modifiée. « Réconcilier d’après la preuve » tient compte de cette ligne pour toute la commande.',
+    })
+    expect(fx.row).toMatchObject({ status: FINANCIAL_VERIFICATION, refundId: null })
 
-    fx.row = { status: FINANCIAL_VERIFICATION, refundId: null, refundError: 'financial_verification:x' }
     stripeMock.refunds.list.mockResolvedValue({ data: [], has_more: false })
-    const r = await attributeClaimRefund({ claimId: 'cl1', refundRowId: 'rf_e', adminId: 'op1' })
-    expect(r).toMatchObject({ ok: true, outcome: 'unconfirmed_within_window', until: new Date(row.createdAt.getTime() + WINDOW + ENGINE_DEAD_MARGIN_MS).toISOString() })
-    expect(fx.row).toMatchObject({ status: 'refunding', refundId: 'rf_e' })
+    const until = new Date(row.createdAt.getTime() + WINDOW + ENGINE_DEAD_MARGIN_MS).toISOString()
+    expect(await attributeClaimRefund({ claimId: 'cl1', refundRowId: 'rf_e', adminId: 'op1' })).toEqual({
+      ok: false, status: 409,
+      error: `Stripe ne connaît pas encore de remboursement pour la ligne rf_e. La réclamation n’a pas été modifiée. Conclusion possible à partir du ${until} (UTC).`,
+    })
+    expect(fx.row).toMatchObject({ status: FINANCIAL_VERIFICATION, refundId: null })
+    expect(db.claim.updateMany).not.toHaveBeenCalled()
   })
 
-  it('the ATTRIBUTE handler says what the evidence found, for every outcome the route can return', () => {
+  it('ROUND 13 (G12 / D8): the ATTRIBUTE handler renders the server text of every refusal and a success only for « refunded »', () => {
     const fv = read('components/claims/AdminFinancialVerification.tsx')
-    // Scoped to the attribute handler: the reconcile handler names the same outcomes, so a file-wide
-    // search would stay green if the attribute toasts were removed.
+    // Scoped to the attribute handler: the reconcile handler names the evidence outcomes, which attribution no longer returns.
     const handler = fv.slice(fv.indexOf('const attribute = useCallback'), fv.indexOf('type StripeFacts'))
     expect(handler.length).toBeGreaterThan(200)
-    // Each outcome must be a BRANCH of the toast-text chain (`: outcome === 'x'` then its `? text`). The
-    // tone condition below names the same outcomes, so a bare substring would stay green if a branch
-    // were removed — which is exactly what the first run of control E13 showed.
+    expect(handler).toContain("if (!res.ok) { toast.error((body as { error?: string }).error || 'Attribution refusée.'); return }")
+    expect(handler).toContain("if (result?.outcome !== 'refunded') {")
+    // NEGATIVE CONTROL: the round-12 outcome branches are gone from the handler (a dead success toast for a 409 world).
     for (const o of ['still_pending', 'unconfirmed_within_window', 'engine_row_dead', 'stripe_unreadable_retry', 'financial_verification']) {
-      expect(handler, o).toMatch(new RegExp(`: outcome === '${o}'\\s*\\n\\s*\\? `))
+      expect(handler, o).not.toMatch(new RegExp(`outcome === '${o}'`))
     }
     expect(fv).not.toContain('pending_unconfirmed:')
   })

@@ -16,9 +16,12 @@ export const dynamic = 'force-dynamic'
 // exists. This is it.
 //
 // It is NOT the guess the policy forbids. The operator supplies the missing LINK — which existing
-// refund of THIS order belongs to this claim — and the system reads that row's own status and
-// amount and applies it. The operator states no outcome, states no amount, and moves no money:
-// there is no engine call, no Stripe write and no retry behind this route.
+// refund of THIS order belongs to this claim — and the system reads Stripe's evidence for that
+// row BEFORE any write (ROUND 13, G12), binding it only if Stripe reports it SUCCEEDED, on
+// Stripe's amount, in one Serializable transaction (C6). The operator states no outcome, states
+// no amount, and moves no money: there is no engine call, no Stripe write and no retry behind it.
+// OPEN (D8 / D10 (iii) / H07, email slice): the closure-notice attempt after an observed commit is
+// not wired yet — sendClaimClosureEmail does not exist in this tree.
 //
 // A refund from another order is refused outright, so a claim can never be settled by an
 // unrelated payment. Every attribution is recorded in the admin audit log.
@@ -30,7 +33,7 @@ export const dynamic = 'force-dynamic'
 // refund issued from the Stripe Dashboard leaves none — so that population had no exit short of
 // paying twice. The second body shape takes a Stripe refund id (re_…) and NOTHING else; the server
 // proves at Stripe that it sits on this order's payment and charge, mirrors it into a local row
-// only if Stripe says it SUCCEEDED, then binds it through the same audited tail. `dryRun: true`
+// only if Stripe says it SUCCEEDED, then binds it through attributeWithEvidence (C6). `dryRun: true`
 // reads and returns the facts without writing, so the console can show them first. Neither shape
 // carries an amount or an outcome field: the operator cannot supply one.
 // ROUND-8 AUDIT FIX (P3): both branches are STRICT. Non-strict objects stripped unknown keys, so a
@@ -40,6 +43,8 @@ export const dynamic = 'force-dynamic'
 const schema = z.union([
   z.object({
     refundRowId: z.string().min(1).max(200),
+    // ROUND 13 (D8 (6)): read Stripe's evidence for the row and write nothing.
+    dryRun:      z.boolean().optional(),
     note:        z.string().max(1000).optional(),
   }).strict(),
   z.object({
@@ -72,6 +77,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const result = await attributeClaimRefund({
     claimId:     params.id,
     refundRowId: parsed.data.refundRowId,
+    dryRun:      parsed.data.dryRun === true,
     adminId:     operator.id,
     note:        parsed.data.note,
   })

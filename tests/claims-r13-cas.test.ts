@@ -47,6 +47,8 @@ beforeEach(() => {
 const C1_FUNCTIONS = [
   'triggerClaimRefund', 'reconcileClaimEvidence', 'applyRowTruth', 'reconcileBoundClaim', 'enterFinancialVerification', 'attributeClaimRefund',
   'adoptStripeRefundInner', 'reconcileClaimForRefund', 'resolveStuckClaim', 'runClaimAutoApproval', 'reconcileNoRowByDerivation',
+  // ROUND 13 (C1 / C6, slice W4): the attribution transaction's CAS (tx.claim.updateMany) is scanned too.
+  'attributeWithEvidence',
 ]
 /** C1: refundId / refundAttempted are in the where « whenever the decision read them » — per function. */
 const MUST_ALSO: Record<string, string[]> = {

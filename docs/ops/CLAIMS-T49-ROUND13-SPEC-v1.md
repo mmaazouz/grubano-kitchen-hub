@@ -791,6 +791,7 @@ New test tests/claims-identity-writers.test.ts, a source scan of app/, lib/ and 
 (a) The only prisma.refund.update / updateMany / tx.refund.update* calls are the three in lib/refund.ts: the markRefundRowFailed update, the resume write and the finalize write (today 458, 513, 619). None of their data objects contains the key reason.
 (b) The only prisma.refund.create / tx.refund.create calls are the engine insert in lib/refund.ts and the adoption mirror in lib/claims.ts.
 Break/restore control: add `reason: 'x'` to the finalize data in a temp copy → red; restore → green. A new Refund writer anywhere makes the test red until it is listed and shown to leave reason alone.
+IMPLEMENTATION NOTE (W4): pinned by tests/claims-identity-writers.test.ts (J-M09), a TypeScript-AST scan of app/, lib/ and scripts/. The only Refund updates are markRefundRowFailed and the two finalizeRefund writes (resume, finalize) of lib/refund.ts, none writing reason; the only creates are executeRefund and tx.refund.create in adoptStripeRefundInner (C8). scripts/ holds no Refund writer. The break/restore runs on an in-memory copy.
 
 ### B5 [CORE] Closed list of Claim.refundId writers
 Only these writes set Claim.refundId to a non-null value. Every one is a CAS (section C).
@@ -806,6 +807,7 @@ These keep refundId: reconcileClaimForRefund (CAS on refundId = row), resolveStu
 N8 proof writes and T2(e') proof writes set refundId null.
 The round-11 bind-first write in attributeClaimRefund (1929-1933) is deleted.
 Pin: a source scan lists every claim update / updateMany whose data has the key refundId and fails on any site outside W1-W8, N8, T2(e').
+IMPLEMENTATION NOTE (W4): W7 is tx.claim.updateMany inside attributeWithEvidence (C6); the round-11 bind-first write of attributeClaimRefund is deleted. J-M10 pins the exact count per function: triggerClaimRefund 8 (the T2 (e′) proof write and the seven T4 writes that set refundId, found through the t4Write forwarder), applyRowTruth 6 (W5), enterFinancialVerification 1 (W6), reconcileNoRowByDerivation 1 (N8), attributeWithEvidence 1 (W7). markClaimsForRevertedRefundRow (G11) does not exist yet: its slice adds it to the negative control.
 
 ### B6 [CORE] One Refund settles at most one Claim
 INVARIANT, for every Refund row R: the number of claims with {refundId: R, status: 'refunded', refundError: null} is ≤ 1, except in legacy data (B9).
@@ -818,6 +820,7 @@ Tests:
 - a two-claim race on unstamped R → exactly one refunded (C6; C10 rehearsal);
 - attribution of R when a non-terminal binder exists → 409 bound_to_other_claim;
 - a late not_ours return after attribution → claim.refundId unchanged, and a third claim's attribution of R is still refused.
+IMPLEMENTATION NOTE (W4): (2) landed — attributeWithEvidence is the only creator of a settling binding of an unstamped row; the binder read and the CAS share one Serializable transaction (C6). The two-claim race is pinned with a lock simulator (tests/claims-r13-attribution.test.ts, J-M23); the real two-connection rehearsal (C10, J-M24) is opt-in and has not been run yet.
 
 ### B7 [CORE] T3: identity after the engine replaces refundRowBelongsToClaim
 lib/claims.ts: delete refundRowBelongsToClaim (491-499). Add refundRowIdentity(rowId, claimId, result): Promise<'ours' | 'not_ours' | 'unknown'>.
@@ -858,6 +861,8 @@ Pins:
 - applyRowTruth parks instead of settling;
 - both claims read financial_verification.
 Negative control: one binder → refunded.
+IMPLEMENTATION NOTE (W4): (a) landed — reconcileClaimForRefund reads every bound claim with claim.findMany and the row once ({ status, reason }, in try: a throw → not_bound, no write, B12). No bound claim at all keeps the existing no_claim answer; zero candidates → not_bound; two or more candidates → ambiguous_binding with console.error [MONEY REVIEW] ambiguous_binding, checked BEFORE the terminal check (a terminal binder is still a binder, fail closed); one candidate → the existing branches with the C9 CAS. (b) and (c) were landed by W2 / W1; (d) belongs to the census slice. Pinned by tests/webhook-refund-reconciliation.test.ts (J-M13).
+IMPLEMENTATION NOTE (W4, fixer round 1): no bound claim at all keeps { reconciled: false, reason: 'no_claim' } rather than (a)'s 'not_bound'. It is the same no-write, 200 outcome; 'no_claim' separates « nothing is bound to this row » (an ordinary admin-rail, ghost-order or external refund) from « bound claims exist, none is a candidate », and the webhook's finalize answer (its claim field) and tests/claims-state-machine.test.ts already expose it. A thrown row read (→ not_bound, no write, B12) now logs console.warn('[claims] refund row read failed — no claim reconciled', rowId, code), so a bound claim left on that row is visible before the recovery sweep.
 
 ### B10 [CORE] Attribution identity refusals
 lib/claim-attribution-rules.ts attributionRefusal, evaluated in this order:
@@ -869,7 +874,8 @@ lib/claim-attribution-rules.ts attributionRefusal, evaluated in this order:
 (6) NEW row_failed: row.status === 'failed' → 409 « Cette ligne est ÉCHOUÉE : elle ne verse rien et ne peut solder aucune réclamation. Rien n’a été écrit. « Réconcilier d’après la preuve » tient compte de cette ligne pour toute la commande. » REFUSAL_LEGEND row_failed: 'ligne échouée — ne peut solder aucune réclamation, sera refusé'.
 The refusal of a pending row without a Stripe id is REMOVED. Stripe proves such a row through the grubano_refund_row tag (G4); the console legend for pending rows becomes « lié seulement si Stripe le rapporte ABOUTI ».
 The pure rule is applied by the server and by the console with the same inputs (existing parity test extended with row_failed).
-IMPLEMENTATION NOTE (W1): the pure rule carries the whole order, (1) included (code other_order, status 400, the existing text), with claimOrderId and row.orderId as inputs; the server's inline anchor moved into it and a failed binder or stamp read refuses with the B12 text. The console legend for row_failed is added. The pending-row legend « lié seulement si Stripe le rapporte ABOUTI » is NOT added in W1: attributeClaimRefund still binds first (the write B5 deletes), so the sentence would be false until G12's evidence-before-write lands with it.
+IMPLEMENTATION NOTE (W1): the pure rule carries the whole order, (1) included (code other_order, status 400, the existing text), with claimOrderId and row.orderId as inputs; the server's inline anchor moved into it and a failed binder or stamp read refuses with the B12 text. The console legend for row_failed is added. The pending-row legend « lié seulement si Stripe le rapporte ABOUTI » is NOT added in W1: attributeClaimRefund still binds first (the write B5 deletes), so the sentence would be false until G12's evidence-before-write lands with it. [SUPERSEDED by the W4 note below: G12 landed and the legend is added.]
+IMPLEMENTATION NOTE (W4): the pending-row legend « lié seulement si Stripe le rapporte ABOUTI » is added now (PENDING_ROW_LEGEND in lib/claim-attribution-rules), rendered for a pending candidate the pre-check does not refuse; it is true since G12 reads the evidence before any write. Pinned by tests/claims-r13-attribution.test.ts (J-M14).
 
 ### B11 [CORE] Adoption mirror identity
 adoptStripeRefundInner keeps its DB guards (2075-2124) and Stripe anchors (2126-2183). Changes:
@@ -879,6 +885,8 @@ adoptStripeRefundInner keeps its DB guards (2075-2124) and Stripe anchors (2126-
 - 'refunded' → 200.
 - Any refusal → 409 wrote: true « La ligne miroir ${row} (remboursement ${re} ABOUTI chez Stripe, identité de cette réclamation) a été enregistrée, mais la réclamation n’a pas été modifiée : elle a changé d’état entre-temps. Si elle est encore en vérification financière, « Réconcilier d’après la preuve » appliquera cette ligne, qui porte son identité. »
 An orphan mirror stamped for a claim settled elsewhere is never deleted. G7 treats it as the AM-A5 park, and the census counts it (refundedBoundToOtherClaimStamp).
+IMPLEMENTATION NOTE (W4): (a) the success facts are the Stripe object attributeWithEvidence read (source stripe); the local_row facts remain only for the dry-run preview, where Stripe is not read. (c) ER-M08 / truthfulness: the exact B11 (c) sentence is kept when the claim was proven unmodified by a change (not FV any more, claim_changed, bound_to_other_claim, an unchanged re-read). Where « elle a changé d’état entre-temps » is not what was established, the sentence keeps its head (« La ligne miroir … a été enregistrée ») and says what was: an identity read that failed (« la base n’a pas pu être relue pour établir l’identité du remboursement »), a commit reported lost whose re-read shows the claim bound to the mirror (« la réclamation est déjà liée à cette ligne (statut actuel : « x ») », with the closure-record variant), a re-read that failed (« la base n’a pas pu confirmer ce qui a été écrit sur la réclamation »). Pinned by tests/claims-r13-adoption.test.ts (J-M15).
+IMPLEMENTATION NOTE (W4, fixer round 1): corrects the W4 note above. (a) « set trace.wrote = false before any refusal » is wrong for two C7 outcomes of the binding transaction this call ran: a commit reported lost whose re-read shows the claim bound to the row (already_bound), and a re-read that failed (unestablished). Neither establishes that nothing was written, so adoption answers wrote: null after them on BOTH branches — on the fresh branch the mirror exists and the server text says so, but « la liaison n’a pas abouti » is not established either. wrote false (existing mirror) / true (fresh mirror) is kept for every other refusal, an unchanged re-read included. The console sentence is one pure mapping, adoptionRefusalWroteText (lib/claim-attribution-rules): false « Rien n’a été écrit. », true « La ligne miroir a été enregistrée ; la liaison n’a pas abouti — relisez la ligne dans la file. », null « L’état a pu changer : relisez la ligne dans la file. ». A refusal on the existing-mirror branch carries the facts of the Stripe refund object attributeWithEvidence read for the row (source stripe), or no facts when it refused before any Stripe read — never the local row's: the local_row facts serve the dry-run preview only, where Stripe is not read. The console refusal card names the source (« Stripe rapporte » / « notre ligne enregistre »), and the unreachable local_row success toast is removed. (c) variants: identity_unread and unestablished as in the W4 note; already_bound « …, et la réclamation est déjà liée à cette ligne (statut actuel : « x »). Cette action n’a tenté aucun e-mail ; sa clôture est enregistrée. Relisez sa ligne dans la file. » (record written; it names no console section, see the C7 fixer note) or « … ; l’enregistrement de sa clôture a échoué : aucun avis client ne pourra lui être envoyé. Relisez sa ligne dans la file. » (record failed); not_written, an unchanged re-read after a transaction error, « …, mais la réclamation n’a pas été modifiée : la liaison n’a pas pu être enregistrée (écriture concurrente ou erreur de la base). Si elle est encore en vérification financière, « Réconcilier d’après la preuve » appliquera cette ligne, qui porte son identité. ». The frozen B11 (c) sentence stays for a claim proven changed (not FV any more, claim_changed, bound_to_other_claim). Pinned by tests/claims-r13-adoption.test.ts (block « B11 (a)/(c) W4 fixer »: every variant on the fresh branch with its exact text, status 409, wrote and no second adoption audit; already_bound and unestablished on the existing-mirror branch; negative controls claim_changed and not_written; J-M15 (b): the refusal facts carry Stripe's status) and tests/claims-t49-round9.test.ts (the console mapping).
 
 ### B12 [CORE] A failed identity read is never a negative identity
 Every read that establishes identity is inside try: T3 reason, the boundRow read, binder reads, the owners and stamped rows loaded by G3, the stamped re-query of N8 and T2.
@@ -1010,6 +1018,8 @@ Only after the promise resolves, in this order:
 4. return { ok: true, outcome: 'refunded', refundId: row.id, rowStatusBefore, evidence: 'stripe_read', amountCents: s.amount }.
 The attribute route then attempts the closure notice (D10 (iii), H07). It answers 200 only for that result, so no success UI exists without an observed commit.
 Why exactly one of two concurrent binders wins: Claim.refundId has no index, so the findFirst takes shared locks on the claim rows it scans. Two crossing updates then deadlock and one is rolled back (P2034). A sequential second binder sees the committed binding and aborts.
+IMPLEMENTATION NOTE (W4): attributeWithEvidence(claim, row, stripeRefund?, opts) is exported; opts carries the audit actor (adminId, note), dryRun (D8 (6)) and the Prisma client (the C10 rehearsal passes one per connection; the app uses the singleton). It re-reads the claim itself (the CAS pre-image), applies B10 with the one binder where, then the G12 evidence. A supplied Stripe refund (adoption, rehearsal) proves only the row whose id or grubano_refund_row tag it carries; otherwise it is a contradiction (NOT PROVEN). The transaction options are inline: { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 2000, timeout: 5000 }. The outcome is { ok, outcome refunded | preview, refundId, rowStatusBefore, evidence stripe_read, amountCents }. Pinned by J-M23 (call shape, AST pin of the callback, simulator races) and J-M37.
+IMPLEMENTATION NOTE (W4, fixer round 1): a supplied Stripe refund is evidence only for a SUCCEEDED row — the adoption mirror, anchored by its caller to the order's PaymentIntent and charge, and the C10 rehearsal. For a PENDING row it is ignored and the evidence is refundRowTruth, which anchors the PaymentIntent (G4): an id or tag match alone is never at_stripe evidence. A not-proven refusal carries the Stripe refund object it read (stripeRead) for the adoption refusal facts (B11 fixer note). Pinned by tests/claims-r13-attribution.test.ts (block « C6 (W4 fixer) », with its negative control).
 
 ### C7 [CORE] Lost race: a clean failure, never an ambiguous success
 Any error from the C6 or C8 $transaction that is not an AttributionAbort or AdoptionAbort is treated as « nothing proven written »: P2034 (1213), P2028, 1020 / ER_CHECKREAD, a connection lost during COMMIT, or anything else.
@@ -1021,6 +1031,8 @@ console.warn('[claims] binding transaction aborted', code). Then re-read claim.f
 - anything else → 409 « Cette réclamation, ou ce remboursement, a changé entre-temps — rien n’a été écrit. Relisez sa ligne dans la file. » This is true: a committed C6 write can only become refunded or refused_final with the same refundId.
 None of these sends an alert, writes an audit, attempts a notice or returns ok. The console renders body.error for every 409.
 Vitest pins the call shape (isolationLevel, maxWait ≤ 2000, timeout ≤ 5000) and each mapping, with a mocked $transaction rejecting with each code (J-M23).
+IMPLEMENTATION NOTE (W4): implemented with the exact texts. The C6 bound_to_other_claim abort answers the B10 (4) text naming the claim the transaction found. console.warn carries the error code (P2034, P2028, 1020, …) or the error name. Pinned by tests/claims-r13-attribution.test.ts (J-M23: P2034, P2028, 1020, a generic error, a lost commit with the record written and failed, a failed re-read).
+IMPLEMENTATION NOTE (W4, fixer round 1): two texts differ from the frozen ones, because they said more than the code establishes. (1) The r true variant named the console section « Avis client non envoyés », which does not exist in this tree (H10, email slice, has not landed, while the attribute route and the console are ungated). It reads « Cette réclamation est déjà liée à ce remboursement (statut actuel : « ${status} »). Cette action n’a tenté aucun e-mail et n’a écrit aucune trace d’audit ; sa clôture est enregistrée. Relisez sa ligne dans la file. »; the H10 slice may name the section again once it renders. (2) « anything else » — the re-read shows the claim not bound to this row after a non-abort error — establishes that nothing was written, not that the claim or the refund changed: the error can be a deadlock caused by the binding of a DIFFERENT row (the binder read share-locks every claim row) or precede the transaction. It reads « La liaison n’a pas pu être enregistrée (écriture concurrente ou erreur de la base) — rien n’a été écrit. Relisez sa ligne dans la file, puis réessayez. ». The C8 path logs the same console.warn('[claims] binding transaction aborted', code). Pinned by tests/claims-r13-attribution.test.ts (J-M23 mappings; block « C7 (W4 fixer) »: the not-written text asserts no change, and no operator text names a console section the console does not render, with a negative control restoring the former tail).
 
 ### C8 [CORE] Adoption mirror insert under a Serializable transaction
 adoptStripeRefundInner fresh branch, after every DB guard and Stripe anchor (2075-2185) and only when dryRun is false:
@@ -1038,6 +1050,8 @@ Outcomes:
   - read throws → the C7 « État non établi » text, wrote: null.
 After commit: trace.wrote = true, then the audit (existing), then attributeWithEvidence(claim, row, refund) (B11 (c)).
 The 5 s timeout is far below innodb_lock_wait_timeout, so an engine insert (refund.ts 808) that waits on this transaction's range lock waits at most about 5 s. It is not turned into a rethrown non-P2002 error.
+IMPLEMENTATION NOTE (W4): implemented with tx.refund.findFirst (C8), not the tx.refund.count of D9 (4) — same lock, same answer. ER-M08 resolved: when a transaction error is followed by a re-read that finds the mirror with reason claim:<id>, trace.wrote is true because wrote means « the mirror row exists » (adoptStripeRefundForClaim), but the adoption audit is NOT written a second time — whether this call or a concurrent one committed it is not established. A re-read that finds the Stripe refund recorded under another claim’s stamp answers the existing « Ce remboursement Stripe vient d’être enregistré par ailleurs — rechargez la file. » with wrote false. Pinned by tests/claims-r13-adoption.test.ts (J-M25).
+IMPLEMENTATION NOTE (W4, fixer round 1): the mirror transaction's error log is C7's console.warn('[claims] binding transaction aborted', code); the former « adoption mirror transaction aborted » variant is gone. J-M25 (c) pins it.
 
 ### C9 [CORE] Pre-images of reconcile, apply, park and close writes
 (a) applyRowTruth(claim, row, truth, relation): claim carries { id, status, refundError, refundId }. Every write (bind 1741, at_stripe succeeded 1763, failed 1785, pending 1798, reverted, absent_dead 1818) uses where { id, status: claim.status, refundError: claim.refundError, refundId: claim.refundId }. After its own bind write, the next write (reconcileClaimForRefund, or a park) expects the post-bind values.
@@ -1064,6 +1078,8 @@ Assert every iteration:
 - the other is unchanged FV with its original refundError;
 - the loser's result is a C6 abort or C7 409, never ok.
 The run is recorded once in docs/ops/REFUND-FINANCIAL-CONTRACT.md with the server version, before any window opens.
+IMPLEMENTATION NOTE (W4): tests/claims-attribution-race.db.test.ts exists. It runs only with CLAIMS_RACE_DATABASE_URL set and refuses any URL whose host is not a loopback host, that names a Grubano or o2switch resource, or that equals DATABASE_URL / DATABASE_URL_STAGING / DATABASE_URL_PROD (the guard itself is always tested). The schema is pushed with node node_modules/prisma/build/index.js db push --skip-generate (the .bin/prisma shim is a shell script on Windows). No raw SQL is allowed, so the test does not read the server version: the operator records it with the counts the test logs. OPEN: the rehearsal has not been run (no disposable MariaDB in the implementation environment); its one-time pre-window run and its record in docs/ops/REFUND-FINANCIAL-CONTRACT.md remain to be done.
+IMPLEMENTATION NOTE (W4, fixer round 1): the OPEN item above is CLOSED — the rehearsal RAN on a disposable MariaDB 12.3.2 (127.0.0.1:3310, database claims_race, pushed with Prisma 5.22.0). 20/20 iterations had exactly one claim {refunded, R}; the loser was unchanged with its original refundError and never ok; the loser answer was the C7 not-written 409 ×20 (abort codes P2034 ×19, one PrismaClientUnknownRequestError with no code). The REPEATABLE READ negative control bound R to both claims in 20/20. The break/restore (binder read outside the transaction) went red at iteration 0 with two refunded claims. Recorded with the server version in docs/ops/REFUND-FINANCIAL-CONTRACT.md §20. The target guard is stronger: it refuses the o2switch account prefix (a hosted database through a loopback tunnel), any database name that is not claims_race…, and any URL or database name equal to a DATABASE_URL* read from process.env, .env.local or .env (vitest loads no env file). Each of those cases is in the always-run guard test.
 
 ### C11 [CORE] Residuals stated verbatim
 docs/ops/REFUND-FINANCIAL-CONTRACT.md, section « Résidus round 13 », and the it.skip reasons of the stalled-attempt race test state, one each:
@@ -1257,6 +1273,8 @@ REACHED FROM: A-S18, A-S20, A-S21, A-S23a-1, A-S23a-2, A-S27-1a, A-S27-1b, A-S27
 REFUSALS: A-S17, A-S22, A-S22b, A-S23b-1, A-S23b-2.
 CONSOLE: « Attribuer » is enabled only for candidates that pass the pre-check. Failed and bound rows show REFUSAL_LEGEND. Only 'refunded' renders a success toast; every 409 renders body.error.
 ONE REFUND, ONE CLAIM: the binder count and the CAS share one Serializable transaction (C6). Refund.reason is never re-written (B4). Tests: J-M23 (mocked call shape and mappings), J-M24 (two-connection rehearsal), J-M37 (evidence before write).
+IMPLEMENTATION NOTE (W4): ER-M02 resolved as C6 / C7 state — the in-transaction CAS carries the refundError pre-image, and a commit observed only through the C7 re-read answers 409 with the C7 « déjà liée » text, never 200 and never « rien de plus n’a été écrit ». The row branch of the route accepts dryRun (strict schema kept). The closure-notice attempt of D10 (iii) / H07 is not wired: sendClaimClosureEmail does not exist yet (email slice); the attribute result already carries evidence and amountCents for it. The console renders body.error for every 409 and a success toast only for refunded (attributionSuccessText).
+IMPLEMENTATION NOTE (W4, fixer round 1): (6) is pinned. attributeClaimRefund({ dryRun: true }) and the route's { refundRowId, dryRun: true } answer the preview with rowStatusBefore and Stripe's amount, and write nothing: 0 transaction, 0 claim write, 0 closure record, 0 audit, 0 alert. The negative control, dryRun false, answers refunded (tests/claims-r13-attribution.test.ts). STILL OPEN for the email slice: after an observed 'refunded' commit, the route's closure-notice attempt (D10 (iii) / H07) on the row branch and the adoption branch — never on a C7 409 or the A-S34 409. J-M38 (iii) must cover both branches, and a commit observed only through the C7 re-read, which answers 409 and sends nothing.
 
 ### D9 [CORE] ADOPT a Stripe refund with no local row
 ROUTE: POST /api/admin/claims/[id]/attribute {stripeRefundId, dryRun?}, ungated.
@@ -1276,6 +1294,7 @@ ONE REFUND, ONE CLAIM: idempotencyKey external:<re_> is @unique, so a second ado
 WHY NO MONEY: no engine and no Stripe write. The mirror records a refund Stripe already reports succeeded. A later payment for the claim meets T2(a) (own stamped row).
 
 Do not adopt a refund that belongs to something else; that claim stays in E-04.
+IMPLEMENTATION NOTE (W4): (1) is read together with B11 (a) — an existing mirror row stamped for this claim is bound through attributeWithEvidence, which reads Stripe; the fresh branch applies only when no local row records the refund. (4) uses tx.refund.findFirst (C8). (6) as B11 (c), with the W4 variants noted there.
 
 ### D10 [CORE] CLOSURE NOTICE attempts (no money; the exit of E-16)
 ATTEMPTED ONLY FROM:
@@ -2245,7 +2264,8 @@ Succeeded row WITHOUT an id: L null → unreadable; tagged refund in L → the s
 Only loadOrderMoneyFacts passes absenceIsEvidence. The mine/bound path, attribution, R0 and the recovery sweep never pass it.
 IMPLEMENTATION NOTE (W2): refundRowTruth implements the whole mapping and is exported. Three cases the text leaves open are closed fail-safe: a 404 with absenceIsEvidence while the list itself is unreadable → unreadable; absenceIsEvidence with the order PaymentIntent unknown → unreadable; a succeeded row without an id whose tag is absent, without the flag → contradiction « La ligne ${row} est marquée ABOUTIE sans identifiant Stripe enregistré, et aucun remboursement de ce paiement ne porte son étiquette. Aucune conclusion tirée. ». Until W3 wires 'reverted' into applyRowTruth, the round-12 mine / bound / attribution callers go through boundPathRowTruth, which reads a SUCCEEDED row as terminal with no Stripe read (round-12 behaviour) and gives pending rows exactly the G4 reading; none of them passes absenceIsEvidence (AST pin, tests/claims-r13-rowtruth.test.ts). The A-S05b-2 / A-S05c-2b second-reconcile assertions of J-M44 land with W3.
 IMPLEMENTATION NOTE (W2, round-1 fix): applyRowTruth handles 'reverted' per G2 (the STRIPE_REVERTED write and ALERT-B) instead of the no-write stripe_unreadable_retry, and a 'refunded' outcome carries evidence 'stripe_read' with the Stripe amount whenever a refund object was read. The resume_mismatch own-row path (B8 (ii)) calls refundRowTruth; boundPathRowTruth remains only for the non-mismatch mine, bound and attribution callers until W3, whose 'refunded' toast says Stripe was not re-read (F14 note). The J-M44 pin now catches every absenceIsEvidence token (any value, a variable or a spread) outside the loader and the two functions that declare the option, and every refundRowTruth call with a 5th argument outside the loader; its negative control also runs through attributeClaimRefund (a 404 row → contradiction park, never not_on_payment). Pinned by tests/claims-r13-rowtruth.test.ts.
-IMPLEMENTATION NOTE (W3): the mine path (G2 (3)) now calls refundRowTruth; boundPathRowTruth remains only for reconcileBoundClaim and attributeClaimRefund until W5. The J-M44 second-reconcile assertions are pinned (tests/claims-r13-rowtruth.test.ts): A-S05b-2 unstamped → E6 + H1 lock with refundId null; A-S05c-2b stamped → the contradiction relabel with the same reason, no alert, never settled.
+IMPLEMENTATION NOTE (W3) [attribution half SUPERSEDED by the W4 note below]: the mine path (G2 (3)) now calls refundRowTruth; boundPathRowTruth remains only for reconcileBoundClaim and attributeClaimRefund until W5. The J-M44 second-reconcile assertions are pinned (tests/claims-r13-rowtruth.test.ts): A-S05b-2 unstamped → E6 + H1 lock with refundId null; A-S05c-2b stamped → the contradiction relabel with the same reason, no alert, never settled.
+IMPLEMENTATION NOTE (W4): supersedes the attribution half of the W3 note above. Attribution (attributeWithEvidence, reached from attributeClaimRefund and from adoption) reads refundRowTruth for the row it binds (G12); boundPathRowTruth remains only for reconcileBoundClaim, until W5 (G11).
 
 ### G5 [CORE] Engine mirror, holds and verdict (pure, lib/claim-action-rules.ts)
 engineRefusalOnReapproval(f) returns the first match, in refund.ts order:
@@ -2442,6 +2462,7 @@ Pins:
 - the tag path for a pending row without an id;
 - P1-6: the bound-elsewhere guard: a binder on another claim → 409; a binder equal to this claim (id: { not }) → not refused.
 There is no money authority on these paths: no approve, no refundAttempted reset, no engine call.
+IMPLEMENTATION NOTE (W4): landed. The evidence is refundRowTruth on the row it binds (W3 note), never with absence as evidence, read before any write. Two readings the text leaves open are closed fail-safe: an at_stripe status that is neither pending / requires_action nor failed / canceled → « Stripe rapporte le remboursement X de la ligne Y au statut « s », non reconnu : rien n’est prouvé. La réclamation n’a pas été modifiée. »; a reading this path cannot produce (not_on_payment, a failed row the B10 rule already refused) → the unreadable text. The outcome union is { refunded | preview }; the deleted outcomes (refund_failed, still_pending, parks) no longer exist on this path. Pinned by tests/claims-r13-attribution.test.ts (J-M37).
 
 ### G13 [CORE] Recovery sweep never settles a claim on a reverted refund
 recoverStrandedClaimReconciliations (2426-2458) is cron-only and never an exit (R-D8). Its selection is unchanged. For each candidate:
@@ -3265,6 +3286,7 @@ ASSERTION:
 NEGATIVE CONTROL: set Z.refundError null → all three checks name Z (bound_to_other_claim, detail, console).
 BREAK/RESTORE: replace the OR with a bare NOT startsWith → the null-error control is no longer a binder → red. Restore → green.
 FINDINGS: P3-22, P1-6.
+IMPLEMENTATION NOTE (W4): pinned in tests/claims-r13-identity.test.ts. DETAIL_UNATTRIBUTED (G7, frozen) says « n’est rattaché ni à l’identité de cette réclamation ni, de façon établie, à une autre réclamation » — a negated « rattaché » — so the equal-amount assertion pins that no sentence ASSERTS an attachment (« est rattaché à une AUTRE réclamation », « rattachés à d’autres réclamations soldées », « relève d’une autre réclamation »). The break/restore is run on the where itself (a bare NOT startsWith does not match the null-error binder under SQL NULL semantics).
 
 ### J-M08 [CORE] Owners of a Stripe refund; H2 only for zero owners
 FILE: tests/claims-r13-identity.test.ts
@@ -3286,6 +3308,7 @@ ASSERTION:
 NEGATIVE CONTROL: (b) must NOT raise H2.
 BREAK/RESTORE: drop the metadata clause from ownersOf → (b) gains H2 → red; restore → green.
 FINDINGS: R-A1-3.
+IMPLEMENTATION NOTE (W4): pinned in tests/claims-r13-identity.test.ts. « (e) is unexplained under N3/N5 » is asserted on a STANDING refund with two owners (N3/N5 examine standing refunds only; the failed re_F of (e) is not standing).
 
 ### J-M09 [CORE] Refund.reason is never written after creation (source scan)
 FILE: tests/claims-identity-writers.test.ts (new)
@@ -3355,6 +3378,8 @@ ASSERTION:
 NEGATIVE CONTROL: only C1 bound → C1 refunded and its customer reads refunded.
 BREAK/RESTORE: revert to findFirst → C1 settled → red; restore → green.
 FINDINGS: R-A2-1 (legacy multi-binder), verifier A (A-S43 never RFc).
+IMPLEMENTATION NOTE (W4): pinned in tests/webhook-refund-reconciliation.test.ts through the real webhook route (the money writes untouched), reconcileClaimEvidence and listConsumerClaims.
+IMPLEMENTATION NOTE (W4, fixer round 1): the second fixture « C1 FV reconciled with R as its bound row » cannot reach the B9 (b) count as written. reconcileClaimEvidence takes the bound path (reconcileBoundClaim → applyRowTruth) only for approved / refunding with a null error (G2 (2)); an FV pre-image takes G2 (3) — mine, then N0-N8 — where the unstamped R is not its row. The B9 (b) park is therefore pinned on the refunding entry, and the FV variant is pinned as never settled on R (no claim refunded). The describe's claim.findFirst mock now answers from the same world, so the BREAK/RESTORE (the reconciler reverted to findFirst) reaches the settling CAS: C1 settles (reconciled true) and the test fails on the invariant itself — run and observed red, then restored byte-identical.
 
 ### J-M14 [CORE] Attribution identity refusals: order and server/console parity
 FILE: tests/claims-r13-attribution.test.ts (new)
@@ -3387,6 +3412,8 @@ ASSERTION:
 NEGATIVE CONTROL: a second adoption of re_D for claim C2 → P2002 → 409, wrote:false, one mirror total.
 BREAK/RESTORE: skip the tag check → (d) creates a mirror → red; restore → green.
 FINDINGS: R-A0-4 (non-adopted variant), P1-3.
+IMPLEMENTATION NOTE (W4): pinned in tests/claims-r13-adoption.test.ts. The negative control’s sequential second adoption of re_D for C2 is refused by the existing-row guard (the mirror carries claim:C) with wrote false and one mirror; the P2002 answer is J-M25 (b). (c) is pinned twice: C closed after the mirror commit, and C relabelled inside the binding transaction (a relabel before attributeWithEvidence reads the claim is simply its new pre-image: the claim is still FV and binding the mirror is right).
+IMPLEMENTATION NOTE (W4, fixer round 1): the B11 (a)/(c) variants and wrote semantics of the B11 fixer note are pinned in the same file (block « B11 (a)/(c) W4 fixer »). (b) also pins that a refusal's facts are Stripe's (status failed, source stripe), and that a refusal before any Stripe read carries none.
 
 ### J-M16 [CORE] A failed identity read is never a negative identity
 FILE: tests/claims-r13-identity.test.ts
@@ -3556,6 +3583,8 @@ ASSERTION:
 NEGATIVE CONTROL: two different rows R and R' → both commit.
 BREAK/RESTORE: move the binder findFirst before prisma.$transaction → both callbacks commit in the interleaved mode → red; answer 200 on the lost-commit re-read → red; restore → green.
 FINDINGS: R-A2-1, CONVERGENCE (one Refund never settles two claims), P2 toasts, freeze verifier (D8 vs C6/C7), R-B1-1.
+IMPLEMENTATION NOTE (W4): pinned in tests/claims-r13-attribution.test.ts with tests/support/serializable-sim.ts (shared locks on every scanned claim row, exclusive writes, a deadlock victim rolled back) and the AST pin tests/support/tx-callback-pin.ts. The negative control (two different rows) commits both when run sequentially. Interleaved bindings of two DIFFERENT rows can also deadlock, because the binder read share-locks every claim row (no index on refundId): the victim writes nothing and states it, and a retry commits (pinned).
+IMPLEMENTATION NOTE (W4, fixer round 1): the loser texts follow the C7 fixer note. The unchanged re-read (P2034, P2028, 1020, a generic error, the different-row deadlock) answers « La liaison n’a pas pu être enregistrée (écriture concurrente ou erreur de la base) — rien n’a été écrit. Relisez sa ligne dans la file, puis réessayez. »; the lost commit with the record written ends « … ; sa clôture est enregistrée. Relisez sa ligne dans la file. ».
 
 ### J-M24 [CORE] HARD INVARIANT: two concurrent bindings — real two-connection rehearsal
 FILE: tests/claims-attribution-race.db.test.ts (new; describe.skipIf(!process.env.CLAIMS_RACE_DATABASE_URL))
@@ -3565,6 +3594,8 @@ ASSERTION: every iteration has exactly one claim {refunded, refundId R}; the oth
 NEGATIVE CONTROL: the same run with isolationLevel omitted (ReadCommitted) is recorded, expecting at least one iteration with two refunded claims or zero failures. It documents why Serializable is required, and runs only under CLAIMS_RACE_NEGATIVE=1.
 BREAK/RESTORE: the binder read outside the transaction → an iteration with two refunded claims → red; restore → green.
 FINDINGS: R-A2-1, schema_reason (no @@unique). Not a CI test (R-D8); a one-time pre-window gate.
+IMPLEMENTATION NOTE (W4): ER-M10 (J-M24 part) — the negative control omits isolationLevel, i.e. the server default, REPEATABLE READ on MySQL / MariaDB, not ReadCommitted. See the C10 note: not run yet (OPEN).
+IMPLEMENTATION NOTE (W4, fixer round 1): RUN (C10 fixer note; docs/ops/REFUND-FINANCIAL-CONTRACT.md §20). The invariant held in 20/20 iterations, the negative control bound R twice in 20/20, and the break/restore went red at iteration 0. The negative control's proxy now calls $transaction bound to the real client: a detached call would not have been the client the code uses.
 
 ### J-M25 [CORE] Adoption mirror insert under a Serializable transaction
 FILE: tests/claims-r13-adoption.test.ts
@@ -3588,6 +3619,8 @@ ASSERTION:
 NEGATIVE CONTROL: no stamped row → one mirror, then refunded.
 BREAK/RESTORE: move the stamped read outside the transaction → (f) writes two mirrors → red; restore → green.
 FINDINGS: R-A2-1, A-S34.
+IMPLEMENTATION NOTE (W4): pinned in tests/claims-r13-adoption.test.ts. (c) also asserts that the adoption audit is not written a second time (ER-M08, C8 note).
+IMPLEMENTATION NOTE (W4, fixer round 1): (c) pins C7's log line '[claims] binding transaction aborted' on the C8 path (C8 fixer note).
 
 ### J-M26 [CORE] Pre-images of reconcile, apply, park and close writes
 FILE: tests/claims-r13-cas.test.ts
@@ -3800,6 +3833,7 @@ ASSERTION:
 NEGATIVE CONTROL: (1) with retrieve pending → 409 and 0 writes.
 BREAK/RESTORE: delete `id: { not: claim.id }` from boundToWhere → (7) is refused → red. Re-add the bind-first write → (5) writes refundId → red. Restore → green.
 FINDINGS: P1-5, P1-6, P2-14, P2 toasts.
+IMPLEMENTATION NOTE (W4, fixer round 1): (6) now carries the full (5)(6) no-write assertions — 0 claim.updateMany, 0 audit, 0 closure record, the refunds snapshot unchanged and the claim unchanged — in tests/claims-r13-attribution.test.ts.
 
 ### J-M38 [CORE] Closure notice attempts carry no money path, depend on the closure record, and never contradict Stripe
 FILE: tests/claim-emails-routes.test.ts (extended)

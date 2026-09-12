@@ -17,6 +17,9 @@ vi.mock('@/lib/prisma', () => ({ prisma: db }))
 vi.mock('@/lib/refund', () => ({ executeRefund: vi.fn(), isRefundsEnabled: () => false, RESUME_CREATE_WINDOW_MS: 20 * 60 * 60 * 1000 }))
 vi.mock('@/lib/admin-alerts', () => ({ sendAdminMoneyReviewAlert: vi.fn().mockResolvedValue({ status: 'sent' }) }))
 vi.mock('@/lib/admin-audit', () => ({ recordAdminAudit: vi.fn().mockResolvedValue(undefined) }))
+// ROUND 13 (G12, slice W4): attribution reads the row's Stripe refund before any write; here Stripe is unreachable.
+const { stripeRetrieve } = vi.hoisted(() => ({ stripeRetrieve: vi.fn(async () => { throw new Error('ETIMEDOUT') }) }))
+vi.mock('@/lib/stripe', () => ({ getStripe: () => ({ refunds: { retrieve: stripeRetrieve, list: vi.fn(), create: vi.fn() }, paymentIntents: { retrieve: vi.fn() } }) }))
 
 import {
   deriveNoRowOutcome, acceptedExits, isStuckResolvable, MARKERS,
@@ -262,11 +265,14 @@ describe('J-M45 — A-S17: attributing the row the derivation explained by settl
     expect(db.claim.updateMany).not.toHaveBeenCalled()
   })
 
-  it('NEGATIVE CONTROL — X holding a resume_mismatch binding is not a binder: the pre-check passes and a write is attempted', async () => {
+  it('NEGATIVE CONTROL — X holding a resume_mismatch binding is not a binder: the pre-check passes and the row reaches its Stripe evidence read', async () => {
     arrange({ id: 'cl_X', refundId: 'rf_o', status: 'refunded', refundError: 'resume_mismatch: le moteur a repris …' })
     const r = await attributeClaimRefund({ claimId: 'cl1', refundRowId: 'rf_o', adminId: 'op1' })
     expect(JSON.stringify(r)).not.toContain('cl_X')
-    expect(db.claim.updateMany).toHaveBeenCalled()
+    // ROUND 13 (G12, slice W4): past the pre-check, Stripe is read BEFORE any write (here unreadable: nothing concluded, no write).
+    expect(stripeRetrieve).toHaveBeenCalledWith('re_O')
+    expect(r).toEqual({ ok: false, status: 409, error: 'Stripe n’a pas pu être lu pour la ligne rf_o : rien n’est conclu, la réclamation n’a pas été modifiée. Réessayez.' })
+    expect(db.claim.updateMany).not.toHaveBeenCalled()
   })
 })
 

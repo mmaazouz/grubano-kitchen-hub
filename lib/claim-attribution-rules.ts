@@ -59,6 +59,31 @@ export function identityProof(
   return null
 }
 
+/**
+ * B10 / G12 (slice W4): the console legend of an attributable PENDING row. True since attribution reads Stripe's
+ * evidence BEFORE any write and binds only a row whose refund Stripe reports SUCCEEDED.
+ */
+export const PENDING_ROW_LEGEND = 'lié seulement si Stripe le rapporte ABOUTI'
+
+/**
+ * B11 (a) / ROUND-8 (W4 fixer): the console sentence for what an adoption refusal wrote, from the server's `wrote`.
+ * « Rien n’a été écrit » only when the server proved it (false); « la liaison n’a pas abouti » only when the mirror exists
+ * and no binding of this call can have committed (true); otherwise (null: a commit reported lost, a failed re-read) a
+ * neutral sentence that states nothing about what was written.
+ */
+export function adoptionRefusalWroteText(wrote: boolean | null | undefined): string {
+  if (wrote === false) return 'Rien n’a été écrit.'
+  if (wrote === true) return 'La ligne miroir a été enregistrée ; la liaison n’a pas abouti — relisez la ligne dans la file.'
+  return 'L’état a pu changer : relisez la ligne dans la file.'
+}
+
+/** G12 success copy, split by the row status read before the write (the only success the console renders). */
+export function attributionSuccessText(rowStatusBefore: string): string {
+  return rowStatusBefore === 'pending'
+    ? 'Remboursement attribué : Stripe rapporte ce remboursement ABOUTI ; la réclamation reflète désormais ce remboursement réel. La ligne reste « en attente » dans notre base (cette action n’a appliqué ni ligne de ledger ni reprise de royalty).'
+    : 'Remboursement attribué : Stripe confirme ce remboursement ABOUTI ; la réclamation reflète désormais ce remboursement réel.'
+}
+
 /** B10 (6): the refusal text of a FAILED row. */
 export const ROW_FAILED_MESSAGE =
   'Cette ligne est ÉCHOUÉE : elle ne verse rien et ne peut solder aucune réclamation. Rien n’a été écrit. « Réconcilier d’après la preuve » tient compte de cette ligne pour toute la commande.'

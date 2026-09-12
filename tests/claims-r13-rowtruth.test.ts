@@ -187,8 +187,13 @@ describe('J-M44 — only loadOrderMoneyFacts passes absenceIsEvidence', () => {
     w.refunds.push({ id: 'rf_P', orderId: 'o1', status: 'pending', amountCents: 300, stripeRefundId: 're_P', reason: null, idempotencyKey: 'refund:o1:0', createdAt: new Date(Date.now() - 3_600_000), royaltyRefundCents: 0 })
     w.fail.refundRetrieve = { re_P: 'missing' }
     const out = await attributeClaimRefund({ claimId: 'cl1', refundRowId: 'rf_P', adminId: 'admin1' })
-    expect(out).toMatchObject({ ok: true, outcome: 'financial_verification', reason: 'stripe_refund_contradiction' })
-    expect(String(w.claims[0].refundError)).toContain('que Stripe ne connaît pas avec la clé de ce serveur')
+    // ROUND 13 (G12, slice W4): attribution reads the evidence BEFORE any write — the contradiction is its NOT PROVEN 409
+    // (« ${detail} La réclamation n’a pas été modifiée. »), the claim is untouched, never not_on_payment.
+    expect(out).toMatchObject({ ok: false, status: 409 })
+    expect((out as { error: string }).error).toContain('que Stripe ne connaît pas avec la clé de ce serveur')
+    expect((out as { error: string }).error).toContain('La réclamation n’a pas été modifiée.')
+    expect(w.claims[0]).toMatchObject({ status: 'financial_verification', refundError: 'financial_verification:refund_moved_unattributed: x' })
+    expect(w.writes).toEqual([])
     expect(JSON.stringify(out)).not.toMatch(/not_on_payment|stripe_unreadable_retry/)
   })
 })

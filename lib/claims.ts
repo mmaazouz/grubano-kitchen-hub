@@ -1476,7 +1476,7 @@ export async function createSystemClaim(input: {
 // truthful refunded amount lives on the bound `Refund` row (exposed at read time).
 // ═══════════════════════════════════════════════════════════════════════════════════
 export type ClaimReconcileResult =
-  | { reconciled: false; reason: 'no_claim' | 'already_final' | 'not_bound' }
+  | { reconciled: false; reason: 'no_claim' | 'already_final' | 'not_bound' | 'ambiguous_binding' }
   | { reconciled: true; claimId: string; from: string; to: string }
 
 export async function reconcileClaimForRefund(input: {
@@ -1486,42 +1486,42 @@ export async function reconcileClaimForRefund(input: {
   /** Stripe's own id, for the audit trail only. */
   stripeRefundId?: string | null
 }): Promise<ClaimReconcileResult> {
-  const claim = await prisma.claim.findFirst({
+  // ROUND 13 (B9 (a), slice W4): EVERY claim bound to the row — a legacy row can bind several, and one Refund
+  // settles at most one claim (B6). findFirst picked one of them arbitrarily.
+  const bound = await prisma.claim.findMany({
     where:  { refundId: input.refundRowId },
     select: { id: true, status: true, refundError: true },
   })
   // A refund with no claim bound to it is normal (admin rail, ghost-order, external).
-  if (!claim) return { reconciled: false, reason: 'no_claim' }
-  if (TERMINAL_STATUSES.includes(claim.status)) return { reconciled: false, reason: 'already_final' }
-
-  // AUDIT FIX (P1) + ROUND 13 (B8): a claim parked by the RESUME-FIRST mismatch guard is bound to a refund
-  // that settled someone ELSE's amount — leave it for the admin. The exception is a legacy mismatch whose
-  // bound row carries THIS claim's own stamp: its identity is established, so the row's truth applies.
-  // An unreadable stamp concludes nothing (B12): no write.
-  if (isResumeMismatch(claim.refundError)) {
-    let stamp: { reason: string | null } | null
-    try {
-      stamp = await prisma.refund.findUnique({ where: { id: input.refundRowId }, select: { reason: true } })
-    } catch {
-      return { reconciled: false, reason: 'not_bound' }
-    }
-    if (!stamp || stampedClaimId(stamp.reason) !== claim.id) return { reconciled: false, reason: 'not_bound' }
-    // B9 (a), until its slice lands the findMany rewrite: the own-stamp mismatch is a candidate only while no other
-    // claim binds the row — a legacy two-binder row settles neither through this claim. A failed read writes nothing.
-    let others: number
-    try {
-      others = await prisma.claim.count({ where: boundToWhere(input.refundRowId, claim.id) })
-    } catch {
-      return { reconciled: false, reason: 'not_bound' }
-    }
-    if (others > 0) return { reconciled: false, reason: 'not_bound' }
+  if (!bound.length) return { reconciled: false, reason: 'no_claim' }
+  // The row, read ONCE: its stamp decides whether a legacy own-row mismatch is a candidate (B8), its status the
+  // succeeded branch. A failed read concludes nothing (B12): no write.
+  let row: { status: string; reason: string | null } | null
+  try {
+    row = await prisma.refund.findUnique({ where: { id: input.refundRowId }, select: { status: true, reason: true } })
+  } catch (e) {
+    // B12: no write. The swallowed identity read is logged, so a bound claim left on this row stays visible.
+    const code = (e as { code?: unknown } | null)?.code
+    console.warn('[claims] refund row read failed — no claim reconciled', input.refundRowId, typeof code === 'string' || typeof code === 'number' ? code : e instanceof Error ? e.name : 'unknown')
+    return { reconciled: false, reason: 'not_bound' }
   }
+  // AUDIT FIX (P1) + ROUND 13 (B8): a claim parked by the RESUME-FIRST mismatch guard is bound to a refund
+  // that settled someone ELSE's amount — never a candidate. The exception is a legacy mismatch whose bound row
+  // carries THIS claim's own stamp: its identity is established, so the row's truth applies.
+  const candidates = bound.filter((c) => !isResumeMismatch(c.refundError) || (!!row && stampedClaimId(row.reason) === c.id))
+  if (candidates.length === 0) return { reconciled: false, reason: 'not_bound' }
+  // B9 (a) / A-S43: two or more candidates — nothing settles, nothing is written, a human decides (census REG-10).
+  if (candidates.length > 1) {
+    console.error('[MONEY REVIEW] ambiguous_binding', input.refundRowId, candidates.map((c) => c.id))
+    return { reconciled: false, reason: 'ambiguous_binding' }
+  }
+  const claim = candidates[0]
+  if (TERMINAL_STATUSES.includes(claim.status)) return { reconciled: false, reason: 'already_final' }
 
   if (input.status === 'succeeded') {
     // AUDIT FIX (P1): the caller's `status` argument describes the EVENT, not our row. A
     // succeeded event can arrive for a Refund row we already marked failed, or after the
     // finalize path no-ops. Trust our own row, not the event, before declaring money paid.
-    const row = await prisma.refund.findUnique({ where: { id: input.refundRowId }, select: { status: true } })
     if (!row || row.status !== 'succeeded') return { reconciled: false, reason: 'not_bound' }
 
     // CAS on the exact bound identity AND the pre-image read (C9 (b)): a duplicate or out-of-order webhook
@@ -2694,64 +2694,216 @@ async function reconcileBoundClaim(
  *   • the outcome comes from the row, never from the human;
  *   • no engine call, no Stripe write, no retry.
  */
+// ROUND 13 (G12, C6, C7, D8 — slice W4): the operator names the LINK; Stripe's evidence for that row is read BEFORE
+// any write, and the binding is ONE Serializable transaction holding the binder read and the FV → refunded CAS. The
+// only success is a commit this request observed: a commit reported lost (C7) is a 409 that states what a re-read
+// shows. There is no 'refund_failed', 'still_pending' or park outcome any more — the round-11 bind-first write, the
+// reconcileBoundClaim call and the failed-row branch are deleted (G12, B5).
 export type ClaimAttributionOutcome =
   | {
       ok: true
-      // ROUND-11: a pending row's link is decided by Stripe's evidence, with reconcile's own outcomes.
-      outcome: 'refunded' | 'refund_failed' | 'still_pending' | 'stripe_unreadable_retry' | 'unconfirmed_within_window' | 'engine_row_dead' | 'financial_verification'
+      /** 'preview' only for dryRun (D8 (6)): Stripe proved the row, nothing was written. */
+      outcome: 'refunded' | 'preview'
       refundId: string
-      until?: string
-      reason?: string
+      /** The row status read before the write — the G12 success copy depends on it. */
+      rowStatusBefore: 'succeeded' | 'pending'
+      evidence: 'stripe_read'
+      /** The amount of the Stripe refund object that proved the row (never the row's own amount). */
+      amountCents: number
     }
   | { ok: false; status: 400 | 404 | 409; error: string }
 
-export async function attributeClaimRefund(input: {
-  claimId: string
-  /** The EXISTING Refund row the operator attributes to this claim. */
-  refundRowId: string
-  adminId: string
-  note?: string | null
-}): Promise<ClaimAttributionOutcome> {
-  const claim = await prisma.claim.findUnique({
-    where:  { id: input.claimId },
+/** The Refund row an attribution binds, as read by the caller. */
+export type AttributionRow = {
+  id: string
+  orderId: string
+  status: string
+  amountCents: number
+  stripeRefundId: string | null
+  reason: string | null
+  createdAt: Date
+}
+/** Why an attribution wrote nothing, for the adoption caller (B11 (c)) — never shown as such. */
+export type AttributionCause = 'not_found' | 'changed' | 'refused' | 'not_proven' | 'identity_unread' | 'already_bound' | 'unestablished' | 'not_written'
+export type AttributionResult =
+  | { out: Extract<ClaimAttributionOutcome, { ok: true }>; refund: Stripe.Refund; cause: null }
+  | {
+      out: Extract<ClaimAttributionOutcome, { ok: false }>
+      refund: null
+      cause: AttributionCause
+      /** C7: after a transaction error, the claim was read back bound to this row (a commit reported lost). */
+      alreadyBound?: { status: string; recorded: boolean }
+      /** B11 (a), W4 fixer: the Stripe refund object this request read for the row, when one was read (G12). A refusal
+       *  shows these facts, never our own row's. Absent when the refusal came before any Stripe read. */
+      stripeRead?: Stripe.Refund
+    }
+/** A Prisma client for the binding (the C10 rehearsal passes one per connection; the app uses the singleton). */
+export type AttributionClient = Pick<typeof prisma, '$transaction' | 'claim' | 'refund'>
+
+/** C6: the aborts thrown inside the binding transaction — a full rollback, never a partial write. */
+class AttributionAbort extends Error {
+  constructor(readonly code: 'bound_to_other_claim' | 'claim_changed', readonly otherClaimId: string | null = null) {
+    super(`attribution aborted: ${code}`)
+    this.name = 'AttributionAbort'
+  }
+}
+/** C8: the abort thrown inside the adoption mirror transaction. */
+class AdoptionAbort extends Error {
+  constructor(readonly code: 'stamped_exists') {
+    super(`adoption aborted: ${code}`)
+    this.name = 'AdoptionAbort'
+  }
+}
+/** C7: a re-read after a transaction error failed — nothing about the claim is established. */
+const BINDING_UNESTABLISHED = 'État non établi : la base n’a pas pu confirmer ce qui a été écrit. Relisez la ligne de cette réclamation dans la file avant toute autre action.'
+// C7, IMPLEMENTATION NOTE (W4, fixer round 1): a transaction error followed by a re-read that shows the claim NOT bound to
+// this row establishes « rien n’a été écrit », not that anything changed — the deadlock may come from the binding of a
+// different row (the binder read share-locks every claim row), or the error may precede the transaction itself.
+const ATTRIBUTION_NOT_WRITTEN = 'La liaison n’a pas pu être enregistrée (écriture concurrente ou erreur de la base) — rien n’a été écrit. Relisez sa ligne dans la file, puis réessayez.'
+/** C7 (W4 fixer): the tail when recordClaimClosure returned true — the record exists; no console section is named. */
+const CLOSURE_RECORDED_TAIL = 'sa clôture est enregistrée.'
+
+/** G12 NOT PROVEN: the 409 text of every Stripe reading that does not prove the row's refund SUCCEEDED. */
+function attributionNotProvenText(rowId: string, t: RowTruth): string {
+  const kept = 'La réclamation n’a pas été modifiée.'
+  if (t.kind === 'at_stripe') {
+    const s = t.refund
+    const st = String(s.status ?? '')
+    if (st === 'pending' || st === 'requires_action') {
+      return `Stripe rapporte le remboursement ${s.id} de la ligne ${rowId} EN ATTENTE : rien n’est prouvé, la réclamation n’a pas été modifiée. Réessayez lorsqu’il sera terminal.`
+    }
+    if (st === 'failed' || st === 'canceled') {
+      return `Stripe rapporte le remboursement ${s.id} de la ligne ${rowId} « ${st} » : cette ligne ne verse rien et ne peut solder aucune réclamation. ${kept} « Réconcilier d’après la preuve » tient compte de cette ligne pour toute la commande.`
+    }
+    return `Stripe rapporte le remboursement ${s.id} de la ligne ${rowId} au statut « ${st} », non reconnu : rien n’est prouvé. ${kept}`
+  }
+  if (t.kind === 'reverted') {
+    return `La ligne ${rowId} est marquée ABOUTIE ici, mais Stripe rapporte aujourd’hui son remboursement ${t.refund.id} « ${String(t.refund.status ?? '')} » : il ne solde rien. ${kept}`
+  }
+  if (t.kind === 'contradiction') return `${t.detail} ${kept}`
+  if (t.kind === 'absent_within_window') {
+    return `Stripe ne connaît pas encore de remboursement pour la ligne ${rowId}. ${kept} Conclusion possible à partir du ${t.until.toISOString()} (UTC).`
+  }
+  if (t.kind === 'absent_dead') {
+    return `Stripe ne connaît aucun remboursement pour la ligne ${rowId}, et le moteur ne la créera plus (fenêtre d’idempotence expirée le ${t.windowEnd.toISOString()}) : elle ne verse rien et ne peut solder aucune réclamation. ${kept}`
+  }
+  // unreadable — and any reading this path cannot produce (fail closed: nothing is concluded).
+  return `Stripe n’a pas pu être lu pour la ligne ${rowId} : rien n’est conclu, la réclamation n’a pas été modifiée. Réessayez.`
+}
+
+/**
+ * G12 (4)-(5): the Stripe evidence for the row, read before any write. Without a supplied refund: refundRowTruth on
+ * the row it binds (G4, never absence as evidence). With a supplied refund (adoption B11 (c), read and anchored by
+ * the caller in the same request; the C10 rehearsal injects it): that object, and only if it is the row's own.
+ * IMPLEMENTATION NOTE (W4, fixer round 1): a supplied refund is used only for a SUCCEEDED row (the adoption mirror,
+ * whose caller anchored it to the order's PaymentIntent and charge). A pending row always reads refundRowTruth, which
+ * anchors the PaymentIntent itself — a supplied object is never at_stripe evidence on an id or tag match alone.
+ * PROVEN = (row pending && at_stripe succeeded) || (row succeeded && row_terminal succeeded).
+ * A reading that does not prove carries the Stripe refund object it read, when there is one (the refusal's facts).
+ */
+async function attributionEvidence(
+  row: AttributionRow,
+  orderId: string,
+  supplied: Stripe.Refund | undefined,
+): Promise<{ proven: true; refund: Stripe.Refund } | { proven: false; text: string; refund: Stripe.Refund | null }> {
+  let t: RowTruth
+  if (supplied && row.status === 'succeeded') {
+    const owns = (!!row.stripeRefundId && supplied.id === row.stripeRefundId) || supplied.metadata?.grubano_refund_row === row.id
+    const st = String(supplied.status ?? '')
+    if (!owns) t = { kind: 'contradiction', detail: `Le remboursement Stripe ${supplied.id} n’est pas celui que la ligne ${row.id} enregistre. Aucune conclusion tirée.` }
+    else if (st === 'succeeded') t = { kind: 'row_terminal', status: 'succeeded', refund: supplied }
+    else if (st === 'failed' || st === 'canceled') t = { kind: 'reverted', refund: supplied }
+    else t = { kind: 'contradiction', detail: `La ligne ${row.id} est marquée ABOUTIE dans notre base, mais Stripe rapporte son remboursement ${supplied.id} « ${st} ». Aucune conclusion tirée.` }
+  } else {
+    try {
+      t = await refundRowTruth(row, orderId, {})
+    } catch {
+      t = { kind: 'unreadable' }
+    }
+  }
+  if (row.status === 'pending' && t.kind === 'at_stripe' && t.refund.status === 'succeeded') return { proven: true, refund: t.refund }
+  if (row.status === 'succeeded' && t.kind === 'row_terminal' && t.status === 'succeeded' && t.refund) return { proven: true, refund: t.refund }
+  const read = t.kind === 'at_stripe' || t.kind === 'reverted' ? t.refund
+    : (t.kind === 'row_terminal' || t.kind === 'contradiction') && t.refund ? t.refund : null
+  return { proven: false, text: attributionNotProvenText(row.id, t), refund: read }
+}
+
+/** C7: a transaction error that is not a C6 abort. Report only what a re-read of the claim shows. */
+async function bindingNotObserved(db: AttributionClient, claimId: string, rowId: string, e: unknown, read: Stripe.Refund): Promise<AttributionResult> {
+  const fail = (error: string, cause: AttributionCause): AttributionResult => ({ out: { ok: false, status: 409, error }, refund: null, cause, stripeRead: read })
+  if (e instanceof AttributionAbort) {
+    return e.code === 'bound_to_other_claim'
+      ? fail(`Ce remboursement est déjà lié à la réclamation ${e.otherClaimId} — une même somme ne peut pas solder deux réclamations.`, 'changed')
+      : fail('Cette réclamation a changé d’état entre-temps — elle n’a pas été modifiée. Relisez sa ligne dans la file.', 'changed')
+  }
+  // P2034 (a deadlock, 1213), P2028 (a lock wait past the timeout), 1020 / ER_CHECKREAD, a connection lost during
+  // COMMIT, or anything else: nothing is proven written.
+  const code = (e as { code?: unknown } | null)?.code
+  console.warn('[claims] binding transaction aborted', typeof code === 'string' || typeof code === 'number' ? code : e instanceof Error ? e.name : 'unknown')
+  let now: { status: string; refundId: string | null; refundError: string | null } | null
+  try {
+    now = await db.claim.findUnique({ where: { id: claimId }, select: { status: true, refundId: true, refundError: true } })
+  } catch {
+    return fail(BINDING_UNESTABLISHED, 'unestablished')
+  }
+  if (now && (now.status === 'refunded' || now.status === 'refused_final') && now.refundId === rowId) {
+    // H05 site 5: the claim was FV at this request's read, and only C6 or a later write of this build binds it to this
+    // row — this closure is by this build. No notice, no audit, no success from this branch.
+    // IMPLEMENTATION NOTE (W4, fixer round 1): the record-written tail names no console section — the missing-notice
+    // section of H10 has not landed, so the sentence says only what the record establishes.
+    const recorded = await recordClaimClosure(claimId)
+    const tail = recorded
+      ? CLOSURE_RECORDED_TAIL
+      : 'l’enregistrement de sa clôture a échoué : aucun avis client ne pourra lui être envoyé.'
+    return {
+      ...fail(`Cette réclamation est déjà liée à ce remboursement (statut actuel : « ${now.status} »). Cette action n’a tenté aucun e-mail et n’a écrit aucune trace d’audit ; ${tail} Relisez sa ligne dans la file.`, 'already_bound'),
+      alreadyBound: { status: now.status, recorded },
+    } as AttributionResult
+  }
+  // True: a committed C6 write can only have become refunded or refused_final with the same refundId since.
+  return fail(ATTRIBUTION_NOT_WRITTEN, 'not_written')
+}
+
+/**
+ * C6 attributeWithEvidence(claim, row, stripeRefund?): the one function that CREATES a settling binding of an
+ * unstamped row (binding rule 5 (b)). Before the transaction: the claim as read (the CAS pre-image), the B10 refusals
+ * with the one binder where (B1), the Stripe evidence (G12). The transaction holds only the binder read and the CAS.
+ * After an observed commit only: the closure record (H05), I-04 for a pending row, the audit. No engine, no Stripe
+ * write, no Refund write.
+ */
+export async function attributeWithEvidence(
+  claimRef: { id: string },
+  row: AttributionRow,
+  stripeRefund: Stripe.Refund | undefined,
+  opts: { adminId: string; note?: string | null; dryRun?: boolean; client?: AttributionClient },
+): Promise<AttributionResult> {
+  const db: AttributionClient = opts.client ?? prisma
+  const fail = (status: 400 | 404 | 409, error: string, cause: AttributionCause): AttributionResult => ({ out: { ok: false, status, error }, refund: null, cause })
+  // D8 (1): the claim as this decision reads it.
+  const claim = await db.claim.findUnique({
+    where:  { id: claimRef.id },
     select: { id: true, orderId: true, status: true, refundError: true },
   })
-  if (!claim) return { ok: false, status: 404, error: 'Réclamation introuvable.' }
+  if (!claim) return fail(404, 'Réclamation introuvable.', 'not_found')
   if (claim.status !== FINANCIAL_VERIFICATION) {
-    return { ok: false, status: 409, error: 'Cette réclamation n’est pas en vérification financière — utilisez la réconciliation par preuve.' }
+    return fail(409, 'Cette réclamation n’est pas en vérification financière — utilisez la réconciliation par preuve.', 'changed')
   }
-  // ROUND 13 (B12): the row read carries the identity stamp (reason) — a failed read refuses before any write.
-  let row: Prisma.RefundGetPayload<{ select: { id: true; orderId: true; status: true; amountCents: true; stripeRefundId: true; reason: true } }> | null
-  try {
-    row = await prisma.refund.findUnique({
-      where:  { id: input.refundRowId },
-      select: { id: true, orderId: true, status: true, amountCents: true, stripeRefundId: true, reason: true },
-    })
-  } catch {
-    return { ok: false, status: 409, error: IDENTITY_READ_FAILED }
-  }
-  if (!row) return { ok: false, status: 404, error: 'Remboursement introuvable.' }
-  // THE anchor (a refund of the claim's OWN order) is the first refusal of the shared rule (B10 (1)).
-  // ROUND-8 AUDIT FIX (P1, Class 3 — the third time): every row refusal lives in ONE pure rule the
-  // console also applies (lib/claim-attribution-rules): another claim's stamp (T-51), a row stamped
-  // for THIS claim existing beside an unstamped one, a binding to another claim, an unusable status,
-  // and our row pending with no Stripe id. Rounds 3, 7 and 8 each added a refusal here without its
-  // console disable; the rule cannot be applied on one side only now.
-  // ROUND 13 (B1, B12): the binder read uses the one binder where, and a failed identity read is never a
-  // negative identity — it refuses before any write.
+  // D8 (2)-(3), B10: THE anchor (a refund of the claim's OWN order) is the first refusal of the shared rule the
+  // console also applies (lib/claim-attribution-rules). ROUND 13 (B1, B12): the binder read uses the one binder
+  // where, and a failed identity read is never a negative identity — it refuses before any Stripe read or write.
   let orderRows: Array<{ id: string; reason: string | null }>
   let boundTo: { id: string } | null
   try {
-    orderRows = await prisma.refund.findMany({
+    orderRows = await db.refund.findMany({
       where:  { orderId: claim.orderId },
       select: { id: true, reason: true },
     })
-    boundTo = await prisma.claim.findFirst({
+    boundTo = await db.claim.findFirst({
       where:  boundToWhere(row.id, claim.id),
       select: { id: true },
     })
   } catch {
-    return { ok: false, status: 409, error: IDENTITY_READ_FAILED }
+    return fail(409, IDENTITY_READ_FAILED, 'identity_unread')
   }
   const refusal = attributionRefusal({
     claimId: claim.id,
@@ -2760,66 +2912,100 @@ export async function attributeClaimRefund(input: {
     orderRows,
     boundToOtherClaimId: boundTo?.id ?? null,
   })
-  if (refusal) return { ok: false, status: refusal.status, error: refusal.message }
-  // Type narrowing only: the rule above has already refused every other status (unusable_status).
-  if (row.status !== 'succeeded' && row.status !== 'failed' && row.status !== 'pending') {
-    return { ok: false, status: 409, error: 'Statut de remboursement inexploitable.' }
+  if (refusal) return fail(refusal.status, refusal.message, 'refused')
+  // Type narrowing only: the rule has already refused every other status (unusable_status, row_failed).
+  if (row.status !== 'succeeded' && row.status !== 'pending') return fail(409, 'Statut de remboursement inexploitable.', 'refused')
+  const rowStatusBefore: 'succeeded' | 'pending' = row.status
+
+  // D8 (4)-(5), G12: Stripe is read BEFORE any write. Not proven → 409, nothing written, no audit.
+  const ev = await attributionEvidence(row, claim.orderId, stripeRefund)
+  if (!ev.proven) return { out: { ok: false, status: 409, error: ev.text }, refund: null, cause: 'not_proven', stripeRead: ev.refund ?? undefined }
+  const s = ev.refund
+  const proven = { refundId: row.id, rowStatusBefore, evidence: 'stripe_read' as const, amountCents: s.amount }
+  // D8 (6): a preview writes nothing.
+  if (opts.dryRun) return { out: { ok: true, outcome: 'preview', ...proven }, refund: s, cause: null }
+
+  // D8 (7), C6: the binder read and the FV → refunded CAS in ONE Serializable transaction. Under SERIALIZABLE the
+  // binder read share-locks every claim row it scans (Claim.refundId has no index): two crossing bindings deadlock
+  // and one is rolled back (P2034); a sequential second binding sees the first. Nothing else runs inside.
+  try {
+    await db.$transaction(async (tx) => {
+      const other = await tx.claim.findFirst({ where: boundToWhere(row.id, claim.id), select: { id: true } })
+      if (other) throw new AttributionAbort('bound_to_other_claim', other.id)
+      const done = await tx.claim.updateMany({
+        where: { id: claim.id, status: FINANCIAL_VERIFICATION, refundError: claim.refundError },
+        data:  { status: 'refunded', refundId: row.id, refundError: null, activeOrderKey: null, decidedAt: new Date() },
+      })
+      if (done.count !== 1) throw new AttributionAbort('claim_changed')
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 2000, timeout: 5000 })
+  } catch (e) {
+    return bindingNotObserved(db, claim.id, row.id, e, s)
   }
 
-  // Bind, then let the row's own truth decide. The operator chose the LINK, not the OUTCOME.
-  const bound = await prisma.claim.updateMany({
-    // ROUND 13 (C1): the pre-image read — status and refundError.
-    where: { id: claim.id, status: FINANCIAL_VERIFICATION, refundError: claim.refundError },
-    data:  { refundId: row.id, status: 'refunding', refundError: null },
-  })
-  if (bound.count !== 1) return { ok: false, status: 409, error: 'Cette réclamation a changé d’état entre-temps.' }
-
+  // AFTER AN OBSERVED COMMIT ONLY, in C6 order.
+  // 1. H05 site 4: this build's closure record (the only closure-notice eligibility source).
+  await recordClaimClosure(claim.id)
+  // 2. I-04: our row stays « en attente » — this action applied no ledger line and no royalty clawback.
+  if (rowStatusBefore === 'pending') {
+    try {
+      await sendAdminMoneyReviewAlert({
+        kind:      'claim_refunded_row_unfinalized',
+        dedupeKey: `claim_row_unfinalized:${row.id}`,
+        title:     `Réclamation ${claim.id} soldée d’après Stripe — ligne de remboursement ${row.id} encore en attente`,
+        facts:     {
+          claimId: claim.id, refundRowId: row.id, stripeRefundId: s.id, stripeStatus: s.status ?? null, amountCents: s.amount,
+          action:  'La ligne reste « en attente » dans notre base : cette réconciliation n’a appliqué ni ligne de ledger ni reprise de royalty (si elles sont dues). Aucune action automatique n’a été prise.',
+        },
+      })
+    } catch { /* best effort — the ungated list of unfinalized rows is the durable signal */ }
+  }
+  // 3. The audit — its boolean never decides notice eligibility.
   try {
     await recordAdminAudit({
-      actorId:    input.adminId,
+      actorId:    opts.adminId,
       actorEmail: null,
       action:     'claim.attribute_refund',
       targetType: 'claim',
       targetId:   claim.id,
       metadata:   {
-        refundRowId: row.id, stripeRefundId: row.stripeRefundId, refundStatus: row.status,
-        orderId: claim.orderId, note: input.note ?? null,
-        moneyMoved: false, // this function never moves money; it records an existing link
+        refundRowId: row.id, stripeRefundId: s.id, stripeStatus: 'succeeded', rowStatusBefore,
+        orderId: claim.orderId, note: opts.note ?? null,
+        moneyMoved: false, // this function never moves money; it records an existing link Stripe proved
       },
     })
   } catch { /* audit is best-effort; it must never undo a completed attribution */ }
+  return { out: { ok: true, outcome: 'refunded', ...proven }, refund: s, cause: null }
+}
 
-  // AUDIT FIX: this branch reports 'still pending' from OUR row's status alone. That is what we
-  // know, and the wording downstream says exactly that — it does not claim Stripe was consulted.
-  // The row not being terminal is sufficient to refuse a terminal verdict here, which is the
-  // only decision this branch makes.
-  // ROUND-11 AUDIT FIX (P1): a pending row was refused when it carried no Stripe id, and otherwise reported
-  // 'still pending' without reading Stripe — so a claim parked because an engine row's refund had in fact
-  // SUCCEEDED at Stripe had no exit at all. The operator chose the LINK; Stripe's evidence for that row now
-  // decides, through the same reads reconcile uses (reconcileBoundClaim → applyRowTruth).
-  if (row.status === 'pending') {
-    const evidence = await reconcileBoundClaim({
-      id: claim.id, orderId: claim.orderId, status: 'refunding', refundId: row.id,
-      refundError: null,
-    }, {})
-    if (!evidence.ok) return { ok: false, status: 409, error: evidence.error }
-    // Type narrowing only: a bound row's evidence never yields a proof of absence (that is the no-row path).
-    if (evidence.outcome === 'no_refund_proven' || evidence.outcome === 'no_refund_proven_rail_locked' || evidence.outcome === 'no_refund_proven_awaiting_finalization') {
-      return { ok: false, status: 409, error: 'Résultat inattendu pour une ligne liée — utilisez « Réconcilier d’après la preuve ».' }
-    }
-    // C1: this action's bind matched, then a later compare-and-set lost — say exactly that.
-    if (evidence.outcome === 'changed_during_read') {
-      return { ok: false, status: 409, error: 'Cette action a lié la réclamation à cette ligne, puis la réclamation a changé d’état pendant la lecture des preuves Stripe : rien d’autre n’a été écrit. Relisez sa ligne dans la file.' }
-    }
-    return {
-      ok: true, outcome: evidence.outcome, refundId: row.id,
-      ...(evidence.outcome === 'unconfirmed_within_window' ? { until: evidence.until } : {}),
-      ...(evidence.outcome === 'financial_verification' ? { reason: evidence.reason } : {}),
-    }
+export async function attributeClaimRefund(input: {
+  claimId: string
+  /** The EXISTING Refund row the operator attributes to this claim. */
+  refundRowId: string
+  adminId: string
+  note?: string | null
+  /** D8 (6): read the evidence, write nothing. */
+  dryRun?: boolean
+}): Promise<ClaimAttributionOutcome> {
+  const claim = await prisma.claim.findUnique({
+    where:  { id: input.claimId },
+    select: { id: true, orderId: true, status: true },
+  })
+  if (!claim) return { ok: false, status: 404, error: 'Réclamation introuvable.' }
+  if (claim.status !== FINANCIAL_VERIFICATION) {
+    return { ok: false, status: 409, error: 'Cette réclamation n’est pas en vérification financière — utilisez la réconciliation par preuve.' }
   }
-  const applied = await reconcileClaimForRefund({ refundRowId: row.id, status: row.status, stripeRefundId: row.stripeRefundId })
-  if (!applied.reconciled) return { ok: false, status: 409, error: 'La réconciliation n’a pas pu être appliquée — réessayez.' }
-  return { ok: true, outcome: row.status === 'succeeded' ? 'refunded' : 'refund_failed', refundId: row.id }
+  // ROUND 13 (B12): the row read carries the identity stamp (reason) — a failed read refuses before any write.
+  let row: AttributionRow | null
+  try {
+    row = await prisma.refund.findUnique({
+      where:  { id: input.refundRowId },
+      select: { id: true, orderId: true, status: true, amountCents: true, stripeRefundId: true, reason: true, createdAt: true },
+    })
+  } catch {
+    return { ok: false, status: 409, error: IDENTITY_READ_FAILED }
+  }
+  if (!row) return { ok: false, status: 404, error: 'Remboursement introuvable.' }
+  return (await attributeWithEvidence({ id: claim.id }, row, undefined, { adminId: input.adminId, note: input.note, dryRun: input.dryRun })).out
 }
 
 /**
@@ -2849,8 +3035,8 @@ export async function attributeClaimRefund(input: {
  * for them; the ledger check reads ledger lines against Stripe, never Refund rows; RESUME-FIRST
  * re-drives only `pending` rows; the fail-closed lock keys on `failed` rows); idempotencyKey
  * `external:<re_…>` (UNIQUE ⇒ a double submit is a 409, never two rows); reason =
- * claimRefundReason(claim.id) so a later reconcile finds it as `mine`. Then it hands the row to
- * attributeClaimRefund, whose audited tail decides the claim's fate from the row's own status.
+ * claimRefundReason(claim.id) so a later reconcile finds it as `mine`. Then it binds the row through
+ * attributeWithEvidence (C6), on the Stripe refund object read above — never on the row's own status (G12).
  * No engine call, no Stripe write, no ledger/loyalty/Order write.
  *
  * `dryRun: true` stops before the write and returns what Stripe says, so the console shows the
@@ -2870,8 +3056,54 @@ export type StripeRefundFacts = {
 export type ClaimStripeAdoptionOutcome =
   /** `wouldWrite` false = the row already exists; « Lier » will only bind it. */
   | { ok: true; outcome: 'preview'; facts: StripeRefundFacts; wouldWrite: boolean }
-  | { ok: true; outcome: 'refunded'; refundId: string; facts: StripeRefundFacts }
+  /** ROUND 13 (B11, G12): a success is always an observed C6 commit on Stripe evidence read in this request. */
+  | { ok: true; outcome: 'refunded'; refundId: string; facts: StripeRefundFacts; evidence: 'stripe_read'; amountCents: number }
   | { ok: false; status: 400 | 404 | 409 | 502; error: string; facts?: StripeRefundFacts; wrote?: boolean | null }
+
+/** The facts of a Stripe refund object, as read in this request. */
+function stripeRefundFacts(refund: Stripe.Refund): StripeRefundFacts {
+  return {
+    stripeRefundId:  refund.id,
+    stripeStatus:    refund.status ?? 'unknown',
+    amountCents:     refund.amount,
+    paymentIntentId: typeof refund.payment_intent === 'string' ? refund.payment_intent : refund.payment_intent?.id ?? null,
+    chargeId:        typeof refund.charge === 'string' ? refund.charge : refund.charge?.id ?? null,
+    createdAt:       refund.created ? new Date(refund.created * 1000).toISOString() : null,
+    source:          'stripe',
+  }
+}
+
+/**
+ * B11 (c): the 409 after the mirror row exists but the attribution wrote nothing. The B11 (c) sentence when the
+ * claim was proven unmodified by a change; IMPLEMENTATION NOTE (W4) variants where « elle a changé d’état » is not
+ * what was established (an identity read that failed, a commit reported lost, a re-read that failed).
+ */
+function mirrorWrittenNotBoundText(rowId: string, refundId: string, bound: Extract<AttributionResult, { cause: AttributionCause }>): string {
+  const head = `La ligne miroir ${rowId} (remboursement ${refundId} ABOUTI chez Stripe, identité de cette réclamation) a été enregistrée`
+  if (bound.cause === 'already_bound') {
+    const tail = bound.alreadyBound?.recorded
+      ? CLOSURE_RECORDED_TAIL
+      : 'l’enregistrement de sa clôture a échoué : aucun avis client ne pourra lui être envoyé.'
+    return `${head}, et la réclamation est déjà liée à cette ligne (statut actuel : « ${bound.alreadyBound?.status ?? '—'} »). Cette action n’a tenté aucun e-mail ; ${tail} Relisez sa ligne dans la file.`
+  }
+  if (bound.cause === 'unestablished') {
+    return `${head}, mais la base n’a pas pu confirmer ce qui a été écrit sur la réclamation. Relisez la ligne de cette réclamation dans la file avant toute autre action.`
+  }
+  if (bound.cause === 'not_written') {
+    return `${head}, mais la réclamation n’a pas été modifiée : la liaison n’a pas pu être enregistrée (écriture concurrente ou erreur de la base). Si elle est encore en vérification financière, « Réconcilier d’après la preuve » appliquera cette ligne, qui porte son identité.`
+  }
+  if (bound.cause === 'identity_unread') {
+    return `${head}, mais la réclamation n’a pas été modifiée : la base n’a pas pu être relue pour établir l’identité du remboursement. Si elle est encore en vérification financière, « Réconcilier d’après la preuve » appliquera cette ligne, qui porte son identité.`
+  }
+  return `${head}, mais la réclamation n’a pas été modifiée : elle a changé d’état entre-temps. Si elle est encore en vérification financière, « Réconcilier d’après la preuve » appliquera cette ligne, qui porte son identité.`
+}
+
+/**
+ * B11 (a) / C7, IMPLEMENTATION NOTE (W4, fixer round 1): the attribution outcomes after which THIS call's own binding
+ * transaction may have committed — a commit reported lost whose re-read shows the claim bound, or a re-read that failed.
+ * « Nothing was written » (wrote false) is not established after them, on either adoption branch: wrote is null.
+ */
+const bindingMayHaveCommitted = (cause: AttributionCause) => cause === 'already_bound' || cause === 'unestablished'
 
 export const STRIPE_REFUND_ID_RE = /^re_[A-Za-z0-9]{8,}$/
 /** Provenance marker of rows this exit creates — never the engine's `refund:<order>:<cumul>`. */
@@ -2923,11 +3155,11 @@ async function adoptStripeRefundInner(input: {
   // DB guards BEFORE any Stripe read — what our own rows already settle costs no network call.
   // ROUND 13 (B12): both identity reads of this exit (the existing mirror, which carries the stamp, and the stamped
   // row) refuse on a throw — no write, no audit, no alert.
-  let existing: Prisma.RefundGetPayload<{ select: { id: true; orderId: true; status: true; reason: true; idempotencyKey: true; amountCents: true; stripePaymentIntentId: true; settledAt: true } }> | null
+  let existing: Prisma.RefundGetPayload<{ select: { id: true; orderId: true; status: true; reason: true; idempotencyKey: true; amountCents: true; stripePaymentIntentId: true; settledAt: true; stripeRefundId: true; createdAt: true } }> | null
   try {
     existing = await prisma.refund.findFirst({
       where:  { stripeRefundId },
-      select: { id: true, orderId: true, status: true, reason: true, idempotencyKey: true, amountCents: true, stripePaymentIntentId: true, settledAt: true },
+      select: { id: true, orderId: true, status: true, reason: true, idempotencyKey: true, amountCents: true, stripePaymentIntentId: true, settledAt: true, stripeRefundId: true, createdAt: true },
     })
   } catch {
     return { ok: false, status: 409, error: IDENTITY_READ_FAILED }
@@ -2943,7 +3175,7 @@ async function adoptStripeRefundInner(input: {
       return { ok: false, status: 409, error: `Ce remboursement Stripe est déjà enregistré ici (ligne ${existing.id}) et porte l’identité de la réclamation ${stampedFor} — il ne peut pas solder cette réclamation.` }
     }
     // The crash-resume case: this exit already mirrored the row, then died before binding it.
-    // Nothing to re-read at Stripe — the row IS the evidence; bind it through the audited tail.
+    // ROUND 13 (B11 (a), G12): the row is not the evidence — attributeWithEvidence reads Stripe for it before binding.
     const ours = existing.idempotencyKey.startsWith(EXTERNAL_REFUND_KEY_PREFIX)
       && existing.reason === claimRefundReason(claim.id) && existing.status === 'succeeded'
     if (!ours) {
@@ -2953,17 +3185,28 @@ async function adoptStripeRefundInner(input: {
     // used to be fabricated (amount 0, a row status relabelled as Stripe's), and the dryRun
     // answer was a 409 that told the operator to press a button the console keeps disabled
     // without a preview. dryRun now returns a real preview, marked local, so « Lier » enables.
+    // ROUND 13 (W4 fixer): these local facts serve the dry-run preview only; a refusal carries Stripe's facts or none.
     const rowFacts: StripeRefundFacts = {
       stripeRefundId, stripeStatus: existing.status, amountCents: existing.amountCents,
       paymentIntentId: existing.stripePaymentIntentId, chargeId: null,
       createdAt: existing.settledAt ? existing.settledAt.toISOString() : null, source: 'local_row',
     }
     if (input.dryRun) return { ok: true, outcome: 'preview', facts: rowFacts, wouldWrite: false }
-    trace.wrote = null // the bind inside may or may not run before a refusal
-    const resumed = await attributeClaimRefund({ claimId: claim.id, refundRowId: existing.id, adminId: input.adminId, note: input.note })
-    if (!resumed.ok) return { ...resumed, facts: rowFacts }
-    if (resumed.outcome !== 'refunded') return { ok: false, status: 409, error: 'La ligne enregistrée n’est plus aboutie — réconciliez d’après la preuve.', facts: rowFacts }
-    return { ok: true, outcome: 'refunded', refundId: existing.id, facts: rowFacts }
+    // ROUND 13 (B11 (a), slice W4): this branch writes no mirror, so nothing is written before a refusal. The binding
+    // is attributeWithEvidence's: it reads Stripe for the mirror row (G12) before its Serializable transaction (C6).
+    trace.wrote = false
+    const bound = await attributeWithEvidence({ id: claim.id }, {
+      id: existing.id, orderId: existing.orderId, status: existing.status, amountCents: existing.amountCents,
+      stripeRefundId: existing.stripeRefundId, reason: existing.reason, createdAt: existing.createdAt,
+    }, undefined, { adminId: input.adminId, note: input.note })
+    if (bound.cause !== null) {
+      // W4 fixer: after a C7 outcome of this call's own binding transaction, « nothing written » is not established.
+      if (bindingMayHaveCommitted(bound.cause)) trace.wrote = null
+      // The facts of a refusal are the Stripe refund object this request read for the row, or none — never our row's.
+      return { ...bound.out, facts: bound.stripeRead ? stripeRefundFacts(bound.stripeRead) : undefined }
+    }
+    // The facts of a success are Stripe's, read by this request — never our row's.
+    return { ok: true, outcome: 'refunded', refundId: existing.id, facts: stripeRefundFacts(bound.refund), evidence: 'stripe_read', amountCents: bound.out.amountCents }
   }
   // One identity, one row. ROUND-7 AUDIT NOTE (P3): this guard is check-then-act — the UNIQUE key
   // is per Stripe refund, not per claim, so two operators adopting two DIFFERENT Dashboard refunds
@@ -3045,57 +3288,96 @@ async function adoptStripeRefundInner(input: {
 
   if (input.dryRun) return { ok: true, outcome: 'preview', facts, wouldWrite: true }
 
-  // THE single write: a local mirror of a refund Stripe says succeeded on this order's charge.
+  // THE single mirror write: a local mirror of a refund Stripe says succeeded on this order's charge.
+  const mirrorData = {
+    orderId:                   order.id,
+    restaurantId:              order.restaurantId,
+    stripePaymentIntentId:     refundPi,
+    stripeRefundId:            refund.id,
+    idempotencyKey:            `${EXTERNAL_REFUND_KEY_PREFIX}${refund.id}`,
+    amountCents:               refund.amount,
+    restaurantReverseCents:    0,
+    applicationFeeRefundCents: 0,
+    royaltyRefundCents:        0,
+    royaltyClawbackCents:      0,
+    franchiseRoyaltyStatus:    null,
+    reason:                    claimRefundReason(claim.id),
+    status:                    'succeeded',
+    settledAt:                 facts.createdAt ? new Date(facts.createdAt) : new Date(),
+  }
+  // ROUND 13 (C8, D9 (4), slice W4): the stamped-row read and the mirror insert in ONE Serializable transaction.
+  // The stamped read share-locks the order's Refund range, so two concurrent adoptions of two refunds for this
+  // claim cannot both insert: one is rolled back. The pre-transaction read above stays as a fast refusal.
   let row: { id: string }
+  /** ER-M08: the adoption audit is written only for a commit this call observed. */
+  let observedCommit = true
   try {
-    row = await prisma.refund.create({
-      data: {
-        orderId:                   order.id,
-        restaurantId:              order.restaurantId,
-        stripePaymentIntentId:     refundPi,
-        stripeRefundId:            refund.id,
-        idempotencyKey:            `${EXTERNAL_REFUND_KEY_PREFIX}${refund.id}`,
-        amountCents:               refund.amount,
-        restaurantReverseCents:    0,
-        applicationFeeRefundCents: 0,
-        royaltyRefundCents:        0,
-        royaltyClawbackCents:      0,
-        franchiseRoyaltyStatus:    null,
-        reason:                    claimRefundReason(claim.id),
-        status:                    'succeeded',
-        settledAt:                 facts.createdAt ? new Date(facts.createdAt) : new Date(),
-      },
-      select: { id: true },
-    })
+    row = await prisma.$transaction(async (tx) => {
+      const stampedNow = await tx.refund.findFirst({ where: { orderId: order.id, reason: claimRefundReason(claim.id) }, select: { id: true } })
+      if (stampedNow) throw new AdoptionAbort('stamped_exists')
+      return tx.refund.create({ data: mirrorData, select: { id: true } })
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 2000, timeout: 5000 })
   } catch (err) {
+    if (err instanceof AdoptionAbort) {
+      return { ok: false, status: 409, error: 'Un remboursement porte déjà l’identité de cette réclamation sur cette commande : aucune ligne miroir n’a été écrite. Relancez « Réconcilier d’après la preuve ».', facts }
+    }
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
       return { ok: false, status: 409, error: 'Ce remboursement Stripe vient d’être enregistré par ailleurs — rechargez la file.', facts }
     }
-    throw err
+    // C7 for the mirror: nothing is proven written — report only what a re-read of the refund shows.
+    const code = (err as { code?: unknown } | null)?.code
+    // C7's log line: C7 covers the errors of both the C6 and the C8 transaction.
+    console.warn('[claims] binding transaction aborted', typeof code === 'string' || typeof code === 'number' ? code : err instanceof Error ? err.name : 'unknown')
+    let found: { id: string; reason: string | null } | null
+    try {
+      found = await prisma.refund.findFirst({ where: { stripeRefundId: refund.id }, select: { id: true, reason: true } })
+    } catch {
+      trace.wrote = null
+      return { ok: false, status: 409, error: BINDING_UNESTABLISHED, facts }
+    }
+    if (!found) {
+      return { ok: false, status: 409, error: 'L’enregistrement de la ligne miroir n’a pas pu être confirmé : aucune ligne miroir n’existe, rien n’a été écrit. Réessayez.', facts }
+    }
+    if (found.reason !== claimRefundReason(claim.id)) {
+      // Another adoption recorded this Stripe refund (another claim's stamp): this call wrote nothing.
+      return { ok: false, status: 409, error: 'Ce remboursement Stripe vient d’être enregistré par ailleurs — rechargez la file.', facts }
+    }
+    // ER-M08: the mirror carrying this claim's identity exists; whether THIS call's commit or a concurrent one wrote
+    // it is not established — continue with the binding, write no second adoption audit.
+    row = { id: found.id }
+    observedCommit = false
   }
   trace.wrote = true // the mirror row exists from here on
-  try {
-    await recordAdminAudit({
-      actorId:    input.adminId,
-      actorEmail: null,
-      action:     'claim.adopt_stripe_refund',
-      targetType: 'claim',
-      targetId:   claim.id,
-      metadata:   {
-        refundRowId: row.id, stripeRefundId: refund.id, orderId: claim.orderId,
-        anchoredPaymentIntent: refundPi, anchoredCharge: charge.id, amountCents: refund.amount,
-        note: input.note ?? null,
-        moneyMoved: false, // a MIRROR of a refund Stripe already executed; nothing was created there
-      },
-    })
-  } catch { /* audit is best-effort; it must never undo a completed adoption */ }
-
-  const applied = await attributeClaimRefund({ claimId: claim.id, refundRowId: row.id, adminId: input.adminId, note: input.note })
-  if (!applied.ok) return { ...applied, facts }
-  if (applied.outcome !== 'refunded') {
-    return { ok: false, status: 409, error: 'La ligne a été enregistrée mais la réconciliation n’a pas pu être appliquée — réconciliez d’après la preuve.', facts }
+  if (observedCommit) {
+    try {
+      await recordAdminAudit({
+        actorId:    input.adminId,
+        actorEmail: null,
+        action:     'claim.adopt_stripe_refund',
+        targetType: 'claim',
+        targetId:   claim.id,
+        metadata:   {
+          refundRowId: row.id, stripeRefundId: refund.id, orderId: claim.orderId,
+          anchoredPaymentIntent: refundPi, anchoredCharge: charge.id, amountCents: refund.amount,
+          note: input.note ?? null,
+          moneyMoved: false, // a MIRROR of a refund Stripe already executed; nothing was created there
+        },
+      })
+    } catch { /* audit is best-effort; it must never undo a completed adoption */ }
   }
-  return { ok: true, outcome: 'refunded', refundId: row.id, facts }
+
+  // B11 (c): the binding on the mirror, with the refund object read above (no second Stripe read).
+  const bound = await attributeWithEvidence({ id: claim.id }, {
+    id: row.id, orderId: order.id, status: 'succeeded', amountCents: refund.amount,
+    stripeRefundId: refund.id, reason: claimRefundReason(claim.id), createdAt: mirrorData.settledAt,
+  }, refund, { adminId: input.adminId, note: input.note })
+  if (bound.cause === null) {
+    return { ok: true, outcome: 'refunded', refundId: row.id, facts, evidence: 'stripe_read', amountCents: bound.out.amountCents }
+  }
+  // W4 fixer: the mirror exists (the text says so), but whether this call bound the claim is not established after a
+  // C7 outcome of its own binding transaction — wrote null, so the console never says « la liaison n’a pas abouti ».
+  if (bindingMayHaveCommitted(bound.cause)) trace.wrote = null
+  return { ok: false, status: 409, error: mirrorWrittenNotBoundText(row.id, refund.id, bound), facts }
 }
 
 /** G2 (3): the order's Refund rows as the dispatch and the loader read them. */
