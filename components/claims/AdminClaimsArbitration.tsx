@@ -103,10 +103,13 @@ export default function AdminClaimsArbitration() {
       if (decision !== 'approve') {
         toast.success(t('admin.refusedFinalDone'))
       } else {
-        const m = approvalToast((data as { refund?: { state?: string; amountCents?: number; error?: string } }).refund)
+        const m = approvalToast((data as { refund?: { state?: string; amountCents?: number; error?: string; reason?: string; until?: string } }).refund)
         const text = m.key === 'approvedRefunded'
           ? t('admin.approvedRefunded', { amount: formatEuros(m.amountCents / 100, locale) })
-          : t(`admin.${m.key}`)
+          // ROUND 13 (F12): the date from which a conclusion is possible is the server's `until`.
+          : m.key === 'approvedNotSentUntil'
+            ? t('admin.approvedNotSentUntil', { date: new Date(m.until).toLocaleString(locale) })
+            : t(`admin.${m.key}`)
         if (m.tone === 'error') toast.error(text)
         else toast.success(text)
       }

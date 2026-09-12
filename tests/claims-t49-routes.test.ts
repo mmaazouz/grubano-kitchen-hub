@@ -85,6 +85,19 @@ describe('POST /reconcile — the evidence exit', () => {
     }))
   })
 
+  it('ROUND 13 (C1): a lost compare-and-set (changed_during_read) wrote nothing, so the route writes NO audit for it', async () => {
+    reconcileMock.mockResolvedValue({ ok: true, outcome: 'changed_during_read' })
+    const res = await post(RECONCILE)
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ result: { ok: true, outcome: 'changed_during_read' } })
+    expect(auditMock).not.toHaveBeenCalled()
+    // NEGATIVE CONTROL: the park that DID write (refund_moved_unattributed) is audited with its ambiguity.
+    reconcileMock.mockResolvedValue({ ok: true, outcome: 'financial_verification', reason: 'refund_moved_unattributed', detail: 'x' })
+    await post(RECONCILE)
+    expect(auditMock).toHaveBeenCalledTimes(1)
+    expect(auditMock.mock.calls[0][0].metadata).toMatchObject({ outcome: 'financial_verification', ambiguity: 'refund_moved_unattributed' })
+  })
+
   it('a library refusal is passed through with ITS status, never a 200', async () => {
     reconcileMock.mockResolvedValue({ ok: false, status: 409, error: 'pas en attente' })
     expect((await post(RECONCILE)).status).toBe(409)
@@ -219,7 +232,9 @@ describe('the money queue component keeps its audit fixes', () => {
   it('the rail-locked outcome reaches an operator-visible message', () => {
     expect(src).toContain('no_refund_proven_rail_locked')
     // ROUND-10: the lock has two causes now; the toast states what holds for both.
-    expect(src).toMatch(/refusera tout remboursement sur cette commande/)
+    // ROUND 13 (F14): « le moteur refusera tout remboursement » was false for the H1/H2/H5 holds (the engine accepts).
+    expect(src).toContain('refus du moteur ou blocage de sûreté, la cause est dans le détail de la réclamation')
+    expect(src).not.toMatch(/refusera tout remboursement sur cette commande/)
   })
 
   it('rows the attribution guard will refuse are flagged AND disabled', () => {

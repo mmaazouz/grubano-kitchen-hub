@@ -120,11 +120,22 @@ export default function AdminFinancialVerification() {
       const res = await fetch(`/api/admin/claims/${id}/reconcile`, { method: 'POST' })
       const body = await res.json().catch(() => ({}))
       if (!res.ok) { toast.error((body as { error?: string }).error || 'Échec de la réconciliation.'); return }
-      const result = (body as { result?: { outcome?: string; reason?: string; until?: string } }).result
+      const result = (body as { result?: { outcome?: string; reason?: string; until?: string; evidence?: string; payableFrom?: string; boundRowId?: string } }).result
       const outcome = result?.outcome
       const said: Record<string, string> = {
-        refunded:               'Preuve trouvée : le remboursement a abouti. Réclamation réconciliée sur son identité exacte.',
-        refund_failed:          'Preuve trouvée : cette ligne de remboursement a ÉCHOUÉ, elle n’a donc rien versé. La réclamation redevient traitable. (Cela ne dit rien des autres remboursements de la commande.)',
+        // ROUND 13 (F14, G2): « Stripe rapporte » only when Stripe's refund object was read for this conclusion.
+        refunded: result?.evidence === 'stripe_read'
+          ? 'Preuve trouvée : Stripe rapporte ce remboursement abouti. Réclamation réconciliée sur son identité exacte.'
+          : 'Réclamation réconciliée sur son identité exacte d’après notre ligne liée (Stripe n’a pas été relu pour cette conclusion ; aucun avis client ne peut partir sans relecture Stripe).',
+        // ROUND 13 (F14): « redevient traitable » is replaced — the detail says whether the engine now refuses the order.
+        refund_failed:          'Preuve trouvée : Stripe rapporte cette ligne de remboursement ÉCHOUÉE ; elle n’a rien versé au titre de cette ligne (cela ne dit rien des autres remboursements de la commande). Le détail enregistré dit si le moteur refuse désormais tout remboursement sur cette commande ; « Clôturer ce dossier… » enregistre votre déclaration.',
+        // ROUND 13 (C1): a lost compare-and-set. State only what is established about THIS action.
+        changed_during_read: result?.boundRowId
+          ? `Cette action a lié la réclamation à la ligne ${result.boundRowId}, puis la réclamation a changé d’état pendant la lecture des preuves : rien d’autre n’a été écrit. Relisez sa ligne dans la file.`
+          : 'Rien n’a été écrit : la réclamation a changé d’état pendant la lecture des preuves. Relisez sa ligne dans la file.',
+        // ROUND 13 (D4, G8/F14): the AWAITING proof written by the N8 writer.
+        no_refund_proven_awaiting_finalization:
+          'Stripe rapporte ABOUTI le remboursement d’une ligne d’une AUTRE réclamation, encore en attente dans notre base ; tant qu’elle le reste, le moteur finaliserait cette ligne au lieu de payer cette réclamation. Rien n’a été payé par cette action. Relancez « Réconcilier d’après la preuve » lorsque cette ligne ne sera plus en attente ; « Clôturer ce dossier… » reste possible.',
         // AUDIT FIX: this branch reads OUR row, not Stripe. Say that, rather than asserting a
         // Stripe state nobody consulted.
         // ROUND-9: this outcome now comes from a Stripe read that found the refund pending.
@@ -136,7 +147,10 @@ export default function AdminFinancialVerification() {
         // ROUND-7 AUDIT FIX (P1): « ne sera versée que par le rail » still promised a payment no
         // reachable job performs — the auto-approve sweep is behind a flag documented OFF for the
         // whole beta and its cron is gone. What pays it is a human approving it again.
-        no_refund_proven:       'Preuve d’absence : aucun remboursement n’a jamais déplacé d’argent et Stripe n’en rapporte aucun. La réclamation repasse en « approuvée, non payée ». Rien ne la paiera automatiquement : elle devra être approuvée à nouveau par un admin, réclamations et remboursements ouverts.',
+        // ROUND 13 (D4, F14): a v13 proof carries its C4 instant (payableFrom); the round-12 ladder's legacy proof does not.
+        no_refund_proven: result?.payableFrom
+          ? `Preuve d’absence : Stripe ne rapporte aujourd’hui aucun remboursement abouti ou en attente qui ne soit expliqué (liste complète lue), et aucune ligne de la commande n’arrête le moteur. La réclamation repasse en « approuvée, non payée ». Rien ne la paiera automatiquement : une nouvelle approbation admin, réclamations et remboursements ouverts, est acceptée au plus tôt le ${result.payableFrom} (UTC) ; juste avant le moteur, Stripe et nos lignes sont relus, et le paiement n’est lancé que si cette relecture confirme encore la preuve.`
+          : 'Preuve d’absence : aucun remboursement n’a jamais déplacé d’argent et Stripe n’en rapporte aucun. La réclamation repasse en « approuvée, non payée ». Rien ne la paiera automatiquement : elle devra être approuvée à nouveau par un admin, réclamations et remboursements ouverts.',
         // ROUND-3 AUDIT FIX: this case previously received the message above. Nothing moved, which
         // is true — but a FAILED refund with a Stripe id locks the engine against every later
         // refund on that order, so "payable again" was the opposite of what will happen. Three
@@ -149,8 +163,9 @@ export default function AdminFinancialVerification() {
         // ROUND-10 AUDIT FIX (P3): the lock has several causes, not all permanent in the same way — the
         // claim's detail says which. And « rien n’est parti » ignored a transfer a failed refund may
         // have reversed on a routed payment.
+        // ROUND 13 (F14): « le moteur refusera » was false for the H1/H2/H5 holds, where the engine accepts.
         no_refund_proven_rail_locked:
-          'Stripe ne rapporte aucun remboursement abouti ni en attente sur ce paiement. MAIS le moteur refusera tout remboursement sur cette commande (la cause, et si elle est définitive, sont dans le détail de la réclamation). Rien ne sera payé par le rail. Si un remboursement a été fait hors système (Dashboard Stripe), déclarez-le (« Clôturer ce dossier… ») ; sinon clôturez sans paiement.',
+          'Stripe ne rapporte aucun remboursement non expliqué sur ce paiement, MAIS une nouvelle approbation ne paierait pas cette réclamation : refus du moteur ou blocage de sûreté, la cause est dans le détail de la réclamation. Rien n’a été payé par cette action. « Clôturer ce dossier… » enregistre votre déclaration ; « Réconcilier d’après la preuve » relit la preuve si la cause peut cesser.',
         financial_verification: 'Toujours indéterminé. Aucune conclusion, aucun argent, aucune clôture. Escalade opérateur requise.',
       }
       // ROUND-3 AUDIT FIX: every outcome rendered as a green success, including "still
@@ -162,16 +177,12 @@ export default function AdminFinancialVerification() {
         || outcome === 'stripe_unreadable_retry'
         || outcome === 'unconfirmed_within_window'
         || outcome === 'engine_row_dead'
-      // ROUND-6 AUDIT FIX (P2): the library reports 'already_parked_or_moved' precisely when its
-      // park CAS matched NOTHING — the claim was already parked, or a concurrent webhook moved it,
-      // possibly to a terminal state. This handler ignored `reason` and announced « aucune
-      // clôture » on the one outcome that means the claim may have just been closed. Say only
-      // what is established: nothing was modified here; read the row again.
-      const text = outcome === 'financial_verification' && result?.reason === 'already_parked_or_moved'
-        // ROUND-8 AUDIT FIX (P3): since the relabel CAS, an already-parked claim is refreshed, never
-        // reported here — this outcome now means the claim LEFT every modifiable state, maybe closed.
-        ? 'Rien n’a été modifié : la réclamation a quitté les états modifiables entre-temps (peut-être clôturée). Relisez sa ligne dans la file.'
-        : outcome === 'unconfirmed_within_window'
+        || outcome === 'changed_during_read'
+        || outcome === 'no_refund_proven_awaiting_finalization'
+      // ROUND-6 AUDIT FIX (P2) → ROUND 13 (C1): a lost compare-and-set is its own outcome, changed_during_read
+      // (said map above). The round-6 toast claimed the claim had left every modifiable state, which was false
+      // whenever only the refundError changed (a concurrent relabel): the toast states only that nothing more was written.
+      const text = outcome === 'unconfirmed_within_window'
           ? `Stripe ne connaît aucun remboursement pour la ligne en attente, mais il est trop tôt pour conclure qu’il n’existera pas (fenêtre d’idempotence du moteur, plus une marge). Rien n’a été modifié. Conclusion possible à partir du ${result?.until ? new Date(result.until).toLocaleString('fr-FR') : '—'} : relancez alors la réconciliation.`
           : said[outcome ?? ''] ?? 'Réconciliation terminée.'
       if (needsAttention) toast.error(text)

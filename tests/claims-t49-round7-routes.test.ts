@@ -168,10 +168,16 @@ describe('no shipped money string asserts a CUSTOMER outcome from one row (comme
 })
 
 describe('round-6 source pins — reverting a fix turns this red', () => {
-  it('the reconcile handler reads the reason and gives already_parked_or_moved its own message', () => {
+  it('the reconcile handler gives a lost compare-and-set (C1 changed_during_read) its own message, which states only what is established', () => {
     const src = readFileSync('components/claims/AdminFinancialVerification.tsx', 'utf8')
-    expect(src).toContain("result?.reason === 'already_parked_or_moved'")
-    expect(src).toContain('Rien n’a été modifié')
+    // ROUND 13 (C1): the round-6 outcome 'already_parked_or_moved' is replaced by changed_during_read; its
+    // « a quitté les états modifiables (peut-être clôturée) » was false when only the refundError changed.
+    expect(src).toContain('changed_during_read: result?.boundRowId')
+    expect(src).toContain('Rien n’a été écrit : la réclamation a changé d’état pendant la lecture des preuves. Relisez sa ligne dans la file.')
+    expect(src).not.toContain('a quitté les états modifiables')
+    // W2 round-2 fix: the outcome no longer exists anywhere — neither a toast key nor a library writer.
+    expect(src).not.toContain('already_parked_or_moved')
+    expect(readFileSync('lib/claims.ts', 'utf8')).not.toContain('already_parked_or_moved')
   })
 
   it('the FV console offers the Stripe-id exit on EVERY parked row, not only when local candidates exist', () => {

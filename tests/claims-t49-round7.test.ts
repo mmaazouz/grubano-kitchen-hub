@@ -15,6 +15,7 @@ const { db } = vi.hoisted(() => ({
     claim:  { findUnique: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), updateMany: vi.fn(), update: vi.fn(), count: vi.fn() },
     refund: { findMany: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), create: vi.fn() },
     order:  { findUnique: vi.fn(), findMany: vi.fn() },
+    franchiseRoyalty: { findFirst: vi.fn() },
   },
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
@@ -340,12 +341,14 @@ describe('round-7 P1/P2 fixes in the library', () => {
     expect(writes.some((w) => w.data?.status && w.data.status !== FINANCIAL_VERIFICATION)).toBe(false) // status untouched
   })
 
-  it('…and a claim that really moved on (terminal) is still reported as already_parked_or_moved', async () => {
+  it('…and a claim that really moved on (terminal) wrote nothing: ROUND 13 (C1) changed_during_read, never a financial_verification outcome', async () => {
     db.claim.findUnique.mockResolvedValue({ ...CLAIM, status: FINANCIAL_VERIFICATION })
     fx.row = { status: 'refunded', refundId: null, refundError: null } // moved to terminal concurrently
     stripeMock.paymentIntents.retrieve.mockResolvedValue({ latest_charge: { id: 'ch_1', amount: 2000, amount_captured: 2000, amount_refunded: 500 } })
     const r = await reconcileClaimEvidence({ claimId: 'cl1' })
-    expect(r).toMatchObject({ outcome: 'financial_verification', reason: 'already_parked_or_moved' })
+    expect(r).toEqual({ ok: true, outcome: 'changed_during_read' })
+    expect(fx.row).toMatchObject({ status: 'refunded', refundError: null }) // the terminal claim is untouched
+    expect(alertMock).not.toHaveBeenCalled()
   })
 
   it('the row path refuses an UNSTAMPED row while a row stamped for THIS claim exists on the order', async () => {
@@ -371,15 +374,18 @@ describe('round-7 P1/P2 fixes in the library', () => {
   })
 
   it('an engine failure is stored as engine_failed:<engine text> — with the truth that nothing re-drives it from here', async () => {
-    // Drive the real producer: an approved claim, the attempt CAS, the engine refusing.
-    db.claim.findUnique.mockResolvedValue({ id: 'cl1', orderId: 'o1', status: 'approved', refundAttempted: false, requestedAmountCents: 500, refundId: null, refundError: null })
-    fx.row = { status: 'approved', refundAttempted: false, refundId: null, refundError: null }
+    // Drive the real producer: an approved claim, the attempt CAS, T2 on fresh reads, the engine refusing.
+    const { payableWorld, wireWorld, claimOf } = await import('./support/claims-world')
+    const w = payableWorld()
+    wireWorld(w, db, stripeMock)
     refundsFlag.mockReturnValue(true)
     execMock.mockResolvedValue({ ok: false, status: 502, error: 'Erreur paiement, réessayez.' })
     const { triggerClaimRefund } = await import('@/lib/claims')
     const r = await triggerClaimRefund('cl1')
     expect(r).toMatchObject({ state: 'failed' })
-    const written = String(db.claim.update.mock.calls.at(-1)![0].data.refundError)
+    // ROUND 13 (C5): written by the attempt-token CAS, never prisma.claim.update.
+    expect(db.claim.update).not.toHaveBeenCalled()
+    const written = String(claimOf(w).refundError)
     expect(written.startsWith('engine_failed: Erreur paiement, réessayez.')).toBe(true)
     expect(written).toContain('aucune relance possible depuis les réclamations')
   })
@@ -389,6 +395,8 @@ describe('round-7 P1/P2 fixes in the library', () => {
 describe('round-6 P1/P2 fixes in the library', () => {
   it('reconcile_not_applied — exactly one row is ours but the CAS could not apply: parked under ITS OWN reason', async () => {
     db.refund.findMany.mockResolvedValue([row()])
+    // ROUND 13 (C9 (a)): the simulated row is the claim as read (unbound), so the bind CAS matches.
+    fx.row = { status: 'refunding', refundId: null, refundError: null }
     // reconcileClaimForRefund finds the claim already TERMINAL → already_final → not applied
     db.claim.findFirst.mockResolvedValue({ id: 'cl1', status: 'refunded', refundError: null })
     const r = await reconcileClaimEvidence({ claimId: 'cl1' })

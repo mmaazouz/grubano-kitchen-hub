@@ -11,14 +11,28 @@ import { Prisma } from '@prisma/client'
 
 const { db } = vi.hoisted(() => ({
   db: {
-    claim: { findUnique: vi.fn(), update: vi.fn(), updateMany: vi.fn(), count: vi.fn(), groupBy: vi.fn(), findMany: vi.fn() },
-    refund: { findUnique: vi.fn(), findMany: vi.fn(), aggregate: vi.fn() },
+    claim: { findUnique: vi.fn(), findFirst: vi.fn(), update: vi.fn(), updateMany: vi.fn(), count: vi.fn(), groupBy: vi.fn(), findMany: vi.fn() },
+    refund: { findUnique: vi.fn(), findMany: vi.fn(), aggregate: vi.fn(), findFirst: vi.fn() },
+    order: { findUnique: vi.fn() },
+    franchiseRoyalty: { findFirst: vi.fn() },
   },
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
 
 const { execMock, refundsFlag } = vi.hoisted(() => ({ execMock: vi.fn(), refundsFlag: vi.fn() }))
-vi.mock('@/lib/refund', () => ({ executeRefund: execMock, isRefundsEnabled: refundsFlag }))
+vi.mock('@/lib/refund', () => ({ executeRefund: execMock, isRefundsEnabled: refundsFlag, RESUME_CREATE_WINDOW_MS: 20 * 60 * 60 * 1000 }))
+// ROUND 13 (C3): the approval path reads Stripe before the engine — never the real Stripe.
+const { stripeMock } = vi.hoisted(() => ({ stripeMock: { paymentIntents: { retrieve: vi.fn() }, refunds: { list: vi.fn(), retrieve: vi.fn(), create: vi.fn() } } }))
+vi.mock('@/lib/stripe', () => ({ getStripe: () => stripeMock }))
+vi.mock('@/lib/admin-alerts', () => ({ sendAdminMoneyReviewAlert: vi.fn(async () => ({ status: 'sent' })) }))
+import { payableWorld, wireWorld, engineOk } from './support/claims-world'
+/** ROUND 13 (C3): T1 → T2 on fresh reads → the engine → T4, driven in an in-memory world. */
+const world = (claim: Record<string, unknown>) => {
+  const w = payableWorld(claim)
+  wireWorld(w, db, stripeMock)
+  execMock.mockResolvedValue(engineOk({ refundId: 'rf1', stripeRefundId: 're_1' }))
+  return w
+}
 
 import {
   autoResolveSmallClaim, contestClaim, arbitrateClaim, isConsumerAbuseFlagged,
@@ -29,6 +43,7 @@ const fx = { row: null as Record<string, unknown> | null, updateManyCount: 1, re
 
 beforeEach(() => {
   vi.clearAllMocks()
+  for (const m of [db.claim.findFirst, db.claim.findMany, db.refund.findFirst, db.order.findUnique, db.franchiseRoyalty.findFirst]) m.mockReset()
   fx.updateManyCount = 1; fx.recent = 0; fx.row = null;
   // GATE T-49: this mock used to ignore the where clause entirely, so every compare-and-set
   // exercised here (approveClaim, contestClaim, arbitrateClaim) was unverified — the guard
@@ -65,6 +80,7 @@ describe('(a) auto-resolution of small claims — config post-pilote EXPLICITE (
   })
 
   it('≤ ceiling + not flagged → approve + ONE refund', async () => {
+    world({ status: 'restaurant_review', arbitrationDecision: null })
     const r = await autoResolveSmallClaim({ id: 'cl1', consumerId: 'c1', requestedAmountCents: 500, status: 'restaurant_review' })
     expect(r).toMatchObject({ state: 'refunded', refundId: 'rf1' })
     expect(execMock).toHaveBeenCalledTimes(1)
@@ -201,7 +217,7 @@ describe('(b) contest a refusal', () => {
 
 describe('(c) admin arbitration', () => {
   it('approve → CAS + ONE refund + approved', async () => {
-    db.claim.findUnique.mockResolvedValue({ id: 'cl1', status: 'arbitration', orderId: 'o1', requestedAmountCents: 500 })
+    world({ status: 'arbitration', arbitrationDecision: null })
     const r = await arbitrateClaim({ claimId: 'cl1', adminId: 'admin1', decision: 'approve' })
     expect(r.ok).toBe(true)
     expect(execMock).toHaveBeenCalledTimes(1)

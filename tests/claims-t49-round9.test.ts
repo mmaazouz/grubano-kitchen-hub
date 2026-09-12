@@ -23,6 +23,7 @@ const { db } = vi.hoisted(() => ({
     claim:  { findUnique: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), updateMany: vi.fn(), update: vi.fn(), count: vi.fn() },
     refund: { findMany: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), create: vi.fn() },
     order:  { findUnique: vi.fn(), findMany: vi.fn() },
+    franchiseRoyalty: { findFirst: vi.fn() },
   },
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
@@ -47,6 +48,7 @@ import {
   FINANCIAL_VERIFICATION, RECONCILE_REQUIRED, NO_REFUND_PROVEN,
 } from '@/lib/claims'
 import { claimStamp } from '@/lib/claim-attribution-rules'
+import { payableWorld, wireWorld, refundRow, claimOf, type World } from './support/claims-world'
 
 const fx: { row: Record<string, unknown> | null; forcedCount: number | null; applyWrites: boolean } =
   { row: null, forcedCount: null, applyWrites: true }
@@ -199,43 +201,47 @@ describe('RAIL LOCK — permanent, said so, and approve refused on both sides', 
 
 // ══ ENGINE FAILURE after the claim's own row exists → evidence decides, not a declaration ══
 describe('ENGINE FAILURE — when the claim’s own row exists, the crash marker stays', () => {
+  // ROUND 13 (C3/C5): T2 reads fresh facts before the engine and T4 writes by CAS on the attempt token;
+  // the claim's own row is created BY the engine call, so it enters the in-memory world there.
+  let w: World
+  const engineRefusesAfter = (row?: Record<string, unknown>) => execMock.mockImplementation(async () => {
+    if (row) w.refunds.push(row)
+    return { ok: false, status: 502, error: 'Remboursement émis, reprise de la royalty franchisé en échec — réessayez.' }
+  })
   beforeEach(() => {
     refundsFlag.mockReturnValue(true)
-    fx.row = { status: 'approved', refundAttempted: false, refundId: null, refundError: null }
-    execMock.mockResolvedValue({ ok: false, status: 502, error: 'Remboursement émis, reprise de la royalty franchisé en échec — réessayez.' })
-    db.claim.findUnique
-      .mockImplementationOnce(async () => ({ orderId: 'o1', requestedAmountCents: 500 }))
-      .mockImplementation(async () => ({ refundError: fx.row!.refundError }))
+    w = payableWorld()
+    wireWorld(w, db, stripeMock)
   })
 
   it('a stamped PENDING row exists → still refunding, marker kept with the engine text, NOT engine_failed, NOT closable', async () => {
-    db.refund.findFirst.mockResolvedValue({ id: 'rf_own', status: 'pending' })
+    engineRefusesAfter(refundRow('rf_own', { reason: claimRefundReason('cl1'), status: 'pending' }))
     const r = await triggerClaimRefund('cl1')
     expect(r).toMatchObject({ state: 'failed' })
-    expect(fx.row!.status).toBe('refunding')
-    expect(String(fx.row!.refundError).startsWith(RECONCILE_REQUIRED)).toBe(true)
-    expect(String(fx.row!.refundError)).toContain('Moteur : « Remboursement émis')
+    expect(claimOf(w).status).toBe('refunding')
+    expect(String(claimOf(w).refundError).startsWith(RECONCILE_REQUIRED)).toBe(true)
+    expect(String(claimOf(w).refundError)).toContain('Moteur : « Remboursement émis')
     expect(db.claim.update).not.toHaveBeenCalled()
-    expect(isStuckResolvable({ status: 'refunding', refundError: String(fx.row!.refundError) })).toBe(false)
+    expect(isStuckResolvable({ status: 'refunding', refundError: String(claimOf(w).refundError) })).toBe(false)
     // the lookup is keyed on THIS claim's stamp
-    expect(db.refund.findFirst.mock.calls[0][0].where).toMatchObject({ orderId: 'o1', reason: claimRefundReason('cl1') })
+    expect(db.refund.findFirst.mock.calls.at(-1)![0].where).toMatchObject({ orderId: 'o1', reason: claimRefundReason('cl1') })
   })
 
   it('no stamped row (the engine refused before creating anything) → engine_failed, as before', async () => {
-    db.refund.findFirst.mockResolvedValue(null)
+    engineRefusesAfter()
     await triggerClaimRefund('cl1')
-    const w = db.claim.update.mock.calls.at(-1)![0].data
-    expect(w).toMatchObject({ status: 'approved' })
-    expect(String(w.refundError).startsWith('engine_failed:')).toBe(true)
-    expect(w).not.toHaveProperty('refundId')
+    const data = w.writes.at(-1)!.data
+    expect(data).toMatchObject({ status: 'approved' })
+    expect(String(data.refundError).startsWith('engine_failed:')).toBe(true)
+    expect(data).not.toHaveProperty('refundId')
   })
 
   it('a stamped FAILED row → engine_failed, and the failed row is bound so the card shows it', async () => {
-    db.refund.findFirst.mockResolvedValue({ id: 'rf_own', status: 'failed' })
+    engineRefusesAfter(refundRow('rf_own', { reason: claimRefundReason('cl1'), status: 'failed' }))
     await triggerClaimRefund('cl1')
-    const w = db.claim.update.mock.calls.at(-1)![0].data
-    expect(w).toMatchObject({ status: 'approved', refundId: 'rf_own' })
-    expect(String(w.refundError).startsWith('engine_failed:')).toBe(true)
+    const data = w.writes.at(-1)!.data
+    expect(data).toMatchObject({ status: 'approved', refundId: 'rf_own' })
+    expect(String(data.refundError).startsWith('engine_failed:')).toBe(true)
   })
 })
 
@@ -291,7 +297,8 @@ describe('PENDING WITHOUT A STRIPE ID', () => {
   })
 
   it('…while a pending row WITH a Stripe id that Stripe reports pending is genuinely pending', async () => {
-    fx.row = { status: 'refunding', refundId: 'rf1', refundError: null }
+    // ROUND 13 (C9 (a)): the simulated row is the claim as read (LEGACY: unbound).
+    fx.row = { status: 'refunding', refundId: null, refundError: null }
     db.refund.findMany.mockResolvedValue([pendingRow('re_1')])
     // ROUND-10: a recorded Stripe id is read BY that id, as the engine's own resume does.
     stripeMock.refunds.retrieve.mockResolvedValue({ id: 're_1', status: 'pending', amount: 500, payment_intent: 'pi_1', metadata: { grubano_refund_row: 'rf1' } })
@@ -416,9 +423,12 @@ describe('customer and admin copy, all five locales', () => {
   it('the admin toasts name the queue exactly as the (French-only) console heading does', () => {
     for (const loc of LOCALES) {
       const a = L(loc).claims.admin
-      for (const k of ['approvedNotSent', 'approvedFailed', 'approvedResumeMismatch']) {
+      for (const k of ['approvedFailed', 'approvedResumeMismatch']) {
         expect(a[k], `${loc}.${k}`).toContain('« Remboursements à traiter »')
       }
+      // ROUND 13 (F13): approvedNotSent now also ends in a financial-verification park (T2 (e')), which that section
+      // never lists — it names no console section.
+      expect(a.approvedNotSent, `${loc}.approvedNotSent`).not.toContain('« Remboursements à traiter »')
     }
   })
 })

@@ -191,6 +191,8 @@ export type MoneyReviewKind =
   | 'refund_reconciliation_incomplete'  // webhook could not list the charge's refunds → reconciliation deferred
   | 'claim_financial_verification'      // T-49: a claim's money truth is unattributable → evidence-based human reconciliation, NEVER another refund
   | 'claim_refunded_row_unfinalized'    // T-49 round 11: a claim was concluded from Stripe while its Refund row stays pending (engine row-side work not done)
+  | 'claim_payment_blocked'             // T-49 round 13 (I-01): a write left a claim unpaid by the rail; its only exits are gated, time-based or human
+  | 'claim_attempt_superseded'          // T-49 round 13 (I-03): an engine attempt returned after its claim changed state; the claim does not reflect it
 
 export async function sendAdminMoneyReviewAlert(p: {
   kind:      MoneyReviewKind

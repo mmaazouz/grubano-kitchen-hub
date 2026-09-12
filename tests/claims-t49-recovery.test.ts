@@ -88,6 +88,9 @@ beforeEach(() => {
 
 // ═══ PROVEN OUTCOMES ═════════════════════════════════════════════════════════════
 describe('evidence PROVES what happened → apply it, and only it', () => {
+  // ROUND 13 (C9 (a), slice W2): applyRowTruth CASes on the claim AS READ — the simulated row is that unbound claim.
+  beforeEach(() => { fx.row = { status: 'refunding', refundId: null, refundError: null } })
+
   it('a succeeded refund carrying this claim identity → bound and reconciled', async () => {
     db.refund.findMany.mockResolvedValue([row()])
     const r = await reconcileClaimEvidence({ claimId: 'cl1' })
@@ -166,7 +169,8 @@ describe('evidence CANNOT prove it → fail closed, and stay visible', () => {
     const { default: mod } = await import('@/lib/claims').then((m) => ({ default: m }))
     // ACTIVE_STATUSES is private; the observable contract is that entering the state never
     // clears activeOrderKey, which is the @unique lock the consumer path collides with.
-    await enterFinancialVerification({ claimId: 'cl1', reason: 'stripe_unreadable', detail: 'x' })
+    // ROUND 13 (C9 (c)): the park compares against the pre-image its caller read.
+    await enterFinancialVerification({ claimId: 'cl1', reason: 'stripe_unreadable', detail: 'x', expect: { status: 'refunding', refundError: null } })
     const d = db.claim.updateMany.mock.calls.at(-1)![0].data
     expect('activeOrderKey' in d).toBe(false)
     expect(mod.FINANCIAL_VERIFICATION).toBe('financial_verification')
@@ -177,7 +181,7 @@ describe('evidence CANNOT prove it → fail closed, and stay visible', () => {
 describe('recovery liveness — the parked claim is seen, not just safe', () => {
   it('entering the state raises an operator alert with enough to investigate', async () => {
     db.claim.findUnique.mockResolvedValue({ orderId: 'o1', requestedAmountCents: 500, createdAt: new Date() })
-    await enterFinancialVerification({ claimId: 'cl1', reason: 'refund_moved_unattributed', detail: 'why' })
+    await enterFinancialVerification({ claimId: 'cl1', reason: 'refund_moved_unattributed', detail: 'why', expect: { status: 'refunding', refundError: null } })
     expect(alertMock).toHaveBeenCalledTimes(1)
     const p = alertMock.mock.calls[0][0]
     expect(p.facts).toMatchObject({ claimId: 'cl1', orderId: 'o1', ambiguity: 'refund_moved_unattributed' })
@@ -185,8 +189,9 @@ describe('recovery liveness — the parked claim is seen, not just safe', () => 
   })
 
   it('the alert is deduped per claim AND per reason, so a replay cannot storm', async () => {
-    await enterFinancialVerification({ claimId: 'cl1', reason: 'stripe_unreadable', detail: 'a' })
-    await enterFinancialVerification({ claimId: 'cl1', reason: 'stripe_unreadable', detail: 'b' })
+    // ROUND 13 (C9 (c), I-02): the replay reads the parked claim — a relabel with the SAME reason sends nothing.
+    await enterFinancialVerification({ claimId: 'cl1', reason: 'stripe_unreadable', detail: 'a', expect: { status: 'refunding', refundError: null } })
+    await enterFinancialVerification({ claimId: 'cl1', reason: 'stripe_unreadable', detail: 'b', expect: { status: 'financial_verification', refundError: 'financial_verification:stripe_unreadable: a' } })
     const keys = alertMock.mock.calls.map((c) => c[0].dedupeKey)
     expect(new Set(keys).size).toBe(1)
     expect(keys[0]).toBe('claim_fv:cl1:stripe_unreadable')
@@ -194,7 +199,7 @@ describe('recovery liveness — the parked claim is seen, not just safe', () => 
 
   it('A FAILED ALERT NEVER HIDES THE CLAIM — the queue is the control', async () => {
     alertMock.mockRejectedValue(new Error('smtp down'))
-    const r = await enterFinancialVerification({ claimId: 'cl1', reason: 'stripe_unreadable', detail: 'x' })
+    const r = await enterFinancialVerification({ claimId: 'cl1', reason: 'stripe_unreadable', detail: 'x', expect: { status: 'refunding', refundError: null } })
     expect(r.entered).toBe(true) // the state change stands
     db.claim.findMany.mockResolvedValue([{ id: 'cl1', orderId: 'o1', reason: 'quality', requestedAmountCents: 500, refundId: null, refundError: 'financial_verification:stripe_unreadable: x', createdAt: new Date(), restaurantId: 'r1' }])
     expect(await listFinancialVerificationClaims()).toHaveLength(1)
@@ -259,7 +264,7 @@ describe('negative controls — every named regression is detectable here', () =
 
   it('REMOVING THE ALERT would be caught', async () => {
     alertMock.mockClear()
-    await enterFinancialVerification({ claimId: 'cl1', reason: 'stripe_unreadable', detail: 'x' })
+    await enterFinancialVerification({ claimId: 'cl1', reason: 'stripe_unreadable', detail: 'x', expect: { status: 'refunding', refundError: null } })
     expect(alertMock).toHaveBeenCalled() // deleting the call makes this fail
   })
 
@@ -545,7 +550,8 @@ describe('the marker the code WRITES is the marker the code can READ', () => {
     fx.row = { status: 'restaurant_review', refundAttempted: false, refundId: null, refundError: null }
     db.claim.findMany.mockImplementation(({ where }: { where: Record<string, unknown> }) =>
       Promise.resolve(where.status === 'restaurant_review' ? [{ id: 'cl1', reason: 'quality' }] : []))
-    db.claim.findUnique.mockResolvedValue({ orderId: 'o1', requestedAmountCents: 500 })
+    // ROUND 13 (C2): T1 reads the full pre-image before its CAS.
+    db.claim.findUnique.mockResolvedValue({ id: 'cl1', orderId: 'o1', status: 'approved', refundAttempted: false, refundId: null, refundError: null, requestedAmountCents: 500 })
     execMock.mockResolvedValue({ ok: false, status: 502, error: 'boom' })
     await runClaimAutoApproval()
 

@@ -26,6 +26,7 @@ const { db } = vi.hoisted(() => ({
     claim:  { findUnique: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), updateMany: vi.fn(), update: vi.fn(), count: vi.fn(), groupBy: vi.fn() },
     refund: { findMany: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), create: vi.fn() },
     order:  { findUnique: vi.fn(), findMany: vi.fn() },
+    franchiseRoyalty: { findFirst: vi.fn() },
   },
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
@@ -61,6 +62,7 @@ import {
   acceptedExits as pureAcceptedExits, exitRegistry, REFUSE_APPROVED_AM_B3, type BoundRowFacts, type ExitNote,
 } from '@/lib/claim-action-rules'
 import { attributionRefusal } from '@/lib/claim-attribution-rules'
+import { payableWorld, wireWorld, refundRow, claimOf, type World } from './support/claims-world'
 import { GET as CENSUS } from '@/app/api/admin/claims/census/route'
 
 const fx: { row: Record<string, unknown> | null; forcedCount: number | null; applyWrites: boolean } =
@@ -344,9 +346,11 @@ describe('RECONCILE PARITY — the button appears exactly where the server’s g
       db.refund.findMany.mockClear(); db.refund.findUnique.mockClear()
       const server = await reconcileClaimEvidence({ claimId: l.id })
       // Round 11: the gate has two refusals now (not reconcilable; attempt in flight) — both refuse
-      // before anything is read.
+      // before anything is read. ROUND 13 (B8, slice W2): except the bound row itself, which the gate decides on.
+      const shape = shapes.find((s) => s.id === l.id) as { refundId?: string | null }
+      const boundOnly = db.refund.findUnique.mock.calls.every((c) => (c[0] as { where: { id: string } }).where.id === shape.refundId)
       const refusedBeforeReading = !server.ok && (server as { status?: number }).status === 409
-        && db.refund.findMany.mock.calls.length === 0 && db.refund.findUnique.mock.calls.length === 0
+        && db.refund.findMany.mock.calls.length === 0 && boundOnly
       expect(refusedBeforeReading, l.id).toBe(!l.reconcilable)
       if (l.reconcilable) { admitted++; expect(server.ok, l.id).toBe(true) } else refused++
     }
@@ -399,7 +403,8 @@ describe('OUR PENDING ROW, NO STRIPE ID — Stripe decides by the engine’s own
   it('the tagged refund SUCCEEDED → the claim is refunded, bound, and the order released', async () => {
     db.refund.findMany.mockResolvedValue([OWN()])
     stripeMock.refunds.list.mockResolvedValue({ data: [stripeRefund('succeeded', { amount: 480 })], has_more: false })
-    expect(await reconcileClaimEvidence({ claimId: 'cl1' })).toEqual({ ok: true, outcome: 'refunded', refundId: 'rf1', amountCents: 480 })
+    // ROUND 13 (G2 / F14): Stripe's refund object was read for this conclusion — the outcome says so.
+    expect(await reconcileClaimEvidence({ claimId: 'cl1' })).toEqual({ ok: true, outcome: 'refunded', refundId: 'rf1', amountCents: 480, evidence: 'stripe_read' })
     expect(fx.row).toMatchObject({ status: 'refunded', refundId: 'rf1', refundError: null, activeOrderKey: null })
   })
 
@@ -727,39 +732,38 @@ describe('CENSUS — nonTerminal is the total minus the library’s terminal set
 
 // ══ ENGINE FAILURE — the own-row query and a stale read (round-9 P3) ═════════════════════
 describe('ENGINE FAILURE — the own-row query honours its clauses, and a stale read writes nothing', () => {
+  // ROUND 13 (C3/C5): T2 reads fresh facts before the engine; the rows below are created BY the engine call.
+  let w: World
+  const refusal = { ok: false, status: 502, error: 'Erreur paiement, réessayez.' }
   beforeEach(() => {
     refundsFlag.mockReturnValue(true)
-    fx.row = { status: 'approved', refundAttempted: false, refundId: null, refundError: null }
-    execMock.mockResolvedValue({ ok: false, status: 502, error: 'Erreur paiement, réessayez.' })
+    w = payableWorld()
+    wireWorld(w, db, stripeMock)
   })
 
   it('the NEWEST row stamped for THIS claim decides — not an older one, not another claim’s', async () => {
     const ROWS = [
-      { id: 'rf_old_failed', orderId: 'o1', reason: claimRefundReason('cl1'), status: 'failed', createdAt: new Date(1000) },
-      { id: 'rf_new_pending', orderId: 'o1', reason: claimRefundReason('cl1'), status: 'pending', createdAt: new Date(2000) },
-      { id: 'rf_other_newest', orderId: 'o1', reason: claimRefundReason('cl_OTHER'), status: 'failed', createdAt: new Date(3000) },
+      refundRow('rf_old_failed', { reason: claimRefundReason('cl1'), status: 'failed', createdAt: new Date(1000) }),
+      refundRow('rf_new_pending', { reason: claimRefundReason('cl1'), status: 'pending', createdAt: new Date(2000) }),
+      refundRow('rf_other_newest', { reason: claimRefundReason('cl_OTHER'), status: 'failed', createdAt: new Date(3000) }),
     ]
-    db.refund.findFirst.mockImplementation(async ({ where, orderBy }: { where: Record<string, unknown>; orderBy?: { createdAt?: 'asc' | 'desc' } }) => {
-      const dir = orderBy?.createdAt === 'desc' ? -1 : 1
-      return ROWS.filter((r) => matchWhere(where, r)).sort((a, b) => dir * (a.createdAt.getTime() - b.createdAt.getTime()))[0] ?? null
-    })
-    db.claim.findUnique
-      .mockImplementationOnce(async () => ({ orderId: 'o1', requestedAmountCents: 500 }))
-      .mockImplementation(async () => ({ refundError: fx.row!.refundError }))
+    execMock.mockImplementation(async () => { w.refunds.push(...ROWS); return refusal })
     await triggerClaimRefund('cl1')
-    expect(fx.row!.status).toBe('refunding')
-    expect(String(fx.row!.refundError)).toContain('rf_new_pending')
+    expect(claimOf(w).status).toBe('refunding')
+    expect(String(claimOf(w).refundError)).toContain('rf_new_pending')
     expect(db.claim.update).not.toHaveBeenCalled()
+    expect(matchWhere({ orderId: 'o1' }, ROWS[0])).toBe(true)
   })
 
-  it('a stale read of the marker writes nothing: the append is keyed on the marker it read', async () => {
-    db.refund.findFirst.mockResolvedValue({ id: 'rf_own', status: 'pending' })
-    db.claim.findUnique
-      .mockImplementationOnce(async () => ({ orderId: 'o1', requestedAmountCents: 500 }))
-      .mockImplementation(async () => ({ refundError: `${RECONCILE_REQUIRED}: an OLDER marker` }))
+  it('a stale read of the marker writes nothing: the append is keyed on the attempt token T1 wrote (C5)', async () => {
+    execMock.mockImplementation(async () => {
+      w.refunds.push(refundRow('rf_own', { reason: claimRefundReason('cl1'), status: 'pending' }))
+      claimOf(w).refundError = `${RECONCILE_REQUIRED}: an OLDER marker`
+      return refusal
+    })
     await triggerClaimRefund('cl1')
-    expect(fx.row!.status).toBe('refunding')
-    expect(String(fx.row!.refundError)).not.toContain('Moteur :')
+    expect(claimOf(w).status).toBe('refunding')
+    expect(String(claimOf(w).refundError)).not.toContain('Moteur :')
     expect(db.claim.update).not.toHaveBeenCalled()
   })
 })
@@ -785,7 +789,8 @@ describe('round-10 source pins', () => {
   it('the reconcile route’s gate is the shared rule', () => {
     const src = stripComments(read('lib/claims.ts'))
     const body = src.slice(src.indexOf('export async function reconcileClaimEvidence'), src.indexOf('export async function recoverStrandedClaimReconciliations'))
-    expect(body).toContain('const gate = reconcileRefusal(claim)')
+    // ROUND 13 (B8, slice W2): the same shared rule, with the bound row it reads (withheld for a refunded claim until W3).
+    expect(body).toContain("const gate = reconcileRefusal({ ...claim, boundRow: claim.status === 'refunded' ? undefined : boundRow })")
     expect(body).not.toContain('legacyStranded')
   })
 

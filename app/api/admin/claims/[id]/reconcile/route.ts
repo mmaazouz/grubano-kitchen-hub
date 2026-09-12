@@ -33,7 +33,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
 
   // Every reconciliation leaves a trail, including the ones that conclude "still unknown".
-  try {
+  // ROUND 13 (C1): a lost compare-and-set wrote nothing for this decision — no audit for it.
+  if (result.outcome !== 'changed_during_read') try {
     await recordAdminAudit({
       actorId:    operator.id,
       actorEmail: operator.email,

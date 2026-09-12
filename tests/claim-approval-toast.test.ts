@@ -92,7 +92,21 @@ describe('everything else claims only what THIS action confirmed', () => {
 
   it('the fallback copy does not assert that nothing left — it may have, under already_handled', () => {
     const fr = JSON.parse(fs.readFileSync('messages/fr.json', 'utf8'))
-    expect(fr.claims.admin.approvedNotSent).toMatch(/confirmé par cette action/)
+    // ROUND 13 (F13): the reworded key says only what THIS action did, in all five locales, and names no console
+    // section (a T2 (e') park lands in financial verification, which « Remboursements à traiter » never lists).
+    const EXPECTED: Record<string, string> = {
+      fr: 'Réclamation approuvée — aucun remboursement n’a été lancé par cette action.',
+      en: 'Claim approved — no refund was started by this action.',
+      es: 'Reclamación aprobada — esta acción no inició ningún reembolso.',
+      it: 'Reclamo approvato — nessun rimborso è stato avviato da questa azione.',
+      ar: 'تمت الموافقة على الشكوى — لم يُطلَق أي استرداد بهذا الإجراء.',
+    }
+    expect(fr.claims.admin.approvedNotSent).toBe(EXPECTED.fr)
+    for (const loc of Object.keys(EXPECTED)) {
+      const t = JSON.parse(fs.readFileSync(`messages/${loc}.json`, 'utf8')).claims.admin.approvedNotSent as string
+      expect(t, loc).toBe(EXPECTED[loc])
+      expect(t, loc).not.toContain('Remboursements à traiter')
+    }
   })
 })
 

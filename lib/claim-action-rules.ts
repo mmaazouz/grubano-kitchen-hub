@@ -530,7 +530,13 @@ export function reapprovalSafetyHolds(f: ReapprovalFacts): SafetyHold[] {
   for (const k of f.rowContradictions) holds.push({ hold: 'H3', rowId: k.rowId, rowStatus: k.rowStatus, detail: k.detail })
   if (f.chargeDisputed === true) holds.push({ hold: 'H5', cause: 'disputed', chargeId: f.chargeId })
   const remaining = f.amountCapturedCents - f.amountRefundedCents
-  if (f.requestedAmountCents > remaining) {
+  // IMPLEMENTATION NOTE (W2) on G5/G8 H5 captured: the hold says the engine would insert its row before Stripe
+  // refuses. That is true only where the engine passes E4/E5 (refundable = charge amount - refunded, refund.ts
+  // 783-790); where E4/E5 apply the engine refuses before any insert, so the E4/E5 refusal speaks instead.
+  const refundable = f.chargeAmountCents - f.amountRefundedCents
+  const req = f.requestedAmountCents
+  const engineWouldInsert = refundable > 0 && Number.isInteger(req) && req > 0 && req <= refundable
+  if (engineWouldInsert && req > remaining) {
     holds.push({ hold: 'H5', cause: 'captured', requestedAmountCents: f.requestedAmountCents, remainingCapturedCents: remaining })
   }
   return holds
@@ -577,7 +583,8 @@ export type OrderMoneyRead =
   /** Transient: Stripe or a row read failed. refundedCents when the charge was read before the failure. */
   | { readable: false; permanent: null; refundedCents?: number | null }
   | { readable: false; permanent: 'list_over_cap'; refundedCents?: number | null }
-  | { readable: false; permanent: 'no_charge'; rows: MoneyRow[]; paymentStatus: string; piStatus: string }
+  /** hasPaymentIntent false: the order has no PaymentIntent — the engine refuses at E1 (IMPLEMENTATION NOTE (W2) on G3). */
+  | { readable: false; permanent: 'no_charge'; rows: MoneyRow[]; paymentStatus: string; piStatus: string; hasPaymentIntent?: boolean }
 
 /** A standing refund explained by another settled claim (G7 N3). */
 export type ExplainedRefund = { refundId: string; rowId: string; claimId: string; stamped: boolean; amountCents: number; status: string }
@@ -610,7 +617,7 @@ export function deriveNoRowOutcome(read: OrderMoneyRead, claimId: string): NoRow
       if (variant) {
         return park('stripe_refund_contradiction', `La ligne ${variant.id} enregistre un remboursement alors que le paiement Stripe de cette commande n’a pas de charge. Aucune conclusion tirée.`)
       }
-      const noChargeStep = read.paymentStatus !== 'paid' && read.paymentStatus !== 'reconcile_manual' ? 'E1'
+      const noChargeStep = (read.paymentStatus !== 'paid' && read.paymentStatus !== 'reconcile_manual') || read.hasPaymentIntent === false ? 'E1'
         : read.piStatus !== 'succeeded' ? 'E1b' : 'E1c'
       return { kind: 'proof', basis: 'no_charge', prefix: 'no_refund_proven_rail_locked:', noChargeStep }
     }
@@ -842,4 +849,176 @@ export function absenceProvenPayableLabel(refundError: string | null | undefined
   return instant
     ? `${head}, au plus tôt le ${instant.toISOString()} (UTC), relue avant le moteur`
     : `${head} — instant illisible : approbation refusée, relancez « Réconcilier d’après la preuve »`
+}
+
+// ══ G8 — THE PROOF, LOCK AND SAFETY-HOLD TEXTS (pure) ═════════════════════════════════════════════
+// Rendered here, written by the N8 writer (reconcile) and by T2 (lib/claims triggerClaimRefund). Every
+// engine quote is verbatim lib/refund.ts. No sentence says a cause will cease or a claim will be paid.
+
+export const HEAD_A = 'Stripe ne rapporte aujourd’hui aucun remboursement abouti ni en attente sur ce paiement (liste complète lue).'
+
+/** G8 HEAD_B: every standing refund is explained by another settled claim. */
+export function headB(amountRefundedCents: number, explained: ExplainedRefund[]): string {
+  const items = explained.map((x) => `${x.refundId} (ligne ${x.rowId}, réclamation ${x.claimId}, ${x.stamped ? 'identité portée par la ligne' : 'liaison seule'}), ${x.amountCents} c`)
+  return `Stripe rapporte ${amountRefundedCents} c remboursés sur ce paiement, et chacun de ses remboursements aboutis ou en attente est rattaché à une AUTRE réclamation, soldée sur sa ligne : ${items.join(' ; ')}. Aucun n’est rattaché à celle-ci.`
+}
+
+export const LOCKED_OPEN = 'MAIS une nouvelle approbation ne paierait pas cette réclamation :'
+export const LOCKED_CLOSE = 'Rien ne sera payé par le rail pour cette réclamation tant que cet état est enregistré : l’approbation est refusée et le balayage automatique l’ignore. « Réconcilier d’après la preuve » réévalue toutes les conditions ; une cause qui ne dépend d’aucune action ultérieure ne cessera pas. Si elle a été remboursée hors système (Dashboard Stripe), déclarez-le (« Clôturer ce dossier… ») ; sinon clôturez sans paiement. Décision humaine requise.'
+export const AWAITING_OPEN = 'MAIS une nouvelle approbation ne paierait pas cette réclamation tant que'
+export const AWAITING_CLOSE = 'Relancez « Réconcilier d’après la preuve » lorsque cette ligne ne sera plus « en attente » dans notre base : la réconciliation réévaluera alors toutes les conditions. En attendant, rien ne sera payé par le rail pour cette réclamation (approbation refusée, balayage automatique ignoré). Si elle a été remboursée hors système (Dashboard Stripe), déclarez-le (« Clôturer ce dossier… »).'
+
+/** G8 PAYABLE tail, with the C4 instant. */
+export function payableTail(requestedAmountCents: number, instant: Date): string {
+  return `Aucune ligne de remboursement de cette commande n’est en attente, et au moment de cette lecture aucune condition de refus du moteur ni aucun blocage de sûreté n’était rempli pour le montant de cette réclamation (${requestedAmountCents} c). La réclamation repasse en « approuvée, non payée ». Rien ne la paiera automatiquement : elle devra être approuvée à nouveau par un admin, réclamations et remboursements ouverts ; une vérification relira alors Stripe et nos lignes avant le moteur. Elle est payable au plus tôt le ${instant.toISOString()} (UTC).`
+}
+
+/** G8 ROUTED: true → the routed sentence; null (unknown) → its conditional form; false → ''. */
+export function routedSentence(routed: boolean | null): string {
+  if (routed === true) return 'Ce paiement est routé : un remboursement échoué a pu laisser le transfert du restaurant inversé, et Stripe ne le restaure pas — vérifiez-le dans le Dashboard Stripe.'
+  if (routed === null) return 'Si ce paiement est routé, un remboursement échoué a pu laisser le transfert du restaurant inversé (Stripe ne le restaure pas) — vérifiez-le dans le Dashboard Stripe.'
+  return ''
+}
+
+const E1_SENTENCE = (s: string) => `le moteur refuse tout remboursement sur cette commande, dont le statut de paiement enregistré est « ${s} » (« Commande non payée — rien à rembourser. »).`
+const E1B_SENTENCE = (piStatus: string) => `le paiement Stripe de cette commande est au statut « ${piStatus} », et le moteur ne rembourse qu’un paiement « succeeded » (« Paiement non débité — rien à rembourser. »).`
+
+/** G8 E3 continuation for one oldest row, by its evidence (the no-row derivation classifies every row it reaches). */
+function e3Continuation(evidence: PendingEvidence | undefined, re: string | null): string {
+  const ref = re ?? '(sans identifiant Stripe enregistré)'
+  switch (evidence) {
+    case 'failed_at_stripe':
+      // IMPLEMENTATION NOTE (W2) on G8, ER-C24: « reprend cette ligne », never « la reprend » (round-10 PROMISES scan, F15/J-C14 wording).
+      return ` ; son remboursement Stripe ${ref} a ÉCHOUÉ ou a été annulé : si le moteur reprend cette ligne, il la marquera en échec, ce qui verrouille la commande.`
+    case 'dead':
+      return ' : Stripe ne connaît aucun remboursement pour elle et le moteur ne la créera plus (fenêtre d’idempotence expirée) ; il refuse donc sa reprise (« Reprise impossible : la fenêtre d’idempotence Stripe du remboursement initial a expiré… ») ; aucun code de l’application ne retire cette ligne.'
+    case 'succeeded_at_stripe':
+      return ` : son remboursement Stripe ${ref} est ABOUTI mais la ligne n’est pas finalisée ici ; le moteur finaliserait cette ligne, pas un remboursement de cette réclamation, tant qu’elle reste en attente.`
+    case 'succeeded_at_stripe_clawback':
+      // IMPLEMENTATION NOTE (W2) on G8, ER-R26: hedged — the clawback applies only if a settlement transfer exists.
+      return ` : son remboursement Stripe ${ref} est ABOUTI mais la ligne n’est pas finalisée ici, et sa finalisation peut devoir d’abord reprendre au franchiseur une royalty (si un transfert de règlement existe) : le moteur peut la refuser à chaque appel, et la ligne reste alors en attente ; sa finalisation n’est pas établie.`
+    default:
+      return '.'
+  }
+}
+
+/** G8 the E3 sentence: opener (single or tie), continuation by evidence, other pending rows. */
+export function e3Sentence(r: Extract<EngineRefusal, { step: 'E3' }>, f: ReapprovalFacts): string {
+  const rowOf = (id: string) => f.rows.find((x) => x.id === id)
+  const reOf = (id: string): string | null => {
+    const t = f.truths[id]
+    return t && t.kind === 'at_stripe' ? t.refundId : rowOf(id)?.stripeRefundId ?? null
+  }
+  const truncated = ' ; Stripe rapporte plus de 100 remboursements sur ce paiement et cette ligne n’a pas d’identifiant Stripe enregistré : le moteur refuse alors la reprise (« Reprise impossible pour l’instant (liste Stripe indisponible) — réessayez. ») ; aucun code de l’application ne retire cette ligne.'
+  const cont = (id: string) => (r.engineListTruncated && !rowOf(id)?.stripeRefundId ? truncated : e3Continuation(r.evidenceByRow[id], reOf(id)))
+  let text: string
+  if (r.oldestRowIds.length === 1) {
+    const id = r.oldestRowIds[0]
+    const stamp = stampedClaimId(rowOf(id)?.reason) ? rowOf(id)?.reason : null
+    text = `la plus ancienne ligne en attente de la commande, ${id}${stamp ? ' (identité ' + stamp + ')' : ''}, est reprise par le moteur avant tout nouveau remboursement` + cont(id)
+  } else {
+    text = `les plus anciennes lignes en attente de la commande, créées au même instant (${r.oldestRowIds.join(', ')}), sont reprises par le moteur avant tout nouveau remboursement (il prend l’une d’elles)`
+      + r.oldestRowIds.map((id, i) => (i === 0 ? '' : ' ;') + ` ligne ${id}` + cont(id).replace(/\.$/, '')).join('') + '.'
+  }
+  if (r.otherPendingRowIds.length) text = text.replace(/\.$/, '') + ` (ligne(s) aussi en attente : ${r.otherPendingRowIds.join(', ')}).`
+  return text
+}
+
+/** G8 REFUSAL SENTENCES, the first engine refusal on the facts. */
+export function refusalSentence(r: EngineRefusal, f: ReapprovalFacts): string {
+  switch (r.step) {
+    case 'E1': return E1_SENTENCE(r.paymentStatus)
+    case 'E2': return `la ligne ${r.rowIds.join(', ')} est ÉCHOUÉE avec un identifiant Stripe : le moteur refuse tout remboursement sur une commande qui porte une telle ligne, et aucune action des réclamations ne modifie cette ligne.`
+    case 'E1b': return E1B_SENTENCE(r.piStatus)
+    case 'E3': return e3Sentence(r, f)
+    case 'E4': return `le paiement est déjà intégralement remboursé chez Stripe (${r.refundedCents} c sur ${r.chargeAmountCents} c) ; le moteur refuserait (« Paiement déjà intégralement remboursé. »).`
+    case 'E5': return `le montant de cette réclamation (${r.requestedAmountCents} c) dépasse ce qui reste remboursable sur ce paiement (${r.refundableCents} c) ; le moteur refuserait (« Montant invalide »).`
+    case 'E6': return `le moteur calculerait la clé ${r.key} pour un nouveau remboursement, et la ligne ${r.rowId} la détient déjà ; il refuserait (« Un remboursement est déjà en cours sur ce montant cumulé. ») tant que le montant remboursé rapporté par Stripe reste ${f.amountRefundedCents} c.`
+  }
+}
+
+/** G8 HOLD SENTENCES. */
+export function holdSentence(h: SafetyHold): string {
+  switch (h.hold) {
+    case 'H1': {
+      const re = h.refundId ?? '(sans identifiant Stripe enregistré)'
+      const how = h.how === 'absent' ? `son remboursement ${re} est introuvable parmi les remboursements de ce paiement, lus en entier avec la clé qui lit ce paiement`
+        : h.how === 'other_payment' ? `son remboursement ${re} porte sur un autre paiement`
+          : `son remboursement ${re} est « ${h.stripeStatus ?? 'inconnu'} » chez Stripe`
+      return `la ligne ${h.rowId} est marquée ABOUTIE dans notre base, mais Stripe ne la compte pas sur ce paiement (${how}) ; notre base la compte toujours comme remboursée et aucune action de l’application n’est prévue pour la corriger ; l’approbation est refusée par sûreté (blocage de sûreté, pas un refus du moteur).`
+    }
+    case 'H2': return `sur ce paiement routé, Stripe rapporte un remboursement « ${h.status} » (${h.refundId}) qui ne correspond à aucune ligne de notre base ; le moteur ne le voit pas, et l’approbation est refusée par sûreté (blocage de sûreté).`
+    case 'H3': return `la ligne ${h.rowId} (« ${h.rowStatus} » dans notre base) enregistre un remboursement dont la lecture chez Stripe se contredit (${h.detail}) ; l’approbation est refusée par sûreté (blocage de sûreté).`
+    case 'H5': return h.cause === 'disputed'
+      ? `Stripe rapporte un litige sur la charge ${h.chargeId} de ce paiement : Stripe peut refuser le remboursement après que le moteur a enregistré sa ligne, qui resterait alors en attente et bloquerait la reprise sur cette commande ; l’approbation est refusée par sûreté (blocage de sûreté).`
+      : `le montant de cette réclamation (${h.requestedAmountCents} c) dépasse ce qui reste remboursable sur le montant capturé de ce paiement (${h.remainingCapturedCents} c) ; le moteur calcule sur le montant de la charge et enregistrerait sa ligne avant que Stripe refuse, ligne qui resterait en attente ; l’approbation est refusée par sûreté (blocage de sûreté).`
+  }
+}
+
+/** G8: ROUTED is appended when the causes include E2, E3 failed_at_stripe, H1 reverted or H2. */
+export function routedApplies(refusal: EngineRefusal | null, holds: SafetyHold[]): boolean {
+  if (refusal?.step === 'E2') return true
+  if (refusal?.step === 'E3' && refusal.oldestRowIds.some((id) => refusal.evidenceByRow[id] === 'failed_at_stripe')) return true
+  return holds.some((h) => (h.hold === 'H1' && h.how === 'reverted') || h.hold === 'H2')
+}
+
+const joinCauses = (sentences: string[]) => sentences.map((s, i) => (i === 0 ? s : `De plus, ${s}`)).join(' ')
+
+/**
+ * G8 TEXT = prefix + ' ' + HEAD + tail, for a proof outcome of deriveNoRowOutcome. ctx.preImage and ctx.now
+ * feed the C4 instant of a payable proof; T2 never writes a payable proof (it calls the engine instead).
+ */
+export function absenceProofText(
+  o: Extract<NoRowOutcome, { kind: 'proof' }>,
+  read: OrderMoneyRead,
+  ctx: { preImage: string | null | undefined; now: Date; requestedAmountCents: number },
+): string {
+  if (o.basis === 'no_charge') {
+    const s = read.readable === false && read.permanent === 'no_charge' ? read : null
+    const sentence = o.noChargeStep === 'E1' ? E1_SENTENCE(s?.paymentStatus ?? '')
+      : o.noChargeStep === 'E1b' ? E1B_SENTENCE(s?.piStatus ?? '')
+        : 'le moteur refuserait (« Charge introuvable sur le paiement. »).'
+    return `${o.prefix} Le paiement Stripe de cette commande n’a pas de charge : aucun remboursement ne peut exister sur ce paiement. ${LOCKED_OPEN} ${sentence} ${LOCKED_CLOSE}`
+  }
+  if (!read.readable) return `${o.prefix} ${LOCKED_OPEN} ${LOCKED_CLOSE}` // unreachable: a verdict proof needs readable facts
+  const f = read.facts
+  const head = o.explained.length ? headB(f.amountRefundedCents, o.explained) : HEAD_A
+  if (o.verdict === 'payable') return `${o.prefix} ${head} ${payableTail(ctx.requestedAmountCents, proofInstantFor(ctx.preImage, ctx.now))}`
+  const v = o.verdict
+  if (o.prefix === MARKERS.AWAITING_FINALIZATION && v.refusal?.step === 'E3') {
+    return `${o.prefix} ${head} ${AWAITING_OPEN} ${e3Sentence(v.refusal, f)} ${AWAITING_CLOSE}`
+  }
+  const causes = [...(v.refusal ? [refusalSentence(v.refusal, f)] : []), ...v.holds.map(holdSentence)]
+  const routed = routedApplies(v.refusal, v.holds) ? routedSentence(f.routed) : ''
+  return [`${o.prefix} ${head}`, LOCKED_OPEN, joinCauses(causes), routed, LOCKED_CLOSE].filter(Boolean).join(' ')
+}
+
+/** C3 (b')/(c): the SAFETY_HOLD text around a clause S. */
+export function safetyHoldText(clause: string): string {
+  return `${MARKERS.SAFETY_HOLD} Aucun remboursement n’a été lancé pour cette réclamation : ${clause} Décision humaine requise ; « Clôturer ce dossier… » enregistre votre déclaration.`
+}
+
+export const LIST_OVER_CAP_CLAUSE = 'Stripe rapporte plus de 1 000 remboursements sur ce paiement : leur liste complète ne peut pas être lue, et aucune vérification n’est établie.'
+
+/**
+ * C3 (b') S for no_charge: the FIRST refusal refund.ts reaches on the facts — E1 (unpaid, or no PaymentIntent),
+ * else E2 (a failed row with a Stripe id precedes the PI read, ER-M11/ER-M13), else E1b, else E1c.
+ */
+export function noChargeClause(read: Extract<OrderMoneyRead, { permanent: 'no_charge' }>): string {
+  const head = 'le paiement Stripe de cette commande n’a pas de charge : aucune vérification ne peut être lue, et le moteur refuserait'
+  if ((read.paymentStatus !== 'paid' && read.paymentStatus !== 'reconcile_manual') || read.hasPaymentIntent === false) {
+    return `${head} (« Commande non payée — rien à rembourser. »).`
+  }
+  const failed = read.rows.filter((r) => r.status === 'failed' && !!r.stripeRefundId)
+  if (failed.length) {
+    return `${head} : la ligne ${failed.map((r) => r.id).join(', ')} est ÉCHOUÉE avec un identifiant Stripe, et le moteur refuse tout remboursement sur une commande qui porte une telle ligne ; aucune action des réclamations ne modifie cette ligne.`
+  }
+  if (read.piStatus !== 'succeeded') return `${head} (« Paiement non débité — rien à rembourser. »).`
+  return `${head} (« Charge introuvable sur le paiement. »).`
+}
+
+/** C3 (c): the hold sentences (the first plain, the others « De plus, ») and ROUTED. */
+export function holdsClause(holds: SafetyHold[], routed: boolean | null): string {
+  const r = routedApplies(null, holds) ? routedSentence(routed) : ''
+  return [joinCauses(holds.map(holdSentence)), r].filter(Boolean).join(' ')
 }

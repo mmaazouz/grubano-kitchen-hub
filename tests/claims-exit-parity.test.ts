@@ -17,6 +17,7 @@ const { db } = vi.hoisted(() => ({
     claim:  { findUnique: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), updateMany: vi.fn(), update: vi.fn(), count: vi.fn(), groupBy: vi.fn() },
     refund: { findMany: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), create: vi.fn() },
     order:  { findUnique: vi.fn(), findMany: vi.fn() },
+    franchiseRoyalty: { findFirst: vi.fn() },
   },
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
@@ -96,10 +97,13 @@ describe('J-M29 — reconcilable: the list flag equals the server gate, one fixt
       expect(l.reconcilable, name).toBe(expected)
       expect(reconcileRefusal(s) === null, name).toBe(expected)
       db.claim.findUnique.mockResolvedValue(s)
-      db.refund.findMany.mockClear(); db.refund.findUnique.mockClear()
+      db.refund.findMany.mockClear(); db.refund.findUnique.mockClear(); stripeMock.paymentIntents.retrieve.mockClear()
       const server = await reconcileClaimEvidence({ claimId: s.id })
+      // ROUND 13 (B8, slice W2): the gate reads the BOUND row (and nothing else) before it decides — the own-row
+      // mismatch is decided on it. A refusal still reads no order row list, no Stripe, and writes nothing.
+      const boundOnly = db.refund.findUnique.mock.calls.every((c) => (c[0] as { where: { id: string } }).where.id === s.refundId)
       const refusedBeforeReading = !server.ok && (server as { status?: number }).status === 409
-        && db.refund.findMany.mock.calls.length === 0 && db.refund.findUnique.mock.calls.length === 0
+        && db.refund.findMany.mock.calls.length === 0 && boundOnly && stripeMock.paymentIntents.retrieve.mock.calls.length === 0
       expect(refusedBeforeReading, name).toBe(!expected)
       if (expected) expect(server.ok, name).toBe(true)
     }
@@ -256,30 +260,37 @@ describe('B12 — attribution: a failed binder or stamp read refuses before any 
   })
 })
 
-// ══ C9 (W1 round-1 fix) — the round-12 proof write is a compare-and-set on the claim as read ═══════════
-describe('C9 — G1 (i) admits approved proofs into the round-12 ladder: its proof write CASes on the pre-image', () => {
+// ══ C9 / D4 (W2 round-1 fix) — an approved legacy proof is re-derived and written by N8, a CAS on the claim as read ══
+describe('C9 / D4 — G1 (i) admits approved proofs: N8 re-derives them on the loader and its write CASes on the pre-image', () => {
   const LEGACY = 'no_refund_proven: aucun remboursement n’a été créé …'
   const PROOF = shape('lp1', { status: 'approved', refundError: LEGACY })
 
   beforeEach(() => {
     db.claim.findUnique.mockResolvedValue(PROOF)
-    db.order.findUnique.mockResolvedValue({ id: 'o1', stripePaymentIntentId: 'pi_1' })
+    db.order.findUnique.mockResolvedValue({ id: 'o1', paymentStatus: 'paid', stripePaymentIntentId: 'pi_1' })
     db.refund.findMany.mockResolvedValue([])
+    db.franchiseRoyalty.findFirst.mockResolvedValue(null)
+    stripeMock.paymentIntents.retrieve.mockResolvedValue({ status: 'succeeded', transfer_data: null, latest_charge: { id: 'ch_1', amount: 2000, amount_captured: 2000, amount_refunded: 0, disputed: false } })
   })
 
-  it('a T1 that moved the claim to refunding between the read and the write → nothing written, no proof reported', async () => {
+  it('a T1 that moved the claim to refunding between the read and the write → nothing written, changed_during_read (C1)', async () => {
     fx.row = { status: 'refunding', refundAttempted: true, refundId: null, refundError: `${RECONCILE_REQUIRED}: tentative de remboursement démarrée à 2026-09-12T08:00:00.000Z — identité pas encore liée.` }
     const r = await reconcileClaimEvidence({ claimId: 'lp1' })
-    expect(r).toMatchObject({ ok: true, outcome: 'financial_verification', reason: 'already_parked_or_moved' })
+    expect(r).toEqual({ ok: true, outcome: 'changed_during_read' })
     const proofWrites = db.claim.updateMany.mock.calls.filter((c) => c[0]?.data?.refundAttempted === false)
     expect(proofWrites).toHaveLength(1)
     expect(proofWrites[0][0].where).toEqual({ id: 'lp1', status: 'approved', refundAttempted: false, refundId: null, refundError: LEGACY })
     expect(execMock).not.toHaveBeenCalled()
   })
 
-  it('NEGATIVE CONTROL — the claim unchanged since the read → the proof is written and reported', async () => {
+  it('NEGATIVE CONTROL — the claim unchanged since the read → a v13 proof is written (never the legacy text again) and reported with its instant', async () => {
     fx.row = { status: 'approved', refundAttempted: false, refundId: null, refundError: LEGACY }
-    expect(await reconcileClaimEvidence({ claimId: 'lp1' })).toEqual({ ok: true, outcome: 'no_refund_proven' })
+    const r = await reconcileClaimEvidence({ claimId: 'lp1' })
+    expect(r).toMatchObject({ ok: true, outcome: 'no_refund_proven' })
+    expect(typeof (r as { payableFrom?: string }).payableFrom).toBe('string')
+    const written = db.claim.updateMany.mock.calls.filter((c) => c[0]?.data?.refundAttempted === false)
+    expect(written).toHaveLength(1)
+    expect(String(written[0][0].data.refundError).startsWith('no_refund_proven:v13: ')).toBe(true)
   })
 })
 
@@ -305,7 +316,8 @@ describe('D2 (1)(b) — approved, not attempted, refundId SET, null error: appro
     fx.forcedCount = 0
     const r = await arbitrateClaim({ claimId: s.id, adminId: 'op1', decision: 'approve' })
     expect((r as { error?: string }).error).toBe('Cette réclamation a déjà été arbitrée.')
-    expect(db.claim.updateMany.mock.calls[0][0].where).toEqual({ id: 'b3', status: 'approved', refundAttempted: false, refundId: null })
+    // ROUND 13 (D2 (1)(b)/(c), slice W2): the legacy CAS also carries the refundError the refusal read.
+    expect(db.claim.updateMany.mock.calls[0][0].where).toEqual({ id: 'b3', status: 'approved', refundAttempted: false, refundId: null, refundError: null })
   })
 })
 
@@ -365,25 +377,28 @@ describe('D0 / F16 (7) — names « Réconcilier d’après la preuve » ⇒ rec
     return listActionableRefundClaims()
   }
 
-  it('no listed row names reconcile while the server refuses it — the own-row resume_mismatch included (reconcile refused in W1: no boundRow read)', async () => {
+  it('no listed row names reconcile while the server refuses it — the own-row resume_mismatch is now reconcilable (B8, slice W2: the list reads the bound row)', async () => {
     const listed = await arrange()
     const own = listed.find((l) => l.id === 'm_own')!
     expect(own.refundIdentityUnread).toBe(true)
-    expect(own.reconcilable).toBe(false)
+    expect(own.reconcilable).toBe(true)
+    expect(own.resolvable).toBe(false)
+    expect(listed.find((l) => l.id === 'm_oth')!).toMatchObject({ reconcilable: false, resolvable: true })
     expect(violations(listed)).toEqual([])
   })
 
-  it('NEGATIVE CONTROL — the round-1 defect (A-S36-1 sentence whatever the verdict) is caught on the own-row resume_mismatch', async () => {
-    const listed = await arrange()
+  it('NEGATIVE CONTROL — the round-1 defect (A-S36-1 sentence whatever the verdict) is caught on the own-row resume_mismatch when the verdict is a refusal', async () => {
+    const listed = (await arrange()).map((l) => (l.id === 'm_own' ? { ...l, reconcilable: false } : l))
     expect(violations(listed, () => IDENTITY_UNREAD_TEXT)).toEqual(['m_own'])
+    expect(violations(listed)).toEqual([])
   })
 
-  it('F15 card line: the own row → identity_unread naming no exit; another claim’s row → bound_but_not_ours; a payload without the reason → INDÉTERMINÉ', async () => {
+  it('F15 card line: the own row → identity_unread naming reconcile only when the server admits it; another claim’s row → bound_but_not_ours; a payload without the reason → INDÉTERMINÉ', async () => {
     const listed = await arrange()
     const own = listed.find((l) => l.id === 'm_own')!
     const oth = listed.find((l) => l.id === 'm_oth')!
-    expect(cardMoneyLine({ ...own, kind: 'other_unsettled' })).toEqual({ certainty: 'identity_unread', text: IDENTITY_UNREAD_NO_EXIT_TEXT })
-    expect(cardMoneyLine({ ...own, kind: 'other_unsettled', reconcilable: true }).text).toBe(IDENTITY_UNREAD_TEXT)
+    expect(cardMoneyLine({ ...own, kind: 'other_unsettled', reconcilable: false })).toEqual({ certainty: 'identity_unread', text: IDENTITY_UNREAD_NO_EXIT_TEXT })
+    expect(cardMoneyLine({ ...own, kind: 'other_unsettled' }).text).toBe(IDENTITY_UNREAD_TEXT)
     expect(cardMoneyLine({ ...oth, kind: 'other_unsettled' }).certainty).toBe('bound_but_not_ours')
     expect(cardMoneyLine({ ...oth, kind: 'other_unsettled', refund: { reason: undefined } }).certainty).toBe('unknown')
     expect(stripComments(read('components/claims/AdminFinancialVerification.tsx'))).toContain('{cardMoneyLine(r).text}')

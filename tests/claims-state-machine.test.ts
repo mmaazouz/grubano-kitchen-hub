@@ -13,14 +13,28 @@ const { db } = vi.hoisted(() => ({
   db: {
     order:  { findUnique: vi.fn() },
     claim:  { create: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), update: vi.fn(), updateMany: vi.fn(), count: vi.fn(), groupBy: vi.fn() },
-    refund: { aggregate: vi.fn(), findMany: vi.fn(), findUnique: vi.fn() },
+    refund: { aggregate: vi.fn(), findMany: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn() },
+    franchiseRoyalty: { findFirst: vi.fn() },
   },
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
 const { execMock, refundsFlag } = vi.hoisted(() => ({ execMock: vi.fn(), refundsFlag: vi.fn() }))
-vi.mock('@/lib/refund', () => ({ executeRefund: execMock, isRefundsEnabled: refundsFlag }))
+vi.mock('@/lib/refund', () => ({ executeRefund: execMock, isRefundsEnabled: refundsFlag, RESUME_CREATE_WINDOW_MS: 20 * 60 * 60 * 1000 }))
+// ROUND 13 (C3): an approval reads the order, its rows and Stripe before the engine — never the real Stripe.
+const { stripeMock } = vi.hoisted(() => ({ stripeMock: { paymentIntents: { retrieve: vi.fn() }, refunds: { list: vi.fn(), retrieve: vi.fn(), create: vi.fn() } } }))
+vi.mock('@/lib/stripe', () => ({ getStripe: () => stripeMock }))
+vi.mock('@/lib/admin-alerts', () => ({ sendAdminMoneyReviewAlert: vi.fn(async () => ({ status: 'sent' })) }))
 
 import { arbitrateClaim, reconcileClaimForRefund, listActionableRefundClaims, claimAuthority, isClaimsEnabled, resolveStuckClaim, recoverStrandedClaimReconciliations, autoResolveSmallClaim, isStuckResolvable, runClaimAutoApproval, listArbitrationQueue } from '@/lib/claims'
+import { payableWorld, wireWorld, refundRow, claimOf, engineOk, engine202 } from './support/claims-world'
+
+/** ROUND 13 (C3): the approval path runs T1 → T2 on fresh reads → the engine → T4; these tests drive it in an in-memory world. */
+const world = (claim: Record<string, unknown>) => {
+  const w = payableWorld(claim)
+  wireWorld(w, db, stripeMock)
+  execMock.mockResolvedValue(engineOk({ refundId: 'rf1', stripeRefundId: 're_1' }))
+  return w
+}
 import { ACCEPTED_REASONS, isSafetyReason } from '@/lib/claim-reasons'
 
 const HOUR = 3600 * 1000
@@ -30,6 +44,8 @@ const fx: { row: Record<string, unknown> | null; forcedCount: number | null } = 
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // ROUND 13: some tests wire an in-memory world; its implementations must not leak into the next test.
+  for (const m of [db.claim.findUnique, db.claim.findFirst, db.refund.findFirst, db.order.findUnique, db.franchiseRoyalty.findFirst]) m.mockReset()
   fx.row = null; fx.forcedCount = null
   // RE-AUDIT FIX: a mock that returns count:1 for ANY where clause cannot detect a CAS
   // regression — it is exactly why the first version of the unpaid-approval fix looked green
@@ -85,9 +101,10 @@ describe('RESTAURANT SILENCE — never blocks resolution for ever, never auto-re
     db.claim.findUnique.mockResolvedValue({ id: 'cl1', status: 'restaurant_review', refundAttempted: false, responseDeadlineAt: past(), arbitrationDecision: null })
     await arbitrateClaim({ claimId: 'cl1', adminId: 'admin1', decision: 'refuse_final' })
     expect(execMock).not.toHaveBeenCalled()
-    db.claim.findUnique.mockResolvedValue({ id: 'cl2', status: 'restaurant_review', refundAttempted: false, responseDeadlineAt: past(), arbitrationDecision: null, orderId: 'o1', requestedAmountCents: 500 })
+    const w = world({ id: 'cl2', status: 'restaurant_review', responseDeadlineAt: past(), arbitrationDecision: null })
     await arbitrateClaim({ claimId: 'cl2', adminId: 'admin1', decision: 'approve' })
     expect(execMock).toHaveBeenCalledTimes(1) // the ADMIN decided, not the clock
+    expect(claimOf(w, 'cl2').status).toBe('refunded')
   })
 
   it('claimAuthority names the current holder and whether an admin may act', () => {
@@ -134,29 +151,23 @@ describe('LEGACY FINALIZATION LOCK — a decided claim is decided', () => {
 
 describe('REFUND IDENTITY BINDING — a claim never claims an amount nobody asked for', () => {
   it('RESUME-FIRST mismatch → claim NOT marked refunded, bound to the real refund, admin required', async () => {
-    db.claim.findUnique
-      .mockResolvedValueOnce({ id: 'cl1', status: 'arbitration', refundAttempted: false, responseDeadlineAt: past(), arbitrationDecision: null })
-      .mockResolvedValueOnce({ orderId: 'o1', requestedAmountCents: 500 })
-      .mockResolvedValue({ id: 'cl1' })
-    execMock.mockResolvedValue({ ok: true, refundId: 'rf_older', stripeRefundId: 're_older', amountCents: 1200, resumedIgnoredAmount: true })
+    const w = world({ status: 'arbitration', responseDeadlineAt: past(), arbitrationDecision: null })
+    execMock.mockResolvedValue(engineOk({ refundId: 'rf_older', stripeRefundId: 're_older', amountCents: 1200, resumed: true, resumedIgnoredAmount: true }))
     const res = await arbitrateClaim({ claimId: 'cl1', adminId: 'admin1', decision: 'approve' })
     expect(res.ok).toBe(true)
     expect((res as { refund?: { state: string } }).refund).toMatchObject({ state: 'failed' })
-    const written = db.claim.update.mock.calls.at(-1)![0].data
-    expect(written.refundId).toBe('rf_older')          // bound to the ACTUAL refund driven
-    expect(written.status).toBeUndefined()             // NOT flipped to 'refunded'
-    expect(String(written.refundError)).toMatch(/resume_mismatch/)
+    const c = claimOf(w)
+    expect(c.refundId).toBe('rf_older')          // bound to the ACTUAL refund driven
+    expect(c.status).toBe('refunding')           // NOT flipped to 'refunded'
+    expect(String(c.refundError)).toMatch(/resume_mismatch/)
+    expect(db.claim.update).not.toHaveBeenCalled() // ROUND 13 (C5): every post-engine write is a CAS
   })
 
   it('a clean refund still settles the claim on the exact refund identity', async () => {
-    db.claim.findUnique
-      .mockResolvedValueOnce({ id: 'cl1', status: 'arbitration', refundAttempted: false, responseDeadlineAt: past(), arbitrationDecision: null })
-      .mockResolvedValueOnce({ orderId: 'o1', requestedAmountCents: 500 })
-      .mockResolvedValue({ id: 'cl1' })
+    const w = world({ status: 'arbitration', responseDeadlineAt: past(), arbitrationDecision: null })
     const res = await arbitrateClaim({ claimId: 'cl1', adminId: 'admin1', decision: 'approve' })
     expect(res.ok).toBe(true)
-    const written = db.claim.update.mock.calls.at(-1)![0].data
-    expect(written).toMatchObject({ status: 'refunded', refundId: 'rf1', activeOrderKey: null })
+    expect(claimOf(w)).toMatchObject({ status: 'refunded', refundId: 'rf1', activeOrderKey: null })
   })
 })
 
@@ -282,11 +293,8 @@ describe('AUDIT FIX P1 — an UNPAID approval stays visible and payable', () => 
   it('a claim approved while REFUNDS was off can still be re-driven (the lock must not strand money owed)', async () => {
     // the CAS is now evaluated against this simulated row, so a wrong where clause fails here
     // ROUND 13 (D2 (1)(b)): the legacy CAS also requires refundId null — the simulated row carries the column.
-    fx.row = { status: 'approved', refundAttempted: false, refundId: null, arbitrationDecision: 'approved' }
-    db.claim.findUnique
-      .mockResolvedValueOnce({ id: 'cl1', status: 'approved', refundAttempted: false, responseDeadlineAt: past(), arbitrationDecision: 'approved' })
-      .mockResolvedValueOnce({ orderId: 'o1', requestedAmountCents: 500 })
-      .mockResolvedValue({ id: 'cl1' })
+    // ROUND 13: the in-memory world evaluates every CAS (decision, T1, T4) against one claim row.
+    world({ status: 'approved', refundAttempted: false, refundId: null, responseDeadlineAt: past(), arbitrationDecision: 'approved' })
     const res = await arbitrateClaim({ claimId: 'cl1', adminId: 'admin1', decision: 'approve' })
     expect(res.ok).toBe(true)
     expect(execMock).toHaveBeenCalledTimes(1) // the refund finally goes out
@@ -324,9 +332,19 @@ describe('AUDIT FIX P1 — an UNPAID approval stays visible and payable', () => 
 describe('AUDIT FIX P1 — reconciliation must not destroy the resume-mismatch guard', () => {
   it('a claim parked by resume_mismatch is NOT flipped to refunded, and its admin flag survives', async () => {
     db.claim.findFirst.mockResolvedValue({ id: 'cl1', status: 'refunding', refundError: 'resume_mismatch: le moteur a repris…' })
+    // ROUND 13 (B8): the disowned binding — the row carries ANOTHER claim's stamp.
+    db.refund.findUnique.mockResolvedValue({ status: 'succeeded', reason: 'claim:OTHER' })
     const r = await reconcileClaimForRefund({ refundRowId: 'rf_older', status: 'succeeded' })
     expect(r).toMatchObject({ reconciled: false })
     expect(db.claim.updateMany).not.toHaveBeenCalled()
+  })
+
+  it('ROUND 13 (B8) — a legacy resume_mismatch on the claim’s OWN stamped row is a candidate: its row settles it', async () => {
+    db.claim.findFirst.mockResolvedValue({ id: 'cl1', status: 'refunding', refundError: 'resume_mismatch: le moteur a repris…' })
+    db.refund.findUnique.mockResolvedValue({ status: 'succeeded', reason: 'claim:cl1' })
+    const r = await reconcileClaimForRefund({ refundRowId: 'rf1', status: 'succeeded' })
+    expect(r).toMatchObject({ reconciled: true, to: 'refunded' })
+    expect(db.claim.updateMany.mock.calls[0][0].where).toMatchObject({ refundError: 'resume_mismatch: le moteur a repris…' })
   })
 
   it('an ordinary claim still reconciles normally', async () => {
@@ -354,27 +372,21 @@ describe('AUDIT FIX P1 — a succeeded EVENT never overrides our own row status'
 
 describe('RE-AUDIT FIX P1 — a stuck refund is no longer a dead end', () => {
   it('the PENDING resume path now detects a mismatch too (the 202 outcome carries no resumedIgnoredAmount)', async () => {
-    db.claim.findUnique
-      .mockResolvedValueOnce({ id: 'cl1', status: 'arbitration', refundAttempted: false, responseDeadlineAt: past(), arbitrationDecision: null })
-      .mockResolvedValueOnce({ orderId: 'o1', requestedAmountCents: 500 })
-      .mockResolvedValue({ id: 'cl1' })
-    execMock.mockResolvedValue({ ok: false, status: 202, pending: true, refundId: 'rf_older', stripeRefundId: 're_older', amountCents: 1200, stripeStatus: 'pending', error: 'pending' })
+    const w = world({ status: 'arbitration', responseDeadlineAt: past(), arbitrationDecision: null })
+    execMock.mockResolvedValue(engine202({ refundId: 'rf_older', stripeRefundId: 're_older', amountCents: 1200 }))
     const res = await arbitrateClaim({ claimId: 'cl1', adminId: 'admin1', decision: 'approve' })
     expect((res as { refund?: { state: string } }).refund).toMatchObject({ state: 'failed' })
-    const written = db.claim.update.mock.calls.at(-1)![0].data
-    expect(String(written.refundError)).toMatch(/resume_mismatch/)
-    expect(written.refundError).not.toBeNull()
+    expect(String(claimOf(w).refundError)).toMatch(/resume_mismatch/)
+    expect(claimOf(w).refundError).not.toBeNull()
   })
 
   it('a genuine pending refund of the RIGHT amount still parks cleanly with no error', async () => {
-    db.claim.findUnique
-      .mockResolvedValueOnce({ id: 'cl1', status: 'arbitration', refundAttempted: false, responseDeadlineAt: past(), arbitrationDecision: null })
-      .mockResolvedValueOnce({ orderId: 'o1', requestedAmountCents: 500 })
-      .mockResolvedValue({ id: 'cl1' })
-    execMock.mockResolvedValue({ ok: false, status: 202, pending: true, refundId: 'rf1', stripeRefundId: 're_1', amountCents: 500, stripeStatus: 'pending', error: 'pending' })
+    const w = world({ status: 'arbitration', responseDeadlineAt: past(), arbitrationDecision: null })
+    // the engine wrote this claim's own row (T3 reads its stamp on the 202 path)
+    execMock.mockImplementation(async () => { w.refunds.push(refundRow('rf1', { reason: 'claim:cl1', status: 'pending', stripeRefundId: 're_1' })); return engine202({ refundId: 'rf1', stripeRefundId: 're_1', amountCents: 500 }) })
     const res = await arbitrateClaim({ claimId: 'cl1', adminId: 'admin1', decision: 'approve' })
     expect((res as { refund?: { state: string; reason?: string } }).refund).toMatchObject({ state: 'pending', reason: 'stripe_pending' })
-    expect(db.claim.update.mock.calls.at(-1)![0].data).toMatchObject({ refundId: 'rf1', refundError: null })
+    expect(claimOf(w)).toMatchObject({ status: 'refunding', refundId: 'rf1', refundError: null })
   })
 
   it('an admin can close a stuck claim as settled out of band → refunded, order released', async () => {
@@ -642,6 +654,8 @@ describe('RE-AUDIT FIX — the recovery sweep retires a row instead of re-reconc
     db.claim.findMany.mockResolvedValue([{ id: 'c1', refundId: 'rf1', status: 'refunding' }])
     db.refund.findMany.mockResolvedValue([{ id: 'rf1', status: 'succeeded', stripeRefundId: 're_1' }])
     db.claim.findUnique.mockResolvedValue({ id: 'c1', status: 'refunding', refundError: null })
+    // ROUND 13: the bound claim the sweep reconciles is read by refundId (findFirst) — set here, never inherited from another test.
+    db.claim.findFirst.mockResolvedValue({ id: 'c1', status: 'refunding', refundError: null })
     fx.row = { status: 'refunding', refundError: null, refundId: 'rf1' }
     const out = await recoverStrandedClaimReconciliations()
     expect(out.scanned).toBe(1)
@@ -680,7 +694,8 @@ describe('the CAS mock enforces comparison operators, not just scalar equality',
   it('…and a claim INSIDE the window still reconciles, so the guard is not a blanket refusal', async () => {
     db.claim.findFirst.mockResolvedValue({ id: 'c1', status: 'refunding', refundError: null })
     db.refund.findUnique.mockResolvedValue({ status: 'succeeded' })
-    fx.row = { status: 'refunding', refundId: 'rf1' }
+    // ROUND 13 (C9 (b)): the CAS also carries the refundError read — the simulated row carries the column.
+    fx.row = { status: 'refunding', refundId: 'rf1', refundError: null }
     const res = await reconcileClaimForRefund({ refundRowId: 'rf1', status: 'succeeded', stripeRefundId: 're_1' })
     expect(res.reconciled).toBe(true)
   })

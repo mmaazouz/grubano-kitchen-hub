@@ -10,13 +10,20 @@ import { join } from 'node:path'
 
 const { db } = vi.hoisted(() => ({
   db: {
-    claim:  { findMany: vi.fn(), findUnique: vi.fn(), updateMany: vi.fn(), update: vi.fn() },
-    refund: { findUnique: vi.fn() },
+    claim:  { findMany: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), updateMany: vi.fn(), update: vi.fn(), count: vi.fn() },
+    refund: { findUnique: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn() },
+    order:  { findUnique: vi.fn() },
+    franchiseRoyalty: { findFirst: vi.fn() },
   },
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
 const { execMock, refundsFlag } = vi.hoisted(() => ({ execMock: vi.fn(), refundsFlag: vi.fn() }))
 vi.mock('@/lib/refund', () => ({ executeRefund: execMock, isRefundsEnabled: refundsFlag, RESUME_CREATE_WINDOW_MS: 20 * 60 * 60 * 1000 }))
+// ROUND 13 (slice W2): the driven claim runs T1 → T2 (fresh reads) → the engine — never the real Stripe.
+const { stripeMock } = vi.hoisted(() => ({ stripeMock: { paymentIntents: { retrieve: vi.fn() }, refunds: { list: vi.fn(), retrieve: vi.fn(), create: vi.fn() } } }))
+vi.mock('@/lib/stripe', () => ({ getStripe: () => stripeMock }))
+vi.mock('@/lib/admin-alerts', () => ({ sendAdminMoneyReviewAlert: vi.fn(async () => ({ status: 'sent' })) }))
+import { payableWorld, wireWorld, engineOk } from './support/claims-world'
 
 import {
   ATTEMPT_QUIESCENCE_MS, proofInstant, proofInstantFor, arbitrationRefusal, acceptedExits, MARKERS,
@@ -242,6 +249,8 @@ describe('J-M21 — one instant parser (source scan over every RegExp constructi
     const PARSERS: Array<[string, string]> = [
       ['new RegExp with a quoted pattern', "const re = new RegExp('payable au plus tôt le (\\\\d{4}-\\\\d{2})')"],
       ['RegExp(String.raw…) with a class for ô', 'const re = RegExp(String.raw' + BT + 'payable au plus t[oô]t le (\\d{4}-\\d{2})' + BT + ", 'u')"],
+      // slice W2 carry-over: the harness idiom itself — new RegExp(String.raw`…`, 'u')
+      ['new RegExp(String.raw…, u) — the harness idiom', 'const re = new RegExp(String.raw' + BT + 'payable au plus tôt le (\\d{4}-\\d{2}-\\d{2}T[\\d:.]+Z)(?!\\p{L})' + BT + ", 'u')"],
       ['a String.raw pattern kept for later', 'const pattern = String.raw' + BT + 'payable au plus tôt le (\\S+) \\(UTC\\)' + BT],
       ['a regex literal copy', 'const m = /payable au plus tôt le (\\d{4}-\\d{2}-\\d{2}T[\\d:.]+Z) \\(UTC\\)/.exec(e)'],
       ['a loosened literal with \\s+ and .', 'const m = s.match(/payable\\s+au\\s+plus\\s+t.t\\s+le (\\S+)/)'],
@@ -294,12 +303,17 @@ describe('J-M21 / J-M47 — runClaimAutoApproval step 2 skips every claim carryi
   })
 
   it('NEGATIVE CONTROL — an approved null-error claim beside them is driven exactly once', async () => {
-    db.claim.findMany.mockImplementation(async ({ where }: { where: { status?: string } }) => (where.status === 'approved' ? [...RECORDED, { id: 'cl_null', refundError: null }] : []))
-    db.refund.findUnique.mockResolvedValue({ reason: 'claim:cl_null' })
+    // ROUND 13 (slice W2): the driven claim goes through T1 → T2 on fresh reads; an in-memory world holds them all.
+    const w = payableWorld({ id: 'cl_null' })
+    w.claims.push(...RECORDED.map((r) => ({ ...w.claims[0], ...r })))
+    wireWorld(w, db, stripeMock)
+    execMock.mockResolvedValue(engineOk())
     await runClaimAutoApproval()
-    expect(db.claim.updateMany).toHaveBeenCalledTimes(1)
-    expect(db.claim.updateMany.mock.calls[0][0].where).toMatchObject({ id: 'cl_null' })
     expect(execMock).toHaveBeenCalledTimes(1)
+    expect(execMock.mock.calls[0][0]).toMatchObject({ reason: 'claim:cl_null' })
+    expect(w.writes.length).toBeGreaterThan(0)
+    expect(w.writes.every((x) => x.where.id === 'cl_null')).toBe(true)
+    expect(w.writes[0].where).toMatchObject({ id: 'cl_null', status: 'approved', refundAttempted: false, refundError: null })
   })
 })
 
@@ -355,14 +369,18 @@ describe('RELEASE GATE — no PROOF_PAYABLE_V13 writer before T1/T2 and the swee
     expect(releaseGateViolations(sources)).toEqual([])
   })
 
-  it('NEGATIVE CONTROL — a v13 writer added to lib/claims.ts with the round-12 T1 is red; with T2 before the engine and the sweep skip it is green; without the skip it is red', () => {
+  it('NEGATIVE CONTROL — a v13 writer with the round-12 trigger (no derivation, or one after the engine) is red; the shipped T2 order is green; without the skip it is red', () => {
+    // ROUND 13 (slice W2): T2 is shipped, so the round-12 trigger is reconstructed by REMOVING the derivation.
     const writer = '\nconst w = { refundError: `${MARKERS.PROOF_PAYABLE_V13} Stripe ne rapporte …` }\n'
-    const withWriter = { ...sources, 'lib/claims.ts': sources['lib/claims.ts'] + writer }
-    expect(releaseGateViolations(withWriter).join(' | ')).toContain('no deriveNoRowOutcome before it')
-    const withT2 = sources['lib/claims.ts'].replace('const result = await executeRefund({', 'const derived = deriveNoRowOutcome(read, claimId)\n  const result = await executeRefund({')
-    expect(withT2).not.toBe(sources['lib/claims.ts'])
-    expect(releaseGateViolations({ ...sources, 'lib/claims.ts': withT2 + writer })).toEqual([])
-    const noSkip = withT2.replace('if (c.refundError) continue', '')
+    const shipped = sources['lib/claims.ts']
+    expect(releaseGateViolations({ ...sources, 'lib/claims.ts': shipped + writer })).toEqual([])
+    const round12 = shipped.replace('const outcome = deriveNoRowOutcome(read, claimId)', 'const outcome = null as never')
+    expect(round12).not.toBe(shipped)
+    expect(releaseGateViolations({ ...sources, 'lib/claims.ts': round12 + writer }).join(' | ')).toContain('no deriveNoRowOutcome before it')
+    const afterEngine = round12.replace('const t4Write = async', 'void deriveNoRowOutcome(read, claimId)\n    const t4Write = async')
+    expect(afterEngine).not.toBe(round12)
+    expect(releaseGateViolations({ ...sources, 'lib/claims.ts': afterEngine + writer }).join(' | ')).toContain('no deriveNoRowOutcome before it')
+    const noSkip = shipped.replace('if (c.refundError) continue', '')
     expect(releaseGateViolations({ ...sources, 'lib/claims.ts': noSkip + writer }).join(' | ')).toContain('does not skip a recorded refundError')
   })
 })

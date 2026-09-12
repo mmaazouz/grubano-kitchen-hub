@@ -14,15 +14,31 @@ const { db } = vi.hoisted(() => ({
   db: {
     order: { findUnique: vi.fn() },
     claim: { create: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
-    refund: { findUnique: vi.fn(), aggregate: vi.fn(), findMany: vi.fn() },
+    refund: { findUnique: vi.fn(), aggregate: vi.fn(), findMany: vi.fn(), findFirst: vi.fn() },
+    franchiseRoyalty: { findFirst: vi.fn() },
   },
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
 
 const { execMock, refundsFlag } = vi.hoisted(() => ({ execMock: vi.fn(), refundsFlag: vi.fn() }))
-vi.mock('@/lib/refund', () => ({ executeRefund: execMock, isRefundsEnabled: refundsFlag }))
+vi.mock('@/lib/refund', () => ({ executeRefund: execMock, isRefundsEnabled: refundsFlag, RESUME_CREATE_WINDOW_MS: 20 * 60 * 60 * 1000 }))
+// ROUND 13 (C3): the approval path reads Stripe before the engine — never the real Stripe.
+const { stripeMock } = vi.hoisted(() => ({ stripeMock: { paymentIntents: { retrieve: vi.fn() }, refunds: { list: vi.fn(), retrieve: vi.fn(), create: vi.fn() } } }))
+vi.mock('@/lib/stripe', () => ({ getStripe: () => stripeMock }))
+vi.mock('@/lib/admin-alerts', () => ({ sendAdminMoneyReviewAlert: vi.fn(async () => ({ status: 'sent' })) }))
 
 import { createClaim, respondToClaim, runClaimAutoApproval, getClaimEligibility, arbitrateClaim, listArbitrationQueue } from '@/lib/claims'
+import { payableWorld, wireWorld, refundRow, claimOf, engineOk, engine202 } from './support/claims-world'
+
+/** ROUND 13 (C3): T1 → T2 on fresh reads → the engine → T4, driven in an in-memory world. */
+const world = (claim: Record<string, unknown>, chargeCents = 6000) => {
+  const w = payableWorld(claim)
+  w.pis.pi_1.latest_charge.amount = chargeCents
+  w.pis.pi_1.latest_charge.amount_captured = chargeCents
+  wireWorld(w, db, stripeMock)
+  execMock.mockResolvedValue(engineOk({ refundId: 'rf1', stripeRefundId: 're_1' }))
+  return w
+}
 
 const paidOrder = (o: Record<string, unknown> = {}) => ({
   id: 'o1', consumerId: 'c1', restaurantId: 'r1', paymentStatus: 'paid', total: 50, updatedAt: new Date(), ...o,
@@ -31,6 +47,7 @@ const fx = { row: null as Record<string, unknown> | null, updateManyCount: 1 }
 
 beforeEach(() => {
   vi.clearAllMocks()
+  for (const m of [db.refund.findFirst, db.franchiseRoyalty.findFirst, db.claim.findMany]) m.mockReset()
   fx.updateManyCount = 1; fx.row = null;
   db.order.findUnique.mockResolvedValue(paidOrder())
   // Claims batch 1: the claim amount is now DERIVED (order lines minus what is already refunded).
@@ -162,10 +179,7 @@ describe('respondToClaim — (b) accept → FILE ADMIN, jamais de remboursement 
 
 describe("(e) P0-24 — l'ADMIN décide et déclenche (les deux rôles couverts)", () => {
   it("admin arbitrate approve sur une réclamation 'arbitration' (acceptée par le resto) → executeRefund UNE fois", async () => {
-    db.claim.findUnique
-      .mockResolvedValueOnce({ id: 'cl1', status: 'arbitration', refundAttempted: false })              // load arbitrate
-      .mockResolvedValueOnce({ orderId: 'o1', requestedAmountCents: 5000 })                              // load trigger
-      .mockResolvedValue({ id: 'cl1', status: 'refunded' })                                              // reload final
+    world({ status: 'arbitration', refundAttempted: false, arbitrationDecision: null, requestedAmountCents: 5000 })
     const res = await arbitrateClaim({ claimId: 'cl1', adminId: 'adm1', decision: 'approve' })
     expect(res.ok).toBe(true)
     expect(execMock).toHaveBeenCalledTimes(1)
@@ -173,25 +187,22 @@ describe("(e) P0-24 — l'ADMIN décide et déclenche (les deux rôles couverts)
   })
 
   it("[PHASE 2 §15 A7] moteur → variante PENDING (Stripe pas encore succeeded) : la réclamation reste 'refunding' avec refundId, AUCUN refundError, AUCUN retour à 'approved'", async () => {
-    execMock.mockResolvedValue({ ok: false, status: 202, pending: true, refundId: 'rf1', stripeRefundId: 're_p', amountCents: 5000, stripeStatus: 'pending', error: 'en attente' })
-    db.claim.findUnique
-      .mockResolvedValueOnce({ id: 'cl1', status: 'arbitration', refundAttempted: false })
-      .mockResolvedValueOnce({ orderId: 'o1', requestedAmountCents: 5000 })
-      .mockResolvedValue({ id: 'cl1', status: 'refunding', refundId: 'rf1' })
+    const w = world({ status: 'arbitration', refundAttempted: false, arbitrationDecision: null, requestedAmountCents: 5000 })
+    execMock.mockImplementation(async () => { w.refunds.push(refundRow('rf1', { reason: 'claim:cl1', status: 'pending', stripeRefundId: 're_p' })); return engine202({ refundId: 'rf1', stripeRefundId: 're_p', amountCents: 5000, error: 'en attente' }) })
     const res = await arbitrateClaim({ claimId: 'cl1', adminId: 'adm1', decision: 'approve' })
     expect(res.ok).toBe(true)
     if (res.ok) expect(res.refund).toEqual({ state: 'pending', reason: 'stripe_pending', refundId: 'rf1' })
-    const updates = db.claim.update.mock.calls.map((c) => c[0].data)
+    // ROUND 13 (C5): the post-engine write is a CAS on the attempt token; the claim state is what it wrote.
+    const updates = w.writes.slice(2).map((x) => x.data)
     expect(updates).toContainEqual({ refundId: 'rf1', refundError: null })
     expect(updates.some((d) => d.status === 'approved' || d.refundError)).toBe(false)
     expect(updates.some((d) => d.status === 'refunded')).toBe(false)
+    expect(claimOf(w)).toMatchObject({ status: 'refunding', refundId: 'rf1', refundError: null })
   })
 
   it('HÉRITAGE pré-P0-24 : approved + refundAttempted=false → arbitrable (approve → refund idempotent)', async () => {
-    db.claim.findUnique
-      .mockResolvedValueOnce({ id: 'cl9', status: 'approved', refundAttempted: false })
-      .mockResolvedValueOnce({ orderId: 'o9', requestedAmountCents: 1200 })
-      .mockResolvedValue({ id: 'cl9', status: 'refunded' })
+    world({ id: 'cl9', orderId: 'o1', status: 'approved', refundAttempted: false, arbitrationDecision: null, requestedAmountCents: 1200 })
+    execMock.mockResolvedValue(engineOk({ refundId: 'rf9' }))
     const res = await arbitrateClaim({ claimId: 'cl9', adminId: 'adm1', decision: 'approve' })
     expect(res.ok).toBe(true)
     // le CAS héritage exige refundAttempted:false dans le WHERE (race-safe)
@@ -226,8 +237,7 @@ describe("(e) P0-24 — l'ADMIN décide et déclenche (les deux rôles couverts)
 
 describe('(d) auto-approval cron', () => {
   it('expired restaurant_review → auto-approved + refund triggered once', async () => {
-    db.claim.findMany.mockImplementation(({ where }: { where: Record<string, unknown> }) =>
-      where.status === 'restaurant_review' ? Promise.resolve([{ id: 'cl1' }]) : Promise.resolve([]))
+    world({ status: 'restaurant_review', responseDeadlineAt: new Date(Date.now() - 3_600_000), arbitrationDecision: null, reason: 'quality' })
     const summary = await runClaimAutoApproval()
     expect(summary.autoApproved).toBe(1)
     expect(summary.refundsTriggered).toBe(1)
@@ -237,8 +247,7 @@ describe('(d) auto-approval cron', () => {
   })
 
   it('approved-but-unrefunded → refund driven once when REFUNDS now on', async () => {
-    db.claim.findMany.mockImplementation(({ where }: { where: Record<string, unknown> }) =>
-      where.status === 'approved' ? Promise.resolve([{ id: 'cl1' }]) : Promise.resolve([]))
+    world({ status: 'approved', refundAttempted: false, arbitrationDecision: null })
     const summary = await runClaimAutoApproval()
     expect(summary.refundsTriggered).toBe(1)
     expect(execMock).toHaveBeenCalledTimes(1)
