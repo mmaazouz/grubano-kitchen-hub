@@ -12,6 +12,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { readFileSync as readRaw } from 'node:fs'
 import { updateManyMock, matchWhere } from './support/prisma-where'
+// ROUND 13 (slice W7, J-C17): F14 / G10 / A-S29-3 values are read out of the frozen specification.
+import { specSection } from './support/spec-copy'
 
 /** CRLF-safe: the founder's checkout has core.autocrlf=true. */
 const read = (p: string) => readRaw(p, 'utf8').replace(/\r\n/g, '\n')
@@ -829,5 +831,123 @@ describe('round-10 source pins', () => {
     expect(code).not.toContain("r.kind === 'financial_verification' || r.reconcilable === true")
     expect(fv).toContain("{r.kind === 'other_unsettled' && r.resolvable === true && (")
     expect(fv).toContain('`/api/admin/claims/${id}/resolve-stuck`')
+  })
+})
+
+// ══ ROUND 13 (slice W7) — J-C17 (F14, F15, A-S36-1, A-S24-1): the card's reconcile toasts, money labels and guidance ════
+// The toasts are the pure reconcileToast (lib/claim-console-copy) the card calls; the expected values are read out of the
+// frozen specification (F14, G10), so neither side can drift by a hand-copied table.
+describe('J-C17 — reconcile toasts equal F14 verbatim, split by outcome, with their tone', () => {
+  const quoted = (id: string) => {
+    const out: Record<string, string> = {}
+    for (const line of specSection(id)) {
+      const m = /^\s*- (.+?): « (.*) »$/.exec(line)
+      if (m) out[m[1]] = m[2]
+    }
+    return out
+  }
+  const F14 = quoted('F14')
+  const G10 = quoted('G10')
+  const ISO = '2026-09-12T13:00:00.000Z'
+  const fmt = (iso: string) => `<${iso}>`
+
+  it('every F14 value is read from the specification (the parser found them)', () => {
+    for (const k of ["refunded, evidence 'stripe_read'", 'refunded, otherwise', 'no_refund_proven (v13 only)', 'no_refund_proven_rail_locked', 'awaiting_finalization', 'refund_failed', 'engine_row_dead', "stripeStatus 'succeeded'", "'pending' or 'requires_action'"]) {
+      expect(F14[k], k).toBeTruthy()
+    }
+    expect(G10.reverted_after_refund).toBeTruthy()
+  })
+
+  it('said values: F14 verbatim (rail_locked with the ER-R27 qualifier; reverted_after_refund with G10’s wording, W5 note)', async () => {
+    const { reconcileToast } = await import('@/lib/claim-console-copy')
+    const t = (r: Record<string, string>) => reconcileToast(r, fmt).text
+    expect(t({ outcome: 'refunded', evidence: 'stripe_read' })).toBe(F14["refunded, evidence 'stripe_read'"])
+    expect(t({ outcome: 'refunded' })).toBe(F14['refunded, otherwise'])
+    expect(t({ outcome: 'no_refund_proven', payableFrom: ISO })).toBe(F14['no_refund_proven (v13 only)'].replace('${payableFrom}', ISO))
+    expect(t({ outcome: 'no_refund_proven_rail_locked' })).toBe(F14.no_refund_proven_rail_locked.replace('aucun remboursement non expliqué', 'aucun remboursement abouti ou en attente non expliqué'))
+    expect(t({ outcome: 'no_refund_proven_awaiting_finalization' })).toBe(F14.awaiting_finalization)
+    expect(t({ outcome: 'refund_failed' })).toBe(F14.refund_failed)
+    expect(t({ outcome: 'engine_row_dead' })).toBe(F14.engine_row_dead)
+    expect(t({ outcome: 'reverted_after_refund' })).toBe(G10.reverted_after_refund)
+    expect(t({ outcome: 'reverted_after_refund' }).toLowerCase()).toContain('quand les réclamations sont ouvertes')
+    expect(t({ outcome: 'refund_still_standing', stripeStatus: 'succeeded' })).toBe(F14["stripeStatus 'succeeded'"])
+    for (const s of ['pending', 'requires_action']) expect(t({ outcome: 'refund_still_standing', stripeStatus: s }), s).toBe(F14["'pending' or 'requires_action'"])
+  })
+
+  it('no_refund_proven renders payableFrom, or « instant illisible — relancez la réconciliation » when absent', async () => {
+    const { reconcileToast } = await import('@/lib/claim-console-copy')
+    expect(reconcileToast({ outcome: 'no_refund_proven', payableFrom: ISO }).text).toContain(`au plus tôt le ${ISO} (UTC)`)
+    const absent = reconcileToast({ outcome: 'no_refund_proven' }).text
+    expect(absent).toContain('instant illisible — relancez la réconciliation')
+    expect(absent).not.toContain('undefined')
+  })
+
+  it('refund_still_standing not_at_stripe_yet reuses the unconfirmed_within_window toast with its date — never « toujours ABOUTI ou en attente »', async () => {
+    const { reconcileToast } = await import('@/lib/claim-console-copy')
+    const notYet = reconcileToast({ outcome: 'refund_still_standing', stripeStatus: 'not_at_stripe_yet', until: ISO }, fmt)
+    expect(notYet.text).toBe(reconcileToast({ outcome: 'unconfirmed_within_window', until: ISO }, fmt).text)
+    expect(notYet.text).toContain(`Conclusion possible à partir du <${ISO}>`)
+    expect(notYet.needsAttention).toBe(true)
+    for (const s of ['not_at_stripe_yet', 'weird', undefined]) {
+      expect(reconcileToast({ outcome: 'refund_still_standing', stripeStatus: s }).text, String(s)).not.toContain('toujours ce remboursement ABOUTI ou en attente')
+    }
+  })
+
+  it('needsAttention ⊇ {no_refund_proven_rail_locked, awaiting_finalization, reverted_after_refund}; refunded and still-standing succeeded are success; an unknown outcome is never a success', async () => {
+    const { reconcileToast } = await import('@/lib/claim-console-copy')
+    for (const outcome of ['no_refund_proven_rail_locked', 'no_refund_proven_awaiting_finalization', 'reverted_after_refund', 'refund_failed', 'engine_row_dead', 'changed_during_read', 'financial_verification', 'refunded_row_unproven']) {
+      expect(reconcileToast({ outcome }).needsAttention, outcome).toBe(true)
+    }
+    expect(reconcileToast({ outcome: 'refunded', evidence: 'stripe_read' }).needsAttention).toBe(false)
+    expect(reconcileToast({ outcome: 'refund_still_standing', stripeStatus: 'succeeded' }).needsAttention).toBe(false)
+    const unknown = reconcileToast({ outcome: 'a_new_outcome' })
+    expect(unknown).toEqual({ text: 'Réponse inattendue : rien n’est confirmé. Relisez sa ligne dans la file.', needsAttention: true })
+  })
+
+  it('C9 / A-S29-3: a lost compare-and-set renders what the server returned — the row this action bound, or the A-S29-3 text', async () => {
+    const { reconcileToast } = await import('@/lib/claim-console-copy')
+    expect(reconcileToast({ outcome: 'changed_during_read', boundRowId: 'rf_77' }).text).toContain('la ligne rf_77')
+    expect(reconcileToast({ outcome: 'changed_during_read' }).text).toBe(quoted('A-S29-3').ADMIN ?? 'La réclamation ou les lignes de remboursement de sa commande ont changé pendant la lecture : rien n’a été écrit. Relisez sa ligne, puis relancez si la réconciliation est encore proposée.')
+  })
+
+  it('NEGATIVE CONTROL — the HEAD toasts « le moteur refusera tout remboursement », « redevient traitable », « rien ne sera payé par Grubano » and « toujours ABOUTI ou en attente » for not_at_stripe_yet are caught; no shipped toast carries one', async () => {
+    const { reconcileSaid } = await import('@/lib/claim-console-copy')
+    const HEAD = /le moteur refusera tout remboursement|redevient traitable|rien ne sera payé par Grubano|jamais déplacé/i
+    expect(HEAD.test('Preuve trouvée : Stripe rapporte cette ligne de remboursement ÉCHOUÉE. La réclamation redevient traitable.')).toBe(true)
+    expect(HEAD.test('elle n’a rien versé, et rien ne sera payé par Grubano pour cette réclamation.')).toBe(true)
+    for (const r of [{ outcome: 'x' }, { outcome: 'x', payableFrom: ISO }, { outcome: 'x', stripeStatus: 'not_at_stripe_yet' }]) {
+      for (const [k, v] of Object.entries(reconcileSaid(r))) {
+        expect(HEAD.test(v), k).toBe(false)
+        if (r.stripeStatus === 'not_at_stripe_yet' && k === 'refund_still_standing') expect(v).not.toContain('toujours ce remboursement ABOUTI ou en attente')
+      }
+    }
+  })
+
+  it('the attribute and adopt handlers render body.error for every 409; attribution success only on refunded', () => {
+    const fv = stripComments(read('components/claims/AdminFinancialVerification.tsx'))
+    expect(fv).toContain("if (!res.ok) { toast.error((body as { error?: string }).error || 'Attribution refusée.'); return }")
+    expect(fv).toContain("toast.error(body.error || (dryRun ? 'Vérification refusée.' : 'Liaison refusée.'))")
+    expect(fv).toContain("if (result?.outcome !== 'refunded') {")
+  })
+})
+
+describe('J-C17 (F15) — money state classification: legacy proof → reconcile_required, v13 → absence_proven_payable, rail_locked → refund_error_recorded', () => {
+  it('listActionableRefundClaims classifies the three proof shapes', async () => {
+    const at = '2026-09-12T13:00:00.000Z'
+    db.refund.findMany.mockResolvedValue([])
+    db.claim.findMany.mockResolvedValue([
+      { id: 'legacy', orderId: 'o1', reason: 'wrong_item', status: 'approved', refundAttempted: false, refundId: null, refundError: 'no_refund_proven: aucun remboursement …', createdAt: new Date() },
+      { id: 'v13', orderId: 'o1', reason: 'wrong_item', status: 'approved', refundAttempted: false, refundId: null, refundError: `${MARKERS.PROOF_PAYABLE_V13} … payable au plus tôt le ${at} (UTC).`, createdAt: new Date() },
+      { id: 'rail', orderId: 'o1', reason: 'wrong_item', status: 'approved', refundAttempted: false, refundId: null, refundError: 'no_refund_proven_rail_locked: x', createdAt: new Date() },
+    ])
+    const byId = Object.fromEntries((await listActionableRefundClaims()).map((l) => [l.id, l.moneyState]))
+    expect(byId).toEqual({ legacy: 'reconcile_required', v13: 'absence_proven_payable', rail: 'refund_error_recorded' })
+    // NEGATIVE CONTROL: the legacy proof is never absence_proven_payable
+    expect(byId.legacy).not.toBe('absence_proven_payable')
+  })
+
+  it('guidance equals F15 (with ER-R27), and absence_proven_payable says « au plus tôt »', () => {
+    expect(moneyStateGuidance('absence_proven_payable')).toContain('au plus tôt')
+    expect(moneyStateGuidance('approved_not_driven')).toBe('Approuvée, jamais payée. Elle ne se paie que par l’approbation admin (file d’arbitrage), réclamations et remboursements ouverts, et seulement si la vérification avant moteur le permet à ce moment. Aucune clôture manuelle sur cet état.')
   })
 })

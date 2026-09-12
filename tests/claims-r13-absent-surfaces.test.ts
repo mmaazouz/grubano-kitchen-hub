@@ -121,3 +121,58 @@ describe('J-M54 — every claim alert is sent from the writing request (I-01 …
     expect((src.match(/kind:\s*'claim_attempt_superseded'/g) ?? []).length).toBe((trigger.match(/kind:\s*'claim_attempt_superseded'/g) ?? []).length)
   })
 })
+
+// ══ ROUND 13 (slice W7) — J-M41 (D13, E0 REMOVED): exits and surfaces that do not exist in round 13 ═══════════════════
+// IMPLEMENTATION NOTE (W7) on J-M41: « no operator route re-verifies E-09 claims in bulk » and « no recovery pass 2 over refunded
+// claims » are superseded by AMF-1 (D13 W5 note): POST /api/admin/claims/reconcile-refunds runs reverifySettledClaimRefunds for an
+// admin session. What stays pinned is its confinement — one caller, read-only toward Stripe, never an exit.
+describe('J-M41 — exits and surfaces that do not exist in round 13', () => {
+  const fnBody = (src: string, head: string) => { const a = src.indexOf(head); return a < 0 ? '' : src.slice(a, src.indexOf('\n}\n', a)) }
+  const claims = () => stripComments(read('lib/claims.ts'))
+  const tree = () => Object.fromEntries(['app', 'lib', 'components', 'messages', 'scripts'].flatMap(walk)
+    .filter((f) => /\.(ts|tsx|js|json)$/.test(f)).map((f) => [f, read(f)]))
+  const REMOVED = /listRevertedAfterRefundClaims|revertedAfterRefund|refund_reverted_claim|terminalBeforeEpoch|settled_by_support|annuler l[’']approbation|cancel_approval/i
+  const offenders = (files: Record<string, string>) => Object.entries(files)
+    .filter(([f, s]) => REMOVED.test(f.endsWith('.json') ? s : stripComments(s))).map(([f]) => f)
+
+  it('no apply-row-failure route directory; no « annuler l’approbation » action or key; none of the E0 REMOVED identifiers or keys', () => {
+    expect(walk('app').filter((f) => f.includes('apply-row-failure'))).toEqual([])
+    expect(offenders(tree())).toEqual([])
+  })
+
+  it('isStuckResolvable has no financial_verification branch: a FV claim is never closable by declaration, whatever its error', async () => {
+    const { isStuckResolvable } = await import('@/lib/claim-action-rules')
+    for (const refundError of [null, 'financial_verification:stripe_unreadable: x', 'engine_failed: x', 'stripe_failed: x']) {
+      expect(isStuckResolvable({ status: 'financial_verification', refundError }), String(refundError)).toBe(false)
+    }
+    const src = stripComments(read('lib/claim-action-rules.ts'))
+    expect(fnBody(src, 'export function isStuckResolvable(')).not.toMatch(/FINANCIAL_VERIFICATION|financial_verification/)
+  })
+
+  it('recoverStrandedClaimReconciliations is imported only by the cron route; reverifySettledClaimRefunds is called only from it (AMF-1)', () => {
+    const files = Object.entries(tree()).filter(([f]) => !f.startsWith('messages/'))
+    const importers = files.filter(([f, s]) => f !== 'lib/claims.ts' && /\brecoverStrandedClaimReconciliations\b/.test(stripComments(s))).map(([f]) => f)
+    expect(importers).toEqual(['app/api/admin/claims/reconcile-refunds/route.ts'])
+    expect(files.filter(([f, s]) => f !== 'lib/claims.ts' && /\breverifySettledClaimRefunds\b/.test(stripComments(s))).map(([f]) => f)).toEqual([])
+    const src = claims()
+    const calls = Array.from(src.matchAll(/\breverifySettledClaimRefunds\(/g)).map((m) => m.index ?? 0)
+      .filter((i) => !src.slice(Math.max(0, i - 25), i).includes('function '))
+    const recover = src.indexOf('export async function recoverStrandedClaimReconciliations(')
+    expect(calls.length).toBe(1)
+    expect(calls[0]).toBeGreaterThan(recover)
+  })
+
+  it('NEGATIVE CONTROL — the ungated routes reconcile, attribute, resolve-stuck and closure-notice exist and call resolveAdmin', () => {
+    for (const r of ['reconcile', 'attribute', 'resolve-stuck', 'closure-notice']) {
+      const f = `app/api/admin/claims/[id]/${r}/route.ts`
+      expect(existsSync(f), f).toBe(true)
+      expect(stripComments(read(f)), f).toMatch(/await resolveAdmin\(\)/)
+    }
+  })
+
+  it('BREAK/RESTORE witness — claims.status.settled_by_support added to a copy of fr.json is caught', () => {
+    const fr = JSON.parse(read('messages/fr.json'))
+    fr.claims.status.settled_by_support = 'Dossier soldé par le support'
+    expect(offenders({ 'messages/fr.json': JSON.stringify(fr) })).toEqual(['messages/fr.json'])
+  })
+})

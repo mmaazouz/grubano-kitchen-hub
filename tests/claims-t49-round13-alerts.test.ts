@@ -284,6 +284,9 @@ describe('J-M52 / J-C39 — claim_payment_blocked after a won CAS only (I-01)', 
     await alertClaimPaymentBlocked('cl1', 'no_refund_proven:v13:', { orderId: 'o1', engineCalled: false, claimAfter: { status: 'approved', refundAttempted: false, refundId: null, refundError: `${MARKERS.PROOF_PAYABLE_V13} ${HEAD_A} … Elle est payable au plus tôt le ${instant.toISOString()} (UTC).` } })
     const a = calls('claim_payment_blocked')[0]
     expect(a.facts.quiescenceInstant).toBe(instant.toISOString())
+    // W7 fixer (I-01, W2 carry-over): the gated approve exit of a v13 proof states its time bound too.
+    expect(a.facts.exits).toContain(`approve (réclamations+remboursements ouverts, au plus tôt le ${instant.toISOString()} UTC)`)
+    expect(a.facts.exits).not.toContain('approve (réclamations+remboursements ouverts),')
     expect(Object.keys(a.facts).sort()).toEqual([...BLOCKED_KEYS, 'quiescenceInstant'].sort())
     expect(JSON.stringify(a.facts)).not.toMatch(/@|consumer|email|adresse/i)
   })

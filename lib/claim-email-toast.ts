@@ -29,7 +29,8 @@ export const CUSTOMER_EMAIL_FR: Record<CustomerEmailKey, string> = {
   claimsDisabled: 'E-mail client NON envoyé : les réclamations sont fermées, et aucun e-mail de réclamation n’est envoyé tant qu’elles le sont.',
   noRecipient: 'E-mail client NON envoyé : ce client n’a pas d’adresse e-mail enregistrée. Informez-le par un autre moyen.',
   smtpDisabled: 'E-mail client NON envoyé : l’envoi d’e-mails est désactivé sur ce serveur. Informez le client par un autre moyen.',
-  rowUnproven: 'E-mail client NON envoyé : la ligne de remboursement liée est absente, porte sur une autre commande, est échouée, n’est ni aboutie ni en attente, ou n’a pas de montant exploitable — rien ne peut être annoncé au client.',
+  // W7 (ER-C22): a row with two or more binders (A-S43) also answers refunded_row_unproven (H06 W6 note) — the cause is named.
+  rowUnproven: 'E-mail client NON envoyé : la ligne de remboursement liée est absente, porte sur une autre commande, est liée à plusieurs réclamations, est échouée, n’est ni aboutie ni en attente, ou n’a pas de montant exploitable — rien ne peut être annoncé au client.',
   stripeNotConfirmed: 'E-mail client NON envoyé : Stripe n’a pas été relu, ou ne rapporte pas dans cette lecture ce remboursement comme abouti (en attente ou illisible) — rien n’est annoncé au client. Réessayez « Envoyer l’avis au client » plus tard.',
   notSent: 'E-mail client NON envoyé (trace dans le journal e-mail) : informez le client par un autre moyen.',
   failed: 'E-mail client NON envoyé (erreur lors de la préparation ou de l’envoi — trace dans le journal e-mail ou les journaux du serveur) : informez le client par un autre moyen.',

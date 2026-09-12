@@ -1,15 +1,15 @@
 // tests/claims-exit-copy.test.ts — T-49 round 13, J-M31 (D14, D3/C4 texts, F15, G2 scan)
 //
 // The approval refusal copy, selected in D14 order, and the no-false-exit phrase pin over an ENUMERATED
-// list of texts (never a whole file). J-M31 stays OPEN: texts owned by later slices (said.*, D4, D7, D8,
-// D11, G8, G10-G12, F14, the unfinalized caption) join this list when those slices land. The approval
-// toasts are in it since the W1 round-1 fix.
+// list of texts (never a whole file). J-M31 is CLOSED in slice W7: said.*, D4, D7, D8, D11, G8, G10-G12,
+// F14, the unfinalized caption, H10 and AMF-1 texts joined the list, all eight approval toasts are scanned,
+// and the G2 source scan has no exemption left.
 import { describe, it, expect } from 'vitest'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   arbitrationRefusal, reconcileRefusal, moneyStateGuidance, absenceProvenPayableLabel, deriveNoRowOutcome, proofInstantFor,
-  APPROVE_INSTANT_UNREADABLE, APPROVE_LEGACY_PROOF, REFUSE_APPROVED_AM_B3, approvePrematureText, approveRevisableText, approvePermanentText,
+  APPROVE_INSTANT_UNREADABLE, APPROVE_LEGACY_PROOF, REFUSE_APPROVED_AM_B3, approvePrematureText, approveRevisableText, approvePermanentText, approveMarkerFutureText,
   ATTEMPT_QUIESCENCE_MS, MARKERS, RECONCILE_MARKER_UNREADABLE_TEXT, acceptedExits, exitRegistry, type ClaimFacts,
 } from '@/lib/claim-action-rules'
 import { moneyLineFor, IDENTITY_UNREAD_TEXT, IDENTITY_UNREAD_NO_EXIT_TEXT, BOUND_REVERTED_TEXT } from '@/lib/claim-money-line'
@@ -64,21 +64,41 @@ describe('J-M31 — D14 (0)-(3) exact, selected in order', () => {
   // W3 round-1 fix (D14 (2)/(3), D5, F16 (7)): reconcile refuses a marker whose instant cannot be read (malformed, or in
   // the future). D14 (2) is reserved to reconcileRefusal === null or a grace-only refusal, so such a claim gets (3).
   const MALFORMED = 'reconcile_required: tentative de remboursement démarrée à 2026-09-10Tzz:00Z (tentative 1a2b) — identité du remboursement pas encore liée.'
-  it('selection pin: an approved claim whose marker instant is malformed or in the future gets (3) — never a text naming « Réconcilier »', () => {
+  it('selection pin: an approved claim whose marker instant is malformed gets (3) — never a text naming « Réconcilier »', () => {
     const malformed = approved(MALFORMED, { refundAttempted: true })
     const future = approved(markerAt(new Date(NOW.getTime() + 3_600_000)), { refundAttempted: true })
     for (const [name, c] of [['malformed', malformed], ['future', future]] as const) {
       expect(reconcileRefusal(c, NOW.getTime())?.error, name).toBe(RECONCILE_MARKER_UNREADABLE_TEXT)
-      const text = arbitrationRefusal(c, 'approve', NOW)?.error
-      expect(text, name).toBe(approvePermanentText(false))
-      expect(text, name).not.toContain('Réconcilier')
       expect(acceptedExits({ claim: c, now: NOW }), name).toEqual([])
     }
+    const text = arbitrationRefusal(malformed, 'approve', NOW)?.error
+    expect(text).toBe(approvePermanentText(false))
+    expect(text).not.toContain('Réconcilier')
     // E registry: a malformed instant never becomes readable (E-04 founder acceptance); a future one does (E-05, D5 after grace).
     expect(exitRegistry({ claim: malformed, now: NOW })).toBe('E-04:malformed_marker')
     expect(exitRegistry({ claim: future, now: NOW })).toBe('E-05')
     expect(RECONCILE_MARKER_UNREADABLE_TEXT).toContain('n’a pas pu être lue, ou est postérieure à maintenant')
     expect(hits(RECONCILE_MARKER_UNREADABLE_TEXT)).toEqual([])
+  })
+
+  // ROUND 13 (slice W7, E-05 carry-over): a READABLE instant in the future has a time-bound exit (D5 admits reconcile once it
+  // has passed and the grace elapsed), so (3)'s « Aucune action de l’application ne la clôt » would be false for it.
+  it('selection pin (E-05, W7): an approved claim whose marker instant is in the FUTURE gets the time-bound text, with the instant and the reconcile date', () => {
+    const at = new Date(NOW.getTime() + 3_600_000)
+    const future = approved(markerAt(at), { refundAttempted: true })
+    const text = arbitrationRefusal(future, 'approve', NOW)?.error
+    const from = new Date(at.getTime() + 5 * 60_000).toISOString()
+    expect(text).toBe(approveMarkerFutureText(at.toISOString(), from))
+    expect(text).toContain(`(${at.toISOString()} UTC)`)
+    expect(text).toContain(`jusqu’au ${from} (UTC)`)
+    expect(text).not.toContain('Aucune action de l’application ne la clôt')
+    expect(hits(String(text))).toEqual([])
+    // once the instant has passed and the grace elapsed, reconcile is admitted — the exit the text names exists (F16 (7))
+    expect(reconcileRefusal(future, Date.parse(from))).toBeNull()
+    expect(acceptedExits({ claim: future, now: new Date(Date.parse(from)) })).toEqual(['reconcile'])
+    // NEGATIVE CONTROL: the malformed instant keeps (3), and the W3 text (3) would be the false « no action » sentence here
+    expect(arbitrationRefusal(approved(MALFORMED, { refundAttempted: true }), 'approve', NOW)?.error).toBe(approvePermanentText(false))
+    expect(approvePermanentText(false)).toContain('Aucune action de l’application ne la clôt')
   })
 
   it('NEGATIVE CONTROL — the same approved claim with an AGED marker (reconcile admitted) or a marker in grace still gets (2)', () => {
@@ -149,12 +169,19 @@ describe('J-M31 — the phrase pin over the enumerated W1 texts', () => {
   const rowFor = (status: string) => ({ id: 'rf', orderId: 'o1', status, reason: null, stripeRefundId: 're_1' })
   /** The approval toasts: every key approvalToast can return, as the arbitration console renders it (fr). */
   const FR = JSON.parse(read('messages/fr.json')) as { claims: { admin: Record<string, string> } }
+  // W7 fixer (J-M31): every F12 shape approvalToast maps — the four W2 toasts (approvedPending, approvedIdentityUnverified,
+  // approvedSuperseded, approvedNotSentUntil) included — so all eight ApprovalToast keys are scanned.
   const TOAST_OUTCOMES: ApprovalRefundOutcome[] = [
     { state: 'refunded', amountCents: 500 }, { state: 'failed', error: 'resume_mismatch' }, { state: 'failed', error: 'engine_failed' },
     { state: 'pending' }, { state: 'already_handled' }, null,
+    { state: 'pending', reason: 'stripe_pending' }, { state: 'failed', error: 'identity_unverified' },
+    { state: 'failed', error: 'attempt_superseded' }, { state: 'failed', error: 'unconfirmed_within_window', until: NOW.toISOString() },
+    { state: 'failed', error: 'safety_hold' }, { state: 'failed', error: 'safety_check_unreadable' },
   ]
   const TOAST_KEYS = Array.from(new Set(TOAST_OUTCOMES.map((o) => approvalToast(o).key)))
-  const APPROVAL_TOASTS: Array<[string, string]> = TOAST_KEYS.map((k) => [`approval toast ${k}`, (FR.claims.admin[k] ?? '').replace('{amount}', '5,00 €')])
+  /** fr value with every placeholder substituted ({amount}, {date}); a leftover brace fails the scan below. */
+  const frToast = (k: string) => (FR.claims.admin[k] ?? '').replace('{amount}', '5,00 €').replace('{date}', NOW.toLocaleString('fr-FR'))
+  const APPROVAL_TOASTS: Array<[string, string]> = TOAST_KEYS.map((k) => [`approval toast ${k}`, frToast(k)])
   const TEXTS: Array<[string, string]> = [
     ...APPROVAL_TOASTS,
     ['money line identity_unread, reconcile refused', IDENTITY_UNREAD_NO_EXIT_TEXT],
@@ -182,9 +209,24 @@ describe('J-M31 — the phrase pin over the enumerated W1 texts', () => {
     }
   })
 
-  it('the four approval toasts are all enumerated, read from messages/fr.json', () => {
-    expect(TOAST_KEYS.sort()).toEqual(['approvedFailed', 'approvedNotSent', 'approvedRefunded', 'approvedResumeMismatch'])
-    for (const [name, text] of APPROVAL_TOASTS) expect(text.length, name).toBeGreaterThan(10)
+  it('the eight approval toasts are all enumerated, read from messages/fr.json, placeholders substituted', () => {
+    expect([...TOAST_KEYS].sort()).toEqual([
+      'approvedFailed', 'approvedIdentityUnverified', 'approvedNotSent', 'approvedNotSentUntil', 'approvedPending',
+      'approvedRefunded', 'approvedResumeMismatch', 'approvedSuperseded',
+    ])
+    for (const [name, text] of APPROVAL_TOASTS) {
+      expect(text.length, name).toBeGreaterThan(10)
+      expect(text, name).not.toMatch(/[{}]/)
+      expect(hits(text), name).toEqual([])
+    }
+  })
+
+  it('NEGATIVE CONTROL — the W2 toasts are really scanned: approvedNotSentUntil / approvedPending rewritten to promise a payment are caught', () => {
+    expect(hits(`${frToast('approvedNotSentUntil')} Elle sera payée à cette date.`)).not.toEqual([])
+    expect(hits(`${frToast('approvedPending')} Elle sera remboursée.`)).not.toEqual([])
+    // the pre-fix outcome list reached only four keys: approvedNotSentUntil was never in it
+    const headOutcomes: ApprovalRefundOutcome[] = [{ state: 'refunded', amountCents: 500 }, { state: 'failed', error: 'resume_mismatch' }, { state: 'failed', error: 'engine_failed' }, { state: 'pending' }, { state: 'already_handled' }, null]
+    expect(new Set(headOutcomes.map((o) => approvalToast(o).key)).has('approvedNotSentUntil')).toBe(false)
   })
 
   it('NEGATIVE CONTROL — a real toast rewritten to promise a payment is caught', () => {
@@ -211,17 +253,88 @@ describe('J-M31 — G2 source scan', () => {
     }
   }
   walk('lib'); walk('components'); walk('messages')
-  /** The ladder and console texts G2 deletes are rewritten by the reconcile and console slices (spec slices after W1). */
-  const PENDING_LATER_SLICE = ['lib/claims.ts', 'components/claims/AdminFinancialVerification.tsx']
+  const offendersOf = (sources: Array<[string, string]>) => sources.filter(([, s]) => G2.some((p) => stripComments(s).includes(p))).map(([f]) => f)
 
-  it('none of the G2 strings exists in lib/, components/ or messages/ outside the two files the later slices rewrite', () => {
-    const offenders = files.filter((f) => { const s = stripComments(read(f)); return G2.some((p) => s.includes(p)) })
-    expect(offenders.filter((f) => !PENDING_LATER_SLICE.includes(f))).toEqual([])
+  // W7 fixer: the two W1 exemptions (lib/claims.ts, AdminFinancialVerification.tsx) are removed — no file is exempt.
+  it('none of the G2 strings exists in lib/, components/ or messages/ — no exemption', () => {
+    expect(files).toContain('lib/claims.ts')
+    expect(files).toContain('components/claims/AdminFinancialVerification.tsx')
+    expect(offendersOf(files.map((f) => [f, read(f)]))).toEqual([])
+  })
+
+  it('NEGATIVE CONTROL — a copy of lib/claims.ts carrying « jamais déplacé » in code is an offender (no exemption swallows it)', () => {
+    const tampered = read('lib/claims.ts').replace('export async function reverifySettledClaimRefunds(', "const G2_WITNESS = 'aucun remboursement n’a jamais déplacé d’argent'\nexport async function reverifySettledClaimRefunds(")
+    expect(tampered).not.toBe(read('lib/claims.ts'))
+    expect(offendersOf([['lib/claims.ts', tampered]])).toEqual(['lib/claims.ts'])
   })
 
   it('NEGATIVE CONTROL — the HEAD guidance line 176 and label line 186 would be offenders', () => {
     const head176 = "absence_proven_payable:\n    'Rien à clôturer : approuvée et non payée, aucun remboursement n’a déplacé d’argent.'"
     const head186 = "{ text: 'Absence de remboursement PROUVÉE (lignes + Stripe) — approuvée, non payée.' }"
     for (const s of [head176, head186]) expect(G2.some((p) => stripComments(s).includes(p))).toBe(true)
+  })
+})
+
+// ══ ROUND 13 (slice W7) — J-M31: the enumerated list completed (the W1 note's remaining texts) ═══════════════════════════
+describe('J-M31 (W7) — said.*, D4 / D7 / D8 / D11, the G11 / G12 and adopt texts, STRIPE_REVERTED_TEXT, the unfinalized caption, H10 and AMF-1', () => {
+  const claimsSrc = () => read('lib/claims.ts')
+  const fnBody = (src: string, head: string) => { const a = src.indexOf(head); expect(a, head).toBeGreaterThan(0); return src.slice(a, src.indexOf('\n}\n', a)) }
+  /** Every quoted or backtick literal longer than 20 characters in a function body (the texts it can return or write). */
+  const literals = (body: string) => Array.from(stripComments(body).matchAll(/`([^`]{21,})`|'([^'\n]{21,})'/g)).map((m) => m[1] ?? m[2])
+  const ISO = '2026-09-12T13:00:00.000Z'
+
+  it('said.* — every reconcile toast, for every payload variant', async () => {
+    const { reconcileSaid, settledReverifyToast } = await import('@/lib/claim-console-copy')
+    const variants = [{}, { evidence: 'stripe_read', payableFrom: ISO, stripeStatus: 'succeeded' }, { stripeStatus: 'pending', boundRowId: 'rf1', detail: 'détail' }, { stripeStatus: 'not_at_stripe_yet', until: ISO }, { stripeStatus: 'requires_action' }, { stripeStatus: 'weird' }]
+    for (const v of variants) for (const [k, text] of Object.entries(reconcileSaid(v))) expect(hits(text), `${k} ${JSON.stringify(v)}`).toEqual([])
+    const sr = { checked: 2, reverted: 1, standing: 1, unreadable: 0, unproven: 0, truncated: true }
+    for (const b of [{ settledReverify: sr, scanned: 1, reconciled: 0 }, {}]) expect(hits(settledReverifyToast(b).text)).toEqual([])
+  })
+
+  it('D4 caption, the D7 unfinalized caption, the H10 section copy and blocker lines, the AMF-1 control, the declaration panel', async () => {
+    const copy = await import('@/lib/claim-console-copy')
+    const card = stripComments(read('components/claims/AdminFinancialVerification.tsx'))
+    const D7_CAPTION = 'La seule action proposée ici est « Réconcilier d’après la preuve » : elle relit la preuve chez Stripe et dans nos lignes, et ne déplace aucun argent.'
+    expect(card).toContain(D7_CAPTION)
+    const texts = [
+      copy.D4_PRECLICK_CAPTION, D7_CAPTION, copy.REFUNDED_UNPROVEN_TEXT, copy.CLOSURE_NOTICES_INTRO, copy.REFUNDED_UNPROVEN_NO_ACTION, copy.REFUNDED_UNPROVEN_RECONCILE_CAPTION,
+      ...Object.values(copy.CLOSURE_BLOCKER_LINE), copy.SETTLED_REVERIFY_CAPTION, copy.CHANGED_DURING_READ_TEXT, copy.UNKNOWN_RECONCILE_OUTCOME_TEXT,
+      ...literals(fnBody(card.replace(/\r\n/g, '\n'), 'const resolveStuck = useCallback(').replace(/\n {2}\}, \[load[\s\S]*$/, '')),
+    ]
+    for (const t of texts) expect(hits(t), t.slice(0, 60)).toEqual([])
+  })
+
+  it('D8 / G12 attribution texts, the B11 / C8 adopt texts and the D11 declaration texts (every literal those functions write or return)', () => {
+    const src = claimsSrc()
+    const all = ['export async function attributeWithEvidence(', 'export async function attributeClaimRefund(', 'export async function adoptStripeRefundForClaim(', 'export async function resolveStuckClaim(', 'function attributionNotProvenText(']
+      .flatMap((h) => literals(fnBody(src, h)))
+    expect(all.some((t) => t.includes('La réclamation n’a pas été modifiée'))).toBe(true) // G12 NOT PROVEN texts are in the scan
+    expect(all.some((t) => t.includes('rien n’a été écrit'))).toBe(true) // D11 count-0 and C7 texts are in the scan
+    for (const t of all) expect(hits(t), t.slice(0, 80)).toEqual([])
+  })
+
+  it('the three G11 REVERTED texts and STRIPE_REVERTED_TEXT contain « Quand les réclamations sont ouvertes » and lack « Le client lit désormais »', async () => {
+    const rules = await import('@/lib/claim-action-rules')
+    const g11 = (['succeeded', 'failed', 'pending'] as const).map((variant) => rules.reversalMarkerText(variant, 'rf1', 're_1', 'failed', null))
+    // STRIPE_REVERTED_TEXT is lib/claims' private writer: its template is rebuilt from the source with the constants it names.
+    const body = fnBody(claimsSrc(), 'function stripeRevertedText(')
+    const template = body.slice(body.indexOf('return `') + 'return `'.length, body.lastIndexOf('`'))
+    const stripeReverted = template
+      .replace('${r ? `${r} ` : \'\'}', '')
+      .replace('${CUSTOMER_VISIBILITY_SENTENCE}', rules.CUSTOMER_VISIBILITY_SENTENCE)
+      .replace('${MARKERS.STRIPE_REVERTED}', MARKERS.STRIPE_REVERTED)
+      .replace(/\$\{[^}]*\}/g, 'X')
+    expect(stripeReverted.startsWith(MARKERS.STRIPE_REVERTED)).toBe(true)
+    for (const t of [...g11, stripeReverted]) {
+      expect(t, t.slice(0, 60)).toContain('Quand les réclamations sont ouvertes')
+      expect(t).not.toContain('Le client lit désormais')
+      expect(hits(t), t.slice(0, 60)).toEqual([])
+    }
+  })
+
+  it('NEGATIVE CONTROL — a real toast replaced with « … sera remboursée » is caught; the round-12 said branch (« aucun remboursement n’a jamais déplacé d’argent ») is caught', async () => {
+    const { reconcileSaid } = await import('@/lib/claim-console-copy')
+    expect(hits(`${reconcileSaid({}).engine_row_dead} Elle sera remboursée.`)).not.toEqual([])
+    expect(hits('Preuve d’absence : aucun remboursement n’a jamais déplacé d’argent et Stripe n’en rapporte aucun.')).not.toEqual([])
   })
 })

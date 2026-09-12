@@ -4,8 +4,15 @@ import { useState, useEffect, useCallback } from 'react'
 import { useLocale } from 'next-intl'
 import { Button, Badge, useToast } from '@/components/design-system'
 import { formatEuros } from '@/lib/format-money'
-import { cardMoneyLine, financialVerificationCardVisible } from '@/lib/claim-money-line'
-import { moneyStateGuidance, R0_TOASTS, refundStillStandingToast } from '@/lib/claim-action-rules'
+import { cardMoneyLine, financialVerificationCardVisible, financialVerificationHeadingVisible } from '@/lib/claim-money-line'
+import { moneyStateGuidance, type ClosureKind } from '@/lib/claim-action-rules'
+// ROUND 13 (F14, AMF-1, H10, D4, slice W7): the card's French copy as tested pure functions.
+import {
+  reconcileToast, settledReverifyToast, SETTLED_REVERIFY_BUTTON, SETTLED_REVERIFY_CAPTION, NO_MONEY_HERE, D4_PRECLICK_CAPTION,
+  refundedUnprovenHeading, REFUNDED_UNPROVEN_TEXT, REFUNDED_UNPROVEN_RECONCILE_CAPTION, REFUNDED_UNPROVEN_NO_ACTION, REFUNDED_UNPROVEN_TRUNCATED,
+  closureNoticesHeading, CLOSURE_NOTICES_INTRO, CLOSURE_NOTICE_BUTTON, CLOSURE_NOTICES_TRUNCATED, CLOSURE_KIND_LABEL, CLOSURE_BLOCKER_LINE,
+  LIST_UNREADABLE_TEXT, itemsCappedText, type ClosureNoticeBlocker,
+} from '@/lib/claim-console-copy'
 // ROUND 13 (G12, B10): the attribution success copy and the pending-row legend come from the shared pure module.
 import { attributionSuccessText, PENDING_ROW_LEGEND, adoptionRefusalWroteText } from '@/lib/claim-attribution-rules'
 // ROUND 13 (H07, H11): the customer e-mail result of a closing action, as a toast (the card is French-only).
@@ -61,13 +68,32 @@ type Payload = {
   otherUnsettled: Row[]
   /** ROUND-10 AUDIT FIX (P2): pending Refund rows whose claim has moved on (read-only facts). */
   unfinalizedRefundRows?: Array<{
+    /** ROUND 13 (D7 / J-M29, slice W7): the payload key; refundRowId carries the same id. */
+    rowId?: string
     refundRowId: string; orderId: string; amountCents: number; stripeRefundId: string | null
     claimId: string | null; claimStatus: string | null
     /** ROUND 13 (D7 / D0, slice W5): the server's reconcile verdict for this claim and row, and its refusal text. */
     reconcilable?: boolean; reconcileRefusal?: string | null
   }>
-  counts: { financialVerification: number; reconcileRequired: number; otherUnsettled: number; total: number; unfinalizedRefundRows?: number }
+  /** ROUND 13 (H10 / E-13, slice W7): settled claims whose bound row is not established — outside `total`. */
+  refundedUnproven?: SectionList<{
+    id: string; orderId: string; refundId: string | null; decidedAt?: string | null
+    refund: { id: string; orderId: string; status: string; amountCents: number; stripeRefundId: string | null } | null
+    reconcilable: boolean
+  }>
+  /** ROUND 13 (H10 / E-16, slice W7): this build's closures without a dispatched notice — outside `total`. */
+  closureNotices?: SectionList<{ claimId: string; orderId: string; kind: ClosureKind; decidedAt: string | null; blocker: ClosureNoticeBlocker | null }>
+  counts: {
+    financialVerification: number; reconcileRequired: number; otherUnsettled: number; total: number; unfinalizedRefundRows?: number
+    refundedUnproven?: number | null; closureNoticesMissing?: number | null
+  }
 }
+
+/** H10: a section list, or the route's answer when that list could not be read. */
+type SectionList<T> = { items: T[]; total: number; scanTruncated: boolean } | { error: string }
+export type FinancialVerificationPayload = Payload
+/** An unreadable section still renders (« Liste illisible »): fail visible, never an empty-looking card. */
+const sectionWeight = (l: SectionList<unknown> | undefined): number => (!l ? 0 : 'error' in l ? 1 : l.total)
 
 /** Why attribution failed, in words an operator can act on. Never a money claim. */
 const AMBIGUITY_LABEL: Record<string, string> = {
@@ -96,10 +122,14 @@ const REFUSAL_LEGEND: Record<string, string> = {
   row_failed:              'ligne échouée — ne peut solder aucune réclamation, sera refusé',
 }
 
-export default function AdminFinancialVerification() {
+/**
+ * `initialData` (ROUND 13, slice W7): the GET /api/admin/claims/financial-verification payload a test renders the card with
+ * (J-M29 / J-C30 control parity). The page mounts the card without it; the load below then reads the route.
+ */
+export default function AdminFinancialVerification({ initialData }: { initialData?: Payload } = {}) {
   const locale = useLocale()
   const toast = useToast()
-  const [data, setData] = useState<Payload | null>(null)
+  const [data, setData] = useState<Payload | null>(initialData ?? null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
 
@@ -129,77 +159,11 @@ export default function AdminFinancialVerification() {
       const body = await res.json().catch(() => ({}))
       if (!res.ok) { toast.error((body as { error?: string }).error || 'Échec de la réconciliation.'); return }
       const result = (body as { result?: { outcome?: string; reason?: string; until?: string; evidence?: string; payableFrom?: string; boundRowId?: string; stripeStatus?: string; detail?: string } }).result
-      const outcome = result?.outcome
-      const said: Record<string, string> = {
-        // ROUND 13 (F14, G2): « Stripe rapporte » only when Stripe's refund object was read for this conclusion.
-        refunded: result?.evidence === 'stripe_read'
-          ? 'Preuve trouvée : Stripe rapporte ce remboursement abouti. Réclamation réconciliée sur son identité exacte.'
-          : 'Réclamation réconciliée sur son identité exacte d’après notre ligne liée (Stripe n’a pas été relu pour cette conclusion ; aucun avis client ne peut partir sans relecture Stripe).',
-        // ROUND 13 (F14): « redevient traitable » is replaced — the detail says whether the engine now refuses the order.
-        refund_failed:          'Preuve trouvée : Stripe rapporte cette ligne de remboursement ÉCHOUÉE ; elle n’a rien versé au titre de cette ligne (cela ne dit rien des autres remboursements de la commande). Le détail enregistré dit si le moteur refuse désormais tout remboursement sur cette commande ; « Clôturer ce dossier… » enregistre votre déclaration.',
-        // ROUND 13 (C1): a lost compare-and-set. State only what is established about THIS action.
-        changed_during_read: result?.boundRowId
-          ? `Cette action a lié la réclamation à la ligne ${result.boundRowId}, puis la réclamation a changé d’état pendant la lecture des preuves : rien d’autre n’a été écrit. Relisez sa ligne dans la file.`
-          : 'Rien n’a été écrit : la réclamation a changé d’état pendant la lecture des preuves. Relisez sa ligne dans la file.',
-        // ROUND 13 (D4, G8/F14): the AWAITING proof written by the N8 writer.
-        no_refund_proven_awaiting_finalization:
-          'Stripe rapporte ABOUTI le remboursement d’une ligne d’une AUTRE réclamation, encore en attente dans notre base ; tant qu’elle le reste, le moteur finaliserait cette ligne au lieu de payer cette réclamation. Rien n’a été payé par cette action. Relancez « Réconcilier d’après la preuve » lorsque cette ligne ne sera plus en attente ; « Clôturer ce dossier… » reste possible.',
-        // AUDIT FIX: this branch reads OUR row, not Stripe. Say that, rather than asserting a
-        // Stripe state nobody consulted.
-        // ROUND-9: this outcome now comes from a Stripe read that found the refund pending.
-        still_pending:          'Stripe rapporte ce remboursement EN ATTENTE : rien n’est clos, aucun second remboursement. Relancez « Réconcilier d’après la preuve » lorsqu’il sera terminal.',
-        stripe_unreadable_retry: 'Stripe n’a pas pu être lu complètement : rien n’est conclu, rien n’a été modifié. Relancez la réconciliation.',
-        engine_row_dead:        'Stripe ne connaît aucun remboursement pour cette ligne, et le moteur ne la créera plus : elle n’a rien versé, et rien ne sera payé par Grubano pour cette réclamation. Le dossier est désormais clôturable (« Clôturer ce dossier… »).',
-        // ROUND-6 AUDIT FIX (P2): « de nouveau payable par le rail normal » promised a payment the
-        // closed rail will refuse. Say the state it returns to, and the only thing that will pay it.
-        // ROUND-7 AUDIT FIX (P1): « ne sera versée que par le rail » still promised a payment no
-        // reachable job performs — the auto-approve sweep is behind a flag documented OFF for the
-        // whole beta and its cron is gone. What pays it is a human approving it again.
-        // ROUND 13 (D4, F14): a v13 proof carries its C4 instant (payableFrom); the round-12 ladder's legacy proof does not.
-        no_refund_proven: result?.payableFrom
-          ? `Preuve d’absence : Stripe ne rapporte aujourd’hui aucun remboursement abouti ou en attente qui ne soit expliqué (liste complète lue), et aucune ligne de la commande n’arrête le moteur. La réclamation repasse en « approuvée, non payée ». Rien ne la paiera automatiquement : une nouvelle approbation admin, réclamations et remboursements ouverts, est acceptée au plus tôt le ${result.payableFrom} (UTC) ; juste avant le moteur, Stripe et nos lignes sont relus, et le paiement n’est lancé que si cette relecture confirme encore la preuve.`
-          : 'Preuve d’absence : aucun remboursement n’a jamais déplacé d’argent et Stripe n’en rapporte aucun. La réclamation repasse en « approuvée, non payée ». Rien ne la paiera automatiquement : elle devra être approuvée à nouveau par un admin, réclamations et remboursements ouverts.',
-        // ROUND-3 AUDIT FIX: this case previously received the message above. Nothing moved, which
-        // is true — but a FAILED refund with a Stripe id locks the engine against every later
-        // refund on that order, so "payable again" was the opposite of what will happen. Three
-        // auditors flagged that the honest reason was written to a field no human reads.
-        // ROUND-8 AUDIT FIX (P1): « tant que la reprise manuelle Stripe n’a pas été faite » said the
-        // lock lifts. It never does — no code moves a Refund row out of 'failed'.
-        // ROUND-9: the lock has two causes now (a failed refund with a Stripe id, or a dead pending
-        // row), so the toast states what holds for both; the claim's detail says which. The close
-        // control is on this card too.
-        // ROUND-10 AUDIT FIX (P3): the lock has several causes, not all permanent in the same way — the
-        // claim's detail says which. And « rien n’est parti » ignored a transfer a failed refund may
-        // have reversed on a routed payment.
-        // ROUND 13 (F14): « le moteur refusera » was false for the H1/H2/H5 holds, where the engine accepts.
-        no_refund_proven_rail_locked:
-          'Stripe ne rapporte aucun remboursement non expliqué sur ce paiement, MAIS une nouvelle approbation ne paierait pas cette réclamation : refus du moteur ou blocage de sûreté, la cause est dans le détail de la réclamation. Rien n’a été payé par cette action. « Clôturer ce dossier… » enregistre votre déclaration ; « Réconcilier d’après la preuve » relit la preuve si la cause peut cesser.',
-        financial_verification: 'Toujours indéterminé. Aucune conclusion, aucun argent, aucune clôture. Escalade opérateur requise.',
-        // ROUND 13 (G10 / F14, slice W5): the R0 outcomes on a settled claim. The server texts live in lib/claim-action-rules.
-        reverted_after_refund:  R0_TOASTS.reverted_after_refund,
-        refund_still_standing:  refundStillStandingToast(result?.stripeStatus),
-        refunded_row_unproven:  `${R0_TOASTS.refunded_row_unproven}${result?.detail ? ` Détail : ${result.detail}` : ''}`,
-      }
-      // ROUND-3 AUDIT FIX: every outcome rendered as a green success, including "still
-      // indeterminate", "the refund FAILED" and "the rail is locked shut". A green tick on those
-      // is the tone telling the operator the opposite of the text.
-      const needsAttention = outcome === 'financial_verification'
-        || outcome === 'refund_failed'
-        || outcome === 'no_refund_proven_rail_locked'
-        || outcome === 'stripe_unreadable_retry'
-        || outcome === 'unconfirmed_within_window'
-        || outcome === 'engine_row_dead'
-        || outcome === 'changed_during_read'
-        || outcome === 'no_refund_proven_awaiting_finalization'
-        // ROUND 13 (F14 tone, slice W5): a reversal marked, or a bound row not established, needs attention.
-        || outcome === 'reverted_after_refund'
-        || outcome === 'refunded_row_unproven'
-      // ROUND-6 AUDIT FIX (P2) → ROUND 13 (C1): a lost compare-and-set is its own outcome, changed_during_read
-      // (said map above). The round-6 toast claimed the claim had left every modifiable state, which was false
-      // whenever only the refundError changed (a concurrent relabel): the toast states only that nothing more was written.
-      const text = outcome === 'unconfirmed_within_window'
-          ? `Stripe ne connaît aucun remboursement pour la ligne en attente, mais il est trop tôt pour conclure qu’il n’existera pas (fenêtre d’idempotence du moteur, plus une marge). Rien n’a été modifié. Conclusion possible à partir du ${result?.until ? new Date(result.until).toLocaleString('fr-FR') : '—'} : relancez alors la réconciliation.`
-          : said[outcome ?? ''] ?? 'Réconciliation terminée.'
+      // ROUND-3 AUDIT FIX: every outcome rendered as a green success, including "still indeterminate", "the refund FAILED"
+      // and "the rail is locked shut". A green tick on those is the tone telling the operator the opposite of the text.
+      // ROUND 13 (F14, slice W7): the said map and its tone are the pure reconcileToast (lib/claim-console-copy), pinned per
+      // outcome; an outcome it does not know is never rendered as a success.
+      const { text, needsAttention } = reconcileToast(result, (iso) => new Date(iso).toLocaleString('fr-FR'))
       if (needsAttention) toast.error(text)
       else toast.success(text)
       // ROUND 13 (H07): the closure-notice attempt the server made after a 'refunded' outcome.
@@ -327,6 +291,44 @@ export default function AdminFinancialVerification() {
     } finally { setBusyId(null) }
   }, [load, toast, stripeIdDraft])
 
+  // ROUND 13 (H10 / D10 (iv), slice W7): « Envoyer l’avis au client » — the per-claim resend. The body is empty: the notice's
+  // content comes from the database and, for a refunded claim, from Stripe's refund object the server reads. No money path.
+  const sendClosureNotice = useCallback(async (claimId: string) => {
+    setBusyId(claimId)
+    try {
+      const res = await fetch(`/api/admin/claims/${claimId}/closure-notice`, { method: 'POST' })
+      const body = await res.json().catch(() => ({}))
+      // A refusal (no longer a closure, a reversal marked by the server's read, a claim that changed) renders the server text.
+      if (!res.ok) { toast.error((body as { error?: string }).error || 'Envoi de l’avis refusé — rien n’est confirmé. Rechargez la liste.'); await load(); return }
+      const e = customerEmailLine((body as { customerEmail?: { status?: string; why?: string } | null }).customerEmail)
+      if (e) toast[e.tone](CUSTOMER_EMAIL_FR[e.key])
+      else toast.error('Aucun avis n’a été tenté pour cette réclamation — rechargez la liste.')
+      await load()
+    } catch {
+      toast.error('Envoi de l’avis impossible — rien n’est confirmé. Rechargez la liste.')
+    } finally { setBusyId(null) }
+  }, [load, toast])
+
+  // ROUND 13 (AMF-1, slice W7): « Revérifier les remboursements soldés (35 jours) » — POST /api/admin/claims/reconcile-refunds
+  // with the admin session. Read-only toward Stripe, claim-only markings: no engine call, no Refund write, no customer e-mail.
+  const reverifySettled = useCallback(async () => {
+    setBusyId('__settled_reverify__')
+    try {
+      const res = await fetch('/api/admin/claims/reconcile-refunds', { method: 'POST' })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.error(`Revérification refusée ou interrompue (${(body as { error?: string }).error || `HTTP ${res.status}`}) : son résultat n’est pas établi. ${NO_MONEY_HERE}`)
+        return
+      }
+      const r = settledReverifyToast(body)
+      if (r.needsAttention) toast.error(r.text)
+      else toast.success(r.text)
+      await load()
+    } catch {
+      toast.error(`Revérification impossible : son résultat n’est pas établi. ${NO_MONEY_HERE}`)
+    } finally { setBusyId(null) }
+  }, [load, toast])
+
   const rows = [
     ...(data?.reconcileRequired ?? []).map((r) => ({ ...r, kind: 'reconcile_required' as const })),
     ...(data?.financialVerification ?? []).map((r) => ({ ...r, kind: 'financial_verification' as const })),
@@ -351,13 +353,33 @@ export default function AdminFinancialVerification() {
     )
   }
   const unfinalized = data?.unfinalizedRefundRows ?? []
-  if (!financialVerificationCardVisible({ claimRows: rows.length, unfinalizedRows: unfinalized.length })) return null
+  const refundedList = data?.refundedUnproven
+  const noticesList = data?.closureNotices
+  // ROUND 13 (AMF-1, slice W7): the re-verification control renders whatever the queue holds — an E-09 claim is in no list.
+  const settledReverifyControl = (
+    <div className="mb-3 rounded-grubano-xl border border-grubano-border bg-grubano-surface p-3" data-section="settled-reverify">
+      <Button size="sm" variant="secondary" disabled={busyId === '__settled_reverify__'} onClick={() => void reverifySettled()}>
+        {SETTLED_REVERIFY_BUTTON}
+      </Button>
+      <p className="mt-1 text-[12px] text-grubano-ink-muted">{SETTLED_REVERIFY_CAPTION}</p>
+    </div>
+  )
+  // ROUND 13 (E0 / H10, slice W7): the card is visible for claim rows, unfinalized rows or either section; the red heading and
+  // its banner only for claim rows or unfinalized rows (financialVerificationHeadingVisible).
+  if (!financialVerificationCardVisible({ claimRows: rows.length, unfinalizedRows: unfinalized.length, closureNotices: sectionWeight(noticesList), refundedUnproven: sectionWeight(refundedList) })) {
+    return <section className="mb-6">{settledReverifyControl}</section>
+  }
+  const headingVisible = financialVerificationHeadingVisible({ claimRows: rows.length, unfinalizedRows: unfinalized.length })
 
   return (
     <section className="mb-6">
+      {settledReverifyControl}
+      {headingVisible && (
       <h2 className="mb-2 text-sm font-bold uppercase tracking-wide text-red-800">
         Vérification financière requise ({rows.length}){unfinalized.length ? ` · ${unfinalized.length} ligne(s) de remboursement encore en attente` : ''}
       </h2>
+      )}
+      {headingVisible && (
       <p className="mb-3 text-[13px] text-grubano-ink-muted">
         {/* RE-AUDIT FIX: this banner promised things that are only true of the AMBIGUOUS rows.
             The third bucket holds ordinary unsettled cases whose truth IS known and which the
@@ -374,6 +396,7 @@ export default function AdminFinancialVerification() {
           la commande dans Stripe avant tout paiement.
         </strong>
       </p>
+      )}
 
       {/* ROUND-10 AUDIT FIX (P2): reconciliation can conclude a claim from Stripe while our own Refund
           row stays pending. Facts only, no action: finalizing a row is the refund engine's work. */}
@@ -391,8 +414,8 @@ export default function AdminFinancialVerification() {
           </p>
           <ul className="mt-2 space-y-1 text-[12px] text-grubano-ink">
             {unfinalized.map((u) => (
-              <li key={u.refundRowId}>
-                Commande #{u.orderId.slice(-6)} — ligne {u.refundRowId} ({(u.amountCents / 100).toFixed(2)} €
+              <li key={u.rowId ?? u.refundRowId}>
+                Commande #{u.orderId.slice(-6)} — ligne {u.rowId ?? u.refundRowId} ({(u.amountCents / 100).toFixed(2)} €
                 {u.stripeRefundId ? `, Stripe ${u.stripeRefundId}` : ', sans identifiant Stripe enregistré'}) — réclamation {u.claimId ?? '—'} ({u.claimStatus ?? '—'})
                 {/* D0: the control is rendered iff the server's verdict admits it; otherwise its refusal text. */}
                 {u.claimId && u.reconcilable === true && (
@@ -496,19 +519,23 @@ export default function AdminFinancialVerification() {
                   Lit Stripe et les lignes de remboursement existantes. Ne crée aucun
                   remboursement, ne relance rien, ne déplace aucun argent.
                 </p>
+                {/* ROUND 13 (D4 / J-M33, slice W7): shown BEFORE the click on an approved claim — relire la preuve peut la parquer. */}
+                {r.status === 'approved' && (
+                  <p className="mt-1 text-[12px] text-amber-800">{D4_PRECLICK_CAPTION}</p>
+                )}
               </>
             )}
             {r.kind === 'other_unsettled' && r.resolvable === true && (
               stuckId === r.id ? (
                 <div className="mt-3 space-y-2 rounded-grubano-lg border border-grubano-border bg-grubano-surface p-3">
                   <p className="text-[13px] text-grubano-ink-muted">
-                    Aucune de ces actions ne rembourse ni ne relance quoi que ce soit. Elles enregistrent
-                    votre déclaration et libèrent la commande pour le client.
+                    {/* ROUND 13 (H14, slice W7): the panel states the closure e-mail attempt and its gate. */}
+                    {'Aucune de ces actions ne rembourse ni ne relance quoi que ce soit. Elles enregistrent votre déclaration, libèrent la commande pour le client et tentent de lui envoyer un e-mail de clôture, sans votre note ni aucun montant — aucun e-mail n’est envoyé tant que les réclamations sont fermées (le résultat de l’envoi s’affiche ensuite).'}
                   </p>
                   <textarea
                     value={stuckReason}
                     onChange={(e) => setStuckReason(e.target.value)}
-                    placeholder="Ce qui s’est réellement passé (facultatif)…"
+                    placeholder="Ce qui s’est réellement passé (facultatif, jamais montré au client)…"
                     rows={2}
                     className="w-full rounded-grubano-lg border border-grubano-border bg-grubano-surface p-2 text-[13px]"
                   />
@@ -642,6 +669,77 @@ export default function AdminFinancialVerification() {
           </div>
         ))}
       </div>
+
+      {/* ROUND 13 (H10 / E0, slice W7): the two sections rendered OUTSIDE the red heading and kept out of `total`. An
+          unreadable list still renders its section with « Liste illisible » (fail visible). */}
+      {refundedList && sectionWeight(refundedList) > 0 && (
+        <div className="mt-4 rounded-grubano-xl border border-amber-300 bg-amber-50 p-4" data-section="refunded-unproven">
+          <h3 className="text-sm font-bold text-amber-900">
+            {refundedUnprovenHeading('error' in refundedList ? null : refundedList.total, !('error' in refundedList) && refundedList.scanTruncated)}
+          </h3>
+          <p className="mt-1 text-[13px] text-grubano-ink">{REFUNDED_UNPROVEN_TEXT}</p>
+          {'error' in refundedList ? (
+            <p className="mt-2 text-[13px] text-red-700">{LIST_UNREADABLE_TEXT}</p>
+          ) : (
+            <>
+              {refundedList.scanTruncated && <p className="mt-2 text-[12px] text-amber-900">{REFUNDED_UNPROVEN_TRUNCATED}</p>}
+              {refundedList.items.length < refundedList.total && <p className="mt-2 text-[12px] text-amber-900">{itemsCappedText(refundedList.items.length, refundedList.total, 'oldest')}</p>}
+              <ul className="mt-2 space-y-2 text-[13px] text-grubano-ink">
+                {refundedList.items.map((c) => (
+                  <li key={c.id}>
+                    Commande #{c.orderId.slice(-6)} — réclamation <code>{c.id}</code> — ligne liée{' '}
+                    {c.refundId ? <code>{c.refundId}</code> : 'aucune'}
+                    {c.refund ? ` (statut enregistré : ${c.refund.status}${c.refund.orderId !== c.orderId ? ', autre commande' : ''})` : c.refundId ? ' (introuvable)' : ''}
+                    {/* D0: the control iff the server's reconcile verdict admits the claim; otherwise the no-action line. */}
+                    {c.reconcilable === true ? (
+                      <>
+                        {' '}
+                        <Button size="sm" variant="secondary" disabled={busyId === c.id} onClick={() => reconcile(c.id)}>
+                          Réconcilier d’après la preuve
+                        </Button>
+                        <span className="ml-1 text-[12px] text-grubano-ink-muted">— {REFUNDED_UNPROVEN_RECONCILE_CAPTION}</span>
+                      </>
+                    ) : (
+                      <span className="ml-1 text-[12px] text-grubano-ink-muted">— {REFUNDED_UNPROVEN_NO_ACTION}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      )}
+
+      {noticesList && sectionWeight(noticesList) > 0 && (
+        <div className="mt-4 rounded-grubano-xl border border-grubano-border bg-grubano-surface p-4" data-section="closure-notices">
+          <h3 className="text-sm font-bold text-grubano-ink">
+            {closureNoticesHeading('error' in noticesList ? null : noticesList.total, !('error' in noticesList) && noticesList.scanTruncated)}
+          </h3>
+          <p className="mt-1 text-[13px] text-grubano-ink-muted">{CLOSURE_NOTICES_INTRO}</p>
+          {'error' in noticesList ? (
+            <p className="mt-2 text-[13px] text-red-700">{LIST_UNREADABLE_TEXT}</p>
+          ) : (
+            <>
+              {noticesList.scanTruncated && <p className="mt-2 text-[12px] text-grubano-ink-muted">{CLOSURE_NOTICES_TRUNCATED}</p>}
+              {noticesList.items.length < noticesList.total && <p className="mt-2 text-[12px] text-grubano-ink-muted">{itemsCappedText(noticesList.items.length, noticesList.total, 'newest')}</p>}
+              <ul className="mt-2 space-y-2 text-[13px] text-grubano-ink">
+                {noticesList.items.map((n) => (
+                  <li key={n.claimId}>
+                    Commande #{n.orderId.slice(-6)} — réclamation <code>{n.claimId}</code> — {CLOSURE_KIND_LABEL[n.kind] ?? n.kind}
+                    {n.decidedAt ? ` — clôturée le ${new Date(n.decidedAt).toLocaleString(locale)}` : ''}
+                    {' '}
+                    {/* H10: disabled when a blocker is set, and the blocker's line says why (D0: never a silent disabled button). */}
+                    <Button size="sm" variant="secondary" disabled={busyId === n.claimId || n.blocker !== null} onClick={() => sendClosureNotice(n.claimId)}>
+                      {CLOSURE_NOTICE_BUTTON}
+                    </Button>
+                    {n.blocker && <p className="mt-1 text-[12px] text-red-700">{CLOSURE_BLOCKER_LINE[n.blocker]}</p>}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      )}
     </section>
   )
 }

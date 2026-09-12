@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { resolveAdmin } from '@/lib/admin-guard'
-import { listFinancialVerificationClaims, listReconcileRequiredClaims, listActionableRefundClaims, listUnfinalizedClaimRefundRows } from '@/lib/claims'
+import { listFinancialVerificationClaims, listReconcileRequiredClaims, listActionableRefundClaims, listUnfinalizedClaimRefundRows, listRefundedClaimsWithUnprovenRow } from '@/lib/claims'
+// ROUND 13 (H10, slice W7): the « Avis client non envoyés » list — read-only, outside lib/claim-emails (H15).
+import { listMissingClaimClosureNotices } from '@/lib/claim-closure-lists'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -38,6 +40,21 @@ export async function GET() {
   const markedIds = new Set([...financialVerification, ...reconcileRequired].map((c) => c.id))
   const otherUnsettled = actionableRefunds.filter((c) => !markedIds.has(c.id))
 
+  // ROUND 13 (H10 / I-09, slice W7): the two sections kept out of `total`, read AFTER the money lists and each in its own
+  // catch — a failure of one of them never costs the operator the money queue above ({ error: 'unreadable' }, count null).
+  const unreadable = { error: 'unreadable' as const }
+  const [refundedUnproven, closureNotices] = await Promise.all([
+    listRefundedClaimsWithUnprovenRow().catch((e: unknown) => {
+      console.error('[claims financial-verification] refundedUnproven NOT READ —', e instanceof Error ? e.message : e)
+      return unreadable
+    }),
+    listMissingClaimClosureNotices().catch((e: unknown) => {
+      console.error('[claims financial-verification] closureNotices NOT READ —', e instanceof Error ? e.message : e)
+      return unreadable
+    }),
+  ])
+  const countOf = (l: { total: number } | { error: 'unreadable' }) => ('error' in l ? null : l.total)
+
   return NextResponse.json({
     // Ungated on purpose — see above. `enabled` is reported for the console's information only;
     // it never suppresses the payload.
@@ -45,6 +62,8 @@ export async function GET() {
     reconcileRequired,
     otherUnsettled,
     unfinalizedRefundRows,
+    refundedUnproven,
+    closureNotices,
     counts: {
       financialVerification: financialVerification.length,
       reconcileRequired:     reconcileRequired.length,
@@ -53,6 +72,10 @@ export async function GET() {
       unfinalizedRefundRows: unfinalizedRefundRows.length,
       /** What an operator badge must show: every claim whose money truth is open. */
       total: financialVerification.length + reconcileRequired.length + otherUnsettled.length,
+      /** H10 / E-13: settled claims whose bound row is not established — outside `total`; null when unreadable. */
+      refundedUnproven:      countOf(refundedUnproven),
+      /** H10 / E-16: closures of this build without a dispatched notice — outside `total`; null when unreadable. */
+      closureNoticesMissing: countOf(closureNotices),
     },
   })
 }

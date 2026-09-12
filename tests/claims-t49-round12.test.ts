@@ -64,7 +64,7 @@ const isStuckResolvableFacts = (e: string) => {
   return isStuckResolvable(c) && acceptedExits({ claim: c, now: new Date() }).join(',') === 'reconcile,stuck_close'
 }
 import { attributionRefusal } from '@/lib/claim-attribution-rules'
-import { financialVerificationCardVisible } from '@/lib/claim-money-line'
+import { financialVerificationCardVisible, financialVerificationHeadingVisible } from '@/lib/claim-money-line'
 import { GET as CENSUS } from '@/app/api/admin/claims/census/route'
 import { POST as RESOLVE_STUCK } from '@/app/api/admin/claims/[id]/resolve-stuck/route'
 
@@ -407,15 +407,22 @@ describe('PROMISES — each locale scanned with its own language (round-11 P3)',
 
 // ══ P2/P3 — the financial-verification card ═════════════════════════════════════════════════
 describe('FINANCIAL-VERIFICATION CARD — visible, and says what the toasts point to', () => {
-  it('visibility truth table: claims OR unfinalized rows', () => {
-    expect(financialVerificationCardVisible({ claimRows: 0, unfinalizedRows: 0 })).toBe(false)
-    expect(financialVerificationCardVisible({ claimRows: 1, unfinalizedRows: 0 })).toBe(true)
-    expect(financialVerificationCardVisible({ claimRows: 0, unfinalizedRows: 1 })).toBe(true)
+  it('visibility truth table: claims OR unfinalized rows OR either H10 section (ROUND 13, slice W7: 16 rows); the red heading only for the first two', () => {
+    for (let mask = 0; mask < 16; mask++) {
+      const p = { claimRows: mask & 1, unfinalizedRows: (mask >> 1) & 1, closureNotices: (mask >> 2) & 1, refundedUnproven: (mask >> 3) & 1 }
+      expect(financialVerificationCardVisible(p), JSON.stringify(p)).toBe(mask !== 0)
+      expect(financialVerificationHeadingVisible(p), JSON.stringify(p)).toBe((mask & 3) !== 0)
+    }
+    // NEGATIVE CONTROL: the round-12 two-input predicate hides a card that only carries a notice or an unproven settlement.
+    const roundTwelve = (p: { claimRows: number; unfinalizedRows: number }) => p.claimRows > 0 || p.unfinalizedRows > 0
+    expect(roundTwelve({ claimRows: 0, unfinalizedRows: 0 })).toBe(false)
+    expect(financialVerificationCardVisible({ claimRows: 0, unfinalizedRows: 0, closureNotices: 1, refundedUnproven: 0 })).toBe(true)
   })
 
   it('the card uses the predicate, renders the recorded detail and the bound row status, and guidance on every unsettled row', () => {
     const fv = read('components/claims/AdminFinancialVerification.tsx')
-    expect(fv).toContain('if (!financialVerificationCardVisible({ claimRows: rows.length, unfinalizedRows: unfinalized.length })) return null')
+    expect(fv).toContain('if (!financialVerificationCardVisible({ claimRows: rows.length, unfinalizedRows: unfinalized.length, closureNotices: sectionWeight(noticesList), refundedUnproven: sectionWeight(refundedList) })) {')
+    expect(fv).toContain('const headingVisible = financialVerificationHeadingVisible({ claimRows: rows.length, unfinalizedRows: unfinalized.length })')
     expect(fv).toContain('Détail enregistré :')
     expect(fv).toContain('Statut de notre ligne liée :')
     expect(fv).toContain("{r.kind === 'other_unsettled' && (")

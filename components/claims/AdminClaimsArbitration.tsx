@@ -65,14 +65,18 @@ type ActionableRefundClaim = {
   refund: { id: string; status: string; actualAmountCents: number; stripeRefundId: string | null } | null
 }
 
-export default function AdminClaimsArbitration() {
+/**
+ * `initial` (ROUND 13, slice W7): the GET /api/admin/claims payload a test renders the console with (J-M29 control parity).
+ * The page mounts the console without it; the load below then reads the route.
+ */
+export default function AdminClaimsArbitration({ initial }: { initial?: { claims?: Claim[]; pending?: PendingClaim[]; actionableRefunds?: ActionableRefundClaim[] } } = {}) {
   const t = useTranslations('claims')
   const locale = useLocale()
   const toast = useToast()
-  const [claims, setClaims] = useState<Claim[]>([])
-  const [pending, setPending] = useState<PendingClaim[]>([])
-  const [actionableRefunds, setActionableRefunds] = useState<ActionableRefundClaim[]>([])
-  const [loaded, setLoaded] = useState(false)
+  const [claims, setClaims] = useState<Claim[]>(initial?.claims ?? [])
+  const [pending, setPending] = useState<PendingClaim[]>(initial?.pending ?? [])
+  const [actionableRefunds, setActionableRefunds] = useState<ActionableRefundClaim[]>(initial?.actionableRefunds ?? [])
+  const [loaded, setLoaded] = useState(!!initial)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [refusingId, setRefusingId] = useState<string | null>(null)
   const [reason, setReason] = useState('')
@@ -304,13 +308,13 @@ export default function AdminClaimsArbitration() {
                   ) : stuckId === r.id ? (
                     <div className="mt-3 space-y-2 rounded-grubano-lg border border-grubano-border bg-grubano-surface-muted p-3">
                       <p className="text-[13px] text-grubano-ink-muted">
-                        Aucune de ces actions ne rembourse ni ne relance quoi que ce soit. Elles
-                        enregistrent la réalité et libèrent la commande pour le client.
+                        {/* ROUND 13 (H14, slice W7): the panel states the closure e-mail attempt and its gate. */}
+                        {'Aucune de ces actions ne rembourse ni ne relance quoi que ce soit. Elles enregistrent votre déclaration, libèrent la commande pour le client et tentent de lui envoyer un e-mail de clôture, sans votre note ni aucun montant — aucun e-mail n’est envoyé tant que les réclamations sont fermées (le résultat de l’envoi s’affiche ensuite).'}
                       </p>
                       <textarea
                         value={stuckReason}
                         onChange={(e) => setStuckReason(e.target.value)}
-                        placeholder="Ce qui s’est réellement passé (facultatif)…"
+                        placeholder="Ce qui s’est réellement passé (facultatif, jamais montré au client)…"
                         rows={2}
                         className="w-full rounded-grubano-lg border border-grubano-border bg-grubano-surface p-2 text-[13px]"
                       />

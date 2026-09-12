@@ -59,13 +59,40 @@ describe('J-C31 — CUSTOMER_EMAIL_FR and the 5-locale copy', () => {
     expect(CUSTOMER_EMAIL_FR).toEqual(fr.claims.admin.customerEmail)
   })
 
-  it('the 5 locales carry the 9 keys with the H11 values, verbatim from the frozen specification', () => {
+  // ROUND 13 (slice W7) — ER-C22 / H11 W6 fixer note: a row with two or more binders answers refunded_row_unproven, so rowUnproven
+  // names that cause too. The frozen H11 value plus exactly one inserted clause, per locale (IMPLEMENTATION NOTE (W7) on H11).
+  const ROW_UNPROVEN_CLAUSE: Record<string, [string, string]> = {
+    fr: ['porte sur une autre commande, ', 'est liée à plusieurs réclamations, '],
+    en: ['belongs to another order, ', 'is linked to several claims, '],
+    es: ['pertenece a otro pedido, ', 'está vinculada a varias reclamaciones, '],
+    it: ['riguarda un altro ordine, ', 'è collegata a più reclami, '],
+    ar: ['أو يخص طلبًا آخر، ', 'أو مرتبط بعدة شكاوى، '],
+  }
+  const amendedRowUnproven = (frozen: string, loc: string) => {
+    const [after, clause] = ROW_UNPROVEN_CLAUSE[loc]
+    return frozen.replace(after, `${after}${clause}`)
+  }
+
+  it('the 5 locales carry the 9 keys with the H11 values, verbatim from the frozen specification (rowUnproven: + the W7 clause)', () => {
     const table = specCopyTable('H11', 'claims.admin.customerEmail.')
     expect(Object.keys(table).sort()).toEqual(KEYS.map((k) => `claims.admin.customerEmail.${k}`).sort())
     for (const loc of SPEC_LOCALES) {
       const m = JSON.parse(read(`messages/${loc}.json`))
       expect(Object.keys(m.claims.admin.customerEmail).sort(), loc).toEqual([...KEYS].sort())
-      for (const [path, vals] of Object.entries(table)) expect(messageAt(m, path), `${loc} ${path}`).toBe(vals[loc])
+      for (const [path, vals] of Object.entries(table)) {
+        const want = path.endsWith('.rowUnproven') ? amendedRowUnproven(vals[loc], loc) : vals[loc]
+        expect(want, `${loc} ${path} (the clause anchor exists)`).not.toBe(path.endsWith('.rowUnproven') ? vals[loc] : undefined)
+        expect(messageAt(m, path), `${loc} ${path}`).toBe(want)
+      }
+    }
+  })
+
+  it('NEGATIVE CONTROL (ER-C22) — the frozen rowUnproven, which omits the multi-binder cause, is no longer the shipped copy', () => {
+    const table = specCopyTable('H11', 'claims.admin.customerEmail.')
+    for (const loc of SPEC_LOCALES) {
+      const shipped = messageAt(JSON.parse(read(`messages/${loc}.json`)), 'claims.admin.customerEmail.rowUnproven')
+      expect(shipped, loc).not.toBe(table['claims.admin.customerEmail.rowUnproven'][loc])
+      expect(String(shipped), loc).toContain(ROW_UNPROVEN_CLAUSE[loc][1].trim().replace(/[,،]$/, ''))
     }
   })
 

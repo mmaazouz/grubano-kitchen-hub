@@ -10,7 +10,19 @@
 // CLAIMS_ENABLED=true AND a deadline that parses, is in the future, and is within the compiled
 // ceiling. Nobody has to act for it to close. Time passing is what closes it.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+// ROUND 13 (J-C10, slice W7): GET /api/claims over a mocked Prisma, the senders and the session stubbed.
+const { db } = vi.hoisted(() => ({
+  db: {
+    claim:  { findMany: vi.fn(), groupBy: vi.fn() },
+    refund: { findMany: vi.fn() },
+  },
+}))
+vi.mock('@/lib/prisma', () => ({ prisma: db }))
+vi.mock('@/lib/claim-emails', () => ({ sendClaimAckEmail: vi.fn(), sendClaimDecisionEmail: vi.fn() }))
+vi.mock('next-auth/jwt', () => ({ getToken: vi.fn(async () => ({ sub: 'u1' })) }))
 import { isClaimsEnabled, claimsGateState, CLAIMS_WINDOW_MAX_MS } from '@/lib/claims'
+import { GET as CLAIMS_GET } from '@/app/api/claims/route'
 
 const iso = (msFromNow: number) => new Date(Date.now() + msFromNow).toISOString()
 const open = (msFromNow = 15 * 60 * 1000) => {
@@ -154,5 +166,62 @@ describe('negative control — the pre-T-53 rule would be caught', () => {
     vi.stubEnv('CLAIMS_WINDOW_UNTIL', iso(-6 * 60 * 60 * 1000))
     expect(vulnerableGate()).toBe(true)   // ← the defect T-53 exists to remove
     expect(isClaimsEnabled()).toBe(false) // ← fixed
+  })
+})
+
+// ══ ROUND 13 (slice W7) — J-C10 (E0, F06, A-S00): CLAIMS_ENABLED off, the customer sees no claim ════════════════════════
+describe('J-C10 — CLAIMS_ENABLED off: GET /api/claims answers { enabled: false } and no claim', () => {
+  const read = (p: string) => readFileSync(p, 'utf8').replace(/\r\n/g, '\n')
+  const strip = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '').replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
+  const base = { orderId: 'o1', consumerId: 'u1', refundAttempted: true, arbitrationDecision: 'approved', restaurantResponse: null, restaurantResponseReason: null, arbitrationReason: null, reason: 'wrong_item' }
+  const CLAIMS = [
+    { ...base, id: 'fv', status: 'financial_verification', refundId: null, refundError: 'financial_verification:stripe_unreadable: x' },
+    { ...base, id: 'rf', status: 'refunded', refundId: 'rf1', refundError: null },
+    { ...base, id: 'ru', status: 'refunded', refundId: 'rf2', refundError: null },
+    { ...base, id: 'rg', status: 'refused_final', refundId: null, refundError: null, arbitrationDecision: 'refused_final', restaurantResponse: 'accepted' },
+  ]
+  const get = (q = '') => CLAIMS_GET(new Request(`https://app.grubano.com/api/claims${q}`) as never)
+
+  beforeEach(() => {
+    db.claim.findMany.mockReset().mockResolvedValue(CLAIMS.map((c) => ({ ...c })))
+    db.refund.findMany.mockReset().mockResolvedValue([
+      { id: 'rf1', orderId: 'o1', status: 'succeeded', amountCents: 500, stripeRefundId: 're_1' },
+      { id: 'rf2', orderId: 'o1', status: 'failed', amountCents: 500, stripeRefundId: 're_2' },
+    ])
+    db.claim.groupBy.mockReset().mockResolvedValue([{ refundId: 'rf1', _count: { _all: 1 } }, { refundId: 'rf2', _count: { _all: 1 } }])
+  })
+
+  it('closed: the body deep-equals { enabled: false } — no claim object, no status key — and nothing is read', async () => {
+    const body = await (await get()).json()
+    expect(body).toEqual({ enabled: false })
+    expect(JSON.stringify(body)).not.toMatch(/status|claims|eligibility/)
+    expect(await (await get('?orderId=o1')).json()).toEqual({ enabled: false })
+    expect(db.claim.findMany).not.toHaveBeenCalled()
+  })
+
+  it('NEGATIVE CONTROL — with an open lease the body carries the claims and their derived statuses', async () => {
+    open()
+    const body = await (await get()).json()
+    expect(body.enabled).toBe(true)
+    expect(body.claims.map((c: { id: string; status: string }) => [c.id, c.status])).toEqual([
+      ['fv', 'financial_verification'], ['rf', 'refunded'], ['ru', 'refund_unconfirmed'], ['rg', 'refused_by_grubano'],
+    ])
+  })
+
+  it('ClaimSection renders nothing unless enabled; the help page reads eligibility only behind enabled', () => {
+    const cs = strip(read('components/claims/ClaimSection.tsx'))
+    expect(cs).toContain('if (!enabled || !el) return null')
+    expect(cs).toContain('if (data.enabled) setEl(data.eligibility as Eligibility)')
+    const help = strip(read('app/[locale]/eat/order/[orderId]/help/page.tsx'))
+    expect(help).toMatch(/if \(d\?\.enabled === true\) \{\s*setClaimsEnabled\(true\)\s*setEligibility\(/)
+  })
+
+  it('BREAK/RESTORE pin — the early { enabled: false } return is the first statement of GET', () => {
+    const src = strip(read('app/api/claims/route.ts'))
+    const handler = src.slice(src.indexOf('export async function GET('))
+    expect(handler).toMatch(/^export async function GET\(req: NextRequest\) \{\s*if \(!isClaimsEnabled\(\)\) return NextResponse\.json\(\{ enabled: false \}\)/)
+    // the break (the early return removed) no longer satisfies the pin
+    const broken = handler.replace('if (!isClaimsEnabled()) return NextResponse.json({ enabled: false })', '')
+    expect(broken).not.toMatch(/^export async function GET\(req: NextRequest\) \{\s*if \(!isClaimsEnabled\(\)\) return/)
   })
 })

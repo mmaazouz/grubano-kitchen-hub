@@ -25,8 +25,9 @@ const { stripeMock } = vi.hoisted(() => ({
 }))
 vi.mock('@/lib/stripe', () => ({ getStripe: () => stripeMock }))
 
-import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { readFileSync, readdirSync, statSync, writeFileSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
+import { tmpdir } from 'node:os'
 import { loadOrderMoneyFacts, triggerClaimRefund, reconcileClaimEvidence } from '@/lib/claims'
 import {
   deriveNoRowOutcome, absenceProofText, reapprovalSafetyHolds, proofInstant, MARKERS, holdSentence, arbitrationRefusal, isStuckResolvable, acceptedExits,
@@ -469,15 +470,19 @@ describe('J-M42 — reconcile dispatch (G2) and the deleted round-12 ladder', ()
     return G2_NEEDLES.filter((needle) => src.includes(needle)).map((needle) => `${f.replace(/\\/g, '/')}: ${needle}`)
   })
 
-  it('source scan: the round-12 ladder identifiers and the G2 phrases are absent from lib/ and messages/', () => {
-    expect(g2Offenders([...walkFiles('lib'), ...walkFiles('messages')])).toEqual([])
+  // ROUND 13 (slice W7): components/ joins the scan — the console's legacy no_refund_proven toast branch is deleted.
+  it('source scan: the round-12 ladder identifiers and the G2 phrases are absent from lib/, components/ and messages/', () => {
+    expect(g2Offenders([...walkFiles('lib'), ...walkFiles('components'), ...walkFiles('messages')])).toEqual([])
   })
 
-  it('NEGATIVE CONTROL — the same scan flags the one remaining W7 string in components/ (so it can find a real hit)', () => {
-    expect(g2Offenders(['components/claims/AdminFinancialVerification.tsx'])).toEqual([
-      'components/claims/AdminFinancialVerification.tsx: aucun remboursement n’a jamais déplacé d’argent',
-      'components/claims/AdminFinancialVerification.tsx: jamais déplacé',
-    ])
+  it('NEGATIVE CONTROL — the same scan flags the deleted console branch put back into a copy of the card (so it can find a real hit)', () => {
+    const tmp = join(tmpdir(), `w7-g2-${process.pid}.tsx`)
+    const card = readSrc('components/claims/AdminFinancialVerification.tsx')
+    writeFileSync(tmp, `${card}\nconst legacy = 'Preuve d’absence : aucun remboursement n’a jamais déplacé d’argent et Stripe n’en rapporte aucun.'\n`)
+    try {
+      expect(g2Offenders([tmp]).map((h) => h.slice(h.indexOf(': ') + 2))).toEqual(['aucun remboursement n’a jamais déplacé d’argent', 'jamais déplacé'])
+      expect(g2Offenders(['components/claims/AdminFinancialVerification.tsx'])).toEqual([])
+    } finally { unlinkSync(tmp) }
   })
 })
 

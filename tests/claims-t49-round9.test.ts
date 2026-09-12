@@ -373,8 +373,11 @@ describe('round-9 source pins', () => {
     }
   })
 
-  it('reconcile: pending_unconfirmed has its own toast and needs attention; the rail lock no longer « lifts »', () => {
-    expect(fv).toContain("|| outcome === 'unconfirmed_within_window'")
+  it('reconcile: pending_unconfirmed has its own toast and needs attention; the rail lock no longer « lifts »', async () => {
+    // ROUND 13 (F14, slice W7): the tone moved with the said map into the pure reconcileToast the card calls.
+    const { reconcileToast } = await import('@/lib/claim-console-copy')
+    expect(reconcileToast({ outcome: 'unconfirmed_within_window', until: '2026-09-13T08:00:00.000Z' }).needsAttention).toBe(true)
+    expect(fv).toContain('if (needsAttention) toast.error(text)')
     expect(fvCode).not.toMatch(/tant que la reprise manuelle/)
     expect(fvCode).not.toContain('déjà garée')
   })
@@ -434,11 +437,13 @@ describe('customer and admin copy, all five locales', () => {
     }
   })
 
-  it('the admin toasts name the queue exactly as the (French-only) console heading does', () => {
+  it('ROUND 13 (F13, slice W7): no approval toast names a console section', () => {
     for (const loc of LOCALES) {
       const a = L(loc).claims.admin
-      for (const k of ['approvedFailed', 'approvedResumeMismatch']) {
-        expect(a[k], `${loc}.${k}`).toContain('« Remboursements à traiter »')
+      // F13: the last sentence naming « Remboursements à traiter » is deleted from approvedFailed and approvedResumeMismatch.
+      for (const k of ['approvedFailed', 'approvedResumeMismatch', 'approvedPending', 'approvedIdentityUnverified', 'approvedSuperseded', 'approvedNotSentUntil', 'approvedRefunded']) {
+        expect(a[k], `${loc}.${k}`).not.toContain('« Remboursements à traiter »')
+        expect(a[k], `${loc}.${k}`).not.toContain('Vérification financière requise')
       }
       // ROUND 13 (F13): approvedNotSent now also ends in a financial-verification park (T2 (e')), which that section
       // never lists — it names no console section.

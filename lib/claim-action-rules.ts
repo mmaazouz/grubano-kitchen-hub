@@ -224,6 +224,13 @@ export const approveRevisableText = (stuckResolvable: boolean) =>
 export const approvePermanentText = (stuckResolvable: boolean) =>
   'Approbation impossible : une nouvelle approbation ne paierait pas cette réclamation (la cause est dans le détail de la réclamation). Rien ne sera payé par le rail pour elle.'
   + (stuckResolvable ? ' Clôturez le dossier (« Clôturer ce dossier… »).' : ' Aucune action de l’application ne la clôt : vérifiez la commande dans Stripe.')
+/**
+ * E-05 / D14 — IMPLEMENTATION NOTE (W7): an approved claim whose reconcile marker instant is READABLE but later than now.
+ * D5 admits reconcile once that instant has passed and RECONCILE_GRACE_MS has elapsed, so (3)'s « Aucune action de
+ * l’application ne la clôt » would be false: the refusal is time-bound and says from when. A MALFORMED instant keeps (3).
+ */
+export const approveMarkerFutureText = (markerIso: string, reconcileFromIso: string) =>
+  `Approbation impossible : l’heure de début de la tentative de remboursement enregistrée sur cette réclamation (${markerIso} UTC) est postérieure à maintenant, et cette tentative n’est pas établie comme terminée. Rien n’est payé tant que cet état est enregistré. « Réconcilier d’après la preuve » (section « Vérification financière requise ») est refusée tant que cette heure n’est pas passée et que le délai de 5 minutes ne s’est pas écoulé ensuite, soit jusqu’au ${reconcileFromIso} (UTC).`
 /** D13 AM-B3: no refuse_final on any approved claim, arbitrationDecision null included. */
 export const REFUSE_APPROVED_AM_B3 =
   'Cette réclamation a été approuvée — elle ne peut plus être refusée. Selon son état : approuvez-la à nouveau (réclamations et remboursements ouverts), réconciliez-la, ou clôturez le dossier (« Clôturer ce dossier… ») si le détail le propose.'
@@ -252,6 +259,11 @@ export function arbitrationRefusal(c: ClaimFacts, decision: 'approve' | 'refuse_
       const v = reconcileVerdict(c, now.getTime())
       // D14 (2) only when reconcile is admitted or refused for its grace alone; an unreadable marker instant is refused
       // by reconcile (D5), so it gets (3) — never a text naming an exit the server refuses (W3 round-1 fix).
+      // W7 (E-05): a readable instant in the FUTURE is refused only until it has passed plus the grace — a time-bound text.
+      if (v.admitted && v.markerUnreadable) {
+        const t = markerTimestampMs(c.refundError)
+        if (t !== null) return { status: 409, error: approveMarkerFutureText(new Date(t).toISOString(), new Date(t + RECONCILE_GRACE_MS).toISOString()) }
+      }
       const revisable = v.admitted && !v.markerUnreadable
       return { status: 409, error: revisable ? approveRevisableText(isStuckResolvable(c)) : approvePermanentText(isStuckResolvable(c)) }
     }
@@ -954,7 +966,9 @@ export const R0_TOASTS = {
 export function refundStillStandingToast(stripeStatus: string | null | undefined): string {
   if (stripeStatus === 'succeeded') return 'Stripe rapporte ce remboursement ABOUTI : rien n’a été modifié.'
   if (stripeStatus === 'pending' || stripeStatus === 'requires_action') return 'Stripe rapporte ce remboursement EN ATTENTE : rien n’a été modifié. Relancez « Réconcilier d’après la preuve » lorsqu’il sera terminal.'
-  return R0_TOASTS.refund_still_standing
+  // W7 (F14): never « toujours ABOUTI ou en attente » for a status the branches above do not name.
+  if (typeof stripeStatus === 'string' && stripeStatus) return `Stripe rapporte ce remboursement au statut « ${stripeStatus} » : rien n’a été modifié.`
+  return 'Le statut Stripe de ce remboursement n’a pas été transmis : rien n’a été modifié.'
 }
 /** G10: a DB call of the marking helper threw. */
 export const R0_DB_FAILED = 'La base n’a pas pu être lue ou écrite : rien n’est établi. Réessayez.'

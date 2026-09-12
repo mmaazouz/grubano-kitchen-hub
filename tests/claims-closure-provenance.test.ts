@@ -5,7 +5,7 @@
 // « Refus confirmé » needs the restaurant's own refusal on record.
 import { describe, it, expect } from 'vitest'
 import {
-  claimClosureKind, CLOSURE_TRIGGER, refusalEmailKind, CLOSURE_RECORD_TRIGGER, closureRecordKey, MARKERS,
+  claimClosureKind, CLOSURE_TRIGGER, refusalEmailKind, CLOSURE_RECORD_TRIGGER, closureRecordKey, MARKERS, customerClaimReasons,
   type ClaimFacts, type ClosureKind,
 } from '@/lib/claim-action-rules'
 
@@ -92,5 +92,35 @@ describe('J-C07 — CLOSURE_TRIGGER, refusalEmailKind and the H05 constants', ()
   it('H05 constants', () => {
     expect(CLOSURE_RECORD_TRIGGER).toBe('claim_closure_record')
     expect(closureRecordKey('x')).toBe('claim:x')
+  })
+})
+
+// ══ ROUND 13 (slice W7) — J-C09 (F08): the reasons shown to the customer, by author ═══════════════════════════════════════
+describe('J-C09 — customerClaimReasons', () => {
+  const base = { restaurantResponseReason: 'raison resto', arbitrationReason: 'NOTE INTERNE' }
+
+  it('a declaration (either kind) carries no arbitrationReason, legacy rows included', () => {
+    const settled = customerClaimReasons({ status: 'refunded', refundError: 'engine_failed: x', arbitrationDecision: 'approved', restaurantResponse: 'accepted', ...base })
+    const closed = customerClaimReasons({ status: 'refused_final', refundError: null, arbitrationDecision: 'approved', restaurantResponse: 'refused', ...base })
+    const afterRevert = customerClaimReasons({ status: 'refunded', refundError: DECLARED, arbitrationDecision: 'approved', restaurantResponse: null, ...base })
+    for (const r of [settled, closed, afterRevert]) expect(r.arbitrationReason).toBeNull()
+    // a restaurant that refused keeps its own reason even on a later declaration
+    expect(closed.restaurantResponseReason).toBe('raison resto')
+  })
+
+  it('accepted → no restaurant reason; refused → shown; refused_by_grubano → Grubano’s reason; refused_confirmed → both authors’ reasons', () => {
+    expect(customerClaimReasons({ status: 'arbitration', restaurantResponse: 'accepted', ...base }).restaurantResponseReason).toBeNull()
+    expect(customerClaimReasons({ status: 'refused', restaurantResponse: 'refused', ...base }).restaurantResponseReason).toBe('raison resto')
+    expect(customerClaimReasons({ status: 'refused_final', arbitrationDecision: 'refused_final', restaurantResponse: 'accepted', restaurantResponseReason: null, arbitrationReason: 'motif G' }))
+      .toEqual({ restaurantResponseReason: null, arbitrationReason: 'motif G' })
+    expect(customerClaimReasons({ status: 'refused_final', arbitrationDecision: 'refused_final', restaurantResponse: 'refused', restaurantResponseReason: 'r', arbitrationReason: 'g' }))
+      .toEqual({ restaurantResponseReason: 'r', arbitrationReason: 'g' })
+  })
+
+  it('NEGATIVE CONTROL — the break mutant (drop `&& !declaration`) leaks the operator note: the fixture discriminates it', () => {
+    const c = { status: 'refunded', refundError: 'engine_failed: x', arbitrationDecision: 'approved', ...base }
+    const mutant = (x: typeof c) => (x.arbitrationDecision ? x.arbitrationReason ?? null : null)
+    expect(mutant(c)).toBe('NOTE INTERNE') // ← the leak
+    expect(customerClaimReasons(c).arbitrationReason).toBeNull()
   })
 })

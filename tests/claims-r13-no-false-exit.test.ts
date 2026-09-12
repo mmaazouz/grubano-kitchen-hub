@@ -247,6 +247,16 @@ describe('J-M28 (5) — the D14 phrase scan on every text a state renders: appro
     for (const k of ['stripe_pending', 'stripe_failed', 'refund_error_recorded', 'approved_not_driven', 'reconcile_required']) expect(LABELS[k], k).toBeTruthy()
   })
 
+  // ROUND 13 (slice W7, W3 carry-over): the reconcile_marker_unreadable label (W3 round-2 fix) joins the scan by name, and every
+  // label the console carries is scanned — not only the ones a fixture state happens to reach.
+  it('the reconcile_marker_unreadable MONEY label and every other label pass the D14 phrase scan', () => {
+    expect(LABELS.reconcile_marker_unreadable).toContain('heure de la tentative illisible, réconciliation refusée')
+    expect(scan(LABELS.reconcile_marker_unreadable)).toEqual([])
+    // ten money states; absence_proven_payable's label is computed per claim (absenceProvenPayableLabel, scanned per state above)
+    expect(Object.keys(LABELS).length).toBeGreaterThanOrEqual(9)
+    for (const [k, t] of Object.entries(LABELS)) expect(scan(t), k).toEqual([])
+  })
+
   for (const s of STATES) {
     it(`${s.id}`, async () => {
       db.claim.findMany.mockResolvedValue([{ ...s.claim, reason: 'wrong_item', createdAt: T0, requestedAmountCents: 500 }])

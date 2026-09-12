@@ -8,9 +8,10 @@
 // PENDING path. « le remboursement a ÉCHOUÉ : aucun argent n'est parti » is false on the first two
 // and invites a second payment; « de l'argent EST parti » is false on the other two (ROUND-7 AUDIT
 // FIX — this suite used to ENFORCE that sentence). Only "not this claim's refund" holds on all four.
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, expectTypeOf } from 'vitest'
 import fs from 'node:fs'
-import { approvalToast } from '@/lib/claim-approval-toast'
+import { approvalToast, type ApprovalToast, type ApprovalRefundOutcome } from '@/lib/claim-approval-toast'
+import type { RefundTriggerResult } from '@/lib/claims'
 
 describe('a succeeded refund is reported as succeeded, with the amount that moved', () => {
   it('state refunded → success, carrying the ENGINE amount (not the requested one)', () => {
@@ -121,5 +122,72 @@ describe('the two pre-fix rules stay fixed in the shipped mapper', () => {
 
   it('resume_mismatch is never folded into the generic failure', () => {
     expect(approvalToast({ state: 'failed', error: 'resume_mismatch' }).key).toBe('approvedResumeMismatch')
+  })
+})
+
+// ══ ROUND 13 (slice W7) — J-C15 (F12, A-S15a, A-S16a, A-S30*, A-S33, A-S38, A-S41, E-10): one case per result shape ══════
+// BREAK/RESTORE (run on lib/claim-approval-toast.ts): mapping every state 'pending' to approvedPending turns the
+// « pending refunds_disabled » and « pending without reason » rows red; mapping 'identity_unverified' to
+// approvedResumeMismatch turns its row red. The table below is the only oracle (no in-test mapper).
+describe('J-C15 — approvalToast: key and tone exactly per F12', () => {
+  const NOT_SENT_OK: ApprovalToast = { key: 'approvedNotSent', tone: 'success' }
+  const NOT_SENT_ERR: ApprovalToast = { key: 'approvedNotSent', tone: 'error' }
+  // The engine's 202 carries a refundId: passed through a variable (the outcome type does not name it).
+  const pendingWithRefund = { state: 'pending', reason: 'stripe_pending', refundId: 'rf' }
+  const until = '2026-09-13T08:00:00.000Z'
+  const CASES: Array<[string, ApprovalRefundOutcome, ApprovalToast]> = [
+    ['refunded 1250', { state: 'refunded', amountCents: 1250 }, { key: 'approvedRefunded', tone: 'success', amountCents: 1250 }],
+    ['pending stripe_pending (own 202)', pendingWithRefund, { key: 'approvedPending', tone: 'success' }],
+    ['pending refunds_disabled (E-10)', { state: 'pending', reason: 'refunds_disabled' }, NOT_SENT_OK],
+    ['pending without reason', { state: 'pending' }, NOT_SENT_OK],
+    ['already_handled', { state: 'already_handled' }, NOT_SENT_OK],
+    ['failed resume_mismatch (A-S15)', { state: 'failed', error: 'resume_mismatch' }, { key: 'approvedResumeMismatch', tone: 'error' }],
+    ['failed identity_unverified (A-S16)', { state: 'failed', error: 'identity_unverified' }, { key: 'approvedIdentityUnverified', tone: 'error' }],
+    ['failed attempt_superseded (A-S41)', { state: 'failed', error: 'attempt_superseded' }, { key: 'approvedSuperseded', tone: 'error' }],
+    ['failed unconfirmed_within_window + until (A-S30e-3)', { state: 'failed', error: 'unconfirmed_within_window', until }, { key: 'approvedNotSentUntil', tone: 'success', until }],
+    ['failed unconfirmed_within_window without until', { state: 'failed', error: 'unconfirmed_within_window' }, NOT_SENT_OK],
+    ['failed safety_check_unreadable (A-S30b)', { state: 'failed', error: 'safety_check_unreadable' }, NOT_SENT_OK],
+    ['failed safety_hold (A-S30)', { state: 'failed', error: 'safety_hold' }, NOT_SENT_ERR],
+    ['failed proof_locked (A-S30e-1)', { state: 'failed', error: 'proof_locked' }, NOT_SENT_ERR],
+    ['failed proof_awaiting (A-S30e-2)', { state: 'failed', error: 'proof_awaiting' }, NOT_SENT_ERR],
+    ['failed proof_stale (A-S38)', { state: 'failed', error: 'proof_stale' }, NOT_SENT_ERR],
+    ['failed financial_verification (A-S30e-4)', { state: 'failed', error: 'financial_verification' }, NOT_SENT_ERR],
+    ['failed own_row_exists (A-S33)', { state: 'failed', error: 'own_row_exists' }, NOT_SENT_ERR],
+    ['failed x', { state: 'failed', error: 'x' }, { key: 'approvedFailed', tone: 'error' }],
+    ['null', null, NOT_SENT_OK],
+    ['undefined', undefined, NOT_SENT_OK],
+  ]
+
+  for (const [name, input, want] of CASES) {
+    it(name, () => {
+      expect(approvalToast(input)).toEqual(want)
+    })
+  }
+
+  it('the input and output types are pinned (F12)', () => {
+    expectTypeOf<ApprovalRefundOutcome>().toEqualTypeOf<{ state?: string; amountCents?: number; error?: string; reason?: string; until?: string } | null | undefined>()
+    expectTypeOf<ApprovalToast>().toEqualTypeOf<
+      | { key: 'approvedRefunded'; tone: 'success'; amountCents: number }
+      | { key: 'approvedPending'; tone: 'success' }
+      | { key: 'approvedResumeMismatch'; tone: 'error' }
+      | { key: 'approvedIdentityUnverified'; tone: 'error' }
+      | { key: 'approvedSuperseded'; tone: 'error' }
+      | { key: 'approvedNotSentUntil'; tone: 'success'; until: string }
+      | { key: 'approvedNotSent'; tone: 'success' | 'error' }
+      | { key: 'approvedFailed'; tone: 'error' }
+    >()
+    // The contract: every shape triggerClaimRefund returns is an outcome the mapper reads.
+    expectTypeOf<RefundTriggerResult>().toMatchTypeOf<NonNullable<ApprovalRefundOutcome>>()
+  })
+
+  it('NEGATIVE CONTROL — refunds_disabled is never approvedPending; identity_unverified never approvedResumeMismatch; attempt_superseded never approvedRefunded', () => {
+    expect(approvalToast({ state: 'pending', reason: 'refunds_disabled' }).key).not.toBe('approvedPending')
+    expect(approvalToast({ state: 'failed', error: 'identity_unverified' }).key).not.toBe('approvedResumeMismatch')
+    expect(approvalToast({ state: 'failed', error: 'attempt_superseded' }).key).not.toBe('approvedRefunded')
+    // every key the mapper returns exists in the five locales (the arbitration console renders t(`admin.${key}`))
+    for (const loc of ['fr', 'en', 'es', 'it', 'ar']) {
+      const admin = JSON.parse(fs.readFileSync(`messages/${loc}.json`, 'utf8')).claims.admin as Record<string, string>
+      for (const [, , want] of CASES) expect(typeof admin[want.key], `${loc} ${want.key}`).toBe('string')
+    }
   })
 })

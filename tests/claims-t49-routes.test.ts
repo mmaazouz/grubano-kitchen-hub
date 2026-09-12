@@ -13,9 +13,12 @@ const readFileSync = (p: string, enc: 'utf8') => readRaw(p, enc).replace(/\r\n/g
 const { adminMock } = vi.hoisted(() => ({ adminMock: vi.fn() }))
 vi.mock('@/lib/admin-guard', () => ({ resolveAdmin: adminMock }))
 
-const { reconcileMock, attributeMock, adoptMock, fvMock, rrMock, actionableMock, unfinalizedMock } = vi.hoisted(() => ({
+const { reconcileMock, attributeMock, adoptMock, fvMock, rrMock, actionableMock, unfinalizedMock, unprovenMock, noticesMock } = vi.hoisted(() => ({
   reconcileMock: vi.fn(), attributeMock: vi.fn(), adoptMock: vi.fn(), fvMock: vi.fn(), rrMock: vi.fn(), actionableMock: vi.fn(), unfinalizedMock: vi.fn(),
+  unprovenMock: vi.fn(), noticesMock: vi.fn(),
 }))
+// ROUND 13 (H10, slice W7): the « Avis client non envoyés » list the financial-verification route reads.
+vi.mock('@/lib/claim-closure-lists', () => ({ listMissingClaimClosureNotices: noticesMock }))
 vi.mock('@/lib/claims', () => ({
   reconcileClaimEvidence:            reconcileMock,
   attributeClaimRefund:              attributeMock,
@@ -27,6 +30,8 @@ vi.mock('@/lib/claims', () => ({
   listActionableRefundClaims:        actionableMock,
   // round 11: pending Refund rows whose claim moved on, listed on the same ungated payload
   listUnfinalizedClaimRefundRows:    unfinalizedMock,
+  // ROUND 13 (H10, slice W7): the E-13 section list, read after the money lists in its own catch.
+  listRefundedClaimsWithUnprovenRow: unprovenMock,
   // ROUND 13 (W6, H07): the closure-notice attempt reads the lease at send time.
   isClaimsEnabled:                   closureFlag,
 }))
@@ -59,6 +64,8 @@ beforeEach(() => {
   attributeMock.mockResolvedValue({ ok: true, outcome: 'refunded', refundId: 'rf1' })
   auditMock.mockResolvedValue(undefined)
   fvMock.mockResolvedValue([]); rrMock.mockResolvedValue([]); actionableMock.mockResolvedValue([]); unfinalizedMock.mockResolvedValue([])
+  // ROUND 13 (H10, slice W7): both section lists read and empty by default.
+  unprovenMock.mockResolvedValue({ items: [], total: 0, scanTruncated: false }); noticesMock.mockResolvedValue({ items: [], total: 0, scanTruncated: false })
   delete process.env.CLAIMS_ENABLED
   delete process.env.CLAIMS_WINDOW_UNTIL
 })
@@ -262,6 +269,30 @@ describe('GET /financial-verification — ungated AT THE ROUTE, not just in the 
     expect(body.counts.unfinalizedRefundRows).toBe(1)
     expect(body.counts.total).toBe(0)
   })
+
+  // ROUND 13 (J-C30 / I-09, slice W7): the two H10 sections travel on the same ungated payload, outside `total`.
+  it('ROUND 13: refundedUnproven and closureNotices are carried with their counts, kept out of total; a list rejection answers 200 with a null count', async () => {
+    process.env.CLAIMS_ENABLED = 'false'
+    fvMock.mockResolvedValue([{ id: 'a' }])
+    unprovenMock.mockResolvedValue({ items: [{ id: 'u1' }], total: 1, scanTruncated: false })
+    noticesMock.mockResolvedValue({ items: [{ claimId: 'n1' }, { claimId: 'n2' }], total: 2, scanTruncated: true })
+    let res = await QUEUE()
+    let body = await res.json()
+    expect(body.counts).toEqual({ financialVerification: 1, reconcileRequired: 0, otherUnsettled: 0, unfinalizedRefundRows: 0, total: 1, refundedUnproven: 1, closureNoticesMissing: 2 })
+    expect(body.closureNotices).toEqual({ items: [{ claimId: 'n1' }, { claimId: 'n2' }], total: 2, scanTruncated: true })
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    noticesMock.mockRejectedValue(new Error('db down'))
+    unprovenMock.mockRejectedValue(new Error('db down'))
+    res = await QUEUE()
+    expect(res.status).toBe(200)
+    body = await res.json()
+    expect(body.financialVerification).toEqual([{ id: 'a' }])
+    expect(body.closureNotices).toEqual({ error: 'unreadable' })
+    expect(body.refundedUnproven).toEqual({ error: 'unreadable' })
+    expect(body.counts).toMatchObject({ total: 1, refundedUnproven: null, closureNoticesMissing: null })
+    expect(Object.keys(body)).not.toContain('revertedAfterRefund')
+    vi.mocked(console.error).mockRestore()
+  })
 })
 
 // ── SOURCE-LEVEL PINS ────────────────────────────────────────────────────────────
@@ -316,7 +347,8 @@ describe('the money queue component keeps its audit fixes', () => {
 
   it('the money line comes from the tested pure function, not an inline ternary', () => {
     // ROUND-12: the same module also carries the card's visibility predicate.
-    expect(src).toContain("import { cardMoneyLine, financialVerificationCardVisible } from '@/lib/claim-money-line'")
+    // ROUND 13 (H10, slice W7): the same module carries the red heading's predicate.
+    expect(src).toContain("import { cardMoneyLine, financialVerificationCardVisible, financialVerificationHeadingVisible } from '@/lib/claim-money-line'")
     // ROUND 13 (F15): the card passes the whole row — claim id, bound row reason, reconcile verdict — to the pure helper.
     expect(src).toContain('{cardMoneyLine(r).text}')
     expect(src).not.toContain('état connu mais NON SOLDÉ')
@@ -335,6 +367,8 @@ describe('the money queue component keeps its audit fixes', () => {
   })
 
   it('the rail-locked outcome reaches an operator-visible message', () => {
+    // ROUND 13 (F14, slice W7): the said map lives in lib/claim-console-copy.ts (reconcileSaid), which the card calls.
+    const src = readFileSync('components/claims/AdminFinancialVerification.tsx', 'utf8') + readFileSync('lib/claim-console-copy.ts', 'utf8')
     expect(src).toContain('no_refund_proven_rail_locked')
     // ROUND-10: the lock has two causes now; the toast states what holds for both.
     // ROUND 13 (F14): « le moteur refusera tout remboursement » was false for the H1/H2/H5 holds (the engine accepts).

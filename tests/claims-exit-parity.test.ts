@@ -529,3 +529,124 @@ describe('prisma-where — SQL NULL under NOT, undefined is no filter', () => {
     expect(matchWhere({ OR: BINDER_OR as unknown as Record<string, unknown>[] }, { refundError: null })).toBe(true)
   })
 })
+
+// ══ ROUND 13 (slice W7) — J-M29 console half: one fixture per D1 row, rendered from the list payload ═══════════════════════
+// The shipped list builders run over the fixtures; the payload is assembled as GET /api/admin/claims/financial-verification
+// assembles it; the card is rendered from it (react-dom/server). A control is rendered iff its flag, and each flag equals the
+// D1 exit set computed on the same facts (the bound row as the list read it).
+describe('J-M29 (W7) — the rendered card equals the server verdicts, one fixture per D1 row', () => {
+  const OLD = `${RECONCILE_REQUIRED}: tentative de remboursement démarrée à 2026-09-10T00:00:00.000Z — identité pas encore liée.`
+  const FRESH = () => `${RECONCILE_REQUIRED}: tentative de remboursement démarrée à ${new Date(Date.now() - 60_000).toISOString()} — identité pas encore liée.`
+  const C = (id: string, o: Record<string, unknown>) => ({ ...shape(id, { status: 'approved', ...o }), decidedAt: null })
+  const R = (id: string, o: Record<string, unknown> = {}) => ({ id, orderId: 'o1', status: 'succeeded', amountCents: 500, stripeRefundId: `re_${id}`, createdAt: new Date(Date.now() - 3_600_000), reason: null, ...o })
+  const D1 = () => [
+    C('d1_null', {}),
+    C('d2_v13', { refundError: `no_refund_proven:v13: … payable au plus tôt le ${new Date(Date.now() + 3_600_000).toISOString()} (UTC).` }),
+    C('d3_legacy', { refundError: 'no_refund_proven: x' }),
+    C('d4_rail', { refundError: 'no_refund_proven_rail_locked: x' }),
+    C('d5_hold', { refundAttempted: true, refundError: 'refund_safety_hold: x' }),
+    C('d6_failed', { refundAttempted: true, refundId: 'rf6', refundError: 'stripe_failed: x' }),
+    C('d7_mismatch_other', { status: 'refunding', refundAttempted: true, refundId: 'rf7', refundError: 'resume_mismatch: x' }),
+    C('d8_mismatch_own', { status: 'refunding', refundAttempted: true, refundId: 'rf8', refundError: 'resume_mismatch: y' }),
+    C('d9_grace', { status: 'refunding', refundAttempted: true, refundError: FRESH() }),
+    C('d9_aged', { status: 'refunding', refundAttempted: true, refundError: OLD }),
+    C('d10_fv', { status: FINANCIAL_VERIFICATION, refundError: `${FINANCIAL_VERIFICATION}:refund_moved_unattributed: x` }),
+    C('d11_failed', { status: 'refunded', refundAttempted: true, refundId: 'rf11f' }),
+    C('d11_pending', { status: 'refunded', refundAttempted: true, refundId: 'rf11p' }),
+    C('d11_succeeded', { status: 'refunded', refundAttempted: true, refundId: 'rf11s' }),
+    C('d12_reverted', { status: 'refunded', refundAttempted: true, refundId: 'rf12', refundError: 'stripe_reverted_after_refund: x' }),
+    C('d13_terminal', { status: 'refused_final', arbitrationDecision: 'refused_final', restaurantResponse: 'refused' }),
+    C('neg_hold_bound', { refundAttempted: true, refundId: 'rf_h', refundError: 'refund_safety_hold: x' }),
+  ]
+  const ROWS = () => [
+    R('rf6', { status: 'failed' }), R('rf7', { reason: 'claim:someone_else' }), R('rf8', { reason: 'claim:d8_mismatch_own' }),
+    R('rf10', {}), R('rf11f', { status: 'failed' }), R('rf11p', { status: 'pending' }), R('rf11s'), R('rf12'), R('rf_h'),
+  ]
+  const arrange = () => {
+    const claims = D1()
+    const rows = ROWS()
+    db.claim.findMany.mockImplementation(async (args?: { where?: Record<string, unknown> }) => claims.filter((c) => matchWhere(args?.where ?? {}, c)).map((c) => ({ ...c })))
+    db.refund.findMany.mockImplementation(async (args?: { where?: Record<string, unknown> }) => rows.filter((r) => matchWhere(args?.where ?? {}, r)).map((r) => ({ ...r })))
+    db.order.findMany.mockResolvedValue([{ id: 'o1', stripePaymentIntentId: 'pi_1' }])
+    return { claims, rows }
+  }
+  const payloadOf = async () => {
+    const [financialVerification, reconcileRequired, actionable, unfinalizedRefundRows] = await Promise.all([
+      listFinancialVerificationClaims(), listReconcileRequiredClaims(), listActionableRefundClaims(), listUnfinalizedClaimRefundRows(),
+    ])
+    const marked = new Set([...financialVerification, ...reconcileRequired].map((c) => c.id))
+    const otherUnsettled = actionable.filter((c) => !marked.has(c.id))
+    return { financialVerification, reconcileRequired, otherUnsettled, unfinalizedRefundRows, counts: { financialVerification: 0, reconcileRequired: 0, otherUnsettled: 0, total: 0 } }
+  }
+  const renderCard = (payload: unknown) => {
+    ;(globalThis as { React?: unknown }).React = React
+    const h = React.createElement as unknown as (type: unknown, props?: unknown, ...children: unknown[]) => React.ReactElement
+    const html = renderToStaticMarkup(h(NextIntlClientProvider, { locale: 'fr', messages: {}, timeZone: 'UTC' },
+      h(ToastProvider, null, h(AdminFinancialVerification, { initialData: payload }))))
+    return Array.from(html.matchAll(/<button([^>]*)>([\s\S]*?)<\/button>/g)).map((m) => ({ label: m[2].replace(/<[^>]+>/g, '').trim(), disabled: /\sdisabled=""/.test(m[1]) }))
+  }
+
+  it('listUnfinalizedClaimRefundRows carries { rowId, claimId, claimStatus, refundError, orderId, rowReason, reconcilable }', async () => {
+    arrange()
+    const [u] = await listUnfinalizedClaimRefundRows()
+    expect(u).toMatchObject({ rowId: 'rf11p', claimId: 'd11_pending', claimStatus: 'refunded', refundError: null, orderId: 'o1', rowReason: null, reconcilable: true })
+    expect(u.refundRowId).toBe(u.rowId)
+  })
+
+  it('every listed flag equals the D1 exit set on the same facts; each D1 row is placed as the registry says', async () => {
+    const { rows } = arrange()
+    const p = await payloadOf()
+    const now = new Date()
+    const listed = [...p.otherUnsettled, ...p.reconcileRequired, ...p.financialVerification] as Array<Record<string, unknown> & { id: string }>
+    for (const l of listed) {
+      const row = rows.find((r) => r.id === l.refundId) ?? null
+      const exits = acceptedExits({ claim: { ...(l as unknown as ClaimFacts), status: String(l.status ?? FINANCIAL_VERIFICATION) }, boundRow: l.refundId ? (row ? { id: row.id, orderId: row.orderId, status: row.status, stripeRefundId: row.stripeRefundId, reason: row.reason } : null) : null, now })
+      expect(l.reconcilable, `${l.id} reconcilable`).toBe(exits.includes('reconcile'))
+      if ('resolvable' in l) expect(l.resolvable, `${l.id} resolvable`).toBe(exits.includes('stuck_close'))
+      expect(l.approvable, `${l.id} approvable`).toBe(exits.includes('approve') && arbitrationRefusal({ ...(l as unknown as ClaimFacts), status: String(l.status ?? FINANCIAL_VERIFICATION) }, 'approve', now) === null)
+    }
+    const at = (id: string) => (p.reconcileRequired.some((c) => c.id === id) ? 'reconcileRequired' : p.financialVerification.some((c) => c.id === id) ? 'financialVerification' : p.otherUnsettled.some((c) => c.id === id) ? 'otherUnsettled' : p.unfinalizedRefundRows.some((u) => u.claimId === id) ? 'unfinalized' : 'nowhere')
+    expect(Object.fromEntries(D1().map((c) => [c.id, at(c.id)]))).toEqual({
+      d1_null: 'otherUnsettled', d2_v13: 'otherUnsettled', d3_legacy: 'otherUnsettled', d4_rail: 'otherUnsettled', d5_hold: 'otherUnsettled', d6_failed: 'otherUnsettled',
+      d7_mismatch_other: 'otherUnsettled', d8_mismatch_own: 'otherUnsettled', d9_grace: 'otherUnsettled', d9_aged: 'reconcileRequired', d10_fv: 'financialVerification',
+      d11_failed: 'otherUnsettled', d11_pending: 'unfinalized', d11_succeeded: 'nowhere', d12_reverted: 'otherUnsettled', d13_terminal: 'nowhere', neg_hold_bound: 'otherUnsettled',
+    })
+  })
+
+  it('the rendered controls equal the flags: « Réconcilier » = reconcilable rows + unfinalized rows; « Clôturer » = resolvable; « Attribuer » enabled = pre-check null; never « Approuver »', async () => {
+    arrange()
+    const p = await payloadOf()
+    const buttons = renderCard(p)
+    const claimsListed = [...p.reconcileRequired, ...p.financialVerification, ...p.otherUnsettled] as Array<{ reconcilable?: boolean; resolvable?: boolean; candidateRefunds?: Array<{ refusal: string | null }> }>
+    const count = (label: string, disabled?: boolean) => buttons.filter((b) => b.label === label && (disabled === undefined || b.disabled === disabled)).length
+    expect(count('Réconcilier d’après la preuve')).toBe(claimsListed.filter((c) => c.reconcilable === true).length + p.unfinalizedRefundRows.filter((u) => u.reconcilable).length)
+    expect(count('Clôturer ce dossier…')).toBe(p.otherUnsettled.filter((c) => c.resolvable === true).length)
+    const candidates = claimsListed.flatMap((c) => c.candidateRefunds ?? [])
+    expect(count('Attribuer', false)).toBe(candidates.filter((x) => x.refusal === null).length)
+    expect(count('Attribuer', true)).toBe(candidates.filter((x) => x.refusal !== null).length)
+    expect(buttons.some((b) => b.label.includes('Approuver'))).toBe(false)
+    expect(buttons.filter((b) => b.label === 'Réconcilier d’après la preuve' && b.disabled)).toEqual([])
+  })
+
+  it('NEGATIVE CONTROL — approved + SAFETY_HOLD with refundId set → reconcilable false and no reconcile control; BREAK/RESTORE witness: `status !== refunded` as the flag breaks A-S31c', async () => {
+    const { rows } = arrange()
+    const p = await payloadOf()
+    const neg = p.otherUnsettled.find((c) => c.id === 'neg_hold_bound')!
+    expect(neg.reconcilable).toBe(false)
+    const now = new Date()
+    const mutant = (l: { status: string }) => l.status !== 'refunded'
+    const mismatches = p.otherUnsettled.filter((l) => {
+      const row = rows.find((r) => r.id === l.refundId) ?? null
+      const exits = acceptedExits({ claim: l as unknown as ClaimFacts, boundRow: l.refundId ? (row ? { id: row.id, orderId: row.orderId, status: row.status, stripeRefundId: row.stripeRefundId, reason: row.reason } : null) : null, now })
+      return mutant(l as { status: string }) !== exits.includes('reconcile')
+    }).map((l) => l.id)
+    expect(mismatches).toContain('d11_failed')
+  })
+})
+
+import * as React from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { NextIntlClientProvider } from 'next-intl'
+import { ToastProvider } from '@/components/design-system'
+import AdminFinancialVerification from '@/components/claims/AdminFinancialVerification'
+import { listUnfinalizedClaimRefundRows } from '@/lib/claims'

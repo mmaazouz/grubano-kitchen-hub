@@ -166,13 +166,17 @@ describe('J-M36 — R0b: a settled claim on a PENDING row (A-S31d, A-S10, A-S21)
     expectNoMoney()
   })
 
-  it('the console renders unconfirmed_within_window with its own date toast, never « toujours ABOUTI ou en attente »', () => {
+  it('the console renders unconfirmed_within_window with its own date toast, never « toujours ABOUTI ou en attente »', async () => {
+    // ROUND 13 (F14, slice W7): the console's toasts moved to the pure reconcileToast (lib/claim-console-copy), which the card calls.
+    const { reconcileToast } = await import('@/lib/claim-console-copy')
     const src = stripComments(read('components/claims/AdminFinancialVerification.tsx'))
-    const branch = src.slice(src.indexOf("const text = outcome === 'unconfirmed_within_window'"), src.indexOf("said[outcome ?? '']"))
-    expect(branch).toContain('Conclusion possible à partir du')
-    expect(branch).not.toContain('toujours ce remboursement ABOUTI')
+    expect(src).toContain("const { text, needsAttention } = reconcileToast(result, (iso) => new Date(iso).toLocaleString('fr-FR'))")
+    const t = reconcileToast({ outcome: 'unconfirmed_within_window', until: '2026-09-13T08:00:00.000Z' }, (iso) => iso)
+    expect(t.text).toContain('Conclusion possible à partir du 2026-09-13T08:00:00.000Z')
+    expect(t.text).not.toContain('toujours ce remboursement ABOUTI')
+    expect(t.needsAttention).toBe(true)
     expect(R0_TOASTS.refund_still_standing).toContain('toujours ce remboursement ABOUTI ou en attente')
-    expect(src).toContain('reverted_after_refund:  R0_TOASTS.reverted_after_refund,')
+    expect(reconcileToast({ outcome: 'reverted_after_refund' }).text).toBe(R0_TOASTS.reverted_after_refund)
   })
 
   it('no tagged refund at 22 h (window + margin passed) → refunded_row_unproven { detail }, nothing written', async () => {

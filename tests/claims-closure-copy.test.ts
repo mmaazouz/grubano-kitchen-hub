@@ -157,8 +157,9 @@ describe('J-C13 — provenance and money-truth guards on the new templates and s
       }
     }
     walkKeys(M.fr, '')
-    // the customer status refused_final, the refusedFinal e-mail (decision refused_final), and the operator's own toast
-    expect(fr.sort()).toEqual(['claimEmails.refusedFinal.body', 'claimEmails.refusedFinal.title', 'claims.admin.refusedFinalDone', 'claims.status.refused_final'])
+    // the customer status refused_final and the refusedFinal e-mail (decision refused_final). ROUND 13 (F17, slice W7): the
+    // operator's toast claims.admin.refusedFinalDone now reads « Réclamation refusée définitivement. » — no longer a hit.
+    expect(fr.sort()).toEqual(['claimEmails.refusedFinal.body', 'claimEmails.refusedFinal.title', 'claims.status.refused_final'])
     const grid: ClaimFacts[] = []
     for (const status of ['refused_final', 'refunded', 'approved', 'arbitration']) for (const arbitrationDecision of ['refused_final', 'approved', null]) for (const restaurantResponse of ['refused', 'accepted', null]) {
       for (const refundError of [null, 'engine_failed: x', `${MARKERS.REVERTED_AFTER_REFUND} x`]) grid.push({ status, arbitrationDecision, restaurantResponse, refundError })

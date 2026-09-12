@@ -12,16 +12,15 @@ le dernier précheck.
 
 ## Étape 0 — Condition d'ordre W6 → W7 (BLOQUANTE)
 
-**AUCUN bail CLAIMS avant W7 (H10)** — sur aucun environnement. Le build W6 écrit l'enregistrement de clôture,
-tente les avis client et expose `POST /api/admin/claims/[id]/closure-notice`, mais aucun contrôle de la console
-n'appelle encore cette route : la section « Avis client non envoyés », le bouton « Envoyer l’avis au client »,
-`counts.closureNoticesMissing` et le test J-C30 arrivent avec le slice console W7 (H10). Le toast opérateur
-`stripeNotConfirmed` (H11, texte gelé) dit « Réessayez « Envoyer l’avis au client » plus tard » : il ne peut pas
-s'afficher tant que les réclamations sont fermées (l'expéditeur répond `claims_disabled`, étape 4, avant
-`stripe_not_confirmed`, étape 7), mais il nommerait un contrôle absent dès qu'un bail s'ouvre.
+**AUCUN bail CLAIMS avant W7 (H10)** — sur aucun environnement. Dans l'arbre W7, la console appelle
+`POST /api/admin/claims/[id]/closure-notice` : la section « Avis client non envoyés », le bouton « Envoyer l’avis
+au client », `counts.closureNoticesMissing` et le test J-C30 existent. Le toast opérateur `stripeNotConfirmed`
+(H11, texte gelé) dit « Réessayez « Envoyer l’avis au client » plus tard » : il ne nomme un contrôle existant que
+si le build **déployé** sur l'environnement contient W7. La condition porte donc sur le build déployé, pas sur
+l'arbre de travail.
 
-- Avant d'ouvrir un bail CLAIMS : vérifier que le build déployé contient W7 (H10 et J-C30 verts) et le consigner
-  dans l'inbox avec le commit.
+- Avant d'ouvrir un bail CLAIMS : vérifier que le build déployé sur cet environnement contient W7 (H10, et J-C30
+  vert sur ce commit) et consigner le commit dans l'inbox.
 - Un build W6 sans W7 se déploie uniquement avec `CLAIMS_ENABLED` fermé.
 - Si W7 est retardé au-delà d'une fenêtre de bail prévue : ajouter une IMPLEMENTATION NOTE à H11 et retirer la
   phrase finale « Réessayez … plus tard » de `stripeNotConfirmed` (5 locales) tant que le contrôle n'existe pas.

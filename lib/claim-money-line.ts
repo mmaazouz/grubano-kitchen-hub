@@ -166,7 +166,14 @@ export function amountLineKind(r: {
  * ROUND-11 AUDIT FIX (P2): whether the financial-verification card renders at all. It must render when
  * there are claims to act on OR only pending refund rows whose claim moved on — reverting the second half
  * hid that list and stayed green. A pure predicate so the truth table is pinned.
+ * ROUND 13 (E0 / H10 / I-09, slice W7): widened to the two sections kept out of `total` — the refunded claims whose bound
+ * row is not established (E-13) and the closure notices not sent (E-16). Each input alone makes the card visible.
  */
-export function financialVerificationCardVisible(p: { claimRows: number; unfinalizedRows: number }): boolean {
+export function financialVerificationCardVisible(p: { claimRows: number; unfinalizedRows: number; closureNotices: number; refundedUnproven: number }): boolean {
+  return p.claimRows > 0 || p.unfinalizedRows > 0 || p.closureNotices > 0 || p.refundedUnproven > 0
+}
+
+/** H10: the red « Vérification financière requise (n) » heading renders only for claim rows or unfinalized rows. */
+export function financialVerificationHeadingVisible(p: { claimRows: number; unfinalizedRows: number }): boolean {
   return p.claimRows > 0 || p.unfinalizedRows > 0
 }

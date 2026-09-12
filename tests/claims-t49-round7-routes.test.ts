@@ -110,6 +110,9 @@ const FILES = [
   // ROUND 13 (J-C14, slice W6): the customer e-mail toast copy and the closure-notice route texts.
   'lib/claim-email-toast.ts',
   'app/api/admin/claims/[id]/closure-notice/route.ts',
+  // ROUND 13 (slice W7): the card's French copy (F14, AMF-1, H10, D4) and the missing-notice list.
+  'lib/claim-console-copy.ts',
+  'lib/claim-closure-lists.ts',
   'messages/fr.json',
   'messages/en.json',
   // ROUND-8: the other three locales carry the same admin and customer money copy.
@@ -172,11 +175,13 @@ describe('no shipped money string asserts a CUSTOMER outcome from one row (comme
 
 describe('round-6 source pins — reverting a fix turns this red', () => {
   it('the reconcile handler gives a lost compare-and-set (C1 changed_during_read) its own message, which states only what is established', () => {
-    const src = readFileSync('components/claims/AdminFinancialVerification.tsx', 'utf8')
+    // ROUND 13 (F14 / A-S29-3, slice W7): the said map moved to lib/claim-console-copy.ts (reconcileSaid), which the card calls;
+    // without a bind of this action the toast is A-S29-3's ADMIN text.
+    const src = readFileSync('components/claims/AdminFinancialVerification.tsx', 'utf8') + readFileSync('lib/claim-console-copy.ts', 'utf8')
     // ROUND 13 (C1): the round-6 outcome 'already_parked_or_moved' is replaced by changed_during_read; its
     // « a quitté les états modifiables (peut-être clôturée) » was false when only the refundError changed.
     expect(src).toContain('changed_during_read: result?.boundRowId')
-    expect(src).toContain('Rien n’a été écrit : la réclamation a changé d’état pendant la lecture des preuves. Relisez sa ligne dans la file.')
+    expect(src).toContain('La réclamation ou les lignes de remboursement de sa commande ont changé pendant la lecture : rien n’a été écrit. Relisez sa ligne, puis relancez si la réconciliation est encore proposée.')
     expect(src).not.toContain('a quitté les états modifiables')
     // W2 round-2 fix: the outcome no longer exists anywhere — neither a toast key nor a library writer.
     expect(src).not.toContain('already_parked_or_moved')
@@ -253,8 +258,9 @@ const F16_FORBIDDEN = [
 ]
 // IMPLEMENTATION NOTE (W3) on J-C14: lib/claim-email-toast.ts and app/api/admin/claims/[id]/closure-notice/route.ts
 // do not exist yet — the closure-notice slice (H) creates them and adds them here.
-const FILES_F16 = FILES.filter((f) => f !== 'components/claims/AdminFinancialVerification.tsx')
-const F16_PENDING_LATER_SLICES = ['components/claims/AdminFinancialVerification.tsx']
+// ROUND 13 (J-C14, slice W7): the console slice rewrote AdminFinancialVerification.tsx's F14 toasts — the exemption is gone.
+const FILES_F16 = FILES
+const F16_PENDING_LATER_SLICES: string[] = []
 
 describe('ROUND 13 (J-C14, W3) — lib/claims.ts joins the F16 scan once the round-12 ladder is deleted', () => {
   const hits = (src: string) => F16_FORBIDDEN.flatMap((re) => { const m = src.match(re); return m ? [String(re)] : [] })
@@ -272,6 +278,25 @@ describe('ROUND 13 (J-C14, W3) — lib/claims.ts joins the F16 scan once the rou
 
   it('every customer-visibility sentence in lib/claims.ts is the F16 (3) sentence', () => {
     expect(visibilityViolations(stripComments(readFileSync('lib/claims.ts', 'utf8')))).toEqual([])
+  })
+
+  // ROUND 13 (J-C14, slice W7): the two consoles and the card's copy module join the equality. The one other sentence allowed is
+  // H10's section A text, which names the status those claims really read (« Remboursement non confirmé par nos registres »,
+  // F05 line 9) — IMPLEMENTATION NOTE (W7) on F16 (3).
+  const H10_RUC = 'Quand les réclamations sont ouvertes, le client lit « Remboursement non confirmé par nos registres ».'
+  it('every customer-visibility sentence in both consoles and lib/claim-console-copy.ts is the F16 (3) sentence (or H10’s section A sentence)', () => {
+    // lib/claim-action-rules.ts is not in J-C14's file set: its R0 toast is G10's frozen wording (« … ; quand les réclamations
+    // sont ouvertes, le client lit … »), rendered verbatim by the card.
+    for (const f of ['components/claims/AdminFinancialVerification.tsx', 'components/claims/AdminClaimsArbitration.tsx', 'lib/claim-console-copy.ts']) {
+      const src = stripComments(readFileSync(f, 'utf8').replace(/\r\n/g, '\n'))
+      expect(visibilityViolations(src).filter((s) => !s.endsWith(H10_RUC)), f).toEqual([])
+    }
+    expect(stripComments(readFileSync('lib/claim-console-copy.ts', 'utf8'))).toContain(H10_RUC)
+  })
+
+  it('NEGATIVE CONTROL — a deviating sentence in the console copy is caught', () => {
+    const src = `${stripComments(readFileSync('lib/claim-console-copy.ts', 'utf8'))}\nconst z = 'Le client lit désormais « Remboursée ».'`
+    expect(visibilityViolations(src).filter((s) => !s.endsWith(H10_RUC))).toEqual(['Le client lit désormais « Remboursée ».'])
   })
 
   it('NEGATIVE CONTROL — a deviating visibility sentence is caught; the canonical one is found and accepted', () => {
