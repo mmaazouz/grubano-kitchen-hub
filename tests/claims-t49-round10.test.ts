@@ -810,8 +810,9 @@ describe('round-10 source pins', () => {
   it('the reconcile route’s gate is the shared rule', () => {
     const src = stripComments(read('lib/claims.ts'))
     const body = src.slice(src.indexOf('export async function reconcileClaimEvidence'), src.indexOf('export async function recoverStrandedClaimReconciliations'))
-    // ROUND 13 (B8, slice W2): the same shared rule, with the bound row it reads (withheld for a refunded claim until W3).
-    expect(body).toContain("const gate = reconcileRefusal({ ...claim, boundRow: claim.status === 'refunded' ? undefined : boundRow })")
+    // ROUND 13 (B8 slice W2; G1 (iii) slice W5): the same shared rule, with the bound row it reads — for EVERY claim, the
+    // settled one included (G2 (1) → R0).
+    expect(body).toContain('const gate = reconcileRefusal({ ...claim, boundRow })')
     expect(body).not.toContain('legacyStranded')
   })
 

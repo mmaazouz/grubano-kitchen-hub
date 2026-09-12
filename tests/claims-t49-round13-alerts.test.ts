@@ -15,6 +15,9 @@ const { db } = vi.hoisted(() => ({
     refund: { findUnique: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn() },
     order:  { findUnique: vi.fn() },
     franchiseRoyalty: { findFirst: vi.fn() },
+    // ROUND 13 (J-C42, slice W5): attribution binds in one transaction, and the closure record follows a refunded CAS.
+    emailDispatch: { create: vi.fn() },
+    $transaction: vi.fn(),
   },
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
@@ -36,7 +39,7 @@ const { stripeMock } = vi.hoisted(() => ({
 vi.mock('@/lib/stripe', () => ({ getStripe: () => stripeMock }))
 
 import { sendAdminMoneyReviewAlert, type MoneyReviewKind } from '@/lib/admin-alerts'
-import { triggerClaimRefund, arbitrateClaim, runClaimAutoApproval, alertClaimPaymentBlocked, reconcileClaimEvidence, enterFinancialVerification, CLAIM_BLOCKED_TITLE, CLAIM_ATTEMPT_SUPERSEDED_TITLE } from '@/lib/claims'
+import { triggerClaimRefund, arbitrateClaim, runClaimAutoApproval, alertClaimPaymentBlocked, reconcileClaimEvidence, enterFinancialVerification, CLAIM_BLOCKED_TITLE, CLAIM_ATTEMPT_SUPERSEDED_TITLE, attributeClaimRefund, adoptStripeRefundForClaim } from '@/lib/claims'
 import { MARKERS, HEAD_A, reconcileMarkerAge } from '@/lib/claim-action-rules'
 import { approvalToast } from '@/lib/claim-approval-toast'
 
@@ -416,6 +419,81 @@ describe('J-C40 — claim_financial_verification on entry, and on relabel only w
     w.beforeClaimWrite = () => { claimOf(w).refundError = 'financial_verification:stripe_unreadable: écrit entre-temps' }
     expect(await enterFinancialVerification({ claimId: 'cl1', reason: 'refund_moved_unattributed', detail: 'b', expect: { status: 'financial_verification', refundError: 'financial_verification:stripe_unreadable: a' } })).toEqual({ entered: false })
     expect(spy).not.toHaveBeenCalled()
+  })
+})
+
+// ══ ROUND 13 (J-C42, slice W5) — claim_refunded_row_unfinalized triggers (I-04, A-S10, A-S21) ═══════════════════════
+describe('J-C42 — claim_refunded_row_unfinalized: at_stripe on a pending row, attribution after an observed commit, never adoption', () => {
+  const OLD_MARKER = 'reconcile_required: tentative de remboursement démarrée à 2026-09-10T00:00:00.000Z (tentative 0) — identité pas encore liée.'
+  const FORBIDDEN = /ledger (appliqué|applied)|clawback (appliqué|applied)|reprise de royalty appliquée/i
+  const unfinalized = () => calls('claim_refunded_row_unfinalized')
+  const fv = () => payableWorld({ status: 'financial_verification', refundAttempted: true, refundError: 'financial_verification:refund_moved_unattributed: x', activeOrderKey: 'o1' })
+  const noForbiddenText = () => expect(JSON.stringify(spy.mock.calls)).not.toMatch(FORBIDDEN)
+  beforeEach(() => {
+    db.emailDispatch.create.mockReset()
+    db.emailDispatch.create.mockResolvedValue({})
+    db.$transaction.mockReset()
+    db.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => fn(db))
+  })
+
+  it('applyRowTruth at_stripe succeeded on a pending row (A-S10) → ONE alert', async () => {
+    w = payableWorld({ status: 'refunding', refundAttempted: true, refundError: OLD_MARKER })
+    w.refunds.push(refundRow('rf_n', { status: 'pending', stripeRefundId: 're_n', reason: 'claim:cl1' }))
+    w.stripeRefunds.push(stripeRefund('re_n', { status: 'succeeded', amount: 500 }))
+    wireWorld(w, db, stripeMock)
+    expect(await reconcileClaimEvidence({ claimId: 'cl1' })).toMatchObject({ ok: true, outcome: 'refunded', evidence: 'stripe_read' })
+    expect(unfinalized()).toHaveLength(1)
+    expect(unfinalized()[0]).toMatchObject({ dedupeKey: 'claim_row_unfinalized:rf_n' })
+    noForbiddenText()
+  })
+
+  it('attribution PROVEN on a pending row (A-S21) → ONE alert, after the observed commit', async () => {
+    w = fv()
+    w.refunds.push(refundRow('rf_p', { status: 'pending', stripeRefundId: 're_p' }))
+    w.stripeRefunds.push(stripeRefund('re_p', { status: 'succeeded', amount: 300 }))
+    wireWorld(w, db, stripeMock)
+    const order: string[] = []
+    db.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => { const out = await fn(db); order.push('commit'); return out })
+    spy.mockImplementation(async (a: Alert) => { order.push(`alert:${a.kind}`); return { status: 'sent' } })
+    expect(await attributeClaimRefund({ claimId: 'cl1', refundRowId: 'rf_p', adminId: 'op1' })).toMatchObject({ ok: true, outcome: 'refunded' })
+    expect(unfinalized()).toHaveLength(1)
+    expect(order.indexOf('alert:claim_refunded_row_unfinalized')).toBeGreaterThan(order.indexOf('commit'))
+    noForbiddenText()
+  })
+
+  it('NEGATIVE CONTROL — the same attribution whose transaction throws → 0 alerts', async () => {
+    w = fv()
+    w.refunds.push(refundRow('rf_p', { status: 'pending', stripeRefundId: 're_p' }))
+    w.stripeRefunds.push(stripeRefund('re_p', { status: 'succeeded', amount: 300 }))
+    wireWorld(w, db, stripeMock)
+    // W5 fixer (J-C42 break/restore): the callback RUNS, then the transaction aborts — its writes are rolled back — so an
+    // alert moved inside the callback would be sent by this fixture and turn it red.
+    let ran = false
+    db.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => {
+      const snapshot = structuredClone(w.claims)
+      await fn(db)
+      ran = true
+      w.claims.splice(0, w.claims.length, ...snapshot)
+      throw Object.assign(new Error('Transaction failed due to a write conflict or a deadlock'), { code: 'P2034' })
+    })
+    expect(await attributeClaimRefund({ claimId: 'cl1', refundRowId: 'rf_p', adminId: 'op1' })).toMatchObject({ ok: false, status: 409 })
+    expect(ran).toBe(true)
+    expect(unfinalized()).toEqual([])
+  })
+
+  it('adoption (D9: the mirror row is succeeded) → no alert', async () => {
+    w = fv()
+    w.pis.pi_1.latest_charge.amount_refunded = 300
+    w.stripeRefunds.push(stripeRefund('re_D12345678', { status: 'succeeded', amount: 300 }))
+    wireWorld(w, db, stripeMock)
+    db.refund.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => {
+      const row = { id: 'rf_mirror', createdAt: new Date(), ...data }
+      w.refunds.push(row)
+      return { ...row }
+    })
+    expect(await adoptStripeRefundForClaim({ claimId: 'cl1', stripeRefundId: 're_D12345678', adminId: 'op1' })).toMatchObject({ ok: true, outcome: 'refunded' })
+    expect(unfinalized()).toEqual([])
+    noForbiddenText()
   })
 })
 

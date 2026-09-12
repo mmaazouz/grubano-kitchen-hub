@@ -30,6 +30,9 @@ const { db, api, ledgerStore } = vi.hoisted(() => {
       payout:           { findUnique: vi.fn() },
       loyaltyTransaction: { findFirst: vi.fn() },
       reservation:      { findFirst: vi.fn(), findUnique: vi.fn() },
+      // ROUND 13 (D12 / G11, slice W5): the claim reconciler and the claim-only helper read the claims bound to the row —
+      // none in these fixtures (a DB read that could not run would answer 503 by design).
+      claim:            { findMany: vi.fn(async () => []), updateMany: vi.fn(async () => ({ count: 0 })) },
       $transaction:     vi.fn(),
     },
     api: {

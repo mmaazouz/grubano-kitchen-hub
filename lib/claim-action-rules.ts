@@ -905,6 +905,46 @@ export function routedSentence(routed: boolean | null): string {
   return ''
 }
 
+// ══ G11 — REVERTED_AFTER_REFUND: the claim-only marking of a settled claim whose refund failed or was canceled ══════════
+
+/** F16 (3): the ONE customer-visibility sentence (R-X0-4). */
+export const CUSTOMER_VISIBILITY_SENTENCE = 'Quand les réclamations sont ouvertes, le client lit « vérification manuelle » ; sinon il ne voit aucune réclamation.'
+
+/**
+ * G11 TEXT, one variant per bound-row status at the marking. `re` is the Stripe refund id (the recorded id for a failed
+ * row), `status` the Stripe status read (unused for a failed row). IMPLEMENTATION NOTE (W5) on G11, ER-C24 / F16 (6):
+ * the pending variant reads « si le moteur reprend cette ligne », never « la reprend » (round-10 PROMISES pin).
+ */
+export function reversalMarkerText(variant: 'succeeded' | 'failed' | 'pending', rowId: string, re: string, status: string, routed: boolean | null): string {
+  const r = routedSentence(routed)
+  const routedPart = r ? `${r} ` : ''
+  // IMPLEMENTATION NOTE (W5) on G11: « si le client a reçu un paiement par un autre moyen » replaces « si le client a été payé
+  // autrement » — same condition, but the round-7 FORBIDDEN pin (an unqualified customer outcome) matches the frozen wording.
+  const tail = `${routedPart}${CUSTOMER_VISIBILITY_SENTENCE} Aucune action ici ne déplace d’argent : si le client a reçu un paiement par un autre moyen (Dashboard Stripe), déclarez-le ; sinon clôturez sans paiement.`
+  if (variant === 'succeeded') {
+    return `${MARKERS.REVERTED_AFTER_REFUND} la réclamation a été soldée sur la ligne ${rowId}, mais Stripe rapporte aujourd’hui son remboursement ${re} « ${status} » : il ne verse rien au titre de cette ligne. Notre ligne reste marquée ABOUTIE (le webhook ne la modifie pas). Vérifiez dans le ledger et la reprise de royalty ce qui a pu être écrit pour cette ligne ; révision humaine. ${tail}`
+  }
+  if (variant === 'failed') {
+    return `${MARKERS.REVERTED_AFTER_REFUND} la réclamation a été soldée sur la ligne ${rowId}, mais notre ligne est désormais ÉCHOUÉE avec l’identifiant Stripe ${re} (statut enregistré d’après Stripe : échoué ou annulé) : ce remboursement ne verse rien au titre de cette ligne, et le moteur refuse tout nouveau remboursement sur cette commande tant que cette ligne reste échouée. Vérifiez dans le ledger et la reprise de royalty ce qui a pu être écrit pour cette ligne. ${tail}`
+  }
+  return `${MARKERS.REVERTED_AFTER_REFUND} la réclamation a été soldée sur la ligne ${rowId}, encore « en attente » dans notre base, mais Stripe rapporte aujourd’hui son remboursement ${re} « ${status} » : il ne verse rien au titre de cette ligne. Cette action ne modifie pas la ligne : si le moteur reprend cette ligne (il reprend la plus ancienne ligne en attente d’une commande avant tout nouveau remboursement), il la marquera en échec, ce qui verrouille la commande. Vérifiez dans le ledger et la reprise de royalty ce qui a pu être écrit pour cette ligne. ${tail}`
+}
+
+/** G10 toasts of the R0 outcomes (the console renders them verbatim). */
+export const R0_TOASTS = {
+  reverted_after_refund: `Preuve trouvée : le remboursement lié à cette réclamation soldée est ÉCHOUÉ ou annulé (d’après Stripe, ou d’après notre ligne marquée échouée avec son identifiant Stripe) — il ne verse rien au titre de cette ligne. La réclamation est marquée ; quand les réclamations sont ouvertes, le client lit « vérification manuelle » ; sinon il ne voit aucune réclamation. Le dossier est clôturable sur déclaration (« Clôturer ce dossier… »).`,
+  refund_still_standing: 'Stripe rapporte toujours ce remboursement ABOUTI ou en attente : rien n’a été modifié.',
+  refunded_row_unproven: 'La ligne liée n’a pas pu être établie chez Stripe (le détail dit pourquoi) : rien n’a été modifié.',
+} as const
+/** F14 refund_still_standing, by the Stripe status read (a pending refund is not « ABOUTI »). */
+export function refundStillStandingToast(stripeStatus: string | null | undefined): string {
+  if (stripeStatus === 'succeeded') return 'Stripe rapporte ce remboursement ABOUTI : rien n’a été modifié.'
+  if (stripeStatus === 'pending' || stripeStatus === 'requires_action') return 'Stripe rapporte ce remboursement EN ATTENTE : rien n’a été modifié. Relancez « Réconcilier d’après la preuve » lorsqu’il sera terminal.'
+  return R0_TOASTS.refund_still_standing
+}
+/** G10: a DB call of the marking helper threw. */
+export const R0_DB_FAILED = 'La base n’a pas pu être lue ou écrite : rien n’est établi. Réessayez.'
+
 const E1_SENTENCE = (s: string) => `le moteur refuse tout remboursement sur cette commande, dont le statut de paiement enregistré est « ${s} » (« Commande non payée — rien à rembourser. »).`
 const E1B_SENTENCE = (piStatus: string) => `le paiement Stripe de cette commande est au statut « ${piStatus} », et le moteur ne rembourse qu’un paiement « succeeded » (« Paiement non débité — rien à rembourser. »).`
 

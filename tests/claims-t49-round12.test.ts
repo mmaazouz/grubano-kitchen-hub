@@ -330,6 +330,36 @@ describe('CENSUS — every count clause changes a number', () => {
     expect(c.silenceExpired).toBe(1)  // restaurant_review past deadline — NOT the approved row with a past deadline
     expect(c.financialVerification).toBe(1)
   })
+
+  // ROUND 13 (J-C35 / I-06 / H16, slice W5): claims.legacy and claims.closure — each field an integer or null, never 0 on a
+  // failure; one missing read nulls only its own field. The full population fixture is tests/claims-t49-round13-census.test.ts.
+  it('J-C35 — claims.legacy / claims.closure: integer or null per field; a read this handle cannot make is null, not 0; audit off → null', async () => {
+    db.claim.count.mockResolvedValue(3)
+    db.claim.groupBy.mockImplementation(async (a: { having?: unknown }) => (a.having ? [{ refundId: 'rf', _count: { _all: 2 } }] : []))
+    // one terminal claim (closure kind 'refunded'): measuring its closure record needs an emailDispatch read this handle lacks
+    db.claim.findMany.mockImplementation(async (a?: { where?: { status?: unknown } }) =>
+      (a?.where?.status && typeof a.where.status === 'object' ? [{ id: 'cl_t', status: 'refunded', refundError: null, arbitrationDecision: null, restaurantResponse: null }] : []))
+    db.refund.findMany.mockResolvedValue([])
+    process.env.ADMIN_AUDIT_ENABLED = 'true'
+    const c = (await (await CENSUS(new Request('https://app.grubano.com/api/admin/claims/census') as never)).json()).claims
+    delete process.env.ADMIN_AUDIT_ENABLED
+    expect(c.legacy).toMatchObject({ legacyPayableProofs: 3, approvedUnpaid: 3, rowsBoundToMultipleClaims: 1, refundedRowUnproven: 0, ownRowResumeMismatch: { nonTerminal: 0, terminal: 0 } })
+    // this handle has no adminAuditLog and no emailDispatch: those fields are NOT MEASURED — null, never 0
+    expect(c.legacy.refundedAfterContradictionAttribution).toBeNull()
+    expect(c.closure).toEqual({ missing: null, terminalWithoutRecord: null })
+    for (const v of [...Object.values(c.legacy).flatMap((x) => (x && typeof x === 'object' ? Object.values(x) : [x])), ...Object.values(c.closure)]) {
+      expect(v === null || (typeof v === 'number' && Number.isInteger(v))).toBe(true)
+    }
+    const audOff = (await (await CENSUS(new Request('https://app.grubano.com/api/admin/claims/census') as never)).json()).claims
+    expect(audOff.legacy.refundedAfterContradictionAttribution).toBeNull()
+    // one rejection nulls only its own field
+    db.claim.groupBy.mockImplementation(async (a: { having?: unknown }) => { if (a.having) throw new Error('groupBy down'); return [] })
+    const one = (await (await CENSUS(new Request('https://app.grubano.com/api/admin/claims/census') as never)).json()).claims
+    expect(one.legacy.rowsBoundToMultipleClaims).toBeNull()
+    expect(one.legacy.legacyPayableProofs).toBe(3)
+    expect(JSON.stringify(one)).not.toMatch(/c[a-z0-9]{24}|dedupeKey/)
+    expect(read('app/api/admin/claims/census/route.ts')).toMatch(/NOT COUNTED: E-09/)
+  })
 })
 
 // ══ P3 — promise pin, per locale ═══════════════════════════════════════════════════════════

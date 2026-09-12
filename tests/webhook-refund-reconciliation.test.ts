@@ -65,6 +65,7 @@ vi.mock('@/lib/admin-alerts', () => alerts)
 import { Prisma } from '@prisma/client'
 import { POST } from '@/app/api/webhooks/stripe/route'
 import { computeRefundExposure } from '@/lib/refund-exposure'
+import { customerClaimStatus } from '@/lib/claim-action-rules'
 
 const fire = (type: string, obj: Record<string, unknown>) => {
   stripe.constructEvent.mockReturnValue({ type, data: { object: obj } })
@@ -468,7 +469,8 @@ describe('J-M13 — a row with two or more binders settles nothing (B9, A-S43, E
       p.autoPagingToArray = async () => fx.refunds
       return p
     })
-    stripe.refunds.retrieve.mockResolvedValue(refundObj)
+    // ROUND 13 (G4 / G11, slice W5): the bound path re-reads a succeeded row at Stripe — the refund is on the order's payment.
+    stripe.refunds.retrieve.mockResolvedValue({ ...refundObj, payment_intent: 'pi_1' })
     stripe.paymentIntents.retrieve.mockResolvedValue(PI_OK())
     db.claim.findMany.mockImplementation(async ({ where }: { where: Where }) => claims.filter((c) => matchWhere(where, c)).map((c) => ({ ...c })))
     // W4 fixer (P3): findFirst answers from the same world, so J-M13's break/restore (the reconciler reverted to findFirst)
@@ -546,5 +548,123 @@ describe('J-M13 — a row with two or more binders settles nothing (B9, A-S43, E
     expect(claims[0]).toMatchObject({ status: 'refunded', refundError: null, activeOrderKey: null })
     const { listConsumerClaims } = await import('@/lib/claims')
     expect((await listConsumerClaims('u1')).map((c) => [c.id, c.status])).toEqual([['C1', 'refunded']])
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────────────
+// ROUND 13 (J-C43, slice W5) — I-05, E-06, E-07, E-08, A-S31-1, A-S31b, A-S31f-1/2/3: the failed / canceled branches call
+// the claim-only helper AFTER their unchanged money writes, send the existing alert first with claimIds, and answer 503
+// only when a DB call of the helper threw. lib/refund's real markRefundRowFailed runs against the mocked Prisma.
+describe('J-C43 — webhook failed / canceled branches: alert order, claimIds, helper 503, money writes unchanged', () => {
+  type Claim = { id: string; orderId: string; consumerId: string; refundId: string; status: string; refundError: string | null; refundAttempted?: boolean }
+  type Where = Record<string, unknown>
+  let row: Record<string, unknown>
+  let claims: Claim[]
+
+  async function arrangeC43(rowStatus: string, claimStatus = 'refunded') {
+    const { matchWhere } = await import('./support/prisma-where')
+    row = { id: 'rfR', orderId: 'o1', restaurantId: 'r1', idempotencyKey: 'refund:o1:0', amountCents: 300, stripeRefundId: 're_R', status: rowStatus, reason: 'claim:C1', createdAt: new Date() }
+    claims = [{ id: 'C1', orderId: 'o1', consumerId: 'u1', refundId: 'rfR', status: claimStatus, refundError: null, refundAttempted: true }]
+    db.refund.findUnique.mockImplementation(async () => ({ ...row }))
+    db.refund.update.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => { Object.assign(row, data); return { ...row } })
+    db.order.findUnique.mockResolvedValue({ id: 'o1', restaurantId: 'r1', stripePaymentIntentId: 'pi_1' })
+    db.claim.findMany.mockImplementation(async ({ where }: { where: Where }) => claims.filter((c) => matchWhere(where, c)).map((c) => ({ ...c })))
+    db.claim.updateMany.mockImplementation(async ({ where, data }: { where: Where; data: Record<string, unknown> }) => {
+      const hits = claims.filter((c) => c.id === where.id && matchWhere(where, c))
+      for (const h of hits) Object.assign(h, data)
+      return { count: hits.length }
+    })
+  }
+  const failedEvent = (id = 're_R') => fire('refund.failed', { id, object: 'refund', status: 'failed', amount: 300, payment_intent: 'pi_1', charge: 'ch_1', metadata: { grubano_refund_row: 'rfR' }, failure_reason: 'expired_or_canceled_card' })
+  /** The helper's fresh row read (G11) is the only refund.findUnique selecting { status, stripeRefundId, orderId }. */
+  const helperReads = () => db.refund.findUnique.mock.calls.map((c, i) => ({ select: (c[0] as { select?: Record<string, unknown> }).select, order: db.refund.findUnique.mock.invocationCallOrder[i] }))
+    .filter((c) => c.select && c.select.stripeRefundId === true && c.select.orderId === true && Object.keys(c.select).length === 3)
+  const reconcilerRowReads = () => db.refund.findUnique.mock.calls.filter((c) => (c[0] as { select?: Record<string, unknown> }).select?.reason === true).length
+  const firstAlert = () => (alerts.sendAdminMoneyReviewAlert.mock.calls[0] as unknown as [{ kind: string; dedupeKey: string; facts: Record<string, unknown> }])[0]
+
+  it('(a) a pending row: markRefundRowFailed (row write) → reconcileClaimForRefund (binder read) → the helper; the settled claim is marked; 200', async () => {
+    await arrangeC43('pending')
+    const res = await failedEvent()
+    expect(res.status).toBe(200)
+    const rowWrite = db.refund.update.mock.invocationCallOrder[0]
+    const binderRead = db.claim.findMany.mock.invocationCallOrder[0]
+    const helper = helperReads()
+    expect(helper).toHaveLength(1)
+    expect(rowWrite).toBeLessThan(binderRead)
+    expect(binderRead).toBeLessThan(helper[0].order)
+    expect(String(claims[0].refundError)).toMatch(/^stripe_reverted_after_refund: /)
+    expect(db.claim.updateMany).toHaveBeenCalledWith({ where: { id: 'C1', status: 'refunded', refundError: null }, data: { refundError: claims[0].refundError } })
+    expect(customerClaimStatusOf(claims[0])).toBe('financial_verification')
+    expect(stripe.refunds.create).not.toHaveBeenCalled()
+  })
+
+  it('(a) the helper’s write throws → 503 {received:false}, after the unchanged row write', async () => {
+    await arrangeC43('pending')
+    db.claim.updateMany.mockRejectedValue(new Error('db down'))
+    const res = await failedEvent()
+    expect(res.status).toBe(503)
+    expect(await res.json()).toEqual({ received: false })
+    expect(row.status).toBe('failed')
+  })
+
+  it('(b) the redelivery on the now-failed row → the helper ONLY (no row write, no reconcileClaimForRefund); nothing more written', async () => {
+    await arrangeC43('failed')
+    const res = await failedEvent()
+    expect(res.status).toBe(200)
+    expect(db.refund.update).not.toHaveBeenCalled()
+    expect(reconcilerRowReads()).toBe(0)
+    expect(helperReads()).toHaveLength(1)
+    const again = await failedEvent()
+    expect(again.status).toBe(200)
+    expect(db.claim.updateMany.mock.calls.length).toBe(1)
+  })
+
+  it('(c) a succeeded row: the refund:<re> alert BEFORE the helper, facts.claimIds; the claim marked; no Refund write', async () => {
+    await arrangeC43('succeeded')
+    const res = await failedEvent()
+    expect(res.status).toBe(200)
+    const alertAt = alerts.sendAdminMoneyReviewAlert.mock.invocationCallOrder[0]
+    expect(firstAlert()).toMatchObject({ kind: 'refund_failed', dedupeKey: 'refund:re_R', facts: expect.objectContaining({ claimIds: 'C1' }) })
+    expect(alertAt).toBeLessThan(helperReads()[0].order)
+    expect(String(claims[0].refundError)).toContain('Notre ligne reste marquée ABOUTIE')
+    expect(db.refund.update).not.toHaveBeenCalled()
+    expect(customerClaimStatusOf(claims[0])).toBe('financial_verification')
+  })
+
+  it('(c) the claims read throws → claimIds « unread » and the helper answers failed → 503', async () => {
+    await arrangeC43('succeeded')
+    db.claim.findMany.mockRejectedValue(new Error('db down'))
+    const res = await failedEvent()
+    expect(res.status).toBe(503)
+    expect(firstAlert().facts.claimIds).toBe('unread')
+  })
+
+  it('(d) status succeeded: no new 5xx — a failing claim write is swallowed by the unchanged reconciler call, the helper never runs', async () => {
+    await arrangeC43('pending', 'refunding')
+    db.claim.updateMany.mockRejectedValue(new Error('db down'))
+    stripe.paymentIntents.retrieve.mockResolvedValue({ id: 'pi_1', status: 'succeeded', transfer_data: null, latest_charge: CHARGE({ metadata: {}, amount_refunded: 300 }) })
+    fx.refunds = []
+    const res = await fire('refund.updated', { id: 're_R', object: 'refund', status: 'succeeded', amount: 300, payment_intent: 'pi_1', charge: 'ch_1', metadata: { grubano_refund_row: 'rfR' } })
+    expect(res.status).not.toBe(503)
+    expect(helperReads()).toHaveLength(0)
+  })
+
+  // W5 fixer (J-C43): a lost CAS on each branch — (a) pending row, (b) redelivery on a failed row, (c) succeeded row.
+  for (const rowStatus of ['pending', 'failed', 'succeeded']) {
+    it(`NEGATIVE CONTROL — a lost CAS on the ${rowStatus}-row branch (the claim changed meanwhile) → written false, failed false → 200, never 503; the claim untouched`, async () => {
+      await arrangeC43(rowStatus)
+      db.claim.updateMany.mockResolvedValue({ count: 0 })
+      const res = await failedEvent()
+      expect(res.status).toBe(200)
+      expect(helperReads()).toHaveLength(1)
+      expect(claims[0]).toMatchObject({ status: 'refunded', refundError: null })
+      expect(stripe.refunds.create).not.toHaveBeenCalled()
+    })
+  }
+
+  // After (a) and (c) marking, the customer status is the REAL rule's (lib/claim-action-rules customerClaimStatus).
+  const customerClaimStatusOf = (c: Claim) => customerClaimStatus(c as never, null, true)
+  it('NEGATIVE CONTROL — the real customerClaimStatus reads an unmarked settled claim « refunded », so the FV assertions above are not vacuous', () => {
+    expect(customerClaimStatusOf({ id: 'C1', orderId: 'o1', consumerId: 'u1', refundId: 'rfR', status: 'refunded', refundError: null })).toBe('refunded')
   })
 })

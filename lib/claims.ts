@@ -47,6 +47,8 @@ import {
   type BinderFact, type SucceededNotCounted, type RowContradiction, type ReapprovalVerdict, type ReapprovalFacts,
   routedSentence,
 } from '@/lib/claim-action-rules'
+// ROUND 13 (slice W5): G10 / G11 / AMF-1 — the claim-only reversal marking, its texts and the R0 failure answer.
+import { reversalMarkerText, R0_DB_FAILED } from '@/lib/claim-action-rules'
 
 export type { ClaimSelection, StripeCashTruth } from '@/lib/claim-scope'
 // The canonical reason taxonomy and its authority scopes live in lib/claim-reasons and are
@@ -1485,6 +1487,13 @@ export async function reconcileClaimForRefund(input: {
   status: 'succeeded' | 'failed'
   /** Stripe's own id, for the audit trail only. */
   stripeRefundId?: string | null
+  /**
+   * ROUND 13 (H05 site 2, ER-R29 — IMPLEMENTATION NOTE (W5)): applyRowTruth records the closure itself (site 3) and says
+   * so here. Every other caller — the Stripe webhook and the recovery sweep — omits it, and a refunded CAS won here
+   * writes the record with noNoticeSource. Inverted from ER-R29's « callers pass noNoticeSource » because binding rule 9
+   * keeps the webhook's reconcileClaimForRefund call byte-identical.
+   */
+  closureRecordedByCaller?: true
 }): Promise<ClaimReconcileResult> {
   // ROUND 13 (B9 (a), slice W4): EVERY claim bound to the row — a legacy row can bind several, and one Refund
   // settles at most one claim (B6). findFirst picked one of them arbitrarily.
@@ -1531,6 +1540,8 @@ export async function reconcileClaimForRefund(input: {
       data:  { status: 'refunded', refundError: null, activeOrderKey: null, decidedAt: new Date() },
     })
     if (done.count !== 1) return { reconciled: false, reason: 'already_final' }
+    // H05 site 2: the webhook / recovery settlement is this build's closure; no customer notice is sent from here.
+    if (!input.closureRecordedByCaller) await recordClaimClosure(claim.id, { noNoticeSource: true })
     return { reconciled: true, claimId: claim.id, from: claim.status, to: 'refunded' }
   }
 
@@ -1560,6 +1571,10 @@ export async function reconcileClaimForRefund(input: {
  *  Enriched with the bound Refund row so the admin sees Stripe's own status and the
  *  ACTUAL refunded amount — the Claim row itself only stores what was REQUESTED. */
 export async function listActionableRefundClaims() {
+  // ROUND 13 (I-09 / D7 / E-06 / E-07, slice W5): a settled claim whose bound row is FAILED with a Stripe id (A-S31c,
+  // reconcile R0a) and a settled claim carrying the REVERTED_AFTER_REFUND marker (E-06, declaration) are listed here.
+  const failedWithIdRowIds = (await prisma.refund.findMany({ where: { status: 'failed', stripeRefundId: { not: null } }, select: { id: true } }) ?? [])
+    .map((r) => r.id)
   const claims = await prisma.claim.findMany({
     where: {
       OR: [
@@ -1568,6 +1583,8 @@ export async function listActionableRefundClaims() {
         { status: 'approved', refundAttempted: true },
         // Approved by a human but never driven (REFUNDS was off at decision time) — money owed.
         { status: 'approved', refundAttempted: false },
+        { status: 'refunded', refundError: { startsWith: MARKERS.REVERTED_AFTER_REFUND } },
+        ...(failedWithIdRowIds.length ? [{ status: 'refunded', refundError: null, refundId: { in: failedWithIdRowIds } }] : []),
       ],
     },
     orderBy: { createdAt: 'asc' },
@@ -1577,16 +1594,20 @@ export async function listActionableRefundClaims() {
   const rows = rowIds.length
     ? await prisma.refund.findMany({
         where:  { id: { in: rowIds } },
-        select: { id: true, status: true, amountCents: true, stripeRefundId: true, createdAt: true, reason: true },
+        select: { id: true, orderId: true, status: true, amountCents: true, stripeRefundId: true, createdAt: true, reason: true },
       })
     : []
   const byId = new Map(rows.map((r) => [r.id, r]))
+  // ROUND 13 (E-07 / E-13 disjoint, slice W5): a settled claim is listed here only when its failed-with-id row is on its OWN
+  // order (A-S31c, reconcile R0a); a row of another order is E-13 (refundedRowUnproven), never this list.
+  const listed = claims.filter((c) => !(c.status === 'refunded' && c.refundError === null && (c.refundId ? byId.get(c.refundId)?.orderId : undefined) !== c.orderId))
   // SAFETY FIRST (batch 2): visibility and ordering only — no extra financial authority.
-  claims.sort((a, b) => (isSafetyReason(b.reason) ? 1 : 0) - (isSafetyReason(a.reason) ? 1 : 0))
-  return claims.map((c) => {
+  listed.sort((a, b) => (isSafetyReason(b.reason) ? 1 : 0) - (isSafetyReason(a.reason) ? 1 : 0))
+  return listed.map((c) => {
     const row = c.refundId ? byId.get(c.refundId) ?? null : null
     // ROUND 13 (B8, D0 parity): the flags read the bound row exactly as the routes do (read here: never undefined).
-    const boundRow: BoundRowFacts | null = row ? { id: row.id, status: row.status, stripeRefundId: row.stripeRefundId, reason: row.reason } : null
+    // W5: with its orderId, which G1 (iii) compares with the claim's.
+    const boundRow: BoundRowFacts | null = row ? { id: row.id, orderId: row.orderId, status: row.status, stripeRefundId: row.stripeRefundId, reason: row.reason } : null
     // ROUND 13 (D0): the reconcile gate verdict, read once — the flag and the money state below both come from it.
     const gateRefusal = reconcileRefusal({ ...c, boundRow })
     // Truthful classification — never "pending means success".
@@ -1656,29 +1677,41 @@ export async function listActionableRefundClaims() {
  * row closed by declaration). The engine's row-side work — ledger, royalty clawback, the failed-row
  * lock — is not done by reconciliation, and RESUME-FIRST takes the order's oldest pending row before
  * any new refund on that order. Those rows are listed here, ungated, so they cannot go unseen.
- * Read-only: nothing is written and no action is offered.
+ * Read-only: this function writes nothing. Each row carries the reconcile gate verdict of its claim (D7): the console
+ * renders « Réconcilier d’après la preuve » on a row iff `reconcilable` is true, and the refusal text otherwise.
  */
 export async function listUnfinalizedClaimRefundRows() {
+  // ROUND 13 (D7 CONSOLE, slice W5): the row carries the claim's gate facts, so `reconcilable` is the server verdict
+  // (reconcileRefusal with this bound row) — A-S31d (a settled claim on a pending row) gets « Réconcilier d’après la preuve ».
   const claims = await prisma.claim.findMany({
     where:  { refundId: { not: null }, status: { not: 'refunding' } },
-    select: { id: true, status: true, refundId: true },
+    select: { id: true, orderId: true, status: true, refundId: true, refundAttempted: true, refundError: true },
   })
   if (!claims.length) return []
   const byRow = new Map(claims.map((c) => [c.refundId as string, c]))
   const rows = await prisma.refund.findMany({
     where:   { id: { in: Array.from(byRow.keys()) }, status: 'pending' },
-    select:  { id: true, orderId: true, amountCents: true, stripeRefundId: true, createdAt: true },
+    select:  { id: true, orderId: true, amountCents: true, stripeRefundId: true, createdAt: true, reason: true },
     orderBy: { createdAt: 'asc' },
   })
-  return rows.map((r) => ({
-    refundRowId:    r.id,
-    orderId:        r.orderId,
-    amountCents:    r.amountCents,
-    stripeRefundId: r.stripeRefundId,
-    rowCreatedAt:   r.createdAt,
-    claimId:        byRow.get(r.id)?.id ?? null,
-    claimStatus:    byRow.get(r.id)?.status ?? null,
-  }))
+  return rows.map((r) => {
+    const c = byRow.get(r.id) ?? null
+    const gate = c ? reconcileRefusal({ ...c, boundRow: { id: r.id, orderId: r.orderId, status: 'pending', stripeRefundId: r.stripeRefundId, reason: r.reason ?? null } }) : null
+    return {
+      refundRowId:      r.id,
+      orderId:          r.orderId,
+      amountCents:      r.amountCents,
+      stripeRefundId:   r.stripeRefundId,
+      rowCreatedAt:     r.createdAt,
+      rowReason:        r.reason ?? null,
+      claimId:          c?.id ?? null,
+      claimStatus:      c?.status ?? null,
+      refundError:      c?.refundError ?? null,
+      /** D0 / D7: the reconcile gate verdict for this claim and row — the control is rendered iff true. */
+      reconcilable:     !!c && gate === null,
+      reconcileRefusal: c && gate ? gate.error : null,
+    }
+  })
 }
 
 /**
@@ -1718,7 +1751,10 @@ export async function resolveStuckClaim(input: {
     select: { id: true, orderId: true, status: true, refundId: true, refundError: true },
   })
   if (!claim) return { ok: false, status: 404, error: 'Réclamation introuvable.' }
-  if (TERMINAL_STATUSES.includes(claim.status)) {
+  // ROUND 13 (D11 terminal exemption, E-06, slice W5 fixer): a settled claim whose bound refund Stripe reports failed or
+  // canceled (REVERTED_AFTER_REFUND) is closable by declaration; every other terminal claim stays refused here.
+  const settledThenReverted = claim.status === 'refunded' && typeof claim.refundError === 'string' && claim.refundError.startsWith(MARKERS.REVERTED_AFTER_REFUND)
+  if (TERMINAL_STATUSES.includes(claim.status) && !settledThenReverted) {
     return { ok: false, status: 409, error: 'Cette réclamation est déjà clôturée.' }
   }
   // ROUND 13 (B8, B12): the declaration predicate reads the bound row — a resume_mismatch on the claim's OWN
@@ -1741,6 +1777,11 @@ export async function resolveStuckClaim(input: {
     where: { id: claim.id, status: claim.status, refundError: claim.refundError },
     data:  {
       status,
+      // D11 (E-06): a « paid another way » declaration on a reverted settled claim prefixes DECLARED_AFTER_REVERT and keeps
+      // the reversal text (never money evidence); closed_no_payment keeps the recorded refundError as it is.
+      ...(settledThenReverted && input.resolution === 'settled_out_of_band'
+        ? { refundError: `${MARKERS.DECLARED_AFTER_REVERT} déclaration admin : payé autrement après l’échec chez Stripe du remboursement lié. ${claim.refundError}` }
+        : {}),
       activeOrderKey:    null, // release the order: the customer is no longer locked out
       arbitratedBy:      input.adminId,
       // ROUND-10 AUDIT FIX (P3): the operator's free-text note was stored here, and arbitrationReason is
@@ -1751,7 +1792,11 @@ export async function resolveStuckClaim(input: {
       decidedAt:         new Date(),
     },
   })
-  if (done.count !== 1) return { ok: false, status: 409, error: 'Cette réclamation a déjà été traitée.' }
+  // D11: count 0 → nothing written, no record.
+  if (done.count !== 1) return { ok: false, status: 409, error: 'Cette réclamation a changé d’état entre-temps — rien n’a été écrit. Relisez sa ligne dans la file.' }
+  // H05 site 7: a declaration is a closure by this build (a claim settled, reverted then declared keeps its first record via
+  // P2002). Never throws, never changes the result.
+  await recordClaimClosure(claim.id)
   const updated = await prisma.claim.findUnique({ where: { id: claim.id } })
   return { ok: true, claim: updated }
 }
@@ -1770,7 +1815,13 @@ export async function resolveStuckClaim(input: {
  *   • NOT gated by CLAIMS_ENABLED — the money is real whatever the feature flag says;
  *   • INCAPABLE of moving money — it calls no engine and creates no Stripe object.
  */
-export type ClaimRecoverySummary = { scanned: number; reconciled: number; skipped: number; details: string[] }
+export type ClaimRecoverySummary = {
+  scanned: number; reconciled: number; skipped: number; details: string[]
+  /** AMF-1: the bounded read-only re-verification of settled claims, run after the stranded pass. */
+  settledReverify?: SettledReverifySummary
+}
+/** AMF-1 summary counts. Every checked claim lands in exactly one count, or only in `checked` for a lost CAS. */
+export type SettledReverifySummary = { checked: number; reverted: number; standing: number; unreadable: number; unproven: number; truncated: boolean }
 
 // ═══════════════════════════════════════════════════════════════════════════════════
 // T-49 — FINANCIAL VERIFICATION: FAIL-CLOSED FINANCIALLY, FAIL-VISIBLE OPERATIONALLY
@@ -2070,6 +2121,14 @@ export type ClaimEvidenceOutcome =
   // operator the claim was payable again. The two cases are now distinguishable at the boundary.
   | { ok: true; outcome: 'no_refund_proven_rail_locked' }
   | { ok: true; outcome: 'financial_verification'; reason: AmbiguityReason; detail: string }
+  // ROUND 13 (G10 / D7, slice W5): R0 on a settled claim (admission iii) — read-only toward Stripe.
+  /** G11 wrote the REVERTED_AFTER_REFUND marker on this claim (status unchanged, no Refund write). */
+  | { ok: true; outcome: 'reverted_after_refund'; refundId: string }
+  /** Stripe still reports the bound refund succeeded / pending / requires_action: nothing written (H06 / ER-C21: the
+   *  Stripe status and amount of the object read in this request). */
+  | { ok: true; outcome: 'refund_still_standing'; refundId: string; stripeStatus: string; amountCents: number }
+  /** The bound row could not be established at Stripe (dead, or a contradiction): nothing written. */
+  | { ok: true; outcome: 'refunded_row_unproven'; refundId: string; detail: string }
   | { ok: false; status: 404 | 409 | 500; error: string }
 
 const RECONCILABLE_STATUSES = ['refunding', 'approved', FINANCIAL_VERIFICATION]
@@ -2248,11 +2307,6 @@ async function succeededRowTruth(
   return { kind: 'contradiction', detail: `La ligne ${row.id} est marquée ABOUTIE sans identifiant Stripe enregistré, et aucun remboursement de ce paiement ne porte son étiquette. Aucune conclusion tirée.` }
 }
 
-/**
- * IMPLEMENTATION NOTE (W2) on G4: the round-12 mine / bound / attribution callers (applyRowTruth) keep reading
- * a SUCCEEDED row as terminal, with no Stripe read, until the reconcile slice wires 'reverted' into applyRowTruth.
- * Pending rows get exactly the G4 reading. None of them passes absenceIsEvidence.
- */
 /** G8 STRIPE_REVERTED_TEXT on a non-terminal claim: our row is marked succeeded, its Stripe refund failed or was canceled. */
 function stripeRevertedText(rowId: string, refundId: string, status: string, routed: boolean | null): string {
   const r = routedSentence(routed)
@@ -2318,16 +2372,6 @@ async function reconcileNoRowByDerivation(
     return { ok: true, outcome: 'no_refund_proven_awaiting_finalization', rowIds: locked?.refusal?.step === 'E3' ? locked.refusal.oldestRowIds : [] }
   }
   return { ok: true, outcome: 'no_refund_proven_rail_locked' }
-}
-
-async function boundPathRowTruth(
-  row: { id: string; status: string; stripeRefundId: string | null; createdAt: Date },
-  orderId: string,
-  cache: StripeRefundsCache,
-  knownPi?: string | null,
-): Promise<RowTruth> {
-  if (row.status === 'succeeded') return { kind: 'row_terminal', status: 'succeeded' }
-  return refundRowTruth(row, orderId, cache, knownPi)
 }
 
 const STANDING_STRIPE_STATUSES = ['succeeded', 'pending', 'requires_action']
@@ -2530,7 +2574,7 @@ async function applyRowTruth(
       data:  { refundId: row.id, ...(claim.status === FINANCIAL_VERIFICATION ? { status: 'refunding' } : {}) },
     })
     if (bound.count !== 1) return changed()
-    const applied = await reconcileClaimForRefund({ refundRowId: row.id, status: truth.status, stripeRefundId: row.stripeRefundId })
+    const applied = await reconcileClaimForRefund({ refundRowId: row.id, status: truth.status, stripeRefundId: row.stripeRefundId, closureRecordedByCaller: true })
     // A legacy row bound to several claims: the reconciler may have applied it to ANOTHER claim — never reported as this one's.
     if (!applied.reconciled || applied.claimId !== claim.id) {
       const detail = applied.reconciled
@@ -2671,7 +2715,9 @@ async function reconcileBoundClaim(
     if (!parked.entered && !parked.relabelled) return { ok: true, outcome: 'changed_during_read' }
     return { ok: true, outcome: 'financial_verification', reason: 'bound_row_missing', detail }
   }
-  return applyRowTruth(claim, row, await boundPathRowTruth(row, claim.orderId, cache), 'bound')
+  // ROUND 13 (G4 / G11, slice W5): the temporary boundPathRowTruth is deleted — a SUCCEEDED bound row is re-read at
+  // Stripe like every other row (a reversal marks the claim STRIPE_REVERTED, a settlement carries 'stripe_read').
+  return applyRowTruth(claim, row, await refundRowTruth(row, claim.orderId, cache), 'bound')
 }
 
 /**
@@ -3405,11 +3451,14 @@ export async function reconcileClaimEvidence(input: { claimId: string }): Promis
       return { ok: false, status: 409, error: IDENTITY_READ_FAILED }
     }
   }
-  // IMPLEMENTATION NOTE (W3) on G1/G2: (ii) the own-row mismatch is admitted with the bound row; (iii) a settled bound
-  // claim stays refused (boundRow withheld for a refunded claim) until the R0 dispatch (G10) lands with its slice, so
-  // G2 (1) is not reachable from this function yet.
-  const gate = reconcileRefusal({ ...claim, boundRow: claim.status === 'refunded' ? undefined : boundRow })
+  // ROUND 13 (G1 (ii)/(iii), slice W5): the bound row read above is passed for EVERY claim — the list flags pass the same.
+  const gate = reconcileRefusal({ ...claim, boundRow })
   if (gate) return { ok: false, status: gate.status, error: gate.error }
+  // G2 (1): a settled claim → R0 (G10). The gate admitted it only with a bound row on its own order.
+  if (claim.status === 'refunded') {
+    if (!boundRow) return { ok: false, status: 409, error: IDENTITY_READ_FAILED }
+    return reconcileSettledClaim(claim, boundRow, {})
+  }
   // C9 (c): every park below compares against the claim as read here.
   const claimPreImage: ClaimPreImage = {
     status:      claim.status,
@@ -3448,8 +3497,8 @@ export async function reconcileClaimEvidence(input: { claimId: string }): Promis
     const row = mine[0]
     // G2 (3) / G4 (IMPLEMENTATION NOTE (W3)): the claim's own stamped row is re-read at Stripe — a reversal marks the
     // claim (STRIPE_REVERTED), a 404 or another payment parks, a settlement carries evidence 'stripe_read' and the
-    // Stripe amount. Without absenceIsEvidence (only the loader passes it). The bound path and attribution keep the
-    // temporary boundPathRowTruth until their slice.
+    // Stripe amount. Without absenceIsEvidence (only the loader passes it). The mine, bound and attribution paths all read
+    // refundRowTruth (G4, W4/W5).
     return applyRowTruth(claim, row, await refundRowTruth(row, claim.orderId, stripeCache), 'stamped')
   }
 
@@ -3471,8 +3520,259 @@ export async function reconcileClaimEvidence(input: { claimId: string }): Promis
   return reconcileNoRowByDerivation(claim, stripeCache)
 }
 
-export async function recoverStrandedClaimReconciliations(limit = 200): Promise<ClaimRecoverySummary> {
+// ══ ROUND 13 (slice W5) — G10 / G11 / G13 / AMF-1: reversal of a settled refund, detected without a money write ══════
+
+/** G11 evidence: what establishes that the refund bound to a row pays nothing. */
+export type RevertEvidence =
+  | { kind: 'stripe_object'; refund: Stripe.Refund }
+  | { kind: 'failed_row' }
+  | { kind: 'pending_row_stripe'; refund: Stripe.Refund }
+
+/** G11: a Stripe refund object shows a routed payment only when it carries a transfer reversal; otherwise unknown. */
+const routedFromRefund = (s: Stripe.Refund | null | undefined): boolean | null => (s && s.transfer_reversal ? true : null)
+const refundPaymentIntentOf = (s: Stripe.Refund): string | null => (typeof s.payment_intent === 'string' ? s.payment_intent : s.payment_intent?.id ?? null)
+
+/**
+ * G11 markClaimsForRevertedRefundRow — CLAIM-ONLY marking. It re-reads the row (and, where the evidence needs it, the
+ * order's PaymentIntent id from our base), checks the evidence on that fresh read, then compare-and-sets each target
+ * claim on its exact pre-image. It never calls the engine, never calls Stripe, never writes a Refund row and sends no
+ * e-mail (R-D3). failed is true only when a DB read or write threw; no target, a lost CAS or a skip → failed false.
+ * IMPLEMENTATION NOTE (W5) on G11: stripe_object also accepts a succeeded row WITHOUT a recorded id whose refund carries
+ * the engine tag (grubano_refund_row) on the order's PaymentIntent — the same identity rule as pending_row_stripe —
+ * because R0c reads such a row by its tag (G4) and a proven reversal must not answer « changed during read ».
+ */
+export async function markClaimsForRevertedRefundRow(input: {
+  rowId: string
+  evidence: RevertEvidence
+  onlyClaimId?: string
+  routed?: boolean | null
+}): Promise<{ claimIds: string[]; written: boolean; failed: boolean }> {
+  const claimIds: string[] = []
+  let written = false
+  const nothing = () => ({ claimIds, written, failed: false })
+  const routed = input.routed ?? null
+  try {
+    const row = await prisma.refund.findUnique({ where: { id: input.rowId }, select: { status: true, stripeRefundId: true, orderId: true } })
+    if (!row) return nothing()
+    const ev = input.evidence
+    const orderPi = async () => (await prisma.order.findUnique({ where: { id: row.orderId }, select: { stripePaymentIntentId: true } }))?.stripePaymentIntentId ?? null
+    const failedAtStripe = (s: Stripe.Refund) => s.status === 'failed' || s.status === 'canceled'
+    const identifies = async (s: Stripe.Refund, piAnchorAlways: boolean): Promise<boolean> => {
+      const byId = !!row.stripeRefundId && row.stripeRefundId === s.id
+      const byTag = !row.stripeRefundId && s.metadata?.grubano_refund_row === input.rowId
+      if (!byId && !byTag) return false
+      if (!piAnchorAlways && byId) return true
+      const pi = await orderPi()
+      return !!pi && refundPaymentIntentOf(s) === pi
+    }
+    let text: string
+    if (ev.kind === 'stripe_object') {
+      if (row.status !== 'succeeded' || !failedAtStripe(ev.refund) || !(await identifies(ev.refund, false))) return nothing()
+      text = reversalMarkerText('succeeded', input.rowId, ev.refund.id, String(ev.refund.status), routed)
+    } else if (ev.kind === 'failed_row') {
+      if (row.status !== 'failed' || !row.stripeRefundId) return nothing()
+      text = reversalMarkerText('failed', input.rowId, row.stripeRefundId, 'failed', routed)
+    } else {
+      if (row.status !== 'pending' || !failedAtStripe(ev.refund) || !(await identifies(ev.refund, true))) return nothing()
+      text = reversalMarkerText('pending', input.rowId, ev.refund.id, String(ev.refund.status), routed)
+    }
+    const targets = await prisma.claim.findMany({
+      where:  { refundId: input.rowId, ...(input.onlyClaimId ? { id: input.onlyClaimId } : {}) },
+      select: { id: true, status: true, refundError: true },
+    })
+    for (const t of targets) claimIds.push(t.id)
+    for (const t of targets) {
+      // A disowned binding (resume_mismatch) and every recorded error are skipped: only a null pre-image is marked.
+      if (isResumeMismatch(t.refundError) || t.refundError !== null) continue
+      if (t.status === 'refunded') {
+        const done = await prisma.claim.updateMany({ where: { id: t.id, status: 'refunded', refundError: null }, data: { refundError: text } })
+        if (done.count === 1) written = true
+      } else if ((t.status === 'approved' || t.status === 'refunding') && ev.kind === 'stripe_object') {
+        const done = await prisma.claim.updateMany({
+          where: { id: t.id, status: t.status, refundError: null },
+          data:  { status: 'approved', refundError: stripeRevertedText(input.rowId, ev.refund.id, String(ev.refund.status), routed) },
+        })
+        if (done.count === 1) written = true
+      }
+    }
+    return { claimIds, written, failed: false }
+  } catch (e) {
+    console.error('[claims] markClaimsForRevertedRefundRow — a DB call failed: nothing is established for row', input.rowId, e instanceof Error ? e.message : e)
+    return { claimIds, written, failed: true }
+  }
+}
+
+/** The bound row R0 reads (G1 (iii) admitted it: pending, succeeded, or failed with a Stripe id, on the claim's order). */
+type SettledBoundRow = { id: string; orderId: string; status: string; stripeRefundId: string | null; createdAt: Date }
+
+/**
+ * G10 R0 (D7): a refunded claim with no recorded error, on a bound row of its own order. Read-only toward Stripe
+ * (refundRowTruth, never absenceIsEvidence); the only write is the G11 claim marker. Every marking sends I-01
+ * 'reverted_after_refund' after the won CAS. The audit claim.reconcile_evidence {moneyMoved:false} is written by the
+ * caller (the reconcile route, or reverifySettledClaimRefunds). No customer e-mail (R-D3).
+ */
+async function reconcileSettledClaim(
+  claim: { id: string; orderId: string; refundAttempted?: boolean | null },
+  row: SettledBoundRow,
+  cache: StripeRefundsCache,
+): Promise<ClaimEvidenceOutcome> {
+  const mark = async (evidence: RevertEvidence, re: string | null, routed: boolean | null): Promise<ClaimEvidenceOutcome> => {
+    const m = await markClaimsForRevertedRefundRow({ rowId: row.id, evidence, onlyClaimId: claim.id, routed })
+    if (m.failed) return { ok: false, status: 409, error: R0_DB_FAILED }
+    if (!m.written) return { ok: true, outcome: 'changed_during_read' }
+    await alertClaimPaymentBlocked(claim.id, 'reverted_after_refund', {
+      orderId: claim.orderId, refundRowIds: [row.id], stripeRefundIds: [re], engineCalled: false, routed,
+      claimAfter: stateAfter('refunded', claim.refundAttempted ?? true, row.id, MARKERS.REVERTED_AFTER_REFUND),
+    })
+    return { ok: true, outcome: 'reverted_after_refund', refundId: row.id }
+  }
+  const unproven = (detail: string): ClaimEvidenceOutcome => ({ ok: true, outcome: 'refunded_row_unproven', refundId: row.id, detail })
+  const retry: ClaimEvidenceOutcome = { ok: true, outcome: 'stripe_unreadable_retry', refundId: row.id }
+
+  // R0a — our row is failed with its Stripe id: the local row is the evidence.
+  if (row.status === 'failed') return mark({ kind: 'failed_row' }, row.stripeRefundId, null)
+
+  // R0b — the row is pending: its refund is read by the recorded id, else by the engine tag in the PaymentIntent list.
+  if (row.status === 'pending') {
+    const t = await refundRowTruth(row, claim.orderId, cache)
+    if (t.kind === 'at_stripe') {
+      const s = t.refund
+      // The row is NOT touched: no markRefundRowFailed, no key rename.
+      if (s.status === 'failed' || s.status === 'canceled') return mark({ kind: 'pending_row_stripe', refund: s }, s.id, routedFromRefund(s))
+      if (s.status === 'succeeded' || s.status === 'pending' || s.status === 'requires_action') {
+        return { ok: true, outcome: 'refund_still_standing', refundId: row.id, stripeStatus: s.status, amountCents: s.amount }
+      }
+      return unproven(`Stripe rapporte le remboursement ${s.id} de la ligne ${row.id} au statut « ${String(s.status)} », non reconnu. Aucune conclusion tirée.`)
+    }
+    // Never refund_still_standing: nothing at Stripe carries this row yet (D7, verifier A P3).
+    if (t.kind === 'absent_within_window') return { ok: true, outcome: 'unconfirmed_within_window', refundId: row.id, until: t.until.toISOString() }
+    if (t.kind === 'absent_dead') {
+      return unproven(`Stripe ne connaît aucun remboursement pour la ligne ${row.id}, et le moteur ne la créera plus (fenêtre d’idempotence expirée le ${t.windowEnd.toISOString()}). Aucune conclusion tirée.`)
+    }
+    if (t.kind === 'contradiction') return unproven(t.detail)
+    return retry
+  }
+
+  // R0c — the row is succeeded: its refund is re-read at Stripe.
+  if (row.status === 'succeeded') {
+    const t = await refundRowTruth(row, claim.orderId, cache)
+    if (t.kind === 'row_terminal' && t.status === 'succeeded' && t.refund) {
+      return { ok: true, outcome: 'refund_still_standing', refundId: row.id, stripeStatus: 'succeeded', amountCents: t.refund.amount }
+    }
+    if (t.kind === 'reverted') return mark({ kind: 'stripe_object', refund: t.refund }, t.refund.id, routedFromRefund(t.refund))
+    if (t.kind === 'contradiction') return unproven(t.detail)
+    return retry
+  }
+  return unproven(`La ligne liée ${row.id} porte le statut « ${row.status} » : aucune conclusion tirée.`)
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000
+/** AMF-1: the audit actor of a machine run (lib/admin-audit CRON_ACTOR_ID, repeated so this module keeps its imports). */
+const SWEEP_ACTOR_ID = 'system:cron'
+
+/**
+ * AMF-1 reverifySettledClaimRefunds — the bounded, read-only re-verification of settled claims (closes E-09 to a
+ * 35-day residual). Selection: refunded, no recorded error, bound, settled (decidedAt, else createdAt) within
+ * lookbackDays, oldest first, at most `take` (truncated reported); a bound row of the claim's own order that is
+ * succeeded or pending. Per claim: exactly the D7 reads (R0b / R0c); only a failed / canceled refund is marked (G11),
+ * with I-01 and the audit claim.reconcile_evidence {moneyMoved:false}. Never an engine call, a Stripe write, a Refund
+ * write or a customer e-mail. IMPLEMENTATION NOTE (W5) on AMF-1: the summary has no key for a within-window pending row
+ * or a lost CAS — a within-window row is counted in `unproven` (not established at Stripe yet), a lost CAS only in
+ * `checked`; a DB failure of the marking helper is counted in `unreadable`. The DB order is decidedAt then createdAt
+ * ascending (MySQL sorts a null decidedAt first), the closest Prisma form of « settledAt, else createdAt ».
+ */
+export async function reverifySettledClaimRefunds(opts: { lookbackDays?: number; take?: number; actor?: { id: string; email?: string | null } } = {}): Promise<SettledReverifySummary> {
+  const lookbackDays = opts.lookbackDays ?? 35
+  const take = opts.take ?? 100
+  const out: SettledReverifySummary = { checked: 0, reverted: 0, standing: 0, unreadable: 0, unproven: 0, truncated: false }
+  const since = new Date(Date.now() - lookbackDays * DAY_MS)
+  // The selection, restated on what was read (a claim outside it is never re-verified).
+  const settledAt = (c: { decidedAt?: Date | null; createdAt?: Date | null }) => new Date((c.decidedAt ?? c.createdAt) as Date).getTime()
+  // IMPLEMENTATION NOTE (W5 fixer) on AMF-1: `take` and `truncated` apply to ELIGIBLE claims — the row conditions (own order,
+  // succeeded or pending) are part of the selection, so an ineligible settled claim never uses a slot. The window is read in
+  // pages of take + 1 (oldest first, id as the tie-break) until more than `take` eligible claims are found or the window is
+  // exhausted; a page that brings no new claim ends the read. At most MAX_PAGES pages: past that, truncated is reported.
+  const PAGE = take + 1
+  const MAX_PAGES = 50
+  type Candidate = { id: string; orderId: string; status: string; refundId: string | null; refundError: string | null; refundAttempted: boolean; decidedAt: Date | null; createdAt: Date }
+  type EligibleRow = { id: string; orderId: string; status: string; stripeRefundId: string | null; createdAt: Date }
+  const eligible: Array<{ c: Candidate; row: EligibleRow }> = []
+  const seen = new Set<string>()
+  let exhausted = false
+  for (let page = 0; page < MAX_PAGES && eligible.length <= take; page++) {
+    const found = (await prisma.claim.findMany({
+      where: {
+        status: 'refunded', refundError: null, refundId: { not: null },
+        OR: [{ decidedAt: { gte: since } }, { decidedAt: null, createdAt: { gte: since } }],
+      },
+      select:  { id: true, orderId: true, status: true, refundId: true, refundError: true, refundAttempted: true, decidedAt: true, createdAt: true },
+      orderBy: [{ decidedAt: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+      skip:    page * PAGE,
+      take:    PAGE,
+    })) ?? []
+    const fresh = found.filter((c) => !seen.has(c.id))
+    for (const c of fresh) seen.add(c.id)
+    const selected = fresh.filter((c) => c.status === 'refunded' && c.refundError === null && !!c.refundId && !!(c.decidedAt ?? c.createdAt) && settledAt(c) >= since.getTime())
+    if (selected.length) {
+      const rows = await prisma.refund.findMany({
+        where:  { id: { in: selected.map((c) => c.refundId as string) } },
+        select: { id: true, orderId: true, status: true, stripeRefundId: true, createdAt: true },
+      })
+      const byId = new Map(rows.map((r) => [r.id, r]))
+      for (const c of selected) {
+        const row = byId.get(c.refundId as string)
+        if (!row || row.orderId !== c.orderId || (row.status !== 'succeeded' && row.status !== 'pending')) continue
+        eligible.push({ c, row })
+      }
+    }
+    if (found.length < PAGE || fresh.length === 0) { exhausted = true; break }
+  }
+  out.truncated = eligible.length > take || !exhausted
+  const list = eligible.slice(0, take)
+  if (!list.length) return out
+  const caches = new Map<string, StripeRefundsCache>()
+  for (const { c, row } of list) {
+    out.checked++
+    if (!caches.has(c.orderId)) caches.set(c.orderId, {})
+    let r: ClaimEvidenceOutcome
+    try {
+      r = await reconcileSettledClaim(c, row, caches.get(c.orderId) as StripeRefundsCache)
+    } catch (e) {
+      console.error('[claims] settled re-verification read failed —', c.id, e instanceof Error ? e.message : e)
+      out.unreadable++
+      continue
+    }
+    if (!r.ok) { out.unreadable++; continue }
+    if (r.outcome === 'reverted_after_refund') {
+      out.reverted++
+      try {
+        await recordAdminAudit({
+          actorId:    opts.actor?.id ?? SWEEP_ACTOR_ID,
+          actorEmail: opts.actor?.email ?? null,
+          action:     'claim.reconcile_evidence',
+          targetType: 'claim',
+          targetId:   c.id,
+          metadata:   { outcome: r.outcome, moneyMoved: false, source: 'settled_reverify' },
+        })
+      } catch { /* audit is best-effort; the marking stands */ }
+    } else if (r.outcome === 'refund_still_standing') out.standing++
+    else if (r.outcome === 'stripe_unreadable_retry') out.unreadable++
+    else if (r.outcome === 'refunded_row_unproven' || r.outcome === 'unconfirmed_within_window') out.unproven++
+  }
+  return out
+}
+
+export async function recoverStrandedClaimReconciliations(limit = 200, opts: { actor?: { id: string; email?: string | null } } = {}): Promise<ClaimRecoverySummary> {
   const out: ClaimRecoverySummary = { scanned: 0, reconciled: 0, skipped: 0, details: [] }
+  await recoverStrandedPass(out, limit)
+  // AMF-1: the bounded read-only re-verification of settled claims runs AFTER the existing pass (G13 « no pass over
+  // refunded claims » is superseded). A failure of its selection read propagates: the caller answers 500, never « ok ».
+  out.settledReverify = await reverifySettledClaimRefunds({ actor: opts.actor })
+  return out
+}
+
+/** The stranded pass (G13): selection unchanged; a succeeded row is re-read at Stripe before anything settles on it. */
+async function recoverStrandedPass(out: ClaimRecoverySummary, limit: number): Promise<void> {
   const stranded = await prisma.claim.findMany({
     // RE-AUDIT FIX (batch 2). Without the refundError exclusion this sweep never RETIRED a row:
     // reconcileClaimForRefund moves a failed refund to status 'approved' WITH a refundError, which
@@ -3481,20 +3781,34 @@ export async function recoverStrandedClaimReconciliations(limit = 200): Promise<
     // occupying the take:200 window ahead of genuinely stranded claims. A row already carrying a
     // refundError has been reconciled; it now needs an ADMIN, not another sweep.
     where:  { status: { in: ['refunding', 'approved'] }, refundId: { not: null }, refundError: null },
-    select: { id: true, refundId: true, status: true },
+    select: { id: true, refundId: true, status: true, orderId: true },
     take:   limit,
   })
   out.scanned = stranded.length
-  if (!stranded.length) return out
+  if (!stranded.length) return
   const rows = await prisma.refund.findMany({
     where:  { id: { in: stranded.map((c) => c.refundId as string) } },
-    select: { id: true, status: true, stripeRefundId: true },
+    select: { id: true, orderId: true, status: true, stripeRefundId: true, createdAt: true },
   })
   const byId = new Map(rows.map((r) => [r.id, r]))
+  const caches = new Map<string, StripeRefundsCache>()
   for (const c of stranded) {
     const row = c.refundId ? byId.get(c.refundId) : null
     // Still pending, or no row at all: nothing terminal to apply. Never invent an outcome.
     if (!row || (row.status !== 'succeeded' && row.status !== 'failed')) { out.skipped++; continue }
+    if (row.status === 'succeeded') {
+      // G13: the recovery sweep never settles a claim on a reverted refund — the row's refund is re-read at Stripe first
+      // (read-only, never absenceIsEvidence).
+      const orderId = c.orderId ?? row.orderId
+      if (!caches.has(orderId)) caches.set(orderId, {})
+      const t = await refundRowTruth(row, orderId, caches.get(orderId) as StripeRefundsCache)
+      if (t.kind === 'reverted') {
+        const m = await markClaimsForRevertedRefundRow({ rowId: row.id, evidence: { kind: 'stripe_object', refund: t.refund }, routed: routedFromRefund(t.refund) })
+        if (m.written) { out.reconciled++; out.details.push(`${c.id}: reverted → approved(stripe_reverted)`) } else { out.skipped++; out.details.push(`${c.id}: reverted${m.failed ? ' (db_unreadable)' : ''}`) }
+        continue
+      }
+      if (!(t.kind === 'row_terminal' && t.status === 'succeeded')) { out.skipped++; out.details.push(`${c.id}: ${t.kind}`); continue }
+    }
     const res = await reconcileClaimForRefund({
       refundRowId:    row.id,
       status:         row.status === 'succeeded' ? 'succeeded' : 'failed',
@@ -3502,7 +3816,6 @@ export async function recoverStrandedClaimReconciliations(limit = 200): Promise<
     })
     if (res.reconciled) { out.reconciled++; out.details.push(`${c.id}: ${res.from} → ${res.to}`) } else out.skipped++
   }
-  return out
 }
 
 /** Claims the restaurant never answered and whose deadline has passed — admin-actionable. */

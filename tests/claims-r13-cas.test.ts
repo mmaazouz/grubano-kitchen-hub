@@ -258,7 +258,8 @@ describe('J-M26 — a refundError changed between the decision read and the writ
     w.beforeClaimWrite = (n) => { if (n === 1) claimOf(w).refundError = 'engine_failed: écrit entre-temps' }
     const r = await resolveStuckClaim({ claimId: 'cl1', adminId: 'admin1', resolution: 'closed_no_payment' })
     expect(w.writes[0].where).toEqual({ id: 'cl1', status: 'approved', refundError: 'stripe_failed: …' })
-    expect(r).toEqual({ ok: false, status: 409, error: 'Cette réclamation a déjà été traitée.' })
+    // D11 (slice W5 fixer): the count-0 text of the declaration exit.
+    expect(r).toEqual({ ok: false, status: 409, error: 'Cette réclamation a changé d’état entre-temps — rien n’a été écrit. Relisez sa ligne dans la file.' })
     expect(claimOf(w).status).toBe('approved')
     // NEGATIVE CONTROL: unchanged → closes.
     setWorld(payableWorld({ status: 'approved', refundAttempted: true, refundError: 'stripe_failed: …' }))

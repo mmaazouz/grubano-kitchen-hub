@@ -136,6 +136,9 @@ E-09 was left NOT fail-visible for two reasons: R-D8 excluded a scheduled Stripe
 - **(f)** Route: an admin session gives 200, a non-admin gives 403 (401 without a session), the cron token gives 200.
 - **Break/restore:** removing the call from `recoverStrandedClaimReconciliations` turns (a) red when driven through the route.
 
+IMPLEMENTATION NOTE (W5) on AMF-1: landed in lib/claims.ts reverifySettledClaimRefunds({ lookbackDays = 35, take = 100, actor? }). Claim has no settledAt column: the settled instant is Claim.decidedAt (written by every refunded CAS), else createdAt; the DB order is decidedAt then createdAt ascending (MySQL sorts a null decidedAt first), and the selection is restated on the rows read. The row selection keeps succeeded and pending rows of the claim's own order (a pending row without a recorded id is read by its tag, R0b). Summary counts: a within-window pending row counts in `unproven` (not established at Stripe yet), a lost CAS only in `checked`, a DB failure of the helper in `unreadable`. The audit actor is the admin for an operator run and 'system:cron' for the token. The route distinguishes « no session » (401) from « not an admin » (403) with getServerSession before resolveAdmin. J-M41's « no operator route re-verifies E-09 claims in bulk » is superseded by this amendment. Pinned by tests/claims-t49-round13-amf1.test.ts (J-M-AMF1 (a)-(f) and the route break/restore witness).
+IMPLEMENTATION NOTE (W5 fixer) on AMF-1: (1) the selection is applied BEFORE the bound — `take` and `truncated` count eligible claims (bound row of the claim's own order, succeeded or pending); the lookback window is read in pages of take + 1 (decidedAt, createdAt, id ascending) until more than `take` eligible claims are found or the window is exhausted (a page with no new claim ends the read; at most 50 pages, beyond which truncated is true), so an ineligible settled claim (A-S31c on a failed row, E-13 on a missing or other-order row) never uses a slot. Pinned by tests/claims-t49-round13-amf1.test.ts (e′) and (e″) with a paged findMany. (2) The residual sentence is stated in docs/ops/REFUND-FINANCIAL-CONTRACT.md §21. (3) The Mode-A precheck step (POST /api/admin/claims/reconcile-refunds as admin on staging before any window, record settledReverify.reverted = 0) is written in docs/ops/CLAIMS-R13-OPERATOR-PRECHECK.md. The console button stays W7.
+
 ### AMF-2 — closure-notice eligibility (supersedes the AdminAuditLog clause of binding rule 12)
 H05 is authoritative. The only eligibility record is `EmailDispatch {trigger 'claim_closure_record', dedupeKey 'claim:<id>'}`, written by this build after a closure compare-and-set.
 
@@ -1257,6 +1260,7 @@ CONSOLE:
 Toast reverted_after_refund per A-S31-1, with the conditional customer sentence « Quand les réclamations sont ouvertes, le client lit « vérification manuelle » ; sinon il ne voit aucune réclamation. » (R-X0-4).
 
 WHY NO MONEY: the helper writes Claim rows only, with updateMany on the exact pre-image. It never writes a Refund row, never calls the engine and never writes to Stripe. The claim stays status refunded, which is terminal for approve (110-112), the sweep and T1.
+IMPLEMENTATION NOTE (W5): SERVER as the G10 note. CONSOLE, minimal wiring of this slice: listActionableRefundClaims gains the two I-09 OR clauses (refunded + REVERTED_AFTER_REFUND; refunded + null error + refundId among the failed-with-id rows), keeps a settled claim only when its bound row is on its own order (E-07 / E-13 stay disjoint) and passes the row's orderId to the gate — A-S31c is listed reconcilable, moneyState stripe_failed; an E-06 claim is listed resolvable, not reconcilable. listUnfinalizedClaimRefundRows carries refundError, rowReason, reconcilable and reconcileRefusal (its existing keys refundRowId / claimId / claimStatus are kept: the console reads them). AdminFinancialVerification renders « Réconcilier d’après la preuve » on an unfinalized row iff reconcilable, the server's refusal text otherwise, and the caption above replaces « Aucune action n’est proposée ici. ». The other I-09 payload fields (refundedUnproven, closureNotices) stay with their slices. Pinned by tests/claims-t49-round13-r0.test.ts (listing, E-09 negative pin).
 
 ### D8 [CORE] ATTRIBUTE a Refund row to a financial_verification claim
 ROUTE: POST /api/admin/claims/[id]/attribute {refundRowId, dryRun?}, ungated.
@@ -1326,6 +1330,7 @@ ROUTE after ok: recordAdminAudit (boolean → noteRecorded, existing round-13 ro
 REACHED FROM: every E-01, E-02 and E-06 state.
 CONSOLE: « Clôturer ce dossier… » iff resolvable.
 WHY NO MONEY: no engine and no Stripe call. A declaration is never money evidence: claimClosureKind → settled_by_declaration or closed_by_declaration → customer closed_by_support (R-D4); N3 never counts a binder with a non-null refundError as explaining a refund; boundToWhere counts it as a binder, so a refundId it keeps cannot settle another claim.
+IMPLEMENTATION NOTE (W5 fixer): the terminal exemption lands with W5, the first slice that writes REVERTED_AFTER_REFUND (without it every E-06 marking offered « Clôturer ce dossier… », which the server refused). resolveStuckClaim admits refunded + startsWith(REVERTED_AFTER_REFUND) past its terminal guard; every other terminal claim keeps the existing « Cette réclamation est déjà clôturée. » refusal before the predicate (refunded + DECLARED_AFTER_REVERT and refunded + null error included: no re-declaration). The CAS is where {id, status: read, refundError: read}; settled_out_of_band on E-06 writes refunded + `${DECLARED_AFTER_REVERT} déclaration admin : payé autrement après l’échec chez Stripe du remboursement lié. ` + the original text; closed_no_payment writes refused_final and keeps refundError; count 0 → the D11 409 text for every declaration (the C9 (e) pin in tests/claims-r13-cas.test.ts now reads it); count 1 → recordClaimClosure (H05 site 7) for every declaration. The route is unchanged (recordAdminAudit → noteRecorded); the D10 (i) notice attempt belongs to the e-mail slice — until it lands, a declaration has its closure record and no notice, and is counted in census closure.missing (E-16). Pinned by tests/claims-r13-declaration-after-revert.test.ts: the listActionableRefundClaims flag equals the POST resolve-stuck verdict on the E-06 fixture, both resolutions 200, a count-0 fixture, P2002 silent, and the negative controls (DECLARED_AFTER_REVERT, null error) refused; break/restore run (removing `&& !settledThenReverted` turns both 200 fixtures red; the local name avoids the E0 REMOVED identifier revertedAfterRefund).
 
 ### D12 [CORE] WEBHOOK marking exit (non-operator)
 FILE: app/api/webhooks/stripe/route.ts handleRefundStatusEvent. The money writes and their order are byte-identical (WEBHOOK binding rule).
@@ -1342,6 +1347,7 @@ REACHED FROM:
 - A-S31f-1, A-S31f-2 and A-S31f-3: via redelivery.
 
 WHY NO MONEY: the helper writes Claim rows only (updateMany on the exact pre-image). It never writes a Refund row, never calls the engine and never writes to Stripe. Pins: helper rejects → 503; a second delivery → claim marked; pending_row_stripe evidence leaves the row untouched.
+IMPLEMENTATION NOTE (W5): landed in app/api/webhooks/stripe/route.ts handleRefundStatusEvent. The failed / canceled branch keeps its calls and their order (markRefundRowFailed → reconcileClaimForRefund; the refund_failed alert), then: row pending → helper(failed_row); row succeeded → the existing alert with facts.claimIds (a comma-joined id list, or 'unread' — MoneyReview facts are scalars) then helper(stripe_object, ROUTED true only when the event's refund carries a transfer_reversal, unknown otherwise); row failed → the helper only. helper failed → 503 {received:false}; every other response body is unchanged (no new key). The succeeded branch is untouched (its three 503 exits, J-M06). ER-R29 / H05 site 2: reconcileClaimForRefund records the closure itself with noNoticeSource unless its caller says it records it (applyRowTruth passes closureRecordedByCaller) — inverted from « the webhook and recovery callers pass noNoticeSource » so that the webhook's reconcileClaimForRefund call stays byte-identical (binding rule 9). Pinned by tests/claims-t49-round13-reversal.test.ts (J-M40), tests/webhook-refund-reconciliation.test.ts (J-C43), tests/claims-closure-webhook.test.ts (J-C28) and tests/claims-r13-engine-closed.test.ts (J-M06 order).
 
 ### D13 [CORE] Exits that do not exist in round 13
 - No « annuler l’approbation » power (R-D5).
@@ -1350,6 +1356,7 @@ WHY NO MONEY: the helper writes Claim rows only (updateMany on the exact pre-ima
 - recoverStrandedClaimReconciliations stays cron-only and is NOT an exit.
 - No declaration exit from financial_verification (E-03, E-04).
 - No operator-triggered re-verify for E-09. That is a founder choice, not designed here.
+IMPLEMENTATION NOTE (W5 fixer): superseded by AMF-1 — POST /api/admin/claims/reconcile-refunds accepts the internal token OR resolveAdmin and runs the stranded pass plus reverifySettledClaimRefunds; « recoverStrandedClaimReconciliations stays cron-only » and « No operator-triggered re-verify for E-09 » no longer hold. Neither pass creates money authority (claim-only marking, never an engine call, a Stripe write or a Refund write), and the re-verification is still not an exit of any E entry (its markings land in E-06, whose exit is D11).
 
 ### D14 [CORE] Refusal copy and the no-false-exit pin
 arbitrationRefusal('approve'), in this order:
@@ -1513,6 +1520,7 @@ NO MONEY: NM0.
 - refunded is TERMINAL for arbitrationRefusal (110-112), the sweep and T1.
 - Engine: E2 (A-S31b), E6 (A-S31-1).
 - A-S31-2 (the engine would accept): later claims on the order meet T2 H1. The admin rail is unguarded (residual).
+IMPLEMENTATION NOTE (W5 fixer): the D11 exit exists in this tree (resolveStuckClaim terminal exemption, see D11), so the « Clôturer ce dossier… » control, GUIDANCE refund_error_recorded, the R0 toast and the G11 marker tail name an exit the server accepts.
 
 ### E-07 [CORE] refunded, bound refund failed, not yet marked (REG-6 part 1)
 STATES: A-S31c, A-S31d, A-S31f-1. Track B J23.
@@ -1574,6 +1582,8 @@ NO MONEY: NM0. Terminal for approve, the sweep and T1. Engine E6 (A-S31e-1). A-S
 FOUNDER DECISION: accept, or order an operator-triggered read-only re-verify (not the default; not designed in round 13).
 
 **FREEZE AMENDMENT AMF-1:** this entry is no longer « NOT FAIL-VISIBLE »: the bounded read-only re-verification (daily cron on main, operator button « Revérifier les remboursements soldés (35 jours) ») detects it and marks it with the I-01 alert; residual = a failure reported more than 35 days after settlement whose event was lost.
+IMPLEMENTATION NOTE (W5): the re-verification landed (reverifySettledClaimRefunds; POST /api/admin/claims/reconcile-refunds with the internal token or an admin session — no session 401, a non-admin 403). The operator button is the console slice's (W7). E-09 still appears in no list, bucket or census key (the J-M50 negative pin stays true): the re-verification is a pass, not a surface. The docs/ops/REFUND-FINANCIAL-CONTRACT.md residual sentence is not part of this slice.
+IMPLEMENTATION NOTE (W5 fixer): the residual sentence is in docs/ops/REFUND-FINANCIAL-CONTRACT.md §21; the Mode-A precheck step is in docs/ops/CLAIMS-R13-OPERATOR-PRECHECK.md. The console button remains W7.
 
 ### E-10 [CORE] Approved, unpaid, payable only through a gated or time-bound approval (REG-8, B5)
 STATES: A-S01, A-S02, A-S08b, A-S30b-1, A-S30b-2a, A-S30b-2b, A-S30e-3, and approved_not_driven (approved, refundAttempted false, refundError null, including legacy approvals with arbitrationDecision null). Track B J16.
@@ -2413,6 +2423,8 @@ Surfaces for the control (ungated): pending rows on listUnfinalizedClaimRefundRo
 A refunded claim on a succeeded row is listed nowhere. R0c is reachable only by POST /api/admin/claims/[id]/reconcile with the claim id: that is REG-7, NOT fail-visible, and needs founder acceptance.
 R-D3: no customer e-mail from R0.
 Pins: 0 executeRefund calls, 0 Stripe write methods and 0 Refund updates across the R0a/R0b/R0c fixtures.
+IMPLEMENTATION NOTE (W5): landed in lib/claims.ts reconcileSettledClaim, reached from reconcileClaimEvidence G2 (1): the bound row is now passed to reconcileRefusal for every claim, so (iii) admits the settled claim on both sides (route and list flags). The outcome table is implemented as written. Readings the text leaves open, closed fail-safe: an at_stripe status that is none of failed / canceled / succeeded / pending / requires_action → refunded_row_unproven « Stripe rapporte le remboursement ${re} de la ligne ${row} au statut « ${s} », non reconnu. Aucune conclusion tirée. »; absent_dead → refunded_row_unproven « Stripe ne connaît aucun remboursement pour la ligne ${row}, et le moteur ne la créera plus (fenêtre d’idempotence expirée le ${windowEnd}). Aucune conclusion tirée. »; a helper that writes nothing (the evidence no longer holds on its fresh read, or a lost CAS) → changed_during_read. refund_still_standing carries stripeStatus and amountCents from the Stripe object read in the same request (ER-C21 resolved). ROUTED is true only when the Stripe refund object carries a transfer_reversal, unknown otherwise; R0a passes unknown. The audit claim.reconcile_evidence {outcome, moneyMoved:false} is the reconcile route's; I-01 (cause reverted_after_refund, registry E-06) follows the won CAS only. ER-M10 (the R0b « census refundedRowUnproven » note) resolved: I-06 refundedRowUnproven is DB-only, and R0's dead / contradiction outcomes are not census counts. Console: the three G10 toasts are rendered from lib/claim-action-rules R0_TOASTS, refund_still_standing split by stripeStatus as F14 says; F14's reverted_after_refund wording (« Stripe rapporte que … ») is not used because R0a's evidence is our failed row, not a Stripe read — the rest of F14 stays with the console slice. Pinned by tests/claims-t49-round13-r0.test.ts (J-M36).
+IMPLEMENTATION NOTE (W5 fixer): C9 (f) pinned — an R0a fixture whose refundError changes between the read and the helper's CAS answers 200 changed_during_read, with 0 writes, no I-01 alert and no audit (tests/claims-t49-round13-r0.test.ts).
 
 ### G11 [CORE] markClaimsForRevertedRefundRow (claim-only marking)
 lib/claims.ts markClaimsForRevertedRefundRow({ rowId, evidence, onlyClaimId? }): Promise<{ claimIds: string[]; written: boolean; failed: boolean }>.
@@ -2436,6 +2448,8 @@ Pins:
 - pending_row_stripe leaves the row byte-identical;
 - a redelivery after a helper failure marks the claim exactly once;
 - a lost CAS returns written false and failed false.
+IMPLEMENTATION NOTE (W5): lib/claims.ts markClaimsForRevertedRefundRow, exported, returning exactly { claimIds, written, failed }; the texts are rendered by lib/claim-action-rules reversalMarkerText (the E0 REMOVED pin forbids the identifier `revertedAfterRefund`). Deviations, each consistent with the frozen invariants: (1) the TEXT sentence « si le client a été payé autrement (Dashboard Stripe), déclarez-le » reads « si le client a reçu un paiement par un autre moyen (Dashboard Stripe), déclarez-le » — the same condition; the round-7 FORBIDDEN customer-outcome pin (/le client a été (remboursé|payé)/) matches the frozen wording; (2) the pending variant reads « si le moteur reprend cette ligne (…) » (ER-C24 / F16 note); (3) stripe_object also accepts a SUCCEEDED row with no recorded id whose refund carries grubano_refund_row = the row on the order's PaymentIntent — the identity rule of pending_row_stripe — because R0c reads such a row by its tag (G4) and a proven reversal must not answer changed_during_read; a row that records an id still needs that exact id (the webhook's negative control); (4) the order's PaymentIntent is read only where the evidence needs it (pending_row_stripe, and the tag form of stripe_object). A DB throw after one won CAS still answers failed: the redelivery re-reads the non-null error and writes nothing more. Pinned by tests/claims-t49-round13-reversal.test.ts (J-M40), tests/claims-reconcile-no-money.test.ts (G14 run, every evidence kind) and tests/claims-identity-writers.test.ts (no refundId write).
+IMPLEMENTATION NOTE (W5 fixer): regression pins for deviations (1) and (3) — the reworded tail is pinned verbatim with the round-7 FORBIDDEN pattern /le client a été (remboursé|payé)/i it avoids, and stripe_object on an id-less succeeded row is written for this row's tag on the order's PaymentIntent and refused for a tag on pi_OTHER, a tag of another row, or no tag (tests/claims-t49-round13-reversal.test.ts).
 
 ### G12 [CORE] Manual reconciliation: attribution reads evidence before any write
 attributeClaimRefund:
@@ -2476,6 +2490,7 @@ There is no pass over refunded claims.
 Pin: a succeeded row whose retrieve returns failed → the claim becomes approved with STRIPE_REVERTED_TEXT, never refunded.
 
 **FREEZE AMENDMENT AMF-1:** « There is no pass over refunded claims » is SUPERSEDED — recoverStrandedClaimReconciliations calls reverifySettledClaimRefunds after its existing pass (see FREEZE NOTES).
+IMPLEMENTATION NOTE (W5): landed. The stranded pass (recoverStrandedPass, selection unchanged) re-reads a succeeded row with refundRowTruth (read-only, never absenceIsEvidence) BEFORE reconcileClaimForRefund: row_terminal succeeded → reconcileClaimForRefund (H05 site 2 records the closure with noNoticeSource); reverted → the helper (stripe_object, no onlyClaimId), counted reconciled when it wrote, detail `${claimId}: reverted → approved(stripe_reverted)`; any other truth → skipped with `${claimId}: ${kind}`. recoverStrandedClaimReconciliations(limit, { actor }) then runs reverifySettledClaimRefunds and returns its counts under settledReverify; a failed selection read propagates (POST reconcile-refunds answers 500, never « ok »). The stranded pass's STRIPE_REVERTED write sends no alert: E-02 keeps the declaration exit and I-10 says the sweep is no visibility. J-M48's « the where clause excludes refunded claims » is pinned on the stranded selection; a refunded claim is re-verified only by AMF-1, within its lookback. Pinned by tests/claims-t49-recovery.test.ts (J-M48) and tests/claims-t49-round13-amf1.test.ts.
 
 ### G14 [CORE] No reconciliation path can create money authority
 Test tests/claims-reconcile-no-money.test.ts. The fixture set covers each G state class: A-S01, S01b, S02, S03, S06a, S07, S10b, S10c, S11, S14b, S19, S21, S22, S31b, S31d, S33-1, S42 and S43.
@@ -2960,6 +2975,8 @@ Each field has its own catch; an unmeasured count is null, never 0.
 scripts/server/phase2-claims-gate.js prints every non-zero closure count and legacy count as a census anomaly. It makes no Stripe call and marks no data. That is the C3 alert for the pre-deploy populations.
 
 docs/ops operator precheck: read and report these counts in the inbox on EACH environment before any CLAIMS lease opens there.
+IMPLEMENTATION NOTE (W5): the census and precheck halves landed with I-06 / I-07 (see their notes). closure.missing does not go through listMissingClaimClosureNotices, which the email slice adds to lib/claim-emails. The docs/ops operator-precheck text is not part of this slice.
+IMPLEMENTATION NOTE (W5 fixer): the docs/ops operator-precheck text is written in docs/ops/CLAIMS-R13-OPERATOR-PRECHECK.md (report the census counts and every « !! CENSUS: » line in the inbox, per environment, before any CLAIMS lease; then the AMF-1 re-verification with reverted = 0).
 
 ### H17 [DEFER] Off-variant cancellation body: drop the process promise
 claimEmails.orderCancelledPaidOff.body (all 5 locales): delete the trailing clause « — chaque demande est traitée par un membre de l’équipe pendant la bêta » and its translations. It states what the team will do, which the code cannot establish.
@@ -3102,6 +3119,8 @@ claims.closure:
 These replace terminalBeforeEpoch and terminalDecidedFromEpochBeforeLive (C4).
 
 NOT COUNTED (stated in the route comment): E-09, which needs a Stripe read.
+IMPLEMENTATION NOTE (W5): landed in lib/claims-census.ts (claimsLegacyCensus, claimsClosureCensus), called by the census route; each field has its own catch (null, never 0 — a population with nothing to read is a measured 0). The two « Track B definitions » are not in this file; implemented as: terminalDeclarationWithArbitrationReason = terminal claims whose F02 kind is settled_by_declaration or closed_by_declaration and whose arbitrationReason is set (the customer payload carries arbitrationReason; the round-10 fix moved the operator note out of it); refundedAfterContradictionAttribution = null while admin audit is off, otherwise the refunded claims with no recorded error on a SUCCEEDED row whose audit trail shows a claim.reconcile_evidence park with ambiguity 'stripe_refund_contradiction' followed by a claim.attribute_refund audit without stripeStatus (the pre-round-13 bind-first path; round 13 audits stripeStatus) — a lower bound. refundedRowUnproven uses the H10 predicate (F03 false, excluding a failed-with-id row of the claim's own order), which also counts an unknown row status (ER-C22). closure.missing uses the E-16 predicate on EmailDispatch directly (ER-C17: the census route does not import lib/claim-emails). B9 (d) rowsBoundToMultipleClaims is this groupBy (OR form). Pinned by tests/claims-t49-round13-census.test.ts (J-M53) and tests/claims-t49-round12.test.ts (J-C35).
+IMPLEMENTATION NOTE (W5 fixer): the two « Track B definitions » were found in the Track B source (design pass 2, section « §M Read-only census », and its revised pass) and replace the reconstruction above: terminalDeclarationWithArbitrationReason = terminal claims (TERMINAL_STATUSES) with refundError not null AND arbitrationReason not null; refundedAfterContradictionAttribution = null while !isAdminAuditEnabled(), otherwise refunded claims with an AdminAuditLog 'claim.attribute_refund' AND an EmailDispatch {trigger 'admin_money_review_claim_financial_verification', dedupeKey 'claim_fv:<id>:stripe_refund_contradiction'} — a LOWER BOUND (sendOnce releases the key of an unsent alert; relabels into that reason sent no alert before round 13). Same predicates in lib/claims-census.ts and scripts/server/phase2-claims-gate.js (parity test). Pinned with near-miss fixtures in tests/claims-t49-round13-census.test.ts: a declaration without arbitrationReason, an arbitrated refusal with a reason and no refundError, an attribution audit without the park dispatch, a park dispatch of another reason, and a park + audit on a non-refunded claim are not counted; an attribution audit carrying stripeStatus is counted (the source does not read it).
 
 ### I-07 [CORE] Operator precheck census lines (scripts/server/phase2-claims-gate.js)
 WHEN: in REHEARSAL PRECHECK mode, before any window (and reprinted, unchanged in effect, at window start). The script computes the I-06 counts itself with read-only Prisma queries on its own DB handle: no Stripe call, no new fetch (the existing gate probes at lines 79 and 242 are unchanged), no write.
@@ -3119,6 +3138,8 @@ MESSAGES (English, log convention):
 - closure.missing: 'N closures of this build without a dispatched notice (E-16)'.
 - closure.terminalWithoutRecord: 'N terminal claims without a this-build closure record (legacy, or record write failed): never notified (E-18)'.
 No line about ADMIN_AUDIT_ENABLED: closure-notice eligibility is the H05 record, independent of admin audit. The script never calls Stripe and never marks data (R-D6). Pins: J-M53, J-C35.
+IMPLEMENTATION NOTE (W5): ER-C16 resolved as this rule states — the printer C never pushes to `anomalies`, and done() prints the CENSUS block after the ANOMALIES block. The script computes the counts (censusCounts) with the definitions of lib/claims-census.ts, pinned equal on one fixture, and its resume-window constant is pinned equal to lib/refund RESUME_CREATE_WINDOW_MS. The census runs in step [2], so it prints in precheck and again at window start. Printed keys are prefixed « CENSUS »; ownRowResumeMismatch prints one line per field, each with the message above; terminalDeclarationWithArbitrationReason, which has no message above, prints « N terminal declaration closures carrying an arbitration reason the customer payload shows (Track B) ». The two gate probes stay the only fetch calls.
+IMPLEMENTATION NOTE (W5 fixer): terminalDeclarationWithArbitrationReason has no E registry entry; its line reads « N terminal claims with a recorded refund error and an arbitration reason (Track B census; no E entry: F08 hides the reason on a declaration kind) ». J-M53's « sweep skip » for A-S32-* is pinned in tests/claims-t49-recovery.test.ts (runClaimAutoApproval, REFUNDS open, skips a legacy proof; negative control: the same claim with a null error is driven).
 
 ### I-08 [CORE] Customer e-mail miss signals (write time)
 Every customer claim e-mail attempt that does not send is recorded in the same request:
@@ -3146,6 +3167,8 @@ PIN (tests/claims-registry-visibility.test.ts): for one fixture per E entry, the
 - Every I-01 to I-05 and I-08 signal is sent from the request or webhook that performs the write. I-06 and I-07 run only when an operator or the internal token asks.
 
 SOURCE-SCAN PIN: the strings 'claim_payment_blocked' and 'claim_attempt_superseded' appear only in lib/admin-alerts.ts, lib/claims.ts and their tests.
+IMPLEMENTATION NOTE (W5): ER-C23 resolved in J-M54 / J-C48 — app/api/cron does not exist; the cron routes are read from .github/workflows/cron.yml (reconcile-refunds and stale-alerts included) plus the auto-approve route. The I-05 refund:<re> key is also sent by lib/refund.ts markRefundRowFailed (the unchanged engine, I-05 « unchanged »), so the sender-site pin lists the webhook route and lib/refund.ts. POST reconcile-refunds now also accepts an admin session (AMF-1); its schedule is unchanged. Pinned by tests/claims-r13-absent-surfaces.test.ts and tests/claims-closure-imports.test.ts.
+IMPLEMENTATION NOTE (W5 fixer): superseded in part by AMF-1 — the reconcile-refunds route (cron schedule unchanged) now also runs reverifySettledClaimRefunds, which sends the I-01 claim_payment_blocked alert (cause reverted_after_refund) from the request that writes each marking. « those routes gain no alert logic for these states » therefore no longer holds for reconcile-refunds; the alert is still sent at write time by the writing request, never by a schedule of its own, and stale-alerts and auto-approve gain nothing.
 
 ## J. TEST MATRIX — MONEY
 
@@ -4150,6 +4173,7 @@ ASSERTION:
 NEGATIVE CONTROL: all populations zero → no '!! CENSUS:' line.
 BREAK/RESTORE: implement C with A() → approvedUnpaid 1 turns RESULT into FAIL → red; return 0 from a rejected count → red; restore → green.
 FINDINGS: R-D6, C3 (pre-deploy alert), R-A0-2, R-B1-1, N-C-1.
+IMPLEMENTATION NOTE (W5 fixer): the A-S32-* sweep skip is asserted in tests/claims-t49-recovery.test.ts; the census fixture carries the Track B §M shapes (C_d with a refundError, C_x with its contradiction park dispatch).
 
 ### J-M54 [CORE] No scheduled job, no infra change, alerts from the writing request
 FILE: tests/claims-r13-absent-surfaces.test.ts
@@ -4937,6 +4961,7 @@ ASSERTION:
 NEGATIVE CONTROL: the thrown-transaction fixture sends 0 alerts.
 BREAK/RESTORE CONTROL: send the alert inside the $transaction callback → the thrown fixture alerts, red; restore → green.
 FINDINGS: P2-14, P1-5
+IMPLEMENTATION NOTE (W5 fixer): the thrown-transaction fixture runs the callback, rolls its writes back and then rejects with P2034, so the break/restore mutation (the alert sent inside the callback) makes that fixture alert.
 
 ### J-C43 [CORE] Webhook failed/canceled branches: alert order, claimIds, helper 503, money writes byte-identical
 FILE: tests/webhook-refund-reconciliation.test.ts (extend) + tests/webhook-money-guards.test.ts
@@ -4958,6 +4983,7 @@ ASSERTION:
 NEGATIVE CONTROL: a lost CAS with failed:false → 200, never 503.
 BREAK/RESTORE CONTROL: swallow helper errors (return failed:false in catch) → the DB-throw fixture answers 200, red; restore → green.
 FINDINGS: R-X0-1, R-X0-2, R-X0-6, R-B0-4, R-D3
+IMPLEMENTATION NOTE (W5 fixer): the FV assertions use the real customerClaimStatus (with a negative control reading an unmarked settled claim « refunded »); the lost-CAS variant runs on the pending-row, failed-row and succeeded-row branches (200, never 503, claim untouched). tests/webhook-money-guards.test.ts is unchanged: it covers payment_intent events only (no refund status branch), and the J-M06 call-order pins of handleRefundStatusEvent stay in tests/claims-r13-engine-closed.test.ts.
 
 ### J-C44 [CORE] Customer e-mail miss signals, one row per attempt
 FILE: tests/claims-closure-emails.test.ts

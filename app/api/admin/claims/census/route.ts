@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { isInternalCronRequest } from '@/lib/safe-compare'
 import { isClaimsEnabled, claimsGateState, FINANCIAL_VERIFICATION, RECONCILE_REQUIRED, TERMINAL_STATUSES } from '@/lib/claims'
 import { isRefundsEnabled } from '@/lib/refund'
+import { claimsLegacyCensus, claimsClosureCensus } from '@/lib/claims-census'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -52,6 +53,11 @@ export async function GET(req: NextRequest) {
     // terminal set, the set the rehearsal operator's residue report uses too.
     const terminal = counts ? TERMINAL_STATUSES.reduce((n, s) => n + (counts[s] ?? 0), 0) : null
 
+    // ROUND 13 (I-06 / H16, slice W5): the legacy and closure populations — counts only, each field null (never 0) when
+    // its own read threw. NOT COUNTED: E-09 (a settled claim whose succeeded refund failed at Stripe with the event
+    // lost) — it needs a Stripe read, which this route never makes; AMF-1's re-verification pass reads it instead.
+    const [legacy, closure] = await Promise.all([claimsLegacyCensus(), claimsClosureCensus()])
+
     return NextResponse.json({
       measuredAt: new Date().toISOString(),
       claims: {
@@ -68,6 +74,8 @@ export async function GET(req: NextRequest) {
         reconcileMarked,
         /** Pre-T-49 stranded shape: refunding with neither a binding nor a marker. */
         t49Shape,
+        legacy,
+        closure,
       },
       gates: {
         claimsEnabled:  isClaimsEnabled(),

@@ -8,8 +8,9 @@
 //   RECOVERY LIVENESS — the ambiguous claim lands in a durable queue that survives the feature
 //                     flag, raises an alert, and has a reachable evidence-based exit.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { updateManyMock } from './support/prisma-where'
+import { payableWorld, wireWorld, refundRow, stripeRefund, type World } from './support/claims-world'
 
 const { db } = vi.hoisted(() => ({
   db: {
@@ -43,6 +44,8 @@ import {
   FINANCIAL_VERIFICATION, RECONCILE_REQUIRED,
   // round 7
   adoptStripeRefundForClaim, reconcileClaimForRefund, isNoRefundProven, NO_REFUND_PROVEN, EXTERNAL_REFUND_KEY_PREFIX,
+  // round 13 (W5, J-M48)
+  recoverStrandedClaimReconciliations,
 } from '@/lib/claims'
 
 /** The simulated row the CAS clauses are evaluated against (tests/support/prisma-where). */
@@ -563,6 +566,81 @@ describe('the double-attribution guard, exercised where it REFUSES', () => {
   })
 })
 
+// ══ ROUND 13 (slice W5) — J-M48 / G13: the recovery sweep never settles a claim on a reverted refund ═════════════
+describe('J-M48 — recoverStrandedClaimReconciliations re-reads a succeeded row at Stripe (G13)', () => {
+  let w: World
+  const HOUR = 3_600_000
+  function sweepWorld(row: Record<string, unknown>, stripe: Record<string, unknown> | null, claim: Record<string, unknown> = {}) {
+    w = payableWorld({ status: 'refunding', refundAttempted: true, refundId: 'rf1', refundError: null, ...claim })
+    w.refunds.push(refundRow('rf1', { status: 'succeeded', stripeRefundId: 're_1', reason: 'claim:cl1', ...row }))
+    if (stripe) w.stripeRefunds.push(stripeRefund('re_1', stripe))
+    wireWorld(w, db, stripeMock)
+    ;(db as unknown as Record<string, unknown>).emailDispatch = { create: vi.fn(async () => ({})) }
+    return w
+  }
+  /** reconcileClaimForRefund reads the row's stamp (select reason); the G11 helper never does. */
+  const reconcilerReads = () => (db.refund.findUnique.mock.calls as Array<[{ select?: Record<string, unknown> }]>).filter((c) => c[0].select?.reason === true).length
+
+  it('(a) a FAILED row → reconcileClaimForRefund, as before (approved + stripe_failed)', async () => {
+    sweepWorld({ status: 'failed' }, null)
+    const out = await recoverStrandedClaimReconciliations()
+    expect(out).toMatchObject({ scanned: 1, reconciled: 1 })
+    expect(String(w.claims[0].refundError)).toMatch(/^stripe_failed:/)
+    expect(stripeMock.refunds.retrieve).not.toHaveBeenCalled()
+  })
+
+  it('(b) NEGATIVE CONTROL — succeeded, retrieve succeeded → settled through reconcileClaimForRefund (with its closure record)', async () => {
+    sweepWorld({}, { status: 'succeeded' })
+    expect(await recoverStrandedClaimReconciliations()).toMatchObject({ scanned: 1, reconciled: 1 })
+    expect(w.claims[0]).toMatchObject({ status: 'refunded', refundError: null })
+    expect(reconcilerReads()).toBe(1)
+  })
+
+  it('(c) succeeded, retrieve FAILED → markClaimsForRevertedRefundRow stripe_object → approved + STRIPE_REVERTED, never refunded', async () => {
+    sweepWorld({}, { status: 'failed' })
+    const out = await recoverStrandedClaimReconciliations()
+    expect(out).toMatchObject({ scanned: 1, reconciled: 1, details: ['cl1: reverted → approved(stripe_reverted)'] })
+    expect(w.claims[0].status).toBe('approved')
+    expect(String(w.claims[0].refundError).startsWith('stripe_reverted:')).toBe(true)
+    expect(reconcilerReads()).toBe(0)
+    expect(execMock).not.toHaveBeenCalled()
+  })
+
+  it('(d) retrieve ETIMEDOUT → skipped with « cl1: unreadable »; (e) 404 → skipped with « cl1: contradiction »', async () => {
+    sweepWorld({}, null)
+    w.fail.refundRetrieve = { re_1: 'throw' }
+    expect(await recoverStrandedClaimReconciliations()).toMatchObject({ reconciled: 0, skipped: 1, details: ['cl1: unreadable'] })
+    sweepWorld({}, null)
+    w.fail.refundRetrieve = { re_1: 'missing' }
+    expect(await recoverStrandedClaimReconciliations()).toMatchObject({ reconciled: 0, skipped: 1, details: ['cl1: contradiction'] })
+    expect(w.writes).toEqual([])
+  })
+
+  it('(f) a pending row → skipped, nothing read at Stripe', async () => {
+    sweepWorld({ status: 'pending' }, { status: 'failed' })
+    expect(await recoverStrandedClaimReconciliations()).toMatchObject({ scanned: 1, reconciled: 0, skipped: 1 })
+    expect(stripeMock.refunds.retrieve).not.toHaveBeenCalled()
+    expect(w.writes).toEqual([])
+  })
+
+  it('the stranded selection excludes refunded claims: a claim settled OUTSIDE the AMF-1 lookback on a reverted row is untouched', async () => {
+    sweepWorld({}, { status: 'failed' }, { status: 'refunded', decidedAt: new Date(Date.now() - 40 * 24 * HOUR), createdAt: new Date(Date.now() - 41 * 24 * HOUR) })
+    const out = await recoverStrandedClaimReconciliations()
+    expect(out).toMatchObject({ scanned: 0, reconciled: 0, settledReverify: { checked: 0 } })
+    expect(w.claims[0]).toMatchObject({ status: 'refunded', refundError: null })
+    const src = readFileSync('lib/claims.ts', 'utf8').replace(/\r\n/g, '\n')
+    const pass = src.slice(src.indexOf('async function recoverStrandedPass('), src.indexOf('/** Claims the restaurant never answered'))
+    expect(pass).toContain("where:  { status: { in: ['refunding', 'approved'] }, refundId: { not: null }, refundError: null },")
+    expect(pass).toContain('refundRowTruth(row, orderId,')
+  })
+
+  it('the sweep is imported only by the cron route, and referenced by no exit route or I-09 surface', () => {
+    const walk = (d: string): string[] => readdirSync(d).flatMap((n) => { const p = `${d}/${n}`; return statSync(p).isDirectory() ? walk(p) : [p] })
+    const hits = ['app', 'components', 'lib'].flatMap(walk).filter((f) => /\.(ts|tsx)$/.test(f) && readFileSync(f, 'utf8').includes('recoverStrandedClaimReconciliations'))
+    expect(hits.sort()).toEqual(['app/api/admin/claims/reconcile-refunds/route.ts', 'lib/claims.ts'])
+  })
+})
+
 // ══ ROUND-3 — THE GRACE WINDOW IS ROUND-TRIPPED THROUGH THE REAL WRITER ═════════
 // The audit noted the grace tests re-typed the marker by hand, so a writer/reader divergence —
 // exactly the bug that shipped — would go unseen. This drives the SHIPPED writer.
@@ -613,5 +691,30 @@ describe('the marker the code WRITES is the marker the code can READ', () => {
         createdAt: new Date(), restaurantId: 'r' },
     ])
     expect(await listReconcileRequiredClaims()).toHaveLength(1)
+  })
+})
+
+// ══ ROUND 13 (J-M53, A-S32-*, slice W5 fixer) — the automatic sweep skips a legacy proof of absence ═══════════════════
+describe('J-M53 — A-S32-*: runClaimAutoApproval never drives a legacy (pre-v13) proof of absence', () => {
+  const pendingOnly = (refundError: string | null) => ({ where }: { where: Record<string, unknown> }) =>
+    Promise.resolve(where.status === 'approved' && where.refundAttempted === false ? [{ id: 'cl_legacy', refundError }] : [])
+
+  it('REFUNDS open: the approved-unpaid pass reads the legacy proof and skips it — no T1 read, no claim write, no engine', async () => {
+    refundsFlag.mockReturnValue(true)
+    db.claim.findMany.mockImplementation(pendingOnly('no_refund_proven: preuve héritée'))
+    const summary = await runClaimAutoApproval()
+    expect(summary).toMatchObject({ scannedPending: 1, refundsTriggered: 0, refundsPending: 0, refundsFailed: 0 })
+    expect(db.claim.findUnique).not.toHaveBeenCalled()
+    expect(db.claim.updateMany).not.toHaveBeenCalled()
+    expect(execMock).not.toHaveBeenCalled()
+  })
+
+  it('NEGATIVE CONTROL — the same approved-unpaid claim with no recorded error IS driven (T1 reads it)', async () => {
+    refundsFlag.mockReturnValue(true)
+    db.claim.findMany.mockImplementation(pendingOnly(null))
+    db.claim.findUnique.mockResolvedValue({ id: 'cl_legacy', orderId: 'o1', status: 'approved', refundAttempted: false, refundId: null, refundError: null, requestedAmountCents: 500 })
+    execMock.mockResolvedValue({ ok: false, status: 502, error: 'boom' })
+    await runClaimAutoApproval()
+    expect(db.claim.findUnique).toHaveBeenCalled()
   })
 })

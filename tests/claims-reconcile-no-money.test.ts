@@ -37,7 +37,7 @@ const { stripeMock } = vi.hoisted(() => ({
 }))
 vi.mock('@/lib/stripe', () => ({ getStripe: () => stripeMock }))
 
-import { attributeClaimRefund, adoptStripeRefundForClaim, resolveStuckClaim, recoverStrandedClaimReconciliations, arbitrateClaim } from '@/lib/claims'
+import { attributeClaimRefund, adoptStripeRefundForClaim, resolveStuckClaim, recoverStrandedClaimReconciliations, arbitrateClaim, markClaimsForRevertedRefundRow, reverifySettledClaimRefunds } from '@/lib/claims'
 import { POST as RECONCILE } from '@/app/api/admin/claims/[id]/reconcile/route'
 import { MARKERS } from '@/lib/claim-action-rules'
 
@@ -159,8 +159,29 @@ describe('J-M49 — attribution, adoption, the declaration close and the recover
     })
   }
 
-  it('IMPLEMENTATION NOTE (W3) — markClaimsForRevertedRefundRow (G11) and the closure-notice route (H) do not exist yet: their slices add them to this run', () => {
-    expect(readFileSync('lib/claims.ts', 'utf8')).not.toContain('export async function markClaimsForRevertedRefundRow(')
+  // ROUND 13 (G14, slice W5): supersedes the W3 absence pin — markClaimsForRevertedRefundRow (G11) and the AMF-1
+  // re-verification landed and join the run. The closure-notice route (H) still belongs to the email slice.
+  for (const id of CLASSES) {
+    it(`${id} — markClaimsForRevertedRefundRow on every row with every evidence kind, and the settled re-verification`, async () => {
+      for (const pre of ['refunded', 'bound']) {
+        setWorld(id, pre)
+        for (const r of [...w.refunds]) {
+          const refund = { id: String(r.stripeRefundId ?? 're_none'), status: 'failed', amount: 100, payment_intent: 'pi_1', metadata: { grubano_refund_row: String(r.id) } } as never
+          await markClaimsForRevertedRefundRow({ rowId: String(r.id), evidence: { kind: 'failed_row' } })
+          await markClaimsForRevertedRefundRow({ rowId: String(r.id), evidence: { kind: 'stripe_object', refund } })
+          await markClaimsForRevertedRefundRow({ rowId: String(r.id), evidence: { kind: 'pending_row_stripe', refund } })
+        }
+        expectNoMoney(`${id} mark ${pre}`)
+        setWorld(id, pre)
+        await reverifySettledClaimRefunds()
+        expectNoMoney(`${id} reverify ${pre}`)
+      }
+    })
+  }
+
+  it('the closure-notice route (H) does not exist yet: the email slice adds it to this run', () => {
+    expect(readFileSync('lib/claims.ts', 'utf8')).toContain('export async function markClaimsForRevertedRefundRow(')
+    expect(() => readFileSync('app/api/admin/claims/[id]/closure-notice/route.ts', 'utf8')).toThrow()
   })
 })
 

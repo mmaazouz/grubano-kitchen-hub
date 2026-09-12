@@ -370,12 +370,23 @@ describe('J-M43 (W3) — reconcile and T2 on every no-row state of the J-M01 tab
 describe('J-M42 — reconcile dispatch (G2) and the deleted round-12 ladder', () => {
   const OLD_MARKER = 'reconcile_required: tentative de remboursement démarrée à 2026-09-10T00:00:00.000Z (tentative 0) — identité pas encore liée.'
 
-  it('IMPLEMENTATION NOTE (W3) — a refunded claim is refused by the gate until the R0 dispatch (G10) lands; nothing is read or written', async () => {
+  // ROUND 13 (G2 (1), slice W5): supersedes the W3 pin « a refunded claim is refused by the gate »: the R0 dispatch landed.
+  it('refunded claim → R0 (G10): the bound row is read, the order’s rows are not; a standing refund writes nothing', async () => {
     w = payableWorld({ status: 'refunded', refundAttempted: true, refundId: 'rf_1', refundError: null })
     w.refunds.push(refundRow('rf_1', { status: 'pending', stripeRefundId: 're_1', reason: 'claim:cl1' }))
+    w.stripeRefunds.push(stripeRefund('re_1', { status: 'succeeded', amount: 500 }))
+    wireWorld(w, db, stripeMock)
+    expect(await reconcileClaimEvidence({ claimId: 'cl1' })).toEqual({ ok: true, outcome: 'refund_still_standing', refundId: 'rf_1', stripeStatus: 'succeeded', amountCents: 500 })
+    expect(db.refund.findMany).not.toHaveBeenCalled()
+    expect(w.writes).toEqual([])
+  })
+
+  it('NEGATIVE CONTROL — a refunded claim bound to a row of ANOTHER order is still refused by the gate, nothing read at Stripe or written', async () => {
+    w = payableWorld({ status: 'refunded', refundAttempted: true, refundId: 'rf_1', refundError: null })
+    w.refunds.push(refundRow('rf_1', { orderId: 'o_other', status: 'pending', stripeRefundId: 're_1', reason: 'claim:cl1' }))
     wireWorld(w, db, stripeMock)
     expect(await reconcileClaimEvidence({ claimId: 'cl1' })).toEqual({ ok: false, status: 409, error: 'Cette réclamation n’est pas en attente de réconciliation.' })
-    expect(db.refund.findMany).not.toHaveBeenCalled()
+    expect(stripeMock.refunds.retrieve).not.toHaveBeenCalled()
     expect(w.writes).toEqual([])
   })
 

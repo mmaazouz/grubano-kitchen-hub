@@ -431,10 +431,13 @@ describe('RE-AUDIT FIX P1 — a stuck refund is no longer a dead end', () => {
 
 describe('BATCH 2 — RECOVERY when the reconciliation webhook never arrived', () => {
   it('a claim stuck in refunding whose Refund row is SUCCEEDED is reconciled by the sweep', async () => {
-    db.claim.findMany.mockResolvedValue([{ id: 'cl1', refundId: 'rf1', status: 'refunding' }])
-    db.refund.findMany.mockResolvedValue([{ id: 'rf1', status: 'succeeded', stripeRefundId: 're_1' }])
+    db.claim.findMany.mockResolvedValue([{ id: 'cl1', orderId: 'o1', refundId: 'rf1', status: 'refunding' }])
+    db.refund.findMany.mockResolvedValue([{ id: 'rf1', orderId: 'o1', status: 'succeeded', stripeRefundId: 're_1', createdAt: new Date() }])
     db.claim.findFirst.mockResolvedValue({ id: 'cl1', status: 'refunding', refundError: null })
     db.refund.findUnique.mockResolvedValue({ status: 'succeeded' })
+    // ROUND 13 (G13, slice W5): the sweep re-reads the succeeded row's refund at Stripe before settling on it.
+    db.order.findUnique.mockResolvedValue({ stripePaymentIntentId: 'pi_1' })
+    stripeMock.refunds.retrieve.mockResolvedValue({ id: 're_1', status: 'succeeded', amount: 500, payment_intent: 'pi_1', metadata: {} })
     const out = await recoverStrandedClaimReconciliations()
     expect(out).toMatchObject({ scanned: 1, reconciled: 1 })
     expect(db.claim.updateMany.mock.calls[0][0].data).toMatchObject({ status: 'refunded' })
@@ -472,10 +475,13 @@ describe('BATCH 2 — RECOVERY when the reconciliation webhook never arrived', (
 
   it('it works with CLAIMS_ENABLED=false (financial truth is never flag-gated)', async () => {
     process.env.CLAIMS_ENABLED = 'false'
-    db.claim.findMany.mockResolvedValue([{ id: 'cl1', refundId: 'rf1', status: 'refunding' }])
-    db.refund.findMany.mockResolvedValue([{ id: 'rf1', status: 'succeeded', stripeRefundId: 're_1' }])
+    db.claim.findMany.mockResolvedValue([{ id: 'cl1', orderId: 'o1', refundId: 'rf1', status: 'refunding' }])
+    db.refund.findMany.mockResolvedValue([{ id: 'rf1', orderId: 'o1', status: 'succeeded', stripeRefundId: 're_1', createdAt: new Date() }])
     db.claim.findFirst.mockResolvedValue({ id: 'cl1', status: 'refunding', refundError: null })
     db.refund.findUnique.mockResolvedValue({ status: 'succeeded' })
+    // ROUND 13 (G13, slice W5): the Stripe re-read of the succeeded row (flag-independent, read-only).
+    db.order.findUnique.mockResolvedValue({ stripePaymentIntentId: 'pi_1' })
+    stripeMock.refunds.retrieve.mockResolvedValue({ id: 're_1', status: 'succeeded', amount: 500, payment_intent: 'pi_1', metadata: {} })
     expect(await recoverStrandedClaimReconciliations()).toMatchObject({ reconciled: 1 })
   })
 
@@ -664,8 +670,11 @@ describe('RE-AUDIT FIX — the recovery sweep retires a row instead of re-reconc
   })
 
   it('the sweep still picks up a genuinely stranded claim (the exclusion is not a blanket off)', async () => {
-    db.claim.findMany.mockResolvedValue([{ id: 'c1', refundId: 'rf1', status: 'refunding' }])
-    db.refund.findMany.mockResolvedValue([{ id: 'rf1', status: 'succeeded', stripeRefundId: 're_1' }])
+    db.claim.findMany.mockResolvedValue([{ id: 'c1', orderId: 'o1', refundId: 'rf1', status: 'refunding' }])
+    db.refund.findMany.mockResolvedValue([{ id: 'rf1', orderId: 'o1', status: 'succeeded', stripeRefundId: 're_1', createdAt: new Date() }])
+    // ROUND 13 (G13, slice W5): the sweep re-reads the succeeded row's refund at Stripe before settling on it.
+    db.order.findUnique.mockResolvedValue({ stripePaymentIntentId: 'pi_1' })
+    stripeMock.refunds.retrieve.mockResolvedValue({ id: 're_1', status: 'succeeded', amount: 500, payment_intent: 'pi_1', metadata: {} })
     db.claim.findUnique.mockResolvedValue({ id: 'c1', status: 'refunding', refundError: null })
     // ROUND 13: the bound claim the sweep reconciles is read by refundId (findFirst) — set here, never inherited from another test.
     db.claim.findFirst.mockResolvedValue({ id: 'c1', status: 'refunding', refundError: null })

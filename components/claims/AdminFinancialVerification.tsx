@@ -5,7 +5,7 @@ import { useLocale } from 'next-intl'
 import { Button, Badge, useToast } from '@/components/design-system'
 import { formatEuros } from '@/lib/format-money'
 import { cardMoneyLine, financialVerificationCardVisible } from '@/lib/claim-money-line'
-import { moneyStateGuidance } from '@/lib/claim-action-rules'
+import { moneyStateGuidance, R0_TOASTS, refundStillStandingToast } from '@/lib/claim-action-rules'
 // ROUND 13 (G12, B10): the attribution success copy and the pending-row legend come from the shared pure module.
 import { attributionSuccessText, PENDING_ROW_LEGEND, adoptionRefusalWroteText } from '@/lib/claim-attribution-rules'
 
@@ -61,6 +61,8 @@ type Payload = {
   unfinalizedRefundRows?: Array<{
     refundRowId: string; orderId: string; amountCents: number; stripeRefundId: string | null
     claimId: string | null; claimStatus: string | null
+    /** ROUND 13 (D7 / D0, slice W5): the server's reconcile verdict for this claim and row, and its refusal text. */
+    reconcilable?: boolean; reconcileRefusal?: string | null
   }>
   counts: { financialVerification: number; reconcileRequired: number; otherUnsettled: number; total: number; unfinalizedRefundRows?: number }
 }
@@ -124,7 +126,7 @@ export default function AdminFinancialVerification() {
       const res = await fetch(`/api/admin/claims/${id}/reconcile`, { method: 'POST' })
       const body = await res.json().catch(() => ({}))
       if (!res.ok) { toast.error((body as { error?: string }).error || 'Échec de la réconciliation.'); return }
-      const result = (body as { result?: { outcome?: string; reason?: string; until?: string; evidence?: string; payableFrom?: string; boundRowId?: string } }).result
+      const result = (body as { result?: { outcome?: string; reason?: string; until?: string; evidence?: string; payableFrom?: string; boundRowId?: string; stripeStatus?: string; detail?: string } }).result
       const outcome = result?.outcome
       const said: Record<string, string> = {
         // ROUND 13 (F14, G2): « Stripe rapporte » only when Stripe's refund object was read for this conclusion.
@@ -171,6 +173,10 @@ export default function AdminFinancialVerification() {
         no_refund_proven_rail_locked:
           'Stripe ne rapporte aucun remboursement non expliqué sur ce paiement, MAIS une nouvelle approbation ne paierait pas cette réclamation : refus du moteur ou blocage de sûreté, la cause est dans le détail de la réclamation. Rien n’a été payé par cette action. « Clôturer ce dossier… » enregistre votre déclaration ; « Réconcilier d’après la preuve » relit la preuve si la cause peut cesser.',
         financial_verification: 'Toujours indéterminé. Aucune conclusion, aucun argent, aucune clôture. Escalade opérateur requise.',
+        // ROUND 13 (G10 / F14, slice W5): the R0 outcomes on a settled claim. The server texts live in lib/claim-action-rules.
+        reverted_after_refund:  R0_TOASTS.reverted_after_refund,
+        refund_still_standing:  refundStillStandingToast(result?.stripeStatus),
+        refunded_row_unproven:  `${R0_TOASTS.refunded_row_unproven}${result?.detail ? ` Détail : ${result.detail}` : ''}`,
       }
       // ROUND-3 AUDIT FIX: every outcome rendered as a green success, including "still
       // indeterminate", "the refund FAILED" and "the rail is locked shut". A green tick on those
@@ -183,6 +189,9 @@ export default function AdminFinancialVerification() {
         || outcome === 'engine_row_dead'
         || outcome === 'changed_during_read'
         || outcome === 'no_refund_proven_awaiting_finalization'
+        // ROUND 13 (F14 tone, slice W5): a reversal marked, or a bound row not established, needs attention.
+        || outcome === 'reverted_after_refund'
+        || outcome === 'refunded_row_unproven'
       // ROUND-6 AUDIT FIX (P2) → ROUND 13 (C1): a lost compare-and-set is its own outcome, changed_during_read
       // (said map above). The round-6 toast claimed the claim had left every modifiable state, which was false
       // whenever only the refundError changed (a concurrent relabel): the toast states only that nothing more was written.
@@ -363,13 +372,26 @@ export default function AdminFinancialVerification() {
             Aucune réconciliation ne les a finalisées ni annulées : ni ligne de ledger ni reprise de royalty n’ont été
             appliquées par elle. Avant tout nouveau remboursement d’une commande, le moteur reprend la plus ancienne
             ligne en attente de cette commande. Une ligne reste listée tant qu’elle est « en attente » dans notre base.
-            Aucune action n’est proposée ici.
+            {/* ROUND 13 (D7 CONSOLE, slice W5): replaces « Aucune action n’est proposée ici. » */}
+            {' '}La seule action proposée ici est « Réconcilier d’après la preuve » : elle relit la preuve chez Stripe et dans nos lignes, et ne déplace aucun argent.
           </p>
           <ul className="mt-2 space-y-1 text-[12px] text-grubano-ink">
             {unfinalized.map((u) => (
               <li key={u.refundRowId}>
                 Commande #{u.orderId.slice(-6)} — ligne {u.refundRowId} ({(u.amountCents / 100).toFixed(2)} €
                 {u.stripeRefundId ? `, Stripe ${u.stripeRefundId}` : ', sans identifiant Stripe enregistré'}) — réclamation {u.claimId ?? '—'} ({u.claimStatus ?? '—'})
+                {/* D0: the control is rendered iff the server's verdict admits it; otherwise its refusal text. */}
+                {u.claimId && u.reconcilable === true && (
+                  <>
+                    {' '}
+                    <Button size="sm" variant="secondary" disabled={busyId === u.claimId} onClick={() => void reconcile(u.claimId as string)}>
+                      Réconcilier d’après la preuve
+                    </Button>
+                  </>
+                )}
+                {u.claimId && u.reconcilable !== true && u.reconcileRefusal && (
+                  <span className="ml-1 text-grubano-ink-muted">— {u.reconcileRefusal}</span>
+                )}
               </li>
             ))}
           </ul>

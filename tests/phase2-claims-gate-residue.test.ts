@@ -140,3 +140,38 @@ describe('reportResidue — the abort path has the same eyes as the happy path',
     expect(src).toContain("if (anomalies.length) return fail('3 window: precheck anomalies — window REFUSED, nothing changed')")
   })
 })
+
+// ROUND 13 (J-C35 / I-07, slice W5): the census lines of the precheck. The full fixture and the route parity are in
+// tests/claims-t49-round13-census.test.ts; here the printer's channel is pinned on the script's own report arrays.
+describe('I-07 — census lines never enter the anomalies array', () => {
+  const G = GATE as unknown as {
+    reportCensus: (c: Record<string, number | null>) => void
+    _residueLinesForTests: () => { facts: string[]; anomalies: string[]; census: string[] }
+  }
+  const ZERO = {
+    legacyPayableProofs: 0, refundedBoundToFailedRow: 0, refundedRowUnproven: 0, ownRowResumeMismatchNonTerminal: 0, ownRowResumeMismatchTerminal: 0,
+    terminalDeclarationWithArbitrationReason: 0, refundedAfterContradictionAttribution: 0, refundedBoundToOtherClaimStamp: 0, rowsBoundToMultipleClaims: 0,
+    pendingRowsOver20hWithSettledRoyalty: 0, approvedUnpaid: 0, closureMissing: 0, closureTerminalWithoutRecord: 0,
+  }
+
+  it('a non-zero count and a NOT MEASURED count each print one « CENSUS » line; RESULT inputs (anomalies) are identical to the all-zero run', () => {
+    const b0 = G._residueLinesForTests()
+    G.reportCensus(ZERO)
+    const a0 = G._residueLinesForTests()
+    expect(a0.census.length).toBe(b0.census.length)
+    expect(a0.anomalies).toEqual(b0.anomalies)
+    G.reportCensus({ ...ZERO, approvedUnpaid: 4, rowsBoundToMultipleClaims: null })
+    const a1 = G._residueLinesForTests()
+    expect(a1.census.slice(a0.census.length)).toEqual([
+      'CENSUS rowsBoundToMultipleClaims: NOT MEASURED',
+      'CENSUS approvedUnpaid: 4 approved and unpaid claims, exits gated by CLAIMS+REFUNDS (E-10)',
+    ])
+    expect(a1.anomalies).toEqual(a0.anomalies)
+    expect([...a1.facts, ...a1.census].join('\n')).not.toContain('ADMIN_AUDIT_ENABLED')
+  })
+
+  it('the census code adds no fetch: the two gate probes stay the only fetch calls', () => {
+    const src = fs.readFileSync('scripts/server/phase2-claims-gate.js', 'utf8')
+    expect((src.match(/\bfetch\(/g) ?? []).length).toBe(2)
+  })
+})

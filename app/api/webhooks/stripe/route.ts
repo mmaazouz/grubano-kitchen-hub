@@ -9,7 +9,7 @@ import { reconcileLoyaltyOnRefund } from '@/lib/loyalty-refund-apply'
 import { isChargebacksEnabled, handleDisputeEvent } from '@/lib/dispute'
 import { isGhostOrderAutoRefundEnabled, isRefundsEnabled, executeRefund, computeRefundSplit, finalizeRefundRowFromStripe, markRefundRowFailed } from '@/lib/refund'
 import { recomputeRoyaltyRefundedCents } from '@/lib/royalty-refunded'
-import { reconcileClaimForRefund } from '@/lib/claims'
+import { reconcileClaimForRefund, markClaimsForRevertedRefundRow } from '@/lib/claims'
 import { matchFeeRefunds, predictFeeRefund, refundLedgerLine } from '@/lib/refund-fee-truth'
 import { clawbackCourierTip } from '@/lib/courier-accrual'
 import { sendAdminGhostOrderAlert, sendAdminStalePiAlert, sendAdminMoneyReviewAlert } from '@/lib/admin-alerts'
@@ -992,17 +992,36 @@ async function handleRefundStatusEvent(refund: Stripe.Refund) {
           } catch (e) {
             console.error('[stripe webhook] claim reconciliation (failed) failed —', e instanceof Error ? e.message : e)
           }
+          // ROUND 13 (D12, G11): AFTER the unchanged money writes, the claim-only marking of a SETTLED claim on this row
+          // (now failed with its Stripe id). It writes Claim rows only; 503 only when one of its DB calls threw.
+          const markedFailedRow = await markClaimsForRevertedRefundRow({ rowId: row.id, evidence: { kind: 'failed_row' } })
+          if (markedFailedRow.failed) return NextResponse.json({ received: false }, { status: 503 })
           return NextResponse.json({ received: true, refund: refund.id, status, row: row.id, locked: true, claim: claimReconciled })
         }
         if (row.status === 'succeeded') {
+          // ROUND 13 (I-05): the existing alert FIRST; its facts gain the claims bound to the row (best-effort read).
+          let claimIds = 'unread'
+          try {
+            claimIds = (await prisma.claim.findMany({ where: { refundId: row.id }, select: { id: true } })).map((c) => c.id).join(', ')
+          } catch { claimIds = 'unread' }
           try {
             await sendAdminMoneyReviewAlert({
               kind:      'refund_failed',
               dedupeKey: `refund:${refund.id}`,
               title:     'Remboursement Stripe passé en échec APRÈS finalisation',
-              facts:     { orderId: row.orderId, refundRow: row.id, stripeRefundId: refund.id, amountCents: refund.amount, stripeStatus: status, failureReason: refund.failure_reason ?? null, action: 'ligne ledger + refundedCents déjà comptabilisés — révision humaine requise, aucune action automatique' },
+              facts:     { orderId: row.orderId, refundRow: row.id, stripeRefundId: refund.id, amountCents: refund.amount, stripeStatus: status, failureReason: refund.failure_reason ?? null, action: 'ligne ledger + refundedCents déjà comptabilisés — révision humaine requise, aucune action automatique', claimIds },
             })
           } catch { /* best-effort */ }
+          // ROUND 13 (D12, G11): then the claim-only marking from the Stripe object this event carries. No Refund row, no
+          // ledger entry is written here. 503 only when one of its DB calls threw (E-08: bounded by redelivery).
+          const markedSucceededRow = await markClaimsForRevertedRefundRow({ rowId: row.id, evidence: { kind: 'stripe_object', refund }, routed: refund.transfer_reversal ? true : null })
+          if (markedSucceededRow.failed) return NextResponse.json({ received: false }, { status: 503 })
+        }
+        if (row.status === 'failed') {
+          // ROUND 13 (D12): a redelivery, or a row an engine resume marked failed — the helper ONLY (never
+          // markRefundRowFailed, never reconcileClaimForRefund, whose CAS could overwrite a later error).
+          const markedRedelivery = await markClaimsForRevertedRefundRow({ rowId: row.id, evidence: { kind: 'failed_row' } })
+          if (markedRedelivery.failed) return NextResponse.json({ received: false }, { status: 503 })
         }
         return NextResponse.json({ received: true, refund: refund.id, status, row: row.id, locked: row.status === 'failed' })
       }

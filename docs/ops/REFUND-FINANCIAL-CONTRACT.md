@@ -205,3 +205,12 @@ Run 2026-09-12 (slice W4, fixer round 1), before any window. Nothing in this run
 - **Negative control** (`CLAIMS_RACE_NEGATIVE=1`, isolationLevel omitted = the server default REPEATABLE READ): R bound to **both** claims in **20/20** iterations. Serializable is required.
 - **Break/restore:** the binder read moved out of the transaction (`db.claim.findFirst` instead of `tx.claim.findFirst`) → the rehearsal fails at iteration 0 with two refunded claims; `lib/claims.ts` restored byte-identical (sha256 checked) to the version that passed.
 - **Residual:** a local Windows build with fresh-install settings. The o2switch server's `innodb_deadlock_detect`, `innodb_snapshot_isolation` and lock-wait settings were not read. Per the ARCHITECTURE DECISION, every non-deadlock outcome (P2028, 1020, both sides timing out) is a full rollback, which C7 reports as nothing written after the re-read.
+
+## 21 · T-49 round 13 — AMF-1: reversal of a settled refund whose failure event was lost (E-09)
+
+`reverifySettledClaimRefunds({ lookbackDays = 35, take = 100 })` (lib/claims.ts) re-reads, read-only toward Stripe, the refunded claims settled in the last `lookbackDays` whose bound row (own order) is `succeeded` or `pending`, and marks — claim only (G11) — the ones whose refund Stripe now reports `failed` or `canceled`, with the I-01 alert and the audit `claim.reconcile_evidence {moneyMoved: false}`. It never calls the engine, never writes to Stripe, never writes a Refund row and sends no customer e-mail. `recoverStrandedClaimReconciliations` runs it after its stranded pass: the daily cron call in production, and `POST /api/admin/claims/reconcile-refunds` as an admin on demand (staging has no cron).
+
+- **Detection:** at the next pass (daily in production, on demand elsewhere).
+- **Visibility:** the pass summary (`settledReverify: { checked, reverted, standing, unreadable, unproven, truncated }`) and the I-01 alert at marking.
+- **Residual:** a failure that Stripe reports more than `lookbackDays` after settlement, and whose event was lost. Such a claim keeps reading « Remboursée » and appears in no list, count or alert; no money moves from it (the claim is terminal, the engine refuses at E2 / E6, and later claims on the order meet T2 H1).
+- **Mode-A precheck:** before any window, the operator runs the re-verification on staging and records `settledReverify.reverted = 0` (procedure: `docs/ops/CLAIMS-R13-OPERATOR-PRECHECK.md`).

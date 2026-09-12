@@ -46,6 +46,11 @@ const POLL_MS = Number(process.env.PHASE2_CLAIMS_POLL_MS || 15000)
 const facts = [], anomalies = []
 const F = (k, v) => { facts.push(k + ' = ' + v); console.log('  ' + k + ' = ' + v) }
 const A = (m) => { anomalies.push(m); console.log('  !! ANOMALY: ' + m) }
+// ROUND 13 (I-07, slice W5): the census channel — legacy and closure populations (C3 pre-deploy alert). It NEVER pushes
+// to `anomalies`: RESULT, WINDOW READINESS and the window refusal are unchanged by any census value (approvedUnpaid
+// counts every beta approval and must not refuse every window).
+const census = []
+const C = (k, v, m) => { F(k, v === null ? 'NOT MEASURED' : v); if (v === null || v > 0) { census.push(k + ': ' + (v === null ? 'NOT MEASURED' : m)); console.log('  !! CENSUS: ' + k + ' — ' + (v === null ? 'NOT MEASURED' : m)) } }
 const mask = (s) => (typeof s === 'string' && s.length > 10 ? s.slice(0, 6) + '…' + s.slice(-4) : (s ? '***' : 'null'))
 const scrub = (m) => String(m == null ? '' : ((m && m.message) || m)).replace(/sk_(test|live)_[A-Za-z0-9]+/g, 'sk_***').replace(/[a-z][a-z0-9+.-]*:\/\/[^\s]+/gi, '<url>').replace(/[A-Za-z0-9_-]{24,}/g, '…').slice(0, 160)
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
@@ -57,6 +62,7 @@ function done(result, failedStep) {
   if (failedStep) console.log('FAILED STEP: ' + failedStep)
   for (const l of facts) console.log(l)
   if (anomalies.length) { console.log('ANOMALIES (' + anomalies.length + '):'); for (const a of anomalies) console.log('  - ' + a) }
+  if (census.length) { console.log('CENSUS (C3 — legacy and closure populations; report them in the inbox; they do not change RESULT) (' + census.length + '):'); for (const l of census) console.log('  - ' + l) }
   console.log('ACTION: PASTE THIS WHOLE OUTPUT TO CLAUDE CODE')
   console.log('========================================')
   process.exitCode = result.startsWith('PASS') ? 0 : 1
@@ -197,6 +203,143 @@ function claimTableReport(total, byStatus) {
   return { fact: 'reachable · ' + total + ' row(s) · ' + (byStatus.length ? byStatus.map((g) => g.status + ':' + g._count).join(' ') : 'no rows'), anomaly: null }
 }
 
+/* ROUND 13 (I-06 / I-07 / H16, slice W5) — THE CENSUS OF LEGACY AND CLOSURE POPULATIONS.
+   Read-only Prisma queries on this script's own DB handle: no Stripe call, no fetch, no write. Each count is an integer,
+   or null when its own read threw (never 0 on a failure). The same definitions as lib/claims-census.ts (the census
+   route); tests/claims-t49-round13-census.test.ts runs both on one fixture. E-09 is not counted (it needs a Stripe read). */
+const CENSUS_RESUME_WINDOW_MS = 20 * 60 * 60 * 1000 // lib/refund RESUME_CREATE_WINDOW_MS (pinned equal by the census test)
+const CENSUS_TERMINAL = ['refunded', 'refused_final']
+const CENSUS_CLOSURE_TRIGGER = {
+  refunded: 'claim_decision_refunded',
+  settled_by_declaration: 'claim_closed_by_support',
+  closed_by_declaration: 'claim_closed_by_support',
+  refused_confirmed: 'claim_decision_refused_final',
+  refused_by_grubano: 'claim_decision_refused_final',
+}
+function censusClosureKind(c) {
+  if (c.status === 'refunded') {
+    if (typeof c.refundError === 'string' && c.refundError.startsWith('stripe_reverted_after_refund:')) return null
+    return c.refundError ? 'settled_by_declaration' : 'refunded'
+  }
+  if (c.status === 'refused_final') {
+    if (c.arbitrationDecision !== 'refused_final') return 'closed_by_declaration'
+    return c.restaurantResponse === 'refused' ? 'refused_confirmed' : 'refused_by_grubano'
+  }
+  return null
+}
+const censusRowProven = (row, orderId) => !!row && row.orderId === orderId && (row.status === 'succeeded' || row.status === 'pending')
+  && typeof row.amountCents === 'number' && Number.isInteger(row.amountCents) && row.amountCents > 0
+
+async function censusMeasure(read) {
+  try {
+    const n = await read()
+    return typeof n === 'number' && Number.isInteger(n) && n >= 0 ? n : null
+  } catch (e) { return null }
+}
+
+async function censusCounts(db, opts) {
+  const nowMs = (opts && opts.nowMs) || Date.now()
+  const adminAuditEnabled = !!(opts && opts.adminAuditEnabled)
+  const out = {}
+  out.legacyPayableProofs = await censusMeasure(() => db.claim.count({ where: { status: 'approved', refundError: { startsWith: 'no_refund_proven:' }, NOT: { refundError: { startsWith: 'no_refund_proven:v13:' } } } }))
+  out.refundedBoundToFailedRow = await censusMeasure(async () => {
+    const ids = (await db.refund.findMany({ where: { status: 'failed', stripeRefundId: { not: null } }, select: { id: true } })).map((r) => r.id)
+    return ids.length ? db.claim.count({ where: { status: 'refunded', refundError: null, refundId: { in: ids } } }) : 0
+  })
+  out.refundedRowUnproven = await censusMeasure(async () => {
+    const claims = await db.claim.findMany({ where: { status: 'refunded', refundError: null }, select: { id: true, orderId: true, refundId: true } })
+    const refundIds = claims.map((c) => c.refundId).filter(Boolean)
+    const rows = refundIds.length ? await db.refund.findMany({ where: { id: { in: refundIds } }, select: { id: true, orderId: true, status: true, stripeRefundId: true, amountCents: true } }) : []
+    const byId = new Map(rows.map((r) => [r.id, r]))
+    return claims.filter((c) => {
+      const row = c.refundId ? byId.get(c.refundId) || null : null
+      const failedWithIdOwnOrder = !!row && row.orderId === c.orderId && row.status === 'failed' && !!row.stripeRefundId
+      return !censusRowProven(row, c.orderId) && !failedWithIdOwnOrder
+    }).length
+  })
+  try {
+    const claims = await db.claim.findMany({ where: { refundError: { startsWith: 'resume_mismatch' }, refundId: { not: null } }, select: { id: true, status: true, refundId: true } })
+    const ids = claims.map((c) => c.refundId)
+    const rows = ids.length ? await db.refund.findMany({ where: { id: { in: ids } }, select: { id: true, reason: true } }) : []
+    const reason = new Map(rows.map((r) => [r.id, r.reason]))
+    const own = claims.filter((c) => reason.get(c.refundId) === 'claim:' + c.id)
+    out.ownRowResumeMismatchNonTerminal = own.filter((c) => !CENSUS_TERMINAL.includes(c.status)).length
+    out.ownRowResumeMismatchTerminal = own.filter((c) => CENSUS_TERMINAL.includes(c.status)).length
+  } catch (e) { out.ownRowResumeMismatchNonTerminal = null; out.ownRowResumeMismatchTerminal = null }
+  // Track B §M (source definitions, W5 fixer) — the same predicates as lib/claims-census.ts.
+  out.terminalDeclarationWithArbitrationReason = await censusMeasure(() => db.claim.count({ where: { status: { in: CENSUS_TERMINAL.slice() }, refundError: { not: null }, arbitrationReason: { not: null } } }))
+  out.refundedAfterContradictionAttribution = !adminAuditEnabled ? null : await censusMeasure(async () => {
+    const head = 'claim_fv:', tail = ':stripe_refund_contradiction'
+    const parks = await db.emailDispatch.findMany({ where: { trigger: 'admin_money_review_claim_financial_verification', dedupeKey: { startsWith: head } }, select: { dedupeKey: true } })
+    const parked = Array.from(new Set(parks.map((d) => d.dedupeKey).filter((k) => k.endsWith(tail) && k.length > head.length + tail.length).map((k) => k.slice(head.length, k.length - tail.length))))
+    if (!parked.length) return 0
+    const audited = await db.adminAuditLog.findMany({ where: { targetType: 'claim', action: 'claim.attribute_refund', targetId: { in: parked } }, select: { targetId: true } })
+    const attributed = Array.from(new Set(audited.map((a) => a.targetId).filter(Boolean)))
+    if (!attributed.length) return 0
+    return db.claim.count({ where: { id: { in: attributed }, status: 'refunded' } })
+  })
+  out.refundedBoundToOtherClaimStamp = await censusMeasure(async () => {
+    const rows = await db.refund.findMany({ where: { status: 'succeeded', reason: { startsWith: 'claim:' } }, select: { id: true, reason: true } })
+    const stampIds = Array.from(new Set(rows.map((r) => String(r.reason).slice(6))))
+    const claims = stampIds.length ? await db.claim.findMany({ where: { id: { in: stampIds } }, select: { id: true, status: true, refundId: true } }) : []
+    const byId = new Map(claims.map((c) => [c.id, c]))
+    return rows.filter((r) => { const c = byId.get(String(r.reason).slice(6)); return !(c && c.status === 'refunded' && c.refundId === r.id) }).length
+  })
+  out.rowsBoundToMultipleClaims = await censusMeasure(async () => (await db.claim.groupBy({
+    by: ['refundId'],
+    where: { refundId: { not: null }, OR: [{ refundError: null }, { NOT: { refundError: { startsWith: 'resume_mismatch' } } }] },
+    having: { refundId: { _count: { gt: 1 } } },
+    _count: { _all: true },
+  })).length)
+  out.pendingRowsOver20hWithSettledRoyalty = await censusMeasure(async () => {
+    const rows = await db.refund.findMany({ where: { status: 'pending', royaltyRefundCents: { gt: 0 }, createdAt: { lt: new Date(nowMs - CENSUS_RESUME_WINDOW_MS) } }, select: { id: true, orderId: true } })
+    if (!rows.length) return 0
+    const roy = await db.franchiseRoyalty.findMany({ where: { orderId: { in: Array.from(new Set(rows.map((r) => r.orderId))) }, status: { in: ['settled', 'settling'] } }, select: { orderId: true } })
+    const settled = new Set(roy.map((r) => r.orderId))
+    return rows.filter((r) => settled.has(r.orderId)).length
+  })
+  out.approvedUnpaid = await censusMeasure(() => db.claim.count({ where: { status: 'approved', refundAttempted: false } }))
+  try {
+    const claims = await db.claim.findMany({ where: { status: { in: CENSUS_TERMINAL.slice() } }, select: { id: true, status: true, refundError: true, arbitrationDecision: true, restaurantResponse: true } })
+    const terminal = claims.map((c) => ({ id: c.id, kind: censusClosureKind(c) })).filter((c) => c.kind !== null)
+    const keys = terminal.map((c) => 'claim:' + c.id)
+    const recorded = new Set(keys.length ? (await db.emailDispatch.findMany({ where: { trigger: 'claim_closure_record', dedupeKey: { in: keys } }, select: { dedupeKey: true } })).map((d) => d.dedupeKey) : [])
+    out.closureTerminalWithoutRecord = terminal.filter((c) => !recorded.has('claim:' + c.id)).length
+    const withRecord = terminal.filter((c) => recorded.has('claim:' + c.id))
+    out.closureMissing = await censusMeasure(async () => {
+      if (!withRecord.length) return 0
+      const triggers = Array.from(new Set(withRecord.map((c) => CENSUS_CLOSURE_TRIGGER[c.kind])))
+      const sent = new Set((await db.emailDispatch.findMany({ where: { trigger: { in: triggers }, dedupeKey: { in: withRecord.map((c) => 'claim:' + c.id) } }, select: { trigger: true, dedupeKey: true } })).map((d) => d.trigger + '|' + d.dedupeKey))
+      return withRecord.filter((c) => !sent.has(CENSUS_CLOSURE_TRIGGER[c.kind] + '|claim:' + c.id)).length
+    })
+  } catch (e) { out.closureTerminalWithoutRecord = null; out.closureMissing = null }
+  return out
+}
+
+/** I-07 MESSAGES (English, log convention): [counts key, printed key, message with its E id]. */
+const CENSUS_LINES = [
+  ['legacyPayableProofs', 'legacyPayableProofs', (n) => n + ' pre-v13 absence proofs, approval suspended; run reconcile on each (E-01)'],
+  ['refundedBoundToFailedRow', 'refundedBoundToFailedRow', (n) => n + ' refunded claims on a failed Stripe-id row, unmarked; reconcile from the FV card (E-07)'],
+  ['refundedRowUnproven', 'refundedRowUnproven', (n) => n + ' refunded claims whose bound row is not established (E-13)'],
+  ['ownRowResumeMismatchNonTerminal', 'ownRowResumeMismatch.nonTerminal', (n) => n + ' own-row resume_mismatch claims (E-05 / E-14)'],
+  ['ownRowResumeMismatchTerminal', 'ownRowResumeMismatch.terminal', (n) => n + ' own-row resume_mismatch claims (E-05 / E-14)'],
+  ['terminalDeclarationWithArbitrationReason', 'terminalDeclarationWithArbitrationReason', (n) => n + ' terminal claims with a recorded refund error and an arbitration reason (Track B census; no E entry: F08 hides the reason on a declaration kind)'],
+  ['refundedAfterContradictionAttribution', 'refundedAfterContradictionAttribution', (n) => n + ' (lower bound; null if admin audit was off): FOUNDER REVIEW (E-15)'],
+  ['refundedBoundToOtherClaimStamp', 'refundedBoundToOtherClaimStamp', (n) => n + ' standing rows stamped for a claim not settled on them (E-04)'],
+  ['rowsBoundToMultipleClaims', 'rowsBoundToMultipleClaims', (n) => n + ' rows bound to two or more claims (E-12)'],
+  ['pendingRowsOver20hWithSettledRoyalty', 'pendingRowsOver20hWithSettledRoyalty', (n) => n + ' pending rows over 20 h with a settled royalty: engine resume may refuse forever (E-01 A-S10c)'],
+  ['approvedUnpaid', 'approvedUnpaid', (n) => n + ' approved and unpaid claims, exits gated by CLAIMS+REFUNDS (E-10)'],
+  ['closureMissing', 'closure.missing', (n) => n + ' closures of this build without a dispatched notice (E-16)'],
+  ['closureTerminalWithoutRecord', 'closure.terminalWithoutRecord', (n) => n + ' terminal claims without a this-build closure record (legacy, or record write failed): never notified (E-18)'],
+]
+/** Prints every count through C (facts always; a '!! CENSUS:' line for each count > 0 or NOT MEASURED). */
+function reportCensus(counts) {
+  for (const [key, printed, msg] of CENSUS_LINES) {
+    const v = counts[key] === undefined ? null : counts[key]
+    C('CENSUS ' + printed, v, v === null ? null : msg(v))
+  }
+}
+
 async function main() {
   console.log('[1] identity + env (mode ' + MODE + ')')
   const envFile = path.join(APP_ROOT, '.env.local')
@@ -278,6 +421,8 @@ async function main() {
       const silence = await prisma.claim.count({ where: { status: 'restaurant_review', responseDeadlineAt: { lte: new Date() } } })
       F('CLAIMS NEEDING A HUMAN BEFORE THE REHEARSAL', 'refunding ' + stuck + ' · restaurant silence expired ' + silence)
       if (stuck > 0) A('2 db: ' + stuck + ' claim(s) already stuck in refunding — resolve them BEFORE adding rehearsal noise')
+      // ROUND 13 (I-07): the census of legacy and closure populations — printed in precheck and at window start, never an anomaly.
+      reportCensus(await censusCounts(prisma, { adminAuditEnabled: process.env.ADMIN_AUDIT_ENABLED === 'true' }))
 
       if (TARGET_ORDER_ID) {
         const order = await prisma.order.findUnique({
@@ -418,5 +563,9 @@ module.exports = {
   claimTableReport,
   _setResidueForTests: (prismaHandle, baseline) => { residuePrisma = prismaHandle; residueBaseline = baseline },
   // F()/A() append to the report printed by done(); a test reads them here instead of calling done().
-  _residueLinesForTests: () => ({ facts: facts.slice(), anomalies: anomalies.slice() }),
+  _residueLinesForTests: () => ({ facts: facts.slice(), anomalies: anomalies.slice(), census: census.slice() }),
+  // ROUND 13 (I-07, slice W5): the census counts and their printer.
+  censusCounts,
+  reportCensus,
+  CENSUS_RESUME_WINDOW_MS,
 }

@@ -74,6 +74,8 @@ beforeEach(() => {
   log.length = 0
   process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test'
   db.order.findUnique.mockResolvedValue({ stripePaymentIntentId: 'pi_1' })
+  // ROUND 13 (G11 / D12, slice W5): the claim-only helper reads the claims bound to the row; none in these fixtures.
+  db.claim.findMany.mockResolvedValue([])
   // handleChargeRefunded is internal: its first collaborator on a charge without restaurant metadata is the plain
   // PaymentIntent read (no expand) — that call marks it in the log, then it acknowledges with no ledger line.
   stripe.paymentIntents.retrieve.mockImplementation(async (id: string, opts?: unknown) => {
