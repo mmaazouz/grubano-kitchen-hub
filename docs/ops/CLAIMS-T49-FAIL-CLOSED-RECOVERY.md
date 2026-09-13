@@ -950,7 +950,7 @@ Avant l'audit, la SHA avait passé toute la suite de certification : 19 contrôl
 
 Chaque correctif porte une IMPLEMENTATION NOTE dans la spécification gelée et un contrôle de rupture/restauration (R20–R24). Aucun changement de schéma ; `lib/refund.ts` et la route webhook sont inchangés.
 
-**P2 restants : 9, déclarés comme dette et non bloquants pour la certification.**
+**P2 restants : 9 constats, regroupés en 8 points (le premier en couvre deux), déclarés comme dette et non bloquants pour la certification.**
 - La sortie « Clôturer ce dossier… » est affichée sur le resume_mismatch de la ligne propre, par les deux consoles et par la guidance `refund_error_recorded`, alors que le serveur refuse la déclaration.
 - Un crash entre l'écriture de liaison et l'application dans `applyRowTruth` laisse deux formes de réclamation absentes du registre.
 - Le toast `refund_failed` annonce un détail (le moteur refuse-t-il désormais la commande ?) qu'aucun de ses rédacteurs n'enregistre.
@@ -963,3 +963,27 @@ Chaque correctif porte une IMPLEMENTATION NOTE dans la spécification gelée et 
 Les 22 P3 et le détail de chaque constat sont dans le rapport Notion.
 
 **Re-certification.** La nouvelle SHA candidate porte ce paragraphe et repasse toute la suite : contrôles R1–R24, répétition réelle, build à froid, suite complète, déploiement à SHA exacte, portails 403 et recensement. Suivent un re-audit ciblé des zones modifiées et une vérification globale finale.
+
+### Rond 13 — re-audit ciblé de `2466e03` et correctifs (2026-09-13)
+
+**Re-audit ciblé de la SHA déployée `2466e03`.** 47 agents : un vérificateur par P1 corrigé, deux auditeurs de voisinage, les réfutateurs et une critique de complétude. Résultat : **P0 0, P1 2, P2 3, P3 8**, et 5 constats réfutés.
+
+Trois correctifs tiennent par tous les chemins : le renversement effacé, le 503 de relivraison et la moitié « jeton » de (f). Deux ne tiennent pas encore.
+
+- **Le titre de l'alerte I-01.** L'écriture de `ownRowExists` pouvait échouer après la lecture d'une ligne à l'identité de la réclamation. L'alerte `attempt_crashed` (moteur non appelé) portait alors encore « Réclamation non payée par le rail » (P1). Même chose quand la lecture de ces lignes échouait, avec `safety_check_unreadable` (P2). Désormais, le titre figé exige en plus que la tentative ait LU qu'aucune ligne à l'identité de la réclamation n'existe.
+- **La carte « Vérification financière requise ».** L'épingle de forme du source ne voyait ni une garde du drapeau sur un ancêtre de la carte, ni une sortie anticipée écrite autrement (P1 et P2). Le montage inconditionnel est maintenant épinglé par le comportement : le composant serveur de la page est appelé drapeau fermé puis ouvert, et son arbre d'éléments est parcouru.
+
+Deux défauts voisins sont corrigés aussi. Les tests du titre prennent le titre attendu dans la déclaration de chaque cas, jamais dans les faits de l'alerte. La moitié « statut » de (f) a son épingle.
+
+Chaque correctif porte une IMPLEMENTATION NOTE et un contrôle de rupture/restauration (R25–R30). Aucun changement de schéma ; `lib/refund.ts` et la route webhook sont inchangés.
+
+**Dette déclarée à l'issue du re-audit ciblé.**
+- **P2.** Un marquage de renversement perdu contre un solde concurrent est acquitté 200. La réclamation reste lue « Remboursée » jusqu'au passage AMF-1 suivant.
+- **P3.**
+  - Un marqueur de renversement écrit après la lecture de la réclamation par le réconciliateur ne l'arrête pas.
+  - Une réclamation héritée en resume_mismatch sur sa propre ligne n'est jamais marquée.
+  - La clé de déduplication par cause peut masquer le second e-mail d'alerte d'une réclamation.
+  - Le corps de cet e-mail dit « Aucune action automatique n'a été prise » sous le titre neutre.
+  - Le compteur AMF-1 d'un marquage en échec n'a pas d'épingle.
+
+Le détail de chaque constat est dans le rapport Notion.

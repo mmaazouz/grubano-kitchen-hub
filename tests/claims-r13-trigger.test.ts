@@ -449,6 +449,14 @@ describe('J-M19 — T2: every branch writes by CAS on M and never calls the engi
     noEngine()
   })
 
+  it('(f) the status changed while the token stays M → attempt_superseded, no write, engine not called (C3 (f) status half; targeted re-audit of 2466e03, P3)', async () => {
+    w.beforeClaimRead = (n) => { if (n === 2) claimOf(w).status = 'financial_verification' }
+    expect(await triggerClaimRefund('cl1')).toEqual({ state: 'failed', error: 'attempt_superseded' })
+    expect(claimOf(w).refundError).toBe(M())
+    expect(w.writes).toHaveLength(1)
+    noEngine()
+  })
+
   it('« awaiting_other_row » no longer exists in lib/ or messages/', () => {
     const files = [...readdirSync('lib').filter((f) => f.endsWith('.ts')).map((f) => `lib/${f}`), ...['fr', 'en', 'es', 'it', 'ar'].map((l) => `messages/${l}.json`)]
     for (const f of files) expect(read(f), f).not.toContain('awaiting_other_row')

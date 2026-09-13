@@ -301,7 +301,11 @@ describe('GET /financial-verification — ungated AT THE ROUTE, not just in the 
 describe('the page keeps the money queue mounted when the feature flag is off', () => {
   const page = readFileSync('app/[locale]/admin/claims/page.tsx', 'utf8')
 
-  /** D0 « Always mounted »: the card is mounted exactly once, on its own line, directly under the island's ToastProvider, with no flag guard. */
+  /**
+   * D0 « Always mounted », SOURCE SHAPE only: the card mounted once, on its own line, directly under the island's ToastProvider.
+   * A flag gate on an ancestor, or an early exit written another way, is caught by the behavioural pin
+   * tests/claims-admin-page-fv-mount.test.ts (targeted re-audit of 2466e03).
+   */
   const fvMountViolations = (src: string): string[] => {
     const lines = src.replace(/\r\n/g, '\n').split('\n')
     const at = lines.map((l, i) => (l.includes('<AdminFinancialVerification') ? i : -1)).filter((i) => i >= 0)

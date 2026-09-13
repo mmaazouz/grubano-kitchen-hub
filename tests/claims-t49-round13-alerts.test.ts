@@ -74,30 +74,99 @@ beforeEach(() => {
 })
 afterEach(() => { delete process.env.ALERT_EMAIL })
 
+const OUTCOME_UNKNOWN_TEXT = 'Tentative de remboursement sans issue établie — preuve requise avant toute décision'
+const FROZEN_TEXT = 'Réclamation non payée par le rail — décision admin requise'
 /**
- * I-01 title (certification audit c32d8d3, P1): « non payée par le rail » only where no rail payment for this claim can have
- * happened — never once executeRefund was called, never on own_row_exists. Returns the violation, or null.
+ * I-01 title (certification audit c32d8d3, P1; targeted re-audit of 2466e03, P1): « non payée par le rail » only where no rail
+ * payment for this claim can have happened. The expected title is DECLARED by the fixture (`expectUnknown`), never derived from
+ * the alert's own facts; facts that forbid the frozen title (engineCalled true, own_row_exists) are a violation whatever the
+ * fixture declares. Returns the violation, or null.
  */
-function titleViolation(a: { title: string; facts: Record<string, unknown> }): string | null {
-  const outcomeUnknown = a.facts.engineCalled === true || a.facts.cause === 'own_row_exists'
-  if (outcomeUnknown) {
-    if (a.title !== 'Tentative de remboursement sans issue établie — preuve requise avant toute décision') return `title « ${a.title} » after the rail may have paid`
-    if (/non payée|payée|versé|remboursée/i.test(a.title)) return 'the outcome-unknown title states a payment outcome'
-    return null
-  }
-  return a.title === 'Réclamation non payée par le rail — décision admin requise' ? null : `title « ${a.title} » on a cause where the rail cannot have paid`
+function titleViolation(a: { title: string; facts: Record<string, unknown> }, expectUnknown: boolean): string | null {
+  if ((a.facts.engineCalled === true || a.facts.cause === 'own_row_exists') && !expectUnknown) return 'the fixture expects the frozen title where the alert facts forbid it'
+  const want = expectUnknown ? OUTCOME_UNKNOWN_TEXT : FROZEN_TEXT
+  if (a.title !== want) return `title « ${a.title} », expected « ${want} »`
+  if (expectUnknown && /non payée|payée|versé|remboursée/i.test(a.title)) return 'the outcome-unknown title states a payment outcome'
+  return null
 }
 
-describe('I-01 title — certification audit c32d8d3 (P1): no payment outcome once the rail may have paid', () => {
-  it('claimBlockedTitle: every cause with engineCalled true, and own_row_exists, gets the outcome-unknown title; every other cause keeps the frozen one', () => {
-    expect(CLAIM_BLOCKED_TITLE).toBe('Réclamation non payée par le rail — décision admin requise')
-    expect(CLAIM_BLOCKED_OUTCOME_UNKNOWN_TITLE).toBe('Tentative de remboursement sans issue établie — preuve requise avant toute décision')
+describe('I-01 title — certification audit c32d8d3 and targeted re-audit of 2466e03 (P1): no payment outcome unless the attempt READ that none can have happened', () => {
+  it('claimBlockedTitle: the frozen title only when the engine was not called, the cause is not own_row_exists and no stamped row can exist', () => {
+    expect(CLAIM_BLOCKED_TITLE).toBe(FROZEN_TEXT)
+    expect(CLAIM_BLOCKED_OUTCOME_UNKNOWN_TITLE).toBe(OUTCOME_UNKNOWN_TEXT)
     for (const cause of CAUSES) {
       for (const engineCalled of [true, false]) {
-        const title = claimBlockedTitle(cause as never, engineCalled)
-        expect(titleViolation({ title, facts: { cause, engineCalled } }), `${cause} engineCalled=${engineCalled}`).toBeNull()
+        for (const ownRowAbsent of [true, false]) {
+          const expectUnknown = engineCalled || cause === 'own_row_exists' || !ownRowAbsent
+          const title = claimBlockedTitle(cause as never, engineCalled, ownRowAbsent)
+          expect(titleViolation({ title, facts: { cause, engineCalled } }, expectUnknown), `${cause} engineCalled=${engineCalled} ownRowAbsent=${ownRowAbsent}`).toBeNull()
+        }
       }
+      // Callers outside triggerClaimRefund pass no ownRowAbsent: they act on Stripe evidence for the bound row.
+      expect(claimBlockedTitle(cause as never, false)).toBe(cause === 'own_row_exists' ? OUTCOME_UNKNOWN_TEXT : FROZEN_TEXT)
     }
+  })
+
+  it('targeted re-audit of 2466e03 (P1): the own-row write throws AFTER a row stamped claim:cl1 was read → attempt_crashed, engineCalled false, outcome-unknown title', async () => {
+    w.refunds.push(refundRow('rf_own', { reason: 'claim:cl1', status: 'pending' }))
+    w.beforeClaimWrite = (n) => { if (n === 2) throw new Error('own-row write failed') }
+    await expect(triggerClaimRefund('cl1')).rejects.toThrow('own-row write failed')
+    expect(execMock).not.toHaveBeenCalled()
+    const a = calls('claim_payment_blocked')
+    expect(a.map((x) => [x.facts.cause, x.facts.engineCalled, x.title])).toEqual([['attempt_crashed', false, CLAIM_BLOCKED_OUTCOME_UNKNOWN_TITLE]])
+  })
+
+  it('targeted re-audit of 2466e03 (P1): (a) reads no stamped row, the loader then sees one ((e\') changed_during_read) and the own-row write throws → attempt_crashed, engineCalled false, outcome-unknown title', async () => {
+    // Read skew: the row stamped claim:cl1 lands between (a) and the loader; its Stripe refund names it.
+    const skewWorld = () => {
+      w = payableWorld()
+      wireWorld(w, db, stripeMock)
+      w.refunds.push(refundRow('rf_own', { status: 'pending', stripeRefundId: 're_own', reason: 'claim:cl1' }))
+      w.stripeRefunds.push(stripeRefund('re_own', { metadata: { grubano_refund_row: 'rf_own' } }))
+      w.pis.pi_1.latest_charge.amount_refunded = 300
+      const wired = db.refund.findFirst.getMockImplementation() as (args: { where?: Record<string, unknown> }) => Promise<unknown>
+      const reads = { stamped: 0 }
+      db.refund.findFirst.mockImplementation(async (args: { where?: Record<string, unknown> }) => {
+        if (args?.where?.reason === 'claim:cl1' && ++reads.stamped === 1) return null
+        return wired(args)
+      })
+      return reads
+    }
+    // The fixture reaches ownRowExists through (e'), not (a) or (f): one stamped read, the own_row_exists outcome.
+    const precondition = skewWorld()
+    expect(await triggerClaimRefund('cl1')).toEqual({ state: 'failed', error: 'own_row_exists' })
+    expect(precondition.stamped).toBe(1)
+    spy.mockClear()
+    sent.clear()
+
+    const reads = skewWorld()
+    w.beforeClaimWrite = (n) => { if (n === 2) throw new Error('own-row write failed') }
+    await expect(triggerClaimRefund('cl1')).rejects.toThrow('own-row write failed')
+    expect(reads.stamped).toBe(1)
+    expect(execMock).not.toHaveBeenCalled()
+    const a = calls('claim_payment_blocked')
+    expect(a.map((x) => [x.facts.cause, x.facts.engineCalled, x.title])).toEqual([['attempt_crashed', false, CLAIM_BLOCKED_OUTCOME_UNKNOWN_TITLE]])
+  })
+
+  it('targeted re-audit of 2466e03 (P2): the stamped read fails at (a) → safety_check_unreadable with the outcome-unknown title', async () => {
+    w.fail.refundFindFirst = true
+    expect(await triggerClaimRefund('cl1')).toEqual({ state: 'failed', error: 'safety_check_unreadable' })
+    const a = calls('claim_payment_blocked')
+    expect(a.map((x) => [x.facts.cause, x.facts.engineCalled, x.title])).toEqual([['safety_check_unreadable', false, CLAIM_BLOCKED_OUTCOME_UNKNOWN_TITLE]])
+  })
+
+  it('targeted re-audit of 2466e03 (P2): (a) reads no stamped row, then the (f) stamped read fails → safety_check_unreadable with the outcome-unknown title', async () => {
+    const wired = db.refund.findFirst.getMockImplementation() as (args: { where?: Record<string, unknown> }) => Promise<unknown>
+    let stampedReads = 0
+    db.refund.findFirst.mockImplementation(async (args: { where?: Record<string, unknown> }) => {
+      if (args?.where?.reason === 'claim:cl1' && ++stampedReads === 2) throw new Error('db down')
+      return wired(args)
+    })
+    expect(await triggerClaimRefund('cl1')).toEqual({ state: 'failed', error: 'safety_check_unreadable' })
+    expect(stampedReads).toBe(2)
+    expect(execMock).not.toHaveBeenCalled()
+    const a = calls('claim_payment_blocked')
+    expect(a.map((x) => [x.facts.cause, x.facts.engineCalled, x.title])).toEqual([['safety_check_unreadable', false, CLAIM_BLOCKED_OUTCOME_UNKNOWN_TITLE]])
   })
 
   it('the real alert after engine_own_row (executeRefund answered 502 « Remboursement émis… » with a row stamped for this claim) carries the outcome-unknown title', async () => {
@@ -110,20 +179,27 @@ describe('I-01 title — certification audit c32d8d3 (P1): no payment outcome on
     expect(a.map((x) => [x.facts.cause, x.facts.engineCalled, x.title])).toEqual([['engine_own_row', true, CLAIM_BLOCKED_OUTCOME_UNKNOWN_TITLE]])
   })
 
-  it('NEGATIVE CONTROL — the frozen title on an engineCalled alert or on own_row_exists is a violation; so is the outcome-unknown title on refunds_disabled', () => {
-    expect(titleViolation({ title: CLAIM_BLOCKED_TITLE, facts: { cause: 'engine_own_row', engineCalled: true } })).not.toBeNull()
-    expect(titleViolation({ title: CLAIM_BLOCKED_TITLE, facts: { cause: 'attempt_crashed', engineCalled: true } })).not.toBeNull()
-    expect(titleViolation({ title: CLAIM_BLOCKED_TITLE, facts: { cause: 'own_row_exists', engineCalled: false } })).not.toBeNull()
-    expect(titleViolation({ title: CLAIM_BLOCKED_OUTCOME_UNKNOWN_TITLE, facts: { cause: 'refunds_disabled', engineCalled: false } })).not.toBeNull()
+  it('NEGATIVE CONTROL — the frozen title where the facts or the fixture forbid it, or the outcome-unknown title where the frozen one is due, is a violation', () => {
+    expect(titleViolation({ title: CLAIM_BLOCKED_TITLE, facts: { cause: 'engine_own_row', engineCalled: true } }, true)).not.toBeNull()
+    expect(titleViolation({ title: CLAIM_BLOCKED_TITLE, facts: { cause: 'attempt_crashed', engineCalled: true } }, true)).not.toBeNull()
+    expect(titleViolation({ title: CLAIM_BLOCKED_TITLE, facts: { cause: 'own_row_exists', engineCalled: false } }, true)).not.toBeNull()
+    // targeted re-audit of 2466e03: engineCalled false, but the fixture read a stamped row (or could not read) → the frozen title is false.
+    expect(titleViolation({ title: CLAIM_BLOCKED_TITLE, facts: { cause: 'attempt_crashed', engineCalled: false } }, true)).not.toBeNull()
+    expect(titleViolation({ title: CLAIM_BLOCKED_TITLE, facts: { cause: 'safety_check_unreadable', engineCalled: false } }, true)).not.toBeNull()
+    // A fixture that declares the frozen title where the alert facts forbid it is itself caught.
+    expect(titleViolation({ title: CLAIM_BLOCKED_TITLE, facts: { cause: 'engine_failed', engineCalled: true } }, false)).not.toBeNull()
+    expect(titleViolation({ title: CLAIM_BLOCKED_OUTCOME_UNKNOWN_TITLE, facts: { cause: 'refunds_disabled', engineCalled: false } }, false)).not.toBeNull()
   })
 })
 
-/** Checks one claim_payment_blocked alert against the I-01 contract. */
-function expectBlocked(cause: string, o: { status?: string; engineCalled?: boolean; registry?: string } = {}) {
+/**
+ * Checks one claim_payment_blocked alert against the I-01 contract. The title is checked against the fixture's DECLARED outcome
+ * (`outcomeUnknown`, defaulting to the declared engineCalled / own_row_exists), never against the alert's own facts.
+ */
+function expectBlocked(cause: string, o: { status?: string; engineCalled?: boolean; registry?: string; outcomeUnknown?: boolean } = {}) {
   const a = calls('claim_payment_blocked')
   expect(a, cause).toHaveLength(1)
-  expect(a[0].title).toBe(claimBlockedTitle(cause as never, a[0].facts.engineCalled === true))
-  expect(titleViolation(a[0]), cause).toBeNull()
+  expect(titleViolation(a[0], o.outcomeUnknown ?? (o.engineCalled === true || cause === 'own_row_exists')), cause).toBeNull()
   expect(a[0].dedupeKey).toBe(`claim_blocked:cl1:${cause}`)
   expect(CAUSES).toContain(a[0].facts.cause)
   expect(a[0].facts.cause).toBe(cause)
@@ -135,19 +211,24 @@ function expectBlocked(cause: string, o: { status?: string; engineCalled?: boole
   expect(`${a[0].title} ${JSON.stringify(a[0].facts)}`).not.toMatch(/payable|sera payé|réessayez|@|€/i)
 }
 
-/** The T2 / T4 trigger fixtures: [name, world mutation, engine result or null, expected cause, CAS index of the trigger write]. */
-const TRIGGERS: Array<[string, (x: World) => void, Record<string, unknown> | null, string, number]> = [
-  ['T2 (a) own row', (x) => { x.refunds.push(refundRow('rf_own', { reason: 'claim:cl1', status: 'pending' })) }, null, 'own_row_exists', 2],
-  ['T2 (b) revert', (x) => { x.fail.piRetrieve = true }, null, 'safety_check_unreadable', 2],
-  ['T2 (b\') no charge', (x) => { x.pis.pi_1.latest_charge = null }, null, 'safety_hold', 2],
-  ['T2 (c) hold', (x) => { x.pis.pi_1.latest_charge.disputed = true }, null, 'safety_hold', 2],
-  ['T2 (e\') lock', (x) => { x.refunds.push(refundRow('rf_D', { status: 'pending', createdAt: new Date(Date.now() - 30 * HOURS) })) }, null, 'no_refund_proven_rail_locked:', 2],
-  ['T2 (e\') window revert', (x) => { x.refunds.push(refundRow('rf_W', { status: 'pending', createdAt: new Date(Date.now() - HOURS) })) }, null, 'unconfirmed_within_window', 2],
+/**
+ * The T2 / T4 trigger fixtures: [name, world mutation, engine result or null, expected cause, CAS index of the trigger write,
+ * declared title — true: the outcome-unknown title (the engine was called, or a stamped row was seen or could not be read)].
+ */
+const TRIGGERS: Array<[string, (x: World) => void, Record<string, unknown> | null, string, number, boolean]> = [
+  ['T2 (a) own row', (x) => { x.refunds.push(refundRow('rf_own', { reason: 'claim:cl1', status: 'pending' })) }, null, 'own_row_exists', 2, true],
+  ['T2 (b) revert', (x) => { x.fail.piRetrieve = true }, null, 'safety_check_unreadable', 2, false],
+  // targeted re-audit of 2466e03 (P2): the stamped read itself fails at (a) — whether a row carrying this claim exists is unknown.
+  ['T2 (a) stamped read unreadable', (x) => { x.fail.refundFindFirst = true }, null, 'safety_check_unreadable', 2, true],
+  ['T2 (b\') no charge', (x) => { x.pis.pi_1.latest_charge = null }, null, 'safety_hold', 2, false],
+  ['T2 (c) hold', (x) => { x.pis.pi_1.latest_charge.disputed = true }, null, 'safety_hold', 2, false],
+  ['T2 (e\') lock', (x) => { x.refunds.push(refundRow('rf_D', { status: 'pending', createdAt: new Date(Date.now() - 30 * HOURS) })) }, null, 'no_refund_proven_rail_locked:', 2, false],
+  ['T2 (e\') window revert', (x) => { x.refunds.push(refundRow('rf_W', { status: 'pending', createdAt: new Date(Date.now() - HOURS) })) }, null, 'unconfirmed_within_window', 2, false],
   // The engine puts the resumed row in the base: present before T2, it would be a Claims-side H1 hold, not an engine outcome.
-  ['T4 resume_mismatch', (x) => { execMock.mockImplementation(async () => { x.refunds.push(refundRow('rf9', { reason: 'claim:OTHER' })); return engineOk({ resumed: true, refundId: 'rf9' }) }) }, null, 'resume_mismatch', 2],
-  ['T4 identity_unverified', () => {}, engineOk({ resumed: true, refundId: 'rf_unread' }), 'identity_unverified', 2],
-  ['T4 own-row fatal', (x) => { execMock.mockImplementation(async () => { x.refunds.push(refundRow('rf_own', { reason: 'claim:cl1', status: 'pending' })); return engineRefusal('Erreur paiement, réessayez.', 502) }) }, null, 'engine_own_row', 2],
-  ['T4 engine_failed', () => {}, engineRefusal(), 'engine_failed', 2],
+  ['T4 resume_mismatch', (x) => { execMock.mockImplementation(async () => { x.refunds.push(refundRow('rf9', { reason: 'claim:OTHER' })); return engineOk({ resumed: true, refundId: 'rf9' }) }) }, null, 'resume_mismatch', 2, true],
+  ['T4 identity_unverified', () => {}, engineOk({ resumed: true, refundId: 'rf_unread' }), 'identity_unverified', 2, true],
+  ['T4 own-row fatal', (x) => { execMock.mockImplementation(async () => { x.refunds.push(refundRow('rf_own', { reason: 'claim:cl1', status: 'pending' })); return engineRefusal('Erreur paiement, réessayez.', 502) }) }, null, 'engine_own_row', 2, true],
+  ['T4 engine_failed', () => {}, engineRefusal(), 'engine_failed', 2, true],
 ]
 
 describe('J-M52 / J-C39 — claim_payment_blocked after a won CAS only (I-01)', () => {
@@ -158,12 +239,12 @@ describe('J-M52 / J-C39 — claim_payment_blocked after a won CAS only (I-01)', 
     expect(read('lib/admin-alerts.ts')).toMatch(/\| 'claim_attempt_superseded'/)
   })
 
-  for (const [name, mutate, result, cause, casIndex] of TRIGGERS) {
+  for (const [name, mutate, result, cause, casIndex, outcomeUnknown] of TRIGGERS) {
     it(`${name}: count 1 → sent once with the I-01 facts; count 0 → not sent`, async () => {
       mutate(w)
       if (result) execMock.mockResolvedValue(result)
       await triggerClaimRefund('cl1')
-      expectBlocked(cause)
+      expectBlocked(cause, { outcomeUnknown })
       expect(sendOnceMock.mock.calls.filter((c) => c[0] === 'admin_money_review_claim_payment_blocked')).toHaveLength(1)
 
       // count 0 on the trigger's own CAS
@@ -272,7 +353,7 @@ describe('J-M52 / J-C39 — claim_payment_blocked after a won CAS only (I-01)', 
   })
 
   it('attempt_crashed engineCalled: a T2 write that throws → false; executeRefund throwing → true; a T4 write that throws after an ok result → true', async () => {
-    const run = async (setup: () => void, message: string) => {
+    const run = async (setup: () => void, message: string, outcomeUnknown: boolean) => {
       spy.mockClear()
       w = payableWorld()
       wireWorld(w, db, stripeMock)
@@ -280,15 +361,15 @@ describe('J-M52 / J-C39 — claim_payment_blocked after a won CAS only (I-01)', 
       execMock.mockResolvedValue(engineOk())
       setup()
       await expect(triggerClaimRefund('cl1')).rejects.toThrow(message)
-      expectBlocked('attempt_crashed')
+      expectBlocked('attempt_crashed', { outcomeUnknown })
       return calls('claim_payment_blocked')[0].facts.engineCalled
     }
     // T2 (c): the safety-hold write (claim write 2) throws — the engine was never reached.
-    expect(await run(() => { w.pis.pi_1.latest_charge.disputed = true; w.beforeClaimWrite = (n) => { if (n === 2) throw new Error('t2 write failed') } }, 't2 write failed')).toBe(false)
+    expect(await run(() => { w.pis.pi_1.latest_charge.disputed = true; w.beforeClaimWrite = (n) => { if (n === 2) throw new Error('t2 write failed') } }, 't2 write failed', false)).toBe(false)
     expect(execMock).not.toHaveBeenCalled()
-    expect(await run(() => { execMock.mockImplementation(async () => { throw new Error('finalize failed') }) }, 'finalize failed')).toBe(true)
+    expect(await run(() => { execMock.mockImplementation(async () => { throw new Error('finalize failed') }) }, 'finalize failed', true)).toBe(true)
     // T4: the engine returned ok (Stripe accepted the refund), then the claim write throws.
-    expect(await run(() => { w.beforeClaimWrite = (n) => { if (n === 2) throw new Error('t4 write failed') } }, 't4 write failed')).toBe(true)
+    expect(await run(() => { w.beforeClaimWrite = (n) => { if (n === 2) throw new Error('t4 write failed') } }, 't4 write failed', true)).toBe(true)
     expect(execMock).toHaveBeenCalledTimes(1)
   })
 

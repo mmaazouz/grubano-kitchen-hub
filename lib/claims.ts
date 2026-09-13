@@ -591,12 +591,16 @@ export type ClaimBlockedCause =
 export const CLAIM_BLOCKED_TITLE = 'Réclamation non payée par le rail — décision admin requise'
 /**
  * ROUND 13 — certification audit of c32d8d3 (P1, I-01): once executeRefund was invoked for this attempt, or when a row
- * stamped for this claim already exists (own_row_exists), the rail may have paid — the headline states no payment outcome.
+ * stamped for this claim exists or could not be read, the rail may have paid — the headline states no payment outcome.
  */
 export const CLAIM_BLOCKED_OUTCOME_UNKNOWN_TITLE = 'Tentative de remboursement sans issue établie — preuve requise avant toute décision'
-/** I-01 title: « non payée par le rail » only where no rail payment for this claim can have happened. */
-export function claimBlockedTitle(cause: ClaimBlockedCause, engineCalled: boolean): string {
-  return engineCalled || cause === 'own_row_exists' ? CLAIM_BLOCKED_OUTCOME_UNKNOWN_TITLE : CLAIM_BLOCKED_TITLE
+/**
+ * I-01 title: « non payée par le rail » only where no rail payment for this claim can have happened — the engine was not called
+ * AND the caller established that no row stamped for this claim exists (targeted re-audit of 2466e03: a stamped row seen, or a
+ * stamped read that failed, before a throw or a revert). Callers outside triggerClaimRefund act on Stripe evidence for the bound row.
+ */
+export function claimBlockedTitle(cause: ClaimBlockedCause, engineCalled: boolean, ownRowAbsent = true): string {
+  return engineCalled || cause === 'own_row_exists' || !ownRowAbsent ? CLAIM_BLOCKED_OUTCOME_UNKNOWN_TITLE : CLAIM_BLOCKED_TITLE
 }
 export const CLAIM_ATTEMPT_SUPERSEDED_TITLE = 'Tentative de remboursement terminée après un changement d’état de la réclamation'
 const GATED_EXIT_SUFFIX = ' (réclamations+remboursements ouverts)'
@@ -623,6 +627,8 @@ export async function alertClaimPaymentBlocked(claimId: string, cause: ClaimBloc
   holds?: string[]
   routed?: boolean | null
   engineCalled: boolean
+  /** I-01 title only (the facts are unchanged): false when the caller could not establish that no row stamped for this claim exists. */
+  ownRowAbsent?: boolean
 }): Promise<void> {
   try {
     const now = new Date()
@@ -639,7 +645,7 @@ export async function alertClaimPaymentBlocked(claimId: string, cause: ClaimBloc
     await sendAdminMoneyReviewAlert({
       kind:      'claim_payment_blocked',
       dedupeKey: `claim_blocked:${claimId}:${cause}`,
-      title:     claimBlockedTitle(cause, input.engineCalled),
+      title:     claimBlockedTitle(cause, input.engineCalled, input.ownRowAbsent ?? true),
       facts: {
         claimId,
         orderId:            input.orderId,
@@ -738,16 +744,23 @@ export async function triggerClaimRefund(claimId: string): Promise<RefundTrigger
   const superseded: RefundTriggerResult = { state: 'failed', error: 'attempt_superseded' }
   // I-01 / A-S30d: whether a throw below came after the engine was called (money may have moved) or before it.
   let engineCalled = false
+  // I-01 title (targeted re-audit of 2466e03, P1 + P2): true only while THIS attempt's last read of the rows stamped for this
+  // claim returned none. A stamped row seen, a stamped read that failed, or no read yet leaves the payment outcome unknown.
+  let ownRowAbsent = false
   try {
     // ── T2 (C3) — every read in try (a throw is transient), every write a CAS on {refunding, true, M} ──
     const readOwnStamped = async (): Promise<{ id: string } | null | 'unreadable'> => {
       try {
-        return await prisma.refund.findFirst({ where: { orderId, reason: claimRefundReason(claimId) }, select: { id: true } })
+        const stamped = await prisma.refund.findFirst({ where: { orderId, reason: claimRefundReason(claimId) }, select: { id: true } })
+        ownRowAbsent = stamped === null
+        return stamped
       } catch {
+        ownRowAbsent = false
         return 'unreadable'
       }
     }
     const ownRowExists = async (ownId: string): Promise<RefundTriggerResult> => {
+      ownRowAbsent = false // a row carrying this claim's identity was read
       const ownText = `${M} Vérification avant moteur : la ligne ${ownId} porte déjà l’identité de cette réclamation ; aucun nouveau remboursement n’a été lancé. Seule la preuve (« Réconcilier d’après la preuve ») établira ce qui a été versé.`
       const w = await prisma.claim.updateMany({
         where: { id: claimId, status: 'refunding', refundAttempted: true, refundError: M },
@@ -757,7 +770,7 @@ export async function triggerClaimRefund(claimId: string): Promise<RefundTrigger
       })
       if (w.count !== 1) return superseded
       await alertClaimPaymentBlocked(claimId, 'own_row_exists', {
-        orderId, refundRowIds: [ownId], engineCalled: false,
+        orderId, refundRowIds: [ownId], engineCalled: false, ownRowAbsent,
         claimAfter: stateAfter('refunding', true, null, ownText),
       })
       return { state: 'failed', error: 'own_row_exists' }
@@ -769,7 +782,7 @@ export async function triggerClaimRefund(claimId: string): Promise<RefundTrigger
       })
       if (w.count !== 1) return superseded
       await alertClaimPaymentBlocked(claimId, cause, {
-        orderId, engineCalled: false,
+        orderId, engineCalled: false, ownRowAbsent,
         claimAfter: stateAfter('approved', false, null, before.refundError),
       })
       if (cause === 'unconfirmed_within_window' && until) return { state: 'failed', error: 'unconfirmed_within_window', until: until.toISOString() }
@@ -782,7 +795,7 @@ export async function triggerClaimRefund(claimId: string): Promise<RefundTrigger
       })
       if (w.count !== 1) return superseded
       await alertClaimPaymentBlocked(claimId, 'safety_hold', {
-        orderId, refundRowIds: facts.rowIds, holds: facts.holds, routed: facts.routed, engineCalled: false,
+        orderId, refundRowIds: facts.rowIds, holds: facts.holds, routed: facts.routed, engineCalled: false, ownRowAbsent,
         claimAfter: stateAfter('approved', true, null, text),
       })
       return { state: 'failed', error: 'safety_hold' }
@@ -844,7 +857,7 @@ export async function triggerClaimRefund(claimId: string): Promise<RefundTrigger
       if (w.count !== 1) return superseded
       const verdict = outcome.basis === 'verdict' ? outcome.verdict : 'payable'
       await alertClaimPaymentBlocked(claimId, outcome.prefix, {
-        orderId, refundRowIds: verdictRowIds(verdict), routed: read.facts.routed, engineCalled: false,
+        orderId, refundRowIds: verdictRowIds(verdict), routed: read.facts.routed, engineCalled: false, ownRowAbsent,
         stripeRefundIds: verdictStripeRefundIds(verdict, read.facts.truths),
         firstEngineRefusal: verdict === 'payable' ? null : verdict.refusal?.step ?? null,
         holds: verdict === 'payable' ? [] : verdict.holds.map((h) => h.hold),
@@ -1024,7 +1037,7 @@ export async function triggerClaimRefund(claimId: string): Promise<RefundTrigger
     // A-S30d: a throw after T1 leaves the claim on its token (reconcile after the grace). Best-effort alert, then rethrow.
     // IMPLEMENTATION NOTE (W2) on I-01: the catch also covers the engine call and the T4 writes, so engineCalled
     // is the fact this attempt established — true once executeRefund was invoked, whatever it then did.
-    await alertClaimPaymentBlocked(claimId, 'attempt_crashed', { orderId, engineCalled, claimAfter: stateAfter('refunding', true, null, M) })
+    await alertClaimPaymentBlocked(claimId, 'attempt_crashed', { orderId, engineCalled, ownRowAbsent, claimAfter: stateAfter('refunding', true, null, M) })
     throw err
   }
 }
