@@ -148,6 +148,38 @@ describe('I-01 title — certification audit c32d8d3 and targeted re-audit of 24
     expect(a.map((x) => [x.facts.cause, x.facts.engineCalled, x.title])).toEqual([['attempt_crashed', false, CLAIM_BLOCKED_OUTCOME_UNKNOWN_TITLE]])
   })
 
+  const LOADER_SKEW: Array<[string, (x: World) => void, string]> = [
+    ['(e\') window revert', (x) => {
+      x.refunds.push(refundRow('rf_own', { status: 'pending', stripeRefundId: null, reason: 'claim:cl1', createdAt: new Date(Date.now() - HOURS) }))
+    }, 'unconfirmed_within_window'],
+    ['(c) hold', (x) => {
+      x.refunds.push(refundRow('rf_own', { status: 'pending', stripeRefundId: 're_own', reason: 'claim:cl1' }))
+      x.stripeRefunds.push(stripeRefund('re_own', { metadata: { grubano_refund_row: 'rf_own' } }))
+      x.pis.pi_1.latest_charge.amount_refunded = 300
+      x.pis.pi_1.latest_charge.disputed = true
+    }, 'safety_hold'],
+  ]
+  for (const [label, arrange, wasCause] of LOADER_SKEW) {
+    it(`targeted re-audit of d9fb194 (P1): a row stamped claim:cl1 seen only by the loader on the ${label} path → own_row_exists with the outcome-unknown title, never ${wasCause} under « non payée par le rail »`, async () => {
+      // Read skew: (a)'s stamped query runs before a stalled attempt's insert; the loader, just after, reads the row.
+      w = payableWorld()
+      wireWorld(w, db, stripeMock)
+      arrange(w)
+      const wired = db.refund.findFirst.getMockImplementation() as (args: { where?: Record<string, unknown> }) => Promise<unknown>
+      let stampedReads = 0
+      db.refund.findFirst.mockImplementation(async (args: { where?: Record<string, unknown> }) => {
+        if (args?.where?.reason === 'claim:cl1' && ++stampedReads === 1) return null
+        return wired(args)
+      })
+      expect(await triggerClaimRefund('cl1')).toEqual({ state: 'failed', error: 'own_row_exists' })
+      expect(stampedReads).toBe(1)
+      expect(execMock).not.toHaveBeenCalled()
+      expect(String(claimOf(w).refundError)).toContain('porte déjà l’identité de cette réclamation')
+      const a = calls('claim_payment_blocked')
+      expect(a.map((x) => [x.facts.cause, x.facts.engineCalled, x.title])).toEqual([['own_row_exists', false, CLAIM_BLOCKED_OUTCOME_UNKNOWN_TITLE]])
+    })
+  }
+
   it('targeted re-audit of 2466e03 (P2): the stamped read fails at (a) → safety_check_unreadable with the outcome-unknown title', async () => {
     w.fail.refundFindFirst = true
     expect(await triggerClaimRefund('cl1')).toEqual({ state: 'failed', error: 'safety_check_unreadable' })

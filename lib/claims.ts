@@ -597,7 +597,10 @@ export const CLAIM_BLOCKED_OUTCOME_UNKNOWN_TITLE = 'Tentative de remboursement s
 /**
  * I-01 title: « non payée par le rail » only where no rail payment for this claim can have happened — the engine was not called
  * AND the caller established that no row stamped for this claim exists (targeted re-audit of 2466e03: a stamped row seen, or a
- * stamped read that failed, before a throw or a revert). Callers outside triggerClaimRefund act on Stripe evidence for the bound row.
+ * stamped read that failed, before a throw or a revert; targeted re-audit of d9fb194: the loader's rows count as a stamped read).
+ * Callers outside triggerClaimRefund omit ownRowAbsent: applyRowTruth and R0 act on row or Stripe evidence for the bound row; N8
+ * re-reads the rows stamped for the claim immediately before its CAS; refunds_disabled is sent when triggerClaimRefund returned
+ * before T1, so this request made no engine call (a row left by an earlier stalled attempt is the declared C11 / A-S33 residual).
  */
 export function claimBlockedTitle(cause: ClaimBlockedCause, engineCalled: boolean, ownRowAbsent = true): string {
   return engineCalled || cause === 'own_row_exists' || !ownRowAbsent ? CLAIM_BLOCKED_OUTCOME_UNKNOWN_TITLE : CLAIM_BLOCKED_TITLE
@@ -808,6 +811,12 @@ export async function triggerClaimRefund(claimId: string): Promise<RefundTrigger
 
     // (b) transient / (b') permanent unreadability — the ONE loader (G3), fresh in this request
     const read = await loadOrderMoneyFacts(orderId, claimId, requested)
+    // I-01 / C3 (targeted re-audit of d9fb194, P1): the loader's read of the order's rows is a stamped read too. A row carrying this
+    // claim's identity that (a) did not see — a stalled attempt's insert, read skew — invalidates the attempt exactly as (a) would,
+    // before any hold, revert or proof is written: no « non payée par le rail » title, no « aucun remboursement n'a été lancé » text.
+    const loadedRows = read.readable ? read.facts.rows : read.permanent === 'no_charge' ? read.rows : null
+    const loaderStamped = loadedRows ? loadedRows.find((r) => r.reason === claimRefundReason(claimId)) : undefined
+    if (loaderStamped) return await ownRowExists(loaderStamped.id)
     if (!read.readable) {
       if (read.permanent === null) return await revertPreImage('safety_check_unreadable')
       if (read.permanent === 'no_charge') {

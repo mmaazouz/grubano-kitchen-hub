@@ -15,8 +15,9 @@ import { ToastProvider } from '@/components/design-system'
 // ADM6 harmonisation: now mounts the AdminShell navy console + an --op- page header;
 // the arbitration WIDGET (AdminClaimsArbitration) is unchanged — every wired action,
 // route and money rule is byte-identical. Admin-only (resolveAdmin, equivalent to the
-// prior inline triple-gate). Gated by CLAIMS_ENABLED (OFF → bounce to /admin/approvals
-// → no claims UI exposed = byte-identical). The arbiter is NEVER a party (resto/client).
+// prior inline triple-gate). T-49: with CLAIMS_ENABLED off the page still renders the
+// financial-verification queue, ungated (D0, pinned by tests/claims-admin-page-fv-mount.test.ts);
+// only the arbitration console follows the flag. The arbiter is NEVER a party (resto/client).
 export const dynamic = 'force-dynamic'
 
 export default async function AdminClaimsPage(props: { params: { locale: string } }) {

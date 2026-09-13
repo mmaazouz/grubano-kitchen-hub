@@ -987,3 +987,22 @@ Chaque correctif porte une IMPLEMENTATION NOTE et un contrôle de rupture/restau
   - Le compteur AMF-1 d'un marquage en échec n'a pas d'épingle.
 
 Le détail de chaque constat est dans le rapport Notion.
+
+### Rond 13 — re-audit ciblé 2 de `d9fb194` et correctifs (2026-09-13)
+
+**Re-audit ciblé de la SHA déployée `d9fb194`.** 29 agents : deux vérificateurs de correctifs, deux auditeurs de voisinage, les réfutateurs et une critique de complétude. Résultat : **P0 0, P1 2, P2 2, P3 5**, et 2 constats réfutés.
+
+**Les deux P1 sont un seul défaut.** La lecture des lignes de la commande par le chargeur ne comptait pas comme une lecture des lignes à l'identité de la réclamation. Une ligne de ce type vue seulement par le chargeur (l'insertion d'une tentative bloquée, ou un décalage de lecture) laissait encore partir « Réclamation non payée par le rail ». Cela arrivait sur une retenue, sur un retour à la pré-image dans la fenêtre de confirmation et sur une preuve de verrou ; la retenue écrivait en plus « aucun remboursement n'a été lancé ». Désormais, une ligne à l'identité de la réclamation vue par le chargeur invalide la tentative exactement comme l'étape (a) : issue `own_row_exists`, titre neutre, texte de la ligne propre.
+
+**La carte « Vérification financière requise » n'a plus de P1.** L'épingle de comportement rend maintenant l'arbre de la page. Un composant enveloppe qui ne rend rien, ou un ancêtre caché par attribut, style ou classe, la fait échouer. Ses contrôles négatifs sont construits à partir de l'arbre réel de la page.
+
+Trois textes sont aussi corrigés :
+- le commentaire d'en-tête de la page, qui décrivait encore l'ancien renvoi ;
+- la docstring du titre, qui prêtait une preuve Stripe à tous les appelants hors tentative ;
+- les notes qui décrivaient trop largement ce que vérifiaient les épingles.
+
+Contrôles de rupture/restauration : R31 (la lecture du chargeur) et R32 (la section cachée selon le drapeau). Aucun changement de schéma ; `lib/refund.ts` et la route webhook sont inchangés.
+
+**Dette déclarée à l'issue du re-audit ciblé 2.**
+- **P2.** La fiche d'un établissement affiche « Réclamations ouvertes » = 0 quand les réclamations sont fermées, y compris pour des réclamations dont l'argent est en cours.
+- Les P2 et P3 des audits précédents restent déclarés comme ci-dessus.

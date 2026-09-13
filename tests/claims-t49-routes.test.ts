@@ -303,8 +303,9 @@ describe('the page keeps the money queue mounted when the feature flag is off', 
 
   /**
    * D0 « Always mounted », SOURCE SHAPE only: the card mounted once, on its own line, directly under the island's ToastProvider.
-   * A flag gate on an ancestor, or an early exit written another way, is caught by the behavioural pin
-   * tests/claims-admin-page-fv-mount.test.ts (targeted re-audit of 2466e03).
+   * The behavioural pin tests/claims-admin-page-fv-mount.test.ts RENDERS the page with the flag off and on: a gate on an ancestor in
+   * the page's JSX, a wrapper component rendering nothing, an ancestor hidden by attribute, style or class, or an early exit in any
+   * syntax is caught there (targeted re-audits of 2466e03 and d9fb194).
    */
   const fvMountViolations = (src: string): string[] => {
     const lines = src.replace(/\r\n/g, '\n').split('\n')
