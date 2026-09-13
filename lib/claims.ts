@@ -589,6 +589,15 @@ export type ClaimBlockedCause =
   | 'identity_unverified' | 'engine_own_row' | 'engine_failed' | 'stripe_failed' | 'engine_row_dead' | 'stripe_reverted'
   | 'reverted_after_refund' | 'refunds_disabled' | 'attempt_crashed'
 export const CLAIM_BLOCKED_TITLE = 'Réclamation non payée par le rail — décision admin requise'
+/**
+ * ROUND 13 — certification audit of c32d8d3 (P1, I-01): once executeRefund was invoked for this attempt, or when a row
+ * stamped for this claim already exists (own_row_exists), the rail may have paid — the headline states no payment outcome.
+ */
+export const CLAIM_BLOCKED_OUTCOME_UNKNOWN_TITLE = 'Tentative de remboursement sans issue établie — preuve requise avant toute décision'
+/** I-01 title: « non payée par le rail » only where no rail payment for this claim can have happened. */
+export function claimBlockedTitle(cause: ClaimBlockedCause, engineCalled: boolean): string {
+  return engineCalled || cause === 'own_row_exists' ? CLAIM_BLOCKED_OUTCOME_UNKNOWN_TITLE : CLAIM_BLOCKED_TITLE
+}
 export const CLAIM_ATTEMPT_SUPERSEDED_TITLE = 'Tentative de remboursement terminée après un changement d’état de la réclamation'
 const GATED_EXIT_SUFFIX = ' (réclamations+remboursements ouverts)'
 
@@ -630,7 +639,7 @@ export async function alertClaimPaymentBlocked(claimId: string, cause: ClaimBloc
     await sendAdminMoneyReviewAlert({
       kind:      'claim_payment_blocked',
       dedupeKey: `claim_blocked:${claimId}:${cause}`,
-      title:     CLAIM_BLOCKED_TITLE,
+      title:     claimBlockedTitle(cause, input.engineCalled),
       facts: {
         claimId,
         orderId:            input.orderId,
@@ -1497,7 +1506,7 @@ export async function createSystemClaim(input: {
 // truthful refunded amount lives on the bound `Refund` row (exposed at read time).
 // ═══════════════════════════════════════════════════════════════════════════════════
 export type ClaimReconcileResult =
-  | { reconciled: false; reason: 'no_claim' | 'already_final' | 'not_bound' | 'ambiguous_binding' }
+  | { reconciled: false; reason: 'no_claim' | 'already_final' | 'not_bound' | 'ambiguous_binding' | 'stripe_reverted' }
   | { reconciled: true; claimId: string; from: string; to: string }
 
 export async function reconcileClaimForRefund(input: {
@@ -1554,6 +1563,14 @@ export async function reconcileClaimForRefund(input: {
     // succeeded event can arrive for a Refund row we already marked failed, or after the
     // finalize path no-ops. Trust our own row, not the event, before declaring money paid.
     if (!row || row.status !== 'succeeded') return { reconciled: false, reason: 'not_bound' }
+    // ROUND 13 — certification audit of c32d8d3 (P1, and its recovery-sweep sibling; G13, A-S24-1, E-02): a reversal marks
+    // the CLAIM only and leaves our row 'succeeded' by design, so our own row cannot prove that this refund held. A claim
+    // carrying a reversal marker is never settled here — not by a stale, duplicate or out-of-order 'succeeded' delivery, and
+    // not by a recovery pass whose Stripe read preceded the reversal. Nothing is written; the marked claim keeps its exits.
+    if (isStripeReverted(claim.refundError)) {
+      console.error('[MONEY REVIEW] stripe_reverted_not_settled', claim.id, input.refundRowId)
+      return { reconciled: false, reason: 'stripe_reverted' }
+    }
 
     // CAS on the exact bound identity AND the pre-image read (C9 (b)): a duplicate or out-of-order webhook
     // delivery finds no row to move the second time and is a clean no-op; a claim rewritten since is not touched.

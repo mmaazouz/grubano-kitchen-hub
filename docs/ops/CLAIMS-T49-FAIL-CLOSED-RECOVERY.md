@@ -931,3 +931,35 @@ Elle est refaite sur la SHA candidate certifiée avant toute fenêtre Claims (pr
 - un audit adversarial complet de cette SHA.
 
 Les résultats sont consignés dans le rapport Notion et la mémoire, pas dans un commit ultérieur : la SHA vérifiée est la SHA déployée et auditée.
+
+### Rond 13 — audit de certification de `c32d8d3` et correctifs (2026-09-13)
+
+**Audit complet de la SHA déployée `c32d8d3`.** 97 agents, 7 dimensions, critique de complétude, 3 réfutateurs par P0/P1 et 2 par P2/P3. Résultat : **P0 0, P1 5, P2 10, P3 22**, et 5 constats réfutés. Cette SHA n'est **pas certifiée** et Mode A n'est **pas sûr** sur elle.
+
+Avant l'audit, la SHA avait passé toute la suite de certification : 19 contrôles sur 19, répétition MariaDB (20/20, contrôle négatif 20/20), build à froid, suite complète, déploiement à SHA exacte, portails 403, recensement propre. Aucun de ces contrôles ne couvrait les cinq défauts ci-dessous.
+
+**Les cinq P1, corrigés dans le commit qui suit ce paragraphe.**
+- **Un renversement effacé** (G13, A-S24-1). Un renversement marque la réclamation seulement et laisse notre ligne « aboutie », par conception. Une livraison « succeeded » en retard, en double ou dans le désordre soldait donc une réclamation marquée STRIPE_REVERTED, et le client relisait « Remboursée ». Un passage de reprise dont la lecture Stripe précédait le renversement faisait de même (P2 jumeau). `reconcileClaimForRefund` refuse désormais toute réclamation portant un marqueur de renversement : raison `stripe_reverted`, aucune écriture, journal MONEY REVIEW.
+- **Le titre de l'alerte I-01.** « Réclamation non payée par le rail » partait aussi après un appel au moteur qui a pu payer. Ce titre n'est gardé que là où aucun paiement du rail pour cette réclamation n'a pu avoir lieu. Après l'appel au moteur, ou quand une ligne à l'identité de la réclamation existe déjà, le titre devient « Tentative de remboursement sans issue établie — preuve requise avant toute décision ».
+- **Trois instruments sans épingle.**
+  - le 503 du webhook sur la relivraison d'une ligne échouée (J-C43 (b)) ;
+  - la moitié « jeton » de la dernière lecture avant `executeRefund` (C3 (f)) ;
+  - le montage inconditionnel de la carte « Vérification financière requise » (D0).
+
+  Chacun a désormais son test et son contrôle négatif.
+
+Chaque correctif porte une IMPLEMENTATION NOTE dans la spécification gelée et un contrôle de rupture/restauration (R20–R24). Aucun changement de schéma ; `lib/refund.ts` et la route webhook sont inchangés.
+
+**P2 restants : 9, déclarés comme dette et non bloquants pour la certification.**
+- La sortie « Clôturer ce dossier… » est affichée sur le resume_mismatch de la ligne propre, par les deux consoles et par la guidance `refund_error_recorded`, alors que le serveur refuse la déclaration.
+- Un crash entre l'écriture de liaison et l'application dans `applyRowTruth` laisse deux formes de réclamation absentes du registre.
+- Le toast `refund_failed` annonce un détail (le moteur refuse-t-il désormais la commande ?) qu'aucun de ses rédacteurs n'enregistre.
+- Les toasts de la carte FV disent « Attribution refusée. » ou « Échec … » quand aucune réponse n'a été lue.
+- Le « Montant demandé » de la page d'aide est calculé sur les prix catalogue, pas sur la base de prix du serveur.
+- Le contrôle photo n'a pas de chemin serveur.
+- L'e-mail d'annulation payée dit qu'une réclamation existante « porte déjà la question du remboursement » même quand elle ne couvre qu'une partie de la commande.
+- Le seuil « reverted = 0 » de l'Étape 2 du précheck est atteint par toute relance, que les réclamations marquées aient été traitées ou non.
+
+Les 22 P3 et le détail de chaque constat sont dans le rapport Notion.
+
+**Re-certification.** La nouvelle SHA candidate porte ce paragraphe et repasse toute la suite : contrôles R1–R24, répétition réelle, build à froid, suite complète, déploiement à SHA exacte, portails 403 et recensement. Suivent un re-audit ciblé des zones modifiées et une vérification globale finale.

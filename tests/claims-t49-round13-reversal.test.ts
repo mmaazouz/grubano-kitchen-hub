@@ -271,6 +271,26 @@ describe('J-M40 — the webhook failed / canceled branches (D12)', () => {
     expect(w.writes.filter((x) => x.count === 1)).toHaveLength(1)
   })
 
+  it('J-C43 (b) — on a FAILED row (redelivery) a helper DB throw → 503 {received:false}, the claim unchanged; the next delivery marks it exactly once (certification audit c32d8d3, P1)', async () => {
+    world(SETTLED, { status: 'failed', stripeRefundId: 're_f' })
+    w.fail.claimFindMany = true
+    const first = await fire(refundObj('re_f', 'failed', { metadata: { grubano_refund_row: 'rf_x' } }))
+    expect(first).toEqual({ status: 503, body: { received: false } })
+    // The failed-row branch is the helper ONLY: no markRefundRowFailed, no reconcileClaimForRefund, no alert.
+    expect(st.log.filter((l) => !l.startsWith('helper→'))).toEqual(['helper:failed_row'])
+    expect(claimOf(w).refundError).toBeNull()
+    expect(w.writes.filter((x) => x.count === 1)).toHaveLength(0)
+    w.fail.claimFindMany = false
+    const second = await fire(refundObj('re_f', 'failed', { metadata: { grubano_refund_row: 'rf_x' } }))
+    expect(second.status).toBe(200)
+    expect(String(claimOf(w).refundError)).toContain('notre ligne est désormais ÉCHOUÉE')
+    expect(String(claimOf(w).refundError)).toContain('re_f')
+    expect(w.writes.filter((x) => x.count === 1)).toHaveLength(1)
+    const third = await fire(refundObj('re_f', 'failed', { metadata: { grubano_refund_row: 'rf_x' } }))
+    expect(third.status).toBe(200)
+    expect(w.writes.filter((x) => x.count === 1)).toHaveLength(1)
+  })
+
   it('a lost CAS on the redelivery → written false, failed false → 200, never 503', async () => {
     world(SETTLED, { status: 'failed', stripeRefundId: 're_f' })
     w.beforeClaimWrite = () => { claimOf(w).status = 'refused_final' }

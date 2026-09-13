@@ -301,6 +301,20 @@ describe('GET /financial-verification — ungated AT THE ROUTE, not just in the 
 describe('the page keeps the money queue mounted when the feature flag is off', () => {
   const page = readFileSync('app/[locale]/admin/claims/page.tsx', 'utf8')
 
+  /** D0 « Always mounted »: the card is mounted exactly once, on its own line, directly under the island's ToastProvider, with no flag guard. */
+  const fvMountViolations = (src: string): string[] => {
+    const lines = src.replace(/\r\n/g, '\n').split('\n')
+    const at = lines.map((l, i) => (l.includes('<AdminFinancialVerification') ? i : -1)).filter((i) => i >= 0)
+    if (at.length !== 1) return [`mounted ${at.length} time(s)`]
+    const v: string[] = []
+    if (lines[at[0]].trim() !== '<AdminFinancialVerification />') v.push(`the mount line is not bare: ${lines[at[0]].trim()}`)
+    let p = at[0] - 1
+    while (p >= 0 && (lines[p].trim() === '' || /^\{\/\*.*\*\/\}$/.test(lines[p].trim()))) p--
+    if (p < 0 || lines[p].trim() !== '<ToastProvider>') v.push(`the line above the mount is not <ToastProvider>: ${p >= 0 ? lines[p].trim() : '(none)'}`)
+    if (/if\s*\(\s*!\s*(claimsOpen|isClaimsEnabled\(\))\s*\)/.test(src)) v.push('an early exit on the claims flag')
+    return v
+  }
+
   it('the page no longer redirects away when claims are disabled', () => {
     expect(page).not.toMatch(/if \(!isClaimsEnabled\(\)\) redirect/)
   })
@@ -308,6 +322,24 @@ describe('the page keeps the money queue mounted when the feature flag is off', 
   it('the money queue is unconditional; only the arbitration console is gated', () => {
     expect(page).toContain('<AdminFinancialVerification />')
     expect(page).toContain('{claimsOpen && <AdminClaimsArbitration />}')
+    // Certification audit of c32d8d3 (P1): present is not enough — the mount must be UNCONDITIONAL.
+    expect(fvMountViolations(page)).toEqual([])
+  })
+
+  it('NEGATIVE CONTROL (certification audit c32d8d3) — every gating shape of the financial-verification card is caught', () => {
+    const shipped = '<AdminFinancialVerification />'
+    const shapes: Array<[string, string]> = [
+      ['&& inline', page.replace(shipped, '{claimsOpen && <AdminFinancialVerification />}')],
+      ['ternary', page.replace(shipped, '{claimsOpen ? <AdminFinancialVerification /> : null}')],
+      ['flag call', page.replace(shipped, '{isClaimsEnabled() && <AdminFinancialVerification />}')],
+      ['multi-line &&', page.replace(shipped, '{claimsOpen && (\n            <AdminFinancialVerification />\n          )}')],
+      ['early return', page.replace('  const claimsOpen = isClaimsEnabled()', '  const claimsOpen = isClaimsEnabled()\n  if (!claimsOpen) return null')],
+      ['removed', page.replace(shipped, '')],
+    ]
+    for (const [name, mutated] of shapes) {
+      expect(mutated, name).not.toBe(page)
+      expect(fvMountViolations(mutated), name).not.toEqual([])
+    }
   })
 
   it('NEGATIVE CONTROL — the old unconditional redirect would be caught here', () => {

@@ -606,6 +606,25 @@ describe('J-M48 — recoverStrandedClaimReconciliations re-reads a succeeded row
     expect(execMock).not.toHaveBeenCalled()
   })
 
+  it('(c\') certification audit c32d8d3 (P2 sibling of P1): the retrieve saw succeeded, then the claim was marked STRIPE_REVERTED before the reconciler re-read it → nothing settled, the marker kept', async () => {
+    sweepWorld({}, { status: 'succeeded' })
+    const REVERTED = 'stripe_reverted: le remboursement re_1 de la ligne rf1 a échoué chez Stripe.'
+    const wired = db.claim.findMany.getMockImplementation() as (a: { where: Record<string, unknown> }) => Promise<unknown>
+    db.claim.findMany.mockImplementation(async (a: { where: Record<string, unknown> }) => {
+      // The reconciler's binder read (where exactly { refundId }) follows the sweep's Stripe read: the webhook marked the claim in between.
+      if (JSON.stringify(a.where) === JSON.stringify({ refundId: 'rf1' })) Object.assign(w.claims[0], { status: 'approved', refundError: REVERTED })
+      return wired(a)
+    })
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const out = await recoverStrandedClaimReconciliations()
+    expect(out).toMatchObject({ scanned: 1, reconciled: 0, skipped: 1 })
+    expect(w.claims[0]).toMatchObject({ status: 'approved', refundError: REVERTED })
+    expect(stripeMock.refunds.retrieve).toHaveBeenCalled()
+    expect(reconcilerReads()).toBe(1)
+    expect(err.mock.calls.some((c) => c[0] === '[MONEY REVIEW] stripe_reverted_not_settled' && c[1] === 'cl1')).toBe(true)
+    err.mockRestore()
+  })
+
   it('(d) retrieve ETIMEDOUT → skipped with « cl1: unreadable »; (e) 404 → skipped with « cl1: contradiction »', async () => {
     sweepWorld({}, null)
     w.fail.refundRetrieve = { re_1: 'throw' }

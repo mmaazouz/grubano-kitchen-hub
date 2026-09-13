@@ -39,7 +39,7 @@ const { stripeMock } = vi.hoisted(() => ({
 vi.mock('@/lib/stripe', () => ({ getStripe: () => stripeMock }))
 
 import { sendAdminMoneyReviewAlert, type MoneyReviewKind } from '@/lib/admin-alerts'
-import { triggerClaimRefund, arbitrateClaim, runClaimAutoApproval, alertClaimPaymentBlocked, reconcileClaimEvidence, enterFinancialVerification, CLAIM_BLOCKED_TITLE, CLAIM_ATTEMPT_SUPERSEDED_TITLE, attributeClaimRefund, adoptStripeRefundForClaim } from '@/lib/claims'
+import { triggerClaimRefund, arbitrateClaim, runClaimAutoApproval, alertClaimPaymentBlocked, reconcileClaimEvidence, enterFinancialVerification, CLAIM_BLOCKED_TITLE, CLAIM_BLOCKED_OUTCOME_UNKNOWN_TITLE, claimBlockedTitle, CLAIM_ATTEMPT_SUPERSEDED_TITLE, attributeClaimRefund, adoptStripeRefundForClaim } from '@/lib/claims'
 import { MARKERS, HEAD_A, reconcileMarkerAge } from '@/lib/claim-action-rules'
 import { approvalToast } from '@/lib/claim-approval-toast'
 
@@ -74,12 +74,56 @@ beforeEach(() => {
 })
 afterEach(() => { delete process.env.ALERT_EMAIL })
 
+/**
+ * I-01 title (certification audit c32d8d3, P1): « non payée par le rail » only where no rail payment for this claim can have
+ * happened — never once executeRefund was called, never on own_row_exists. Returns the violation, or null.
+ */
+function titleViolation(a: { title: string; facts: Record<string, unknown> }): string | null {
+  const outcomeUnknown = a.facts.engineCalled === true || a.facts.cause === 'own_row_exists'
+  if (outcomeUnknown) {
+    if (a.title !== 'Tentative de remboursement sans issue établie — preuve requise avant toute décision') return `title « ${a.title} » after the rail may have paid`
+    if (/non payée|payée|versé|remboursée/i.test(a.title)) return 'the outcome-unknown title states a payment outcome'
+    return null
+  }
+  return a.title === 'Réclamation non payée par le rail — décision admin requise' ? null : `title « ${a.title} » on a cause where the rail cannot have paid`
+}
+
+describe('I-01 title — certification audit c32d8d3 (P1): no payment outcome once the rail may have paid', () => {
+  it('claimBlockedTitle: every cause with engineCalled true, and own_row_exists, gets the outcome-unknown title; every other cause keeps the frozen one', () => {
+    expect(CLAIM_BLOCKED_TITLE).toBe('Réclamation non payée par le rail — décision admin requise')
+    expect(CLAIM_BLOCKED_OUTCOME_UNKNOWN_TITLE).toBe('Tentative de remboursement sans issue établie — preuve requise avant toute décision')
+    for (const cause of CAUSES) {
+      for (const engineCalled of [true, false]) {
+        const title = claimBlockedTitle(cause as never, engineCalled)
+        expect(titleViolation({ title, facts: { cause, engineCalled } }), `${cause} engineCalled=${engineCalled}`).toBeNull()
+      }
+    }
+  })
+
+  it('the real alert after engine_own_row (executeRefund answered 502 « Remboursement émis… » with a row stamped for this claim) carries the outcome-unknown title', async () => {
+    execMock.mockImplementation(async () => {
+      w.refunds.push(refundRow('rf_own', { reason: 'claim:cl1', status: 'pending' }))
+      return engineRefusal('Remboursement émis, reprise de la royalty franchisé en échec — réessayez.', 502)
+    })
+    expect(await triggerClaimRefund('cl1')).toMatchObject({ state: 'failed' })
+    const a = calls('claim_payment_blocked')
+    expect(a.map((x) => [x.facts.cause, x.facts.engineCalled, x.title])).toEqual([['engine_own_row', true, CLAIM_BLOCKED_OUTCOME_UNKNOWN_TITLE]])
+  })
+
+  it('NEGATIVE CONTROL — the frozen title on an engineCalled alert or on own_row_exists is a violation; so is the outcome-unknown title on refunds_disabled', () => {
+    expect(titleViolation({ title: CLAIM_BLOCKED_TITLE, facts: { cause: 'engine_own_row', engineCalled: true } })).not.toBeNull()
+    expect(titleViolation({ title: CLAIM_BLOCKED_TITLE, facts: { cause: 'attempt_crashed', engineCalled: true } })).not.toBeNull()
+    expect(titleViolation({ title: CLAIM_BLOCKED_TITLE, facts: { cause: 'own_row_exists', engineCalled: false } })).not.toBeNull()
+    expect(titleViolation({ title: CLAIM_BLOCKED_OUTCOME_UNKNOWN_TITLE, facts: { cause: 'refunds_disabled', engineCalled: false } })).not.toBeNull()
+  })
+})
+
 /** Checks one claim_payment_blocked alert against the I-01 contract. */
 function expectBlocked(cause: string, o: { status?: string; engineCalled?: boolean; registry?: string } = {}) {
   const a = calls('claim_payment_blocked')
   expect(a, cause).toHaveLength(1)
-  expect(a[0].title).toBe(CLAIM_BLOCKED_TITLE)
-  expect(a[0].title).toBe('Réclamation non payée par le rail — décision admin requise')
+  expect(a[0].title).toBe(claimBlockedTitle(cause as never, a[0].facts.engineCalled === true))
+  expect(titleViolation(a[0]), cause).toBeNull()
   expect(a[0].dedupeKey).toBe(`claim_blocked:cl1:${cause}`)
   expect(CAUSES).toContain(a[0].facts.cause)
   expect(a[0].facts.cause).toBe(cause)

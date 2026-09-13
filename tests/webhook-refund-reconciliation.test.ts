@@ -508,6 +508,35 @@ describe('J-M13 — a row with two or more binders settles nothing (B9, A-S43, E
     err.mockRestore()
   })
 
+  // ══ Certification audit of c32d8d3 (P1; G13, A-S24-1): a reversal marks the claim only and leaves our row succeeded ══
+  const REVERTED = 'stripe_reverted: le remboursement re_R de la ligne rfR a échoué chez Stripe. Notre ligne reste marquée ABOUTIE (le webhook ne la modifie pas).'
+
+  it('webhook: a stale / duplicate « succeeded » delivery for R after its claim was marked STRIPE_REVERTED settles nothing → stripe_reverted, no claim write, [MONEY REVIEW]; 200 (certification audit c32d8d3, P1)', async () => {
+    const claims = await arrange([{ ...bound('C1', 'approved'), refundError: REVERTED }])
+    row.status = 'succeeded'
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const res = await fireFinalize()
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ claim: { reconciled: false, reason: 'stripe_reverted' } })
+    expect(db.claim.updateMany).not.toHaveBeenCalled()
+    expect(claims[0]).toMatchObject({ status: 'approved', refundError: REVERTED })
+    expect(customerClaimStatus(claims[0] as never, null, true)).not.toBe('refunded')
+    expect(db.emailDispatch.create).not.toHaveBeenCalled()
+    expect(err.mock.calls.some((c) => c[0] === '[MONEY REVIEW] stripe_reverted_not_settled' && c[1] === 'C1' && c[2] === 'rfR')).toBe(true)
+    err.mockRestore()
+  })
+
+  it('NEGATIVE CONTROL — the same delivery on the same claim WITHOUT the marker settles it (the harness reaches the settling CAS)', async () => {
+    const claims = await arrange([bound('C1', 'approved')])
+    row.status = 'succeeded'
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const res = await fireFinalize()
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ claim: { reconciled: true, claimId: 'C1', to: 'refunded' } })
+    expect(claims[0]).toMatchObject({ status: 'refunded', refundError: null })
+    err.mockRestore()
+  })
+
   it('applyRowTruth: reconcile of C1 on its bound row, with C2 also bound → counts boundToWhere(R, C1) > 0 → park reconcile_not_applied with the B9 (b) detail; nothing refunded', async () => {
     const claims = await arrange([bound('C1', 'refunding'), bound('C2', 'approved')])
     row.status = 'succeeded'

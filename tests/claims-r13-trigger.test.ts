@@ -440,6 +440,15 @@ describe('J-M19 — T2: every branch writes by CAS on M and never calls the engi
     noEngine()
   })
 
+  it('(f) the token changed while the status stays refunding → attempt_superseded, no write, engine not called (C3 (f); certification audit c32d8d3, P1)', async () => {
+    // Another attempt's T1 now holds the claim: same status, a different token. Only the token half of (f) refuses it.
+    w.beforeClaimRead = (n) => { if (n === 2) claimOf(w).refundError = reconcileRequiredMarker(new Date(), globalThis.crypto.randomUUID()) }
+    expect(await triggerClaimRefund('cl1')).toEqual({ state: 'failed', error: 'attempt_superseded' })
+    expect(claimOf(w).status).toBe('refunding')
+    expect(w.writes).toHaveLength(1)
+    noEngine()
+  })
+
   it('« awaiting_other_row » no longer exists in lib/ or messages/', () => {
     const files = [...readdirSync('lib').filter((f) => f.endsWith('.ts')).map((f) => `lib/${f}`), ...['fr', 'en', 'es', 'it', 'ar'].map((l) => `messages/${l}.json`)]
     for (const f of files) expect(read(f), f).not.toContain('awaiting_other_row')
