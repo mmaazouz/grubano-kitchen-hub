@@ -10,6 +10,7 @@
 // claimEmails.orderCancelledPaid.bodyExisting (« elle suit son circuit normal ») — and pinned by FOLLOW_UP_BY_LOCALE below.
 import { describe, it, expect, vi } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { specCopyTable, messageAt, SPEC_LOCALES, type SpecLocale } from './support/spec-copy'
 
 const { db, sendMock } = vi.hoisted(() => ({ db: { operator: { findUnique: vi.fn() } }, sendMock: vi.fn() }))
@@ -295,3 +296,84 @@ describe('F09 — the provenance-neutral client copy', () => {
     expect(NO_YOUR_CLAIM.test(HEAD.fr['claims.client.statusTitle'])).toBe(true)
   })
 })
+
+// ══ J-C38 (H17) ════════════════════════════════════════════════════════════════════════════════════
+// ROUND 13 (slice W8): H17 — claimEmails.orderCancelledPaidOff.body drops the trailing clause that states what the team will
+// do during the beta (a process the code cannot establish). The remaining sentence (contact support, or reply) is unchanged.
+// HEAD values are the bodies at 4d3e442, byte-for-byte.
+describe('J-C38 — the off-variant cancellation body drops the process promise (H17)', () => {
+  const PROMISE = /traitée par un membre de l’équipe pendant la bêta|handled by a team member during the beta|la gestiona una persona del equipo durante la beta|gestita da un membro del team durante la beta|يعالج أحد أعضاء الفريق كل طلب/
+  const HEAD_BODY: Record<SpecLocale, [string, string]> = {
+    fr: ['{resto} a annulé votre commande {ref}, qui avait été payée. Pour le remboursement du montant payé, contactez notre support : contact@grubano.com (ou répondez simplement à cet e-mail) — chaque demande est traitée par un membre de l’équipe pendant la bêta.', ' — chaque demande est traitée par un membre de l’équipe pendant la bêta.'],
+    en: ['{resto} cancelled your order {ref}, which had been paid. To get the amount you paid refunded, contact our support: contact@grubano.com (or simply reply to this email) — every request is handled by a team member during the beta.', ' — every request is handled by a team member during the beta.'],
+    es: ['{resto} ha cancelado su pedido {ref}, que ya estaba pagado. Para el reembolso del importe pagado, contacte con nuestro soporte: contact@grubano.com (o responda a este correo) — cada solicitud la gestiona una persona del equipo durante la beta.', ' — cada solicitud la gestiona una persona del equipo durante la beta.'],
+    it: ['{resto} ha annullato il Suo ordine {ref}, già pagato. Per il rimborso dell’importo pagato, contatti il nostro supporto: contact@grubano.com (o risponda a questa email) — ogni richiesta è gestita da un membro del team durante la beta.', ' — ogni richiesta è gestita da un membro del team durante la beta.'],
+    ar: ['ألغى {resto} طلبك {ref} الذي سبق دفعه. لاسترداد المبلغ المدفوع، تواصل مع دعمنا: contact@grubano.com (أو رُدّ على هذه الرسالة) — يعالج أحد أعضاء الفريق كل طلب خلال النسخة التجريبية.', ' — يعالج أحد أعضاء الفريق كل طلب خلال النسخة التجريبية.'],
+  }
+  /** Every way a body fails H17 (empty = compliant). */
+  const bodyViolations = (body: string) => [
+    ...(PROMISE.test(body) ? ['process promise'] : []),
+    ...['{resto}', '{ref}', 'contact@grubano.com'].filter((t) => !body.includes(t)).map((t) => `missing ${t}`),
+  ]
+
+  it('5 locales: no process promise; {resto}, {ref} and contact@grubano.com remain', () => {
+    for (const l of SPEC_LOCALES) expect(bodyViolations(M[l].claimEmails.orderCancelledPaidOff.body), l).toEqual([])
+  })
+
+  it('the remaining sentence is unchanged: each body is its HEAD body with only the trailing clause removed', () => {
+    for (const l of SPEC_LOCALES) {
+      const [head, clause] = HEAD_BODY[l]
+      expect(head.endsWith(clause), l).toBe(true)
+      expect(M[l].claimEmails.orderCancelledPaidOff.body, l).toBe(`${head.slice(0, head.length - clause.length)}.`)
+    }
+  })
+
+  it('NEGATIVE CONTROL — every HEAD body fails (the fr one first); a body that lost the support address fails too', () => {
+    expect(bodyViolations(HEAD_BODY.fr[0])).toEqual(['process promise'])
+    for (const l of SPEC_LOCALES) expect(bodyViolations(HEAD_BODY[l][0]), l).toEqual(['process promise'])
+    expect(bodyViolations('{resto} a annulé votre commande {ref}.')).toEqual(['missing contact@grubano.com'])
+  })
+})
+
+// ══ H17 — W8 fixer: the EMAIL-FACTUAL-PACK files that describe or show the off-variant body ═══════════════════
+// The W8 pass updated the copy files and the HTML render, but two manifests still called the e-mail truthful WITH the
+// deleted clause (spelled with an ASCII apostrophe), the E1 handoff told the designer the request is handled by a human, and
+// the two PNG renders still showed the clause. The scan covers both apostrophes and the English glosses of the clause.
+describe('H17 (W8 fixer) — no EMAIL-FACTUAL-PACK file states the deleted clause, and the PNG renders are re-shot', () => {
+  const PACK_PROMISE = new RegExp(String.raw`membre de l['’]équipe pendant la bêta|handled by a team member during the beta|handled by a human at support during the beta|la gestiona una persona del equipo durante la beta|gestita da un membro del team durante la beta|يعالج أحد أعضاء الفريق كل طلب`)
+  const walkMd = (d: string): string[] => readdirSync(d, { withFileTypes: true }).flatMap((e) => {
+    const p = `${d}/${e.name}`
+    return e.isDirectory() ? walkMd(p) : e.name.endsWith('.md') ? [p] : []
+  })
+  /** Pack Markdown files that still state the clause (empty = compliant). */
+  const packHits = (files: Record<string, string>) => Object.entries(files).filter(([, s]) => PACK_PROMISE.test(s)).map(([f]) => f)
+  // sha256 of the two PNGs at 4d3e442 (`git show 4d3e442:EMAIL-FACTUAL-PACK/current-renders/png/<ID>@<w>.png | sha256sum`),
+  // rendered from the body that still carried the clause.
+  const STALE_PNG: Record<string, string> = {
+    'EMAIL-FACTUAL-PACK/current-renders/png/CONSUMER_ORDER_CANCELLED_PAID_CLAIMS_OFF@600.png': '60bd229c6aed5bd97b9349943d1c4475deab7346261051ca19546cdc3e9fae36',
+    'EMAIL-FACTUAL-PACK/current-renders/png/CONSUMER_ORDER_CANCELLED_PAID_CLAIMS_OFF@390.png': '384a1b64d89367ad307418dfaeecd58db95f6151c79feda844ea9d2fa679bfb5',
+  }
+  const sha = (p: string) => createHash('sha256').update(readFileSync(p)).digest('hex')
+
+  it('no Markdown file of the pack states the clause (manifests, handoff, copy and facts files included)', () => {
+    const files = Object.fromEntries(walkMd('EMAIL-FACTUAL-PACK').map((f) => [f, readFileSync(f, 'utf8')]))
+    expect(Object.keys(files)).toEqual(expect.arrayContaining(['EMAIL-FACTUAL-PACK/EMAIL-MANIFEST.md', 'EMAIL-FACTUAL-PACK/E1/E1-MANIFEST.md', 'EMAIL-FACTUAL-PACK/E1/E1-HANDOFF.md']))
+    expect(packHits(files)).toEqual([])
+    const render = readFileSync('EMAIL-FACTUAL-PACK/current-renders/CONSUMER_ORDER_CANCELLED_PAID_CLAIMS_OFF.html', 'utf8')
+    expect(PACK_PROMISE.test(render)).toBe(false)
+    expect(render).toContain('contact@grubano.com')
+  })
+
+  it('the two PNG renders of the off-variant are not the pre-H17 screenshots', () => {
+    for (const [p, stale] of Object.entries(STALE_PNG)) expect(sha(p), p).not.toBe(stale)
+  })
+
+  it('NEGATIVE CONTROL — the 4d3e442 manifest cell (ASCII apostrophe) and the old handoff line are caught; a stale hash is recognised', () => {
+    const oldCell = '| Truthful: refund "traité par un membre de l\'équipe pendant la bêta", no promise, no delay. |'
+    const oldHandoff = '- Paid cancellation (claims OFF): keep the exact product truth — money is handled by a human at support during the beta; **no** "remboursement effectué".'
+    expect(packHits({ 'EMAIL-MANIFEST.md': oldCell, 'E1-HANDOFF.md': oldHandoff, 'ok.md': 'contact support (contact@grubano.com) or reply' })).toEqual(['EMAIL-MANIFEST.md', 'E1-HANDOFF.md'])
+    expect(PACK_PROMISE.test(HEAD_OFF_FR)).toBe(true)
+    expect(Object.values(STALE_PNG).includes('60bd229c6aed5bd97b9349943d1c4475deab7346261051ca19546cdc3e9fae36')).toBe(true)
+  })
+})
+const HEAD_OFF_FR = 'Pour le remboursement du montant payé, contactez notre support : contact@grubano.com (ou répondez simplement à cet e-mail) — chaque demande est traitée par un membre de l’équipe pendant la bêta.'

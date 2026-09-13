@@ -2606,7 +2606,10 @@ async function recordClaimClosure(claimId: string, opts?: { noNoticeSource?: tru
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') ok = true
     else console.error('[EMAIL MISS] [claim_closure_record] claim ' + claimId + ' — record NOT written: no closure notice can be sent for it')
   }
-  if (ok && opts?.noNoticeSource) console.error('[EMAIL MISS] [claim_decision_refunded] claim ' + claimId + ' settled by the Stripe webhook or the recovery sweep: no customer notice is sent from this path — it appears in « Avis client non envoyés » while no refunded notice is recorded')
+  // ROUND 13 (slice W8, H05 site 2 / ER-R29): the line names every path that reaches it — the webhook, the recovery sweep,
+  // or a reconciliation run for ANOTHER claim bound to the same row (applyRowTruth's closureRecordedFor is per claim; that
+  // other claim is parked, not settled).
+  if (ok && opts?.noNoticeSource) console.error('[EMAIL MISS] [claim_decision_refunded] claim ' + claimId + ' settled on its refund row by a path that sends no customer notice (the Stripe webhook, the recovery sweep, or a reconciliation run for another claim bound to the same row) — it appears in « Avis client non envoyés » while no refunded notice is recorded')
   return ok
 }
 
@@ -2836,11 +2839,12 @@ async function reconcileBoundClaim(
  *
  * It is NOT a guess about whether money moved — that is precisely what the policy forbids. The
  * operator supplies the missing LINK (which existing refund belongs to this claim); the system
- * then reads that row's OWN status and amount and applies it. The operator cannot state an
+ * then reads Stripe's evidence for that row (round 13, G12) and binds it only when Stripe reports that refund succeeded
+ * on this order's payment; the row's own status is never the proof. The operator cannot state an
  * outcome, cannot state an amount, and cannot create money:
  *   • the refund row must already exist AND belong to the SAME order — a row from another order
  *     is refused outright, so a claim can never be settled by an unrelated payment;
- *   • the outcome comes from the row, never from the human;
+ *   • the outcome comes from Stripe's evidence for the row, read by this request, never from the human;
  *   • no engine call, no Stripe write, no retry.
  */
 // ROUND 13 (G12, C6, C7, D8 — slice W4): the operator names the LINK; Stripe's evidence for that row is read BEFORE

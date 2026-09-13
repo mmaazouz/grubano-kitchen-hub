@@ -8639,7 +8639,7 @@
     },
     "orderCancelledPaidOff": {
       "subject": "Ordine {ref} annullato — riguardo al Suo pagamento",
-      "body": "{resto} ha annullato il Suo ordine {ref}, già pagato. Per il rimborso dell’importo pagato, contatti il nostro supporto: contact@grubano.com (o risponda a questa email) — ogni richiesta è gestita da un membro del team durante la beta.",
+      "body": "{resto} ha annullato il Suo ordine {ref}, già pagato. Per il rimborso dell’importo pagato, contatti il nostro supporto: contact@grubano.com (o risponda a questa email).",
       "next": "Indichi il riferimento {ref}."
     },
     "refusedByGrubano": {

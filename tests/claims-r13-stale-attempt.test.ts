@@ -162,3 +162,23 @@ describe('J-M22 — a late attempt never overwrites a claim bound, reconciled or
     expect(direct).not.toMatch(/prisma\.claim\.(update|updateMany)\(/)
   })
 })
+
+// ══ C11 / binding rule 14 / J-M27 — the stalled-attempt residuals, stated verbatim, not pinned ═══════════
+// ROUND 13 (slice W8): each skip reason below equals its sentence in docs/ops/REFUND-FINANCIAL-CONTRACT.md « Résidus round 13 »
+// and in C11 (tests/claims-r13-residuals.test.ts compares the three). They stay skipped: each needs money moved outside the
+// system or an attempt suspended inside lib/refund.ts, which lib/refund.ts byte-identical (binding rule 1) does not let a test
+// provoke. R5 (the guard comparison, verifier A P3) is stated in the doc only (J-M27 lists R1-R4 as the skips).
+describe('C11 — stalled-attempt residuals of the Claims-side quiescence rules (stated, not pinned)', () => {
+  it.skip("a same-claim double refund when an attempt's pre-insert path (refund.ts 724-808) stays suspended longer than ATTEMPT_QUIESCENCE_MS while a proof and a re-approval happen;", () => {
+    // R1: the attempt would have to stay suspended inside executeRefund before its row insert for more than 60 min.
+  })
+  it.skip("a refund made outside the system during a stalled attempt: Dashboard, admin rail, or attribution of an unstamped row;", () => {
+    // R2: money created outside the Claims rail while an attempt is suspended; no Claims read sees it before the engine.
+  })
+  it.skip("a Dashboard refund landing between T2(f)'s reads and the engine's charge read (refund.ts 755);", () => {
+    // R3: the gap between T2's last reads and the engine's own charge read is inside lib/refund.ts.
+  })
+  it.skip("on a routed payment, E2 passed just before a concurrent markRefundRowFailed, which can reverse the restaurant transfer twice;", () => {
+    // R4: the interleaving is between two engine callers inside lib/refund.ts (E2 read, then a concurrent failure mark).
+  })
+})

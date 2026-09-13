@@ -8639,7 +8639,7 @@
     },
     "orderCancelledPaidOff": {
       "subject": "Order {ref} cancelled — about your payment",
-      "body": "{resto} cancelled your order {ref}, which had been paid. To get the amount you paid refunded, contact our support: contact@grubano.com (or simply reply to this email) — every request is handled by a team member during the beta.",
+      "body": "{resto} cancelled your order {ref}, which had been paid. To get the amount you paid refunded, contact our support: contact@grubano.com (or simply reply to this email).",
       "next": "Please include reference {ref}."
     },
     "refusedByGrubano": {

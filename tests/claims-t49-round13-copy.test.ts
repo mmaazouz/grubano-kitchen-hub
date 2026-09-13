@@ -204,17 +204,34 @@ describe('J-M46 — the N8 write: compare-and-set on the read, ALERT-B after cou
     })
   }
 
+  /**
+   * ROUND 13 (slice W8, W3 carry-over): the A-S03 locked text's structure as a checker (empty = the G8 pieces joined in
+   * order): prefix + HEAD_A + LOCKED_OPEN first, the H1 hold joined with « De plus, », then ROUTED and LOCKED_CLOSE last.
+   */
+  const lockedStructureViolations = (t: string): string[] => {
+    const out: string[] = []
+    if (!t.startsWith(`${MARKERS.RAIL_LOCKED}: ${HEAD_A} ${LOCKED_OPEN} `)) out.push('prefix, HEAD_A and LOCKED_OPEN do not open the text')
+    const deplus = t.indexOf(' De plus, la ligne rf_o est marquée ABOUTIE')
+    if (deplus < 0) out.push('the H1 hold is not joined with « De plus, »')
+    else if (!(t.indexOf(LOCKED_OPEN) < deplus && deplus < t.indexOf(routedSentence(true)))) out.push('LOCKED_OPEN, « De plus, » and ROUTED are out of order')
+    if (!t.endsWith(` ${routedSentence(true)} ${LOCKED_CLOSE}`)) out.push('ROUTED and LOCKED_CLOSE do not end the text')
+    return out
+  }
+
   it('the full texts are the G8 pieces joined in order (HEAD, then tail / MAIS … De plus … ROUTED … LOCKED_CLOSE)', () => {
     expect(FULL[0][2]).toBe(`${MARKERS.PROOF_PAYABLE_V13} ${HEAD_A} ${PAYABLE_500}`)
     expect(PAYABLE_500).toBe(ISO_MASK(payableTail(500, new Date('2026-09-12T09:00:00.000Z'))))
     const locked = FULL[2][2]
-    expect(locked.indexOf(HEAD_A)).toBeLessThan(locked.indexOf(LOCKED_OPEN))
-    expect(locked.indexOf(LOCKED_OPEN)).toBeLessThan(locked.indexOf(' De plus, '))
-    expect(locked.indexOf(' De plus, ')).toBeLessThan(locked.indexOf(routedSentence(true)))
-    expect(locked.endsWith(` ${routedSentence(true)} ${LOCKED_CLOSE}`)).toBe(true)
+    expect(lockedStructureViolations(locked)).toEqual([])
     expect(FULL[3][2].endsWith(AWAITING_CLOSE)).toBe(true)
-    // NEGATIVE CONTROL — the A-S03 text without « De plus, » (holds joined with no connective) is not the pinned text
-    expect(locked.replace(' De plus, la ligne', ' La ligne')).not.toBe(locked)
+  })
+
+  it('NEGATIVE CONTROL (W8) — the A-S03 text with its holds joined without « De plus, » fails the structure check; so does ROUTED moved before the hold', () => {
+    const locked = FULL[2][2]
+    expect(lockedStructureViolations(locked.replace(' De plus, la ligne', ' La ligne'))).toEqual(['the H1 hold is not joined with « De plus, »'])
+    const routed = routedSentence(true)
+    const routedFirst = locked.replace(` ${routed}`, '').replace(' De plus, ', ` ${routed} De plus, `)
+    expect(lockedStructureViolations(routedFirst)).toEqual(['LOCKED_OPEN, « De plus, » and ROUTED are out of order', 'ROUTED and LOCKED_CLOSE do not end the text'])
   })
 
   it('an alert rejection does not fail the write', async () => {

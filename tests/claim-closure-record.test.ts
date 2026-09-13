@@ -280,7 +280,8 @@ describe('J-C23 — each site records only after its CAS matched one row', () =>
     next.stripeRefunds.push(stripeRefund('re_x', { status: 'succeeded' }))
     return next
   }
-  const WEBHOOK_LINE = '[EMAIL MISS] [claim_decision_refunded] claim cl1 settled by the Stripe webhook or the recovery sweep'
+  // ROUND 13 (slice W8, H05 site 2): the line names every path that reaches it, not only the webhook or the sweep.
+  const WEBHOOK_LINE = '[EMAIL MISS] [claim_decision_refunded] claim cl1 settled on its refund row by a path that sends no customer notice'
 
   it('(2) reconcileClaimForRefund (webhook / recovery caller) → one record and exactly one noNoticeSource line; (3) applyRowTruth → one record and no such line', async () => {
     setWorld(bound())
@@ -424,7 +425,8 @@ describe('J-C37 — closure notices per claim', () => {
 
 // ══ W6 fixer (P2) — H11 / E-16: the frozen stripeNotConfirmed toast names a W7 control ══════════════
 describe('W6 fixer (P2, H11 / E-16) — stripeNotConfirmed cannot surface while claims are closed, and the W6 → W7 ordering is recorded', () => {
-  const ORDER_LINE = 'AUCUN bail CLAIMS avant W7 (H10)'
+  // ROUND 13 (slice W8): W7 landed (4d3e442); the precheck now states the verifiable condition on the deployed build.
+  const ORDER_LINE = 'AUCUN bail CLAIMS sur un environnement dont le build déployé ne contient pas le commit W7'
   const PRECHECK = 'docs/ops/CLAIMS-R13-OPERATOR-PRECHECK.md'
   /** True when some console component (comments stripped) calls the closure-notice route — the H10 control. */
   const consoleCallsClosureNotice = (files: Record<string, string>) => Object.values(files).some((s) => /closure-notice/.test(strip(s)))

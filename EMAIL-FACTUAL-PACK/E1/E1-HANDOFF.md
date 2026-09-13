@@ -32,7 +32,7 @@
 - **No delivery states as live** (delivery OUT). Design pickup as the primary flow; provide the delivery/en-route variants as **dormant states** clearly labelled "OUT OF BETA — do not enable", with no ETA ("arrive bientôt" is forbidden).
 - Welcome: no "réserver une table" promise; CTA must use the deployment base URL (staging ≠ prod).
 - Magic link + code: code validity 10 min, link 15 min — state both correctly or neither.
-- Paid cancellation (claims OFF): keep the exact product truth — money is handled by a human at support during the beta; **no** "remboursement effectué", **no** delay, **no** amount promise. Reference `GR-XXXXXX` must be quoted (the support flow relies on it).
+- Paid cancellation (claims OFF): keep the exact product truth — the customer contacts support (contact@grubano.com) or replies; **no** statement of who handles the request or how (H17, round 13: the code cannot establish it); **no** "remboursement effectué", **no** delay, **no** amount promise. Reference `GR-XXXXXX` must be quoted (the support flow relies on it).
 - Completed: the points-earned figure is available at the call site (`Order.pointsEarned`) but **not passed today** — you may design an optional "points crédités" line **as a conditional state**, flagged "requires data plumbing".
 - Never expose raw ids. Never colour-only status.
 

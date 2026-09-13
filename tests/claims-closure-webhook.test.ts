@@ -110,7 +110,8 @@ describe('J-C28 — nothing is sent to a customer from the webhook, the recovery
     expect(r.status).toBe(200)
     expect(claimOf(w)).toMatchObject({ status: 'refunded', refundError: null })
     expect(st.records).toEqual([{ trigger: 'claim_closure_record', dedupeKey: 'claim:cl1' }])
-    expect(errSpy.mock.calls.filter((c) => String(c[0]).startsWith('[EMAIL MISS] [claim_decision_refunded] claim cl1 settled by the Stripe webhook or the recovery sweep'))).toHaveLength(1)
+    // ROUND 13 (slice W8, H05 site 2): the noNoticeSource line names every path that reaches it.
+    expect(errSpy.mock.calls.filter((c) => String(c[0]).startsWith('[EMAIL MISS] [claim_decision_refunded] claim cl1 settled on its refund row by a path that sends no customer notice'))).toHaveLength(1)
     expect(customerSends()).toEqual([])
   })
 

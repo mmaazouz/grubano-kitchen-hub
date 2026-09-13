@@ -391,7 +391,7 @@ Pour toute question, contactez directement le restaurant.
 ```text
 Commande annulée
  Bonjour Léa Martin,
-Gnocchi Bar a annulé votre commande GR-ABC123, qui avait été payée. Pour le remboursement du montant payé, contactez notre support : contact@grubano.com (ou répondez simplement à cet e-mail) — chaque demande est traitée par un membre de l’équipe pendant la bêta.
+Gnocchi Bar a annulé votre commande GR-ABC123, qui avait été payée. Pour le remboursement du montant payé, contactez notre support : contact@grubano.com (ou répondez simplement à cet e-mail).
 Indiquez la référence GR-ABC123 dans votre message.
  Grubano — cet email a été envoyé automatiquement, vous pouvez y répondre si besoin.
 ```
