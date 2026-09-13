@@ -1013,9 +1013,9 @@ Contrôles de rupture/restauration : R31 (la lecture du chargeur) et R32 (la sec
 
 **Le P1 est le quatrième du même défaut.** Le chargeur lit les lignes de la commande, puis peut encore échouer : lecture de la redevance, du PaymentIntent, de la liste des remboursements (en échec ou au-delà de son plafond de pages), de la vérité Stripe d'une ligne, ou d'un lien. Il rend alors une variante sans lignes, et la ligne à l'identité de la réclamation qu'il avait lue était perdue. Le retour à la pré-image ou la retenue repartait sous « Réclamation non payée par le rail », ou écrivait « aucun remboursement n'a été lancé ». Le P2 est le même constat.
 
-**Correctif de classe, pas de chemin.** Chaque sortie hors moteur de la tentative relit les lignes à l'identité de la réclamation juste avant sa propre écriture : le retour à la pré-image, la retenue et la preuve de verrou. Selon le résultat de cette lecture :
+**Correctif de classe, pas de chemin.** Chaque sortie hors moteur de la tentative relit les lignes à l'identité de la réclamation juste avant sa propre écriture : le retour à la pré-image, la retenue et la preuve de verrou (la mise en vérification financière manquait ; ajoutée au re-audit ciblé 4). Selon le résultat de cette lecture :
 - **une ligne trouvée** invalide la tentative comme l'étape (a) ;
-- **une lecture en échec** n'écrit aucun texte de retenue ni de preuve, et garde le titre neutre ;
+- **une lecture en échec** n'écrit aucun texte de retenue ni de preuve : la tentative revient à la pré-image, et c'est la relecture de ce retour qui décide du titre (neutre si elle échoue aussi, « non payée par le rail » si elle ne trouve aucune ligne ; correction du re-audit ciblé 4) ;
 - **une lecture vide** prouve l'absence, les lignes de remboursement n'étant jamais supprimées.
 
 Le seul résidu est l'insertion d'une ligne entre cette lecture et l'écriture ; il est déjà déclaré (C11 / A-S33).
@@ -1032,3 +1032,38 @@ Contrôles de rupture/restauration R33 (retour), R34 (retenue), R35 (preuve) et 
 
 **Dette déclarée à l'issue du re-audit ciblé 3.**
 - **P3.** Deux tests « drapeau fermé » de `tests/claims-t49-routes.test.ts` laissent la fonction du drapeau simulée ouverte. La vraie épingle de la porte fermée reste `tests/claims-registry-visibility.test.ts`.
+
+### Rond 13 — re-audit ciblé 4 de `68621aa` et correctifs (2026-09-13)
+
+**Re-audit ciblé de la SHA déployée `68621aa`.** 25 agents : un vérificateur de correctif, deux auditeurs de voisinage, les réfutateurs et une critique de complétude. Résultat : **P0 0, P1 2, P2 1, P3 4**, et 2 constats réfutés. Le vérificateur confirme le correctif de classe : aucun chemin ne reproduit le défaut.
+
+**Les deux P1 sont une seule lacune d'épingle.** Aucun test n'exerçait la branche « lecture en échec » de la retenue ni celle de la preuve de verrou. Un mutant qui laissait passer une lecture en échec jusqu'à l'écriture restait vert, et aurait réécrit « aucun remboursement n'a été lancé » sans lecture pour l'établir. Les contrôles R34 et R35 retiraient la lecture entière, jamais cette seule branche.
+
+**Le P2 : la mise en vérification financière n'avait pas sa propre lecture.** Son détail attribue les remboursements de la commande d'après les lignes lues par le chargeur. Prenons une ligne à l'identité de la réclamation, insérée après cette lecture, dont le remboursement Stripe porte déjà l'étiquette : elle était décrite comme « rattachée ni à l'identité de cette réclamation ». Désormais, cette sortie relit aussi ces lignes juste avant d'écrire :
+- **ligne trouvée** → issue `own_row_exists` ;
+- **lecture en échec** → retour à la pré-image ;
+- **lecture vide** → mise en vérification.
+
+Toutes les sorties hors moteur de la tentative relisent donc avant d'écrire.
+
+**Épingles et contrôles.**
+- Cinq sorties dont la lecture propre échoue : la retenue sans charge, la retenue sur plafond de liste, la retenue (c), la preuve de verrou et la mise en vérification. Chacune revient à la pré-image sans texte. Le titre est « non payée par le rail » si la relecture du retour ne trouve aucune ligne, et neutre si elle échoue aussi.
+- Une ligne insérée après le chargeur, avant la mise en vérification.
+- Contrôles R37 à R42 :
+  - la branche « lecture en échec » de la retenue et de la preuve, chacune sous deux formes (passage à l'écriture, ligne supprimée) ;
+  - la lecture propre de la mise en vérification, retirée ;
+  - sa branche « lecture en échec », qui passe à l'écriture.
+
+**Aussi corrigés (P3).**
+- La note C3 et le paragraphe précédent disaient qu'une lecture en échec garde le titre neutre. En réalité, c'est la relecture du retour qui décide du titre.
+- Le scan J-M09 vérifie aussi qu'aucune ligne de remboursement n'est jamais supprimée : ni par appel direct, ni par accès dynamique au modèle, ni en SQL brut. C'est sur cette garantie que repose une absence lue.
+- L'épingle rendue de la carte FV reconnaît désormais :
+  - l'opacité nulle et les tailles nulles sous toutes leurs écritures ;
+  - `clip-path` et `visibility: collapse` ;
+  - les décalages négatifs en `calc()` et les transformations qui effacent.
+
+  Le contrôle de hauteur nulle masque aussi le débordement.
+
+Aucun changement de schéma ; `lib/refund.ts` et la route webhook sont inchangés.
+
+**Dette déclarée à l'issue du re-audit ciblé 4.** Aucune nouvelle ; les P2 et P3 des audits précédents restent déclarés.

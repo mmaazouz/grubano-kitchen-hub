@@ -197,6 +197,8 @@ describe('I-01 title — certification audit c32d8d3 and targeted re-audit of 24
   }
   const expectOwnRowExists = () => {
     expect(execMock).not.toHaveBeenCalled()
+    expect(claimOf(w).status).not.toBe('financial_verification')
+    expect(calls('claim_financial_verification')).toEqual([])
     expect(String(claimOf(w).refundError)).toContain('porte déjà l’identité de cette réclamation')
     expect(String(claimOf(w).refundError)).not.toMatch(/aucun remboursement/i)
     const a = calls('claim_payment_blocked')
@@ -223,6 +225,13 @@ describe('I-01 title — certification audit c32d8d3 and targeted re-audit of 24
     })
   }
 
+  /** A refund of another claim still pending at Stripe: T2 (e') parks the claim in financial verification (refund_moved_unattributed). */
+  const parkWorld = (x: World) => {
+    x.refunds.push(refundRow('rf_P', { status: 'pending', stripeRefundId: 're_P', reason: 'claim:cl_Z' }))
+    x.stripeRefunds.push(stripeRefund('re_P', { status: 'pending' }))
+    x.pis.pi_1.latest_charge.amount_refunded = 300
+  }
+
   // targeted re-audit of 75f1601 (the class): a row stamped claim:cl1 inserted after the loader, before an exit's write — unseen by
   // (a) and by the loader — is read by that exit's own stamped read, on every non-engine exit of the trigger.
   const INSERTED_AFTER_LOADER: Array<[string, (x: World) => void, string]> = [
@@ -231,6 +240,8 @@ describe('I-01 title — certification audit c32d8d3 and targeted re-audit of 24
     ['(c) hold', (x) => { x.pis.pi_1.latest_charge.disputed = true }, 'safety_hold'],
     ['(e\') window revert', (x) => { x.refunds.push(refundRow('rf_W', { status: 'pending', createdAt: new Date(Date.now() - HOURS) })) }, 'unconfirmed_within_window'],
     ['(e\') lock proof', (x) => { x.refunds.push(refundRow('rf_D', { status: 'pending', createdAt: new Date(Date.now() - 30 * HOURS) })) }, 'no_refund_proven_rail_locked:'],
+    // targeted re-audit of 68621aa (P2): the park took no read of its own and attributed the refunds from the loader's rows.
+    ['(e\') park', parkWorld, 'refund_moved_unattributed'],
   ]
   for (const [label, arrange, wasCause] of INSERTED_AFTER_LOADER) {
     it(`targeted re-audit of 75f1601: a row stamped claim:cl1 inserted after the loader, before the ${label} write → own_row_exists with the outcome-unknown title, never ${wasCause}`, async () => {
@@ -240,6 +251,36 @@ describe('I-01 title — certification audit c32d8d3 and targeted re-audit of 24
       expect(reads.stamped).toBe(2)
       expectOwnRowExists()
     })
+  }
+
+  // targeted re-audit of 68621aa (P1): the failed-read branch of each exit's own read. The exit writes no hold, proof or park text and
+  // reverts to the pre-image; the revert takes its own stamped read, which decides the title (none → frozen, failed too → unknown).
+  const FAILED_OWN_READ: Array<[string, (x: World) => void]> = [
+    ['(b\') no-charge hold', (x) => { x.pis.pi_1.latest_charge = null }],
+    ['(b\') list_over_cap hold', (x) => { x.fail.listOverCap = true }],
+    ['(c) hold', (x) => { x.pis.pi_1.latest_charge.disputed = true }],
+    ['(e\') lock proof', (x) => { x.refunds.push(refundRow('rf_D', { status: 'pending', createdAt: new Date(Date.now() - 30 * HOURS) })) }],
+    ['(e\') park', parkWorld],
+  ]
+  const FAILED_READS: Array<[number[], string]> = [[[2], CLAIM_BLOCKED_TITLE], [[2, 3], CLAIM_BLOCKED_OUTCOME_UNKNOWN_TITLE]]
+  for (const [label, arrange] of FAILED_OWN_READ) {
+    for (const [failOn, title] of FAILED_READS) {
+      const both = failOn.length > 1
+      it(`targeted re-audit of 68621aa (P1): the ${label}'s own stamped read fails${both ? ' and so does the revert\'s' : ''} → safety_check_unreadable, back to the pre-image, no hold, proof or park text, ${both ? 'the outcome-unknown title' : 'the frozen title (the revert read none)'}`, async () => {
+        arrange(w)
+        const pre = { ...claimOf(w) }
+        const reads = stampedReadsWith({ failOn })
+        expect(await triggerClaimRefund('cl1')).toEqual({ state: 'failed', error: 'safety_check_unreadable' })
+        // (a), then the exit's own read, then the revert's own read.
+        expect(reads.stamped).toBe(3)
+        expect(execMock).not.toHaveBeenCalled()
+        expect(claimOf(w)).toMatchObject({ status: pre.status, refundAttempted: false, refundError: pre.refundError })
+        expect(String(claimOf(w).refundError ?? '')).not.toMatch(/aucun remboursement|porte déjà l’identité|financial_verification|no_refund_proven|awaiting/i)
+        expect(calls('claim_financial_verification')).toEqual([])
+        const a = calls('claim_payment_blocked')
+        expect(a.map((x) => [x.facts.cause, x.facts.engineCalled, x.title])).toEqual([['safety_check_unreadable', false, title]])
+      })
+    }
   }
 
   it('targeted re-audit of 75f1601 (P3): a row stamped claim:cl1 seen only by a no_charge loader read → own_row_exists at the loader check, before the hold\'s own read', async () => {

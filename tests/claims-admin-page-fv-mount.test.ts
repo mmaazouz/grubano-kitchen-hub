@@ -91,8 +91,12 @@ function mountViolations(html: string, claimsOpen: boolean): string[] {
   if (claimsOpen ? arb !== 1 : arb !== 0) v.push(`arbitration console rendered ${arb} time(s) with claims ${claimsOpen ? 'open' : 'closed'}`)
   if (/\shidden(=|\s|>|\/)/.test(html)) v.push('an element carries the hidden attribute')
   if (/\s(aria-hidden="true"|inert(=|\s|>|\/))/.test(html)) v.push('an element is hidden from assistive technology or made inert')
-  if (/display\s*:\s*none|visibility\s*:\s*hidden/i.test(html)) v.push('an element is hidden by style')
-  if (/opacity\s*:\s*0(\.0+)?(;|"|\s)|(width|height)\s*:\s*0(px)?(;|"|\s)|clip\s*:|left\s*:\s*-\d/i.test(html)) v.push('an element is visually collapsed by style')
+  if (/display\s*:\s*none|visibility\s*:\s*(hidden|collapse)/i.test(html)) v.push('an element is hidden by style')
+  if (/opacity\s*:\s*0*\.?0+%?\s*(;|"|!)/i.test(html)) v.push('an element is transparent by style')
+  if (/(^|[;"\s])(width|height|max-width|max-height|block-size|inline-size)\s*:\s*0*\.?0+([a-z]+|%)?\s*(;|"|!)/i.test(html)) v.push('an element has a zero size by style')
+  if (/(^|[;"\s])(clip|clip-path)\s*:/i.test(html)) v.push('an element is clipped by style')
+  if (/(^|[;"\s])(left|top|right|bottom|margin-left|margin-top|text-indent)\s*:\s*(calc\(\s*)?-\s*\d/i.test(html)
+    || /transform\s*:[^;"]*(scale\(\s*0*\.?0+\s*[,)]|translate[xy]?\(\s*-)/i.test(html)) v.push('an element is moved off screen or scaled away by style')
   if (/class="[^"]*\b(hidden|invisible|sr-only)\b/.test(html)) v.push('an element is hidden by class')
   if (/<(details|dialog|template)[\s>]/i.test(html)) v.push('an element that hides its content by default is on the page')
   return v
@@ -150,7 +154,13 @@ describe('D0 — the financial-verification card is rendered whatever the claims
       ['the section hidden by class', onSection({ className: 'hidden' })],
       ['the section hidden by style', onSection({ style: { display: 'none' } })],
       ['the section at opacity 0', onSection({ style: { opacity: 0 } })],
-      ['the section collapsed to zero height', onSection({ style: { height: 0 } })],
+      ['the section at opacity 0%', onSection({ style: { opacity: '0%' } })],
+      ['the section collapsed to zero height, its overflow hidden', onSection({ style: { height: 0, overflow: 'hidden' } })],
+      ['the section collapsed to 0rem, its overflow hidden', onSection({ style: { height: '0rem', overflow: 'hidden' } })],
+      ['the section clipped away', onSection({ style: { clipPath: 'inset(100%)' } })],
+      ['the section collapsed by visibility', onSection({ style: { visibility: 'collapse' } })],
+      ['the section moved off screen with calc()', onSection({ style: { position: 'absolute', left: 'calc(-100vw)' } })],
+      ['the section scaled to nothing', onSection({ style: { transform: 'scale(0)' } })],
       ['a synthetic null tree (an early exit)', null],
     ]
     for (const [name, variant] of variants) expect(mountViolations(render(variant), false), name).not.toEqual([])

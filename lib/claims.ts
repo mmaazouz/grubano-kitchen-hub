@@ -598,7 +598,8 @@ export const CLAIM_BLOCKED_OUTCOME_UNKNOWN_TITLE = 'Tentative de remboursement s
  * I-01 title: « non payée par le rail » only where no rail payment for this claim can have happened — the engine was not called
  * AND the caller established that no row stamped for this claim exists (targeted re-audit of 2466e03: a stamped row seen, or a
  * stamped read that failed, before a throw or a revert; targeted re-audit of d9fb194: the loader's rows count as a stamped read;
- * targeted re-audit of 75f1601: every non-engine exit of the trigger takes a stamped read right before its own write).
+ * targeted re-audits of 75f1601 and 68621aa: every non-engine exit of the trigger, the park included, takes a stamped read right
+ * before its own write).
  * Callers outside triggerClaimRefund omit ownRowAbsent: applyRowTruth and R0 act on row or Stripe evidence for the bound row; N8
  * re-reads the rows stamped for the claim immediately before its CAS; refunds_disabled is sent when triggerClaimRefund returned
  * before T1, so this request made no engine call (a row left by an earlier stalled attempt is the declared C11 / A-S33 residual).
@@ -748,10 +749,11 @@ export async function triggerClaimRefund(claimId: string): Promise<RefundTrigger
   const superseded: RefundTriggerResult = { state: 'failed', error: 'attempt_superseded' }
   // I-01 / A-S30d: whether a throw below came after the engine was called (money may have moved) or before it.
   let engineCalled = false
-  // I-01 title (targeted re-audits of 2466e03 and 75f1601): true only while THIS attempt's last read of the rows stamped for this
-  // claim returned none. A stamped row seen, a stamped read that failed, or no read yet leaves the payment outcome unknown. Every
-  // non-engine exit (revertPreImage, safetyHold, the proof write) re-reads immediately before its own write: refund rows are never
-  // deleted, so a read that returns none proves no row carrying this claim's identity exists; one found takes ownRowExists.
+  // I-01 title (targeted re-audits of 2466e03, 75f1601 and 68621aa): true only while THIS attempt's last read of the rows stamped
+  // for this claim returned none. A stamped row seen, a stamped read that failed, or no read yet leaves the payment outcome unknown.
+  // Every non-engine exit (revertPreImage, safetyHold, the proof write, the park) re-reads immediately before its own write: refund
+  // rows are never deleted (J-M09 scan), so a read that returns none proves no row carrying this claim's identity exists; one found
+  // takes ownRowExists. A failed read in safetyHold, the proof write or the park reverts, and the revert's own read sets the title.
   let ownRowAbsent = false
   try {
     // ── T2 (C3) — every read in try (a throw is transient), every write a CAS on {refunding, true, M} ──
@@ -849,6 +851,11 @@ export async function triggerClaimRefund(claimId: string): Promise<RefundTrigger
     // (e') the pure derivation, on the fresh facts, for EVERY pre-image (null or v13)
     const outcome = deriveNoRowOutcome(read, claimId)
     if (outcome.kind === 'park') {
+      // The park detail attributes the order's refunds from the loader's rows (targeted re-audit of 68621aa): a row carrying this
+      // claim's identity inserted since — whose Stripe refund the list may already tag — is read here, last.
+      const fresh = await readOwnStamped()
+      if (fresh === 'unreadable') return await revertPreImage('safety_check_unreadable')
+      if (fresh) return await ownRowExists(fresh.id)
       const parked = await enterFinancialVerification({
         claimId, reason: outcome.reason, detail: outcome.detail,
         expect: {
