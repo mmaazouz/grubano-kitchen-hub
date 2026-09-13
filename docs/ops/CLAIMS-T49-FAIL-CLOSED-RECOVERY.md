@@ -994,7 +994,7 @@ Le détail de chaque constat est dans le rapport Notion.
 
 **Les deux P1 sont un seul défaut.** La lecture des lignes de la commande par le chargeur ne comptait pas comme une lecture des lignes à l'identité de la réclamation. Une ligne de ce type vue seulement par le chargeur (l'insertion d'une tentative bloquée, ou un décalage de lecture) laissait encore partir « Réclamation non payée par le rail ». Cela arrivait sur une retenue, sur un retour à la pré-image dans la fenêtre de confirmation et sur une preuve de verrou ; la retenue écrivait en plus « aucun remboursement n'a été lancé ». Désormais, une ligne à l'identité de la réclamation vue par le chargeur invalide la tentative exactement comme l'étape (a) : issue `own_row_exists`, titre neutre, texte de la ligne propre.
 
-**La carte « Vérification financière requise » n'a plus de P1.** L'épingle de comportement rend maintenant l'arbre de la page. Un composant enveloppe qui ne rend rien, ou un ancêtre caché par attribut, style ou classe, la fait échouer. Ses contrôles négatifs sont construits à partir de l'arbre réel de la page.
+**La carte « Vérification financière requise » n'a plus de P1.** L'épingle de comportement rend maintenant l'arbre de la page. Un composant enveloppe qui ne rend rien, ou un ancêtre caché par l'attribut `hidden`, par `display:none` / `visibility:hidden` ou par la classe `hidden` (liste élargie au re-audit ciblé 3), la fait échouer. Ses contrôles négatifs sont construits à partir de l'arbre réel de la page, sauf celui de la sortie anticipée, un arbre nul synthétique.
 
 Trois textes sont aussi corrigés :
 - le commentaire d'en-tête de la page, qui décrivait encore l'ancien renvoi ;
@@ -1006,3 +1006,29 @@ Contrôles de rupture/restauration : R31 (la lecture du chargeur) et R32 (la sec
 **Dette déclarée à l'issue du re-audit ciblé 2.**
 - **P2.** La fiche d'un établissement affiche « Réclamations ouvertes » = 0 quand les réclamations sont fermées, y compris pour des réclamations dont l'argent est en cours.
 - Les P2 et P3 des audits précédents restent déclarés comme ci-dessus.
+
+### Rond 13 — re-audit ciblé 3 de `75f1601` et correctif de classe (2026-09-13)
+
+**Re-audit ciblé de la SHA déployée `75f1601`.** 24 agents : un vérificateur de correctif, deux auditeurs de voisinage, les réfutateurs et une critique de complétude. Résultat : **P0 0, P1 1, P2 1, P3 6**, et 1 constat réfuté.
+
+**Le P1 est le quatrième du même défaut.** Le chargeur lit les lignes de la commande, puis peut encore échouer : lecture de la redevance, du PaymentIntent, de la liste des remboursements (en échec ou au-delà de son plafond de pages), de la vérité Stripe d'une ligne, ou d'un lien. Il rend alors une variante sans lignes, et la ligne à l'identité de la réclamation qu'il avait lue était perdue. Le retour à la pré-image ou la retenue repartait sous « Réclamation non payée par le rail », ou écrivait « aucun remboursement n'a été lancé ». Le P2 est le même constat.
+
+**Correctif de classe, pas de chemin.** Chaque sortie hors moteur de la tentative relit les lignes à l'identité de la réclamation juste avant sa propre écriture : le retour à la pré-image, la retenue et la preuve de verrou. Selon le résultat de cette lecture :
+- **une ligne trouvée** invalide la tentative comme l'étape (a) ;
+- **une lecture en échec** n'écrit aucun texte de retenue ni de preuve, et garde le titre neutre ;
+- **une lecture vide** prouve l'absence, les lignes de remboursement n'étant jamais supprimées.
+
+Le seul résidu est l'insertion d'une ligne entre cette lecture et l'écriture ; il est déjà déclaré (C11 / A-S33).
+
+**Aussi corrigés (P3).**
+- L'épingle rendue de la carte FV rejette aussi `aria-hidden`, `inert`, l'opacité nulle, les tailles nulles et les éléments qui masquent leur contenu.
+- Le commentaire d'en-tête de la route FV ne décrit plus l'ancien renvoi.
+- Le branchement `no_charge` de la vérification du chargeur a son épingle.
+- Le test de la lecture décalée porte le nom de la vérification qui le rattrape.
+- La branche (e') `changed_during_read`, que la vérification du chargeur domine, est documentée comme inatteignable et gardée en garde-fou.
+- Les notes de la spec, le paragraphe du re-audit 2 et la docstring du test des routes ne prétendent plus que la vérification du chargeur couvrait « chaque branche », ni que l'épingle rendue attrapait tout masquage par attribut, style ou classe.
+
+Contrôles de rupture/restauration R33 (retour), R34 (retenue), R35 (preuve) et R36 (branchement `no_charge`). Aucun changement de schéma ; `lib/refund.ts` et la route webhook sont inchangés.
+
+**Dette déclarée à l'issue du re-audit ciblé 3.**
+- **P3.** Deux tests « drapeau fermé » de `tests/claims-t49-routes.test.ts` laissent la fonction du drapeau simulée ouverte. La vraie épingle de la porte fermée reste `tests/claims-registry-visibility.test.ts`.

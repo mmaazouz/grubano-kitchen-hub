@@ -1,11 +1,12 @@
 // tests/claims-admin-page-fv-mount.test.ts — T-49 round 13, D0 « CARD = AdminFinancialVerification. Always mounted »
-// (targeted re-audits of 2466e03 and d9fb194).
+// (targeted re-audits of 2466e03, d9fb194 and 75f1601).
 //
 // A source-shape pin cannot see a flag gate on an ANCESTOR of the card, an early exit written another way, a wrapper component
 // that renders nothing, or an ancestor hidden by an attribute, a style or a class. This file pins the behaviour: the
 // /admin/claims server component is called with the claims flag off, then on, and the tree it returns is RENDERED
-// (react-dom/server) with marker components. With the flag off, the only console surface for money cases must be in the markup,
-// and nothing on the page may hide it.
+// (react-dom/server) with marker components. With the flag off, the card must be in the markup and none of the hiding shapes
+// checked below may appear on the page. Hiding shapes outside that list (a portal, a class or rule a stylesheet hides) are
+// not checked here.
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import * as React from 'react'
 import type { FC, ReactElement, ReactNode } from 'react'
@@ -81,7 +82,7 @@ function mapTree(node: unknown, swap: (el: El) => unknown): unknown {
 const render = (tree: unknown) => renderToStaticMarkup(tree as ReactElement)
 const occurrences = (html: string, needle: string) => html.split(needle).length - 1
 
-/** D0 on the RENDERED markup: the card exactly once, the arbitration console only when claims are open, nothing hidden. */
+/** D0 on the RENDERED markup: the card exactly once, the arbitration console only when claims are open, none of these hiding shapes. */
 function mountViolations(html: string, claimsOpen: boolean): string[] {
   const v: string[] = []
   const fv = occurrences(html, 'data-fv="1"')
@@ -89,8 +90,11 @@ function mountViolations(html: string, claimsOpen: boolean): string[] {
   const arb = occurrences(html, 'data-arb="1"')
   if (claimsOpen ? arb !== 1 : arb !== 0) v.push(`arbitration console rendered ${arb} time(s) with claims ${claimsOpen ? 'open' : 'closed'}`)
   if (/\shidden(=|\s|>|\/)/.test(html)) v.push('an element carries the hidden attribute')
+  if (/\s(aria-hidden="true"|inert(=|\s|>|\/))/.test(html)) v.push('an element is hidden from assistive technology or made inert')
   if (/display\s*:\s*none|visibility\s*:\s*hidden/i.test(html)) v.push('an element is hidden by style')
+  if (/opacity\s*:\s*0(\.0+)?(;|"|\s)|(width|height)\s*:\s*0(px)?(;|"|\s)|clip\s*:|left\s*:\s*-\d/i.test(html)) v.push('an element is visually collapsed by style')
   if (/class="[^"]*\b(hidden|invisible|sr-only)\b/.test(html)) v.push('an element is hidden by class')
+  if (/<(details|dialog|template)[\s>]/i.test(html)) v.push('an element that hides its content by default is on the page')
   return v
 }
 
@@ -104,7 +108,7 @@ beforeEach(() => {
   resolveAdminMock.mockResolvedValue({ id: 'admin1', email: 'admin@grubano.test', role: 'admin' })
 })
 
-describe('D0 — the financial-verification card is rendered whatever the claims flag says (behaviour; targeted re-audits of 2466e03 and d9fb194)', () => {
+describe('D0 — the financial-verification card is rendered whatever the claims flag says (behaviour; targeted re-audits of 2466e03, d9fb194 and 75f1601)', () => {
   it('claims CLOSED → no redirect; the rendered page shows the card exactly once, inside the ToastProvider island, nothing hidden, no arbitration console', async () => {
     const tree = await renderPage(false)
     expect(redirectMock).not.toHaveBeenCalled()
@@ -131,17 +135,23 @@ describe('D0 — the financial-verification card is rendered whatever the claims
     expect(redirectMock.mock.calls.map((c) => c[0])).toEqual(['/eat', '/eat'])
   })
 
-  it("NEGATIVE CONTROL — built from the page's REAL flag-off tree: every gating or hiding shape turns the rendered check red", async () => {
+  it("NEGATIVE CONTROL — built from the page's REAL flag-off tree: every gating or hiding shape checked turns the rendered check red", async () => {
     const tree = await renderPage(false)
     expect(mountViolations(render(tree), false)).toEqual([])
     const ClaimsOnly: FC<{ open: boolean; children?: ReactNode }> = (p) => (p.open ? React.createElement(React.Fragment, null, p.children) : null)
+    const onSection = (props: Record<string, unknown>) => mapTree(tree, (el) => (el.type === 'section' ? React.cloneElement(el, props as never) : undefined))
     const variants: Array<[string, unknown]> = [
       ['the island replaced by false', mapTree(tree, (el) => (el.type === Island ? false : undefined))],
       ['a wrapper component rendering nothing around the island', mapTree(tree, (el) => (el.type === Island ? React.createElement(ClaimsOnly, { open: false }, el as unknown as ReactNode) : undefined))],
-      ['the section hidden by attribute', mapTree(tree, (el) => (el.type === 'section' ? React.cloneElement(el, { hidden: true } as never) : undefined))],
-      ['the section hidden by class', mapTree(tree, (el) => (el.type === 'section' ? React.cloneElement(el, { className: 'hidden' } as never) : undefined))],
-      ['the section hidden by style', mapTree(tree, (el) => (el.type === 'section' ? React.cloneElement(el, { style: { display: 'none' } } as never) : undefined))],
-      ['an early exit', null],
+      ['the island inside a details element', mapTree(tree, (el) => (el.type === Island ? React.createElement('details', null, el as unknown as ReactNode) : undefined))],
+      ['the section hidden by attribute', onSection({ hidden: true })],
+      ['the section hidden from assistive technology', onSection({ 'aria-hidden': true })],
+      ['the section made inert', onSection({ inert: '' })],
+      ['the section hidden by class', onSection({ className: 'hidden' })],
+      ['the section hidden by style', onSection({ style: { display: 'none' } })],
+      ['the section at opacity 0', onSection({ style: { opacity: 0 } })],
+      ['the section collapsed to zero height', onSection({ style: { height: 0 } })],
+      ['a synthetic null tree (an early exit)', null],
     ]
     for (const [name, variant] of variants) expect(mountViolations(render(variant), false), name).not.toEqual([])
   })

@@ -597,7 +597,8 @@ export const CLAIM_BLOCKED_OUTCOME_UNKNOWN_TITLE = 'Tentative de remboursement s
 /**
  * I-01 title: « non payée par le rail » only where no rail payment for this claim can have happened — the engine was not called
  * AND the caller established that no row stamped for this claim exists (targeted re-audit of 2466e03: a stamped row seen, or a
- * stamped read that failed, before a throw or a revert; targeted re-audit of d9fb194: the loader's rows count as a stamped read).
+ * stamped read that failed, before a throw or a revert; targeted re-audit of d9fb194: the loader's rows count as a stamped read;
+ * targeted re-audit of 75f1601: every non-engine exit of the trigger takes a stamped read right before its own write).
  * Callers outside triggerClaimRefund omit ownRowAbsent: applyRowTruth and R0 act on row or Stripe evidence for the bound row; N8
  * re-reads the rows stamped for the claim immediately before its CAS; refunds_disabled is sent when triggerClaimRefund returned
  * before T1, so this request made no engine call (a row left by an earlier stalled attempt is the declared C11 / A-S33 residual).
@@ -747,8 +748,10 @@ export async function triggerClaimRefund(claimId: string): Promise<RefundTrigger
   const superseded: RefundTriggerResult = { state: 'failed', error: 'attempt_superseded' }
   // I-01 / A-S30d: whether a throw below came after the engine was called (money may have moved) or before it.
   let engineCalled = false
-  // I-01 title (targeted re-audit of 2466e03, P1 + P2): true only while THIS attempt's last read of the rows stamped for this
-  // claim returned none. A stamped row seen, a stamped read that failed, or no read yet leaves the payment outcome unknown.
+  // I-01 title (targeted re-audits of 2466e03 and 75f1601): true only while THIS attempt's last read of the rows stamped for this
+  // claim returned none. A stamped row seen, a stamped read that failed, or no read yet leaves the payment outcome unknown. Every
+  // non-engine exit (revertPreImage, safetyHold, the proof write) re-reads immediately before its own write: refund rows are never
+  // deleted, so a read that returns none proves no row carrying this claim's identity exists; one found takes ownRowExists.
   let ownRowAbsent = false
   try {
     // ── T2 (C3) — every read in try (a throw is transient), every write a CAS on {refunding, true, M} ──
@@ -779,6 +782,9 @@ export async function triggerClaimRefund(claimId: string): Promise<RefundTrigger
       return { state: 'failed', error: 'own_row_exists' }
     }
     const revertPreImage = async (cause: 'safety_check_unreadable' | 'unconfirmed_within_window', until?: Date): Promise<RefundTriggerResult> => {
+      // The last read before this write (targeted re-audit of 75f1601): a row carrying this claim's identity invalidates the attempt.
+      const fresh = await readOwnStamped()
+      if (fresh && fresh !== 'unreadable') return await ownRowExists(fresh.id)
       const w = await prisma.claim.updateMany({
         where: { id: claimId, status: 'refunding', refundAttempted: true, refundError: M },
         data:  { status: 'approved', refundAttempted: false, refundError: before.refundError },
@@ -792,6 +798,10 @@ export async function triggerClaimRefund(claimId: string): Promise<RefundTrigger
       return { state: 'failed', error: cause }
     }
     const safetyHold = async (text: string, facts: { rowIds?: string[]; holds?: string[]; routed?: boolean | null }): Promise<RefundTriggerResult> => {
+      // The hold text says no refund was launched for this claim: only a stamped read that returns none, taken now, establishes it.
+      const fresh = await readOwnStamped()
+      if (fresh === 'unreadable') return await revertPreImage('safety_check_unreadable')
+      if (fresh) return await ownRowExists(fresh.id)
       const w = await prisma.claim.updateMany({
         where: { id: claimId, status: 'refunding', refundAttempted: true, refundError: M },
         data:  { status: 'approved', refundError: text },
@@ -813,7 +823,8 @@ export async function triggerClaimRefund(claimId: string): Promise<RefundTrigger
     const read = await loadOrderMoneyFacts(orderId, claimId, requested)
     // I-01 / C3 (targeted re-audit of d9fb194, P1): the loader's read of the order's rows is a stamped read too. A row carrying this
     // claim's identity that (a) did not see — a stalled attempt's insert, read skew — invalidates the attempt exactly as (a) would,
-    // before any hold, revert or proof is written: no « non payée par le rail » title, no « aucun remboursement n'a été lancé » text.
+    // before any hold, revert or proof is written. When the loader failed after reading the rows (a variant that carries none), the
+    // stamped read each exit takes right before its own write decides instead (targeted re-audit of 75f1601).
     const loadedRows = read.readable ? read.facts.rows : read.permanent === 'no_charge' ? read.rows : null
     const loaderStamped = loadedRows ? loadedRows.find((r) => r.reason === claimRefundReason(claimId)) : undefined
     if (loaderStamped) return await ownRowExists(loaderStamped.id)
@@ -850,6 +861,7 @@ export async function triggerClaimRefund(claimId: string): Promise<RefundTrigger
     if (outcome.kind === 'no_write') {
       if (outcome.outcome === 'unconfirmed_within_window') return await revertPreImage('unconfirmed_within_window', outcome.until)
       if (outcome.outcome === 'changed_during_read') {
+        // Unreachable while the loader check above stands (a stamped row in read.facts.rows takes ownRowExists first); kept as a guard.
         const stamped = read.facts.rows.find((r) => r.reason === claimRefundReason(claimId))
         return stamped ? await ownRowExists(stamped.id) : await revertPreImage('safety_check_unreadable')
       }
@@ -859,6 +871,10 @@ export async function triggerClaimRefund(claimId: string): Promise<RefundTrigger
     if (!payable) {
       // A locked or AWAITING proof is WRITTEN (V-A-1): never a revert to a pre-image no exit accepts.
       const text = absenceProofText(outcome, read, { preImage: before.refundError, now: new Date(), requestedAmountCents: requested })
+      // The proof's absence claims rest on the loader's rows; a row carrying this claim's identity inserted since is read here, last.
+      const fresh = await readOwnStamped()
+      if (fresh === 'unreadable') return await revertPreImage('safety_check_unreadable')
+      if (fresh) return await ownRowExists(fresh.id)
       const w = await prisma.claim.updateMany({
         where: { id: claimId, status: 'refunding', refundAttempted: true, refundError: M },
         data:  { status: 'approved', refundAttempted: false, refundId: null, refundError: text },

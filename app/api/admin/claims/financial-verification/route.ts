@@ -13,8 +13,10 @@ export const dynamic = 'force-dynamic'
 //
 // Parking a claim because its money truth cannot be proven is only acceptable if somebody can
 // SEE it. This route is therefore deliberately NOT gated by CLAIMS_ENABLED: the sibling
-// /api/admin/claims returns { enabled: false } and /admin/claims redirects away when the flag is
-// off, which would make an unresolved MONEY case vanish the moment the feature was switched off.
+// /api/admin/claims returns { enabled: false } when the flag is off, and an unresolved MONEY case
+// must not vanish the moment the feature is switched off. /admin/claims keeps the card that reads
+// this route mounted with the flag off (round 13 D0, tests/claims-admin-page-fv-mount.test.ts);
+// only the arbitration console and GET /api/admin/claims follow the flag.
 // The money question does not care about the feature flag.
 //
 // Read-only. It states no conclusion about whether cash moved — that is exactly what is

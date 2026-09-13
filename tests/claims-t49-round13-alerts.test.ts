@@ -116,7 +116,7 @@ describe('I-01 title — certification audit c32d8d3 and targeted re-audit of 24
     expect(a.map((x) => [x.facts.cause, x.facts.engineCalled, x.title])).toEqual([['attempt_crashed', false, CLAIM_BLOCKED_OUTCOME_UNKNOWN_TITLE]])
   })
 
-  it('targeted re-audit of 2466e03 (P1): (a) reads no stamped row, the loader then sees one ((e\') changed_during_read) and the own-row write throws → attempt_crashed, engineCalled false, outcome-unknown title', async () => {
+  it('targeted re-audit of 2466e03 (P1): (a) reads no stamped row, the loader then reads one (the loader check) and the own-row write throws → attempt_crashed, engineCalled false, outcome-unknown title', async () => {
     // Read skew: the row stamped claim:cl1 lands between (a) and the loader; its Stripe refund names it.
     const skewWorld = () => {
       w = payableWorld()
@@ -132,7 +132,8 @@ describe('I-01 title — certification audit c32d8d3 and targeted re-audit of 24
       })
       return reads
     }
-    // The fixture reaches ownRowExists through (e'), not (a) or (f): one stamped read, the own_row_exists outcome.
+    // The fixture reaches ownRowExists through the loader check, not (a), (f) or an exit's own read: one stamped read, own_row_exists.
+    // (Before 75f1601 it went through (e') changed_during_read, a branch the loader check now dominates.)
     const precondition = skewWorld()
     expect(await triggerClaimRefund('cl1')).toEqual({ state: 'failed', error: 'own_row_exists' })
     expect(precondition.stamped).toBe(1)
@@ -180,6 +181,77 @@ describe('I-01 title — certification audit c32d8d3 and targeted re-audit of 24
     })
   }
 
+  /** Stamped reads (reason claim:cl1), numbered: `hideFirst` hides (a)'s, `insertOn` inserts `row` just before that read, `failOn` throws. */
+  const stampedReadsWith = (o: { hideFirst?: boolean; insertOn?: number; row?: World['refunds'][number]; failOn?: number[] }) => {
+    const wired = db.refund.findFirst.getMockImplementation() as (args: { where?: Record<string, unknown> }) => Promise<unknown>
+    const reads = { stamped: 0 }
+    db.refund.findFirst.mockImplementation(async (args: { where?: Record<string, unknown> }) => {
+      if (args?.where?.reason !== 'claim:cl1') return wired(args)
+      const n = ++reads.stamped
+      if (o.insertOn === n && o.row) w.refunds.push(o.row)
+      if (o.failOn?.includes(n)) throw new Error('db down')
+      if (o.hideFirst && n === 1) return null
+      return wired(args)
+    })
+    return reads
+  }
+  const expectOwnRowExists = () => {
+    expect(execMock).not.toHaveBeenCalled()
+    expect(String(claimOf(w).refundError)).toContain('porte déjà l’identité de cette réclamation')
+    expect(String(claimOf(w).refundError)).not.toMatch(/aucun remboursement/i)
+    const a = calls('claim_payment_blocked')
+    expect(a.map((x) => [x.facts.cause, x.facts.engineCalled, x.title])).toEqual([['own_row_exists', false, CLAIM_BLOCKED_OUTCOME_UNKNOWN_TITLE]])
+  }
+
+  // targeted re-audit of 75f1601 (P1): the loader reads the order's rows at its step 2 and can still fail afterwards; the variant it
+  // returns carries no rows, so the loader check sees none. The exit's own stamped read, taken right before its write, decides.
+  const LOADER_UNREADABLE: Array<[string, (x: World) => void, string]> = [
+    ['the PaymentIntent retrieve fails', (x) => { x.fail.piRetrieve = true }, 'safety_check_unreadable'],
+    ['the royalty read throws', (x) => { x.fail.royaltyFindFirst = true }, 'safety_check_unreadable'],
+    ['that row\'s Stripe refund cannot be read', (x) => { x.fail.refundRetrieve = { re_own: 'throw' } }, 'safety_check_unreadable'],
+    ['the refund list is over its page cap', (x) => { x.fail.listOverCap = true }, 'safety_hold'],
+  ]
+  for (const [label, arrange, wasCause] of LOADER_UNREADABLE) {
+    it(`targeted re-audit of 75f1601 (P1): (a) reads no stamped row, the loader reads one then fails (${label}) → own_row_exists with the outcome-unknown title, never ${wasCause} under « non payée par le rail »`, async () => {
+      w.refunds.push(refundRow('rf_own', { status: 'pending', stripeRefundId: 're_own', reason: 'claim:cl1' }))
+      arrange(w)
+      const reads = stampedReadsWith({ hideFirst: true })
+      expect(await triggerClaimRefund('cl1')).toEqual({ state: 'failed', error: 'own_row_exists' })
+      // Two stamped reads: (a), hidden, then the exit's own read. One would mean the loader check caught it (a readable load).
+      expect(reads.stamped).toBe(2)
+      expectOwnRowExists()
+    })
+  }
+
+  // targeted re-audit of 75f1601 (the class): a row stamped claim:cl1 inserted after the loader, before an exit's write — unseen by
+  // (a) and by the loader — is read by that exit's own stamped read, on every non-engine exit of the trigger.
+  const INSERTED_AFTER_LOADER: Array<[string, (x: World) => void, string]> = [
+    ['(b) revert', (x) => { x.fail.piRetrieve = true }, 'safety_check_unreadable'],
+    ['(b\') no-charge hold', (x) => { x.pis.pi_1.latest_charge = null }, 'safety_hold'],
+    ['(c) hold', (x) => { x.pis.pi_1.latest_charge.disputed = true }, 'safety_hold'],
+    ['(e\') window revert', (x) => { x.refunds.push(refundRow('rf_W', { status: 'pending', createdAt: new Date(Date.now() - HOURS) })) }, 'unconfirmed_within_window'],
+    ['(e\') lock proof', (x) => { x.refunds.push(refundRow('rf_D', { status: 'pending', createdAt: new Date(Date.now() - 30 * HOURS) })) }, 'no_refund_proven_rail_locked:'],
+  ]
+  for (const [label, arrange, wasCause] of INSERTED_AFTER_LOADER) {
+    it(`targeted re-audit of 75f1601: a row stamped claim:cl1 inserted after the loader, before the ${label} write → own_row_exists with the outcome-unknown title, never ${wasCause}`, async () => {
+      arrange(w)
+      const reads = stampedReadsWith({ insertOn: 2, row: refundRow('rf_own', { status: 'pending', stripeRefundId: null, reason: 'claim:cl1', createdAt: new Date() }) })
+      expect(await triggerClaimRefund('cl1')).toEqual({ state: 'failed', error: 'own_row_exists' })
+      expect(reads.stamped).toBe(2)
+      expectOwnRowExists()
+    })
+  }
+
+  it('targeted re-audit of 75f1601 (P3): a row stamped claim:cl1 seen only by a no_charge loader read → own_row_exists at the loader check, before the hold\'s own read', async () => {
+    w.pis.pi_1.latest_charge = null
+    w.refunds.push(refundRow('rf_own', { status: 'pending', stripeRefundId: null, reason: 'claim:cl1' }))
+    const reads = stampedReadsWith({ hideFirst: true })
+    expect(await triggerClaimRefund('cl1')).toEqual({ state: 'failed', error: 'own_row_exists' })
+    // One stamped read: the loader check took the no_charge rows. Without that arm the hold's own read would be a second one.
+    expect(reads.stamped).toBe(1)
+    expectOwnRowExists()
+  })
+
   it('targeted re-audit of 2466e03 (P2): the stamped read fails at (a) → safety_check_unreadable with the outcome-unknown title', async () => {
     w.fail.refundFindFirst = true
     expect(await triggerClaimRefund('cl1')).toEqual({ state: 'failed', error: 'safety_check_unreadable' })
@@ -187,15 +259,19 @@ describe('I-01 title — certification audit c32d8d3 and targeted re-audit of 24
     expect(a.map((x) => [x.facts.cause, x.facts.engineCalled, x.title])).toEqual([['safety_check_unreadable', false, CLAIM_BLOCKED_OUTCOME_UNKNOWN_TITLE]])
   })
 
-  it('targeted re-audit of 2466e03 (P2): (a) reads no stamped row, then the (f) stamped read fails → safety_check_unreadable with the outcome-unknown title', async () => {
-    const wired = db.refund.findFirst.getMockImplementation() as (args: { where?: Record<string, unknown> }) => Promise<unknown>
-    let stampedReads = 0
-    db.refund.findFirst.mockImplementation(async (args: { where?: Record<string, unknown> }) => {
-      if (args?.where?.reason === 'claim:cl1' && ++stampedReads === 2) throw new Error('db down')
-      return wired(args)
-    })
+  it('targeted re-audits of 2466e03 and 75f1601: the (f) stamped read fails, the revert\'s own read then returns none → safety_check_unreadable with the frozen title (absence read: rows are never deleted)', async () => {
+    const reads = stampedReadsWith({ failOn: [2] })
     expect(await triggerClaimRefund('cl1')).toEqual({ state: 'failed', error: 'safety_check_unreadable' })
-    expect(stampedReads).toBe(2)
+    expect(reads.stamped).toBe(3)
+    expect(execMock).not.toHaveBeenCalled()
+    const a = calls('claim_payment_blocked')
+    expect(a.map((x) => [x.facts.cause, x.facts.engineCalled, x.title])).toEqual([['safety_check_unreadable', false, CLAIM_BLOCKED_TITLE]])
+  })
+
+  it('targeted re-audit of 2466e03 (P2): the (f) stamped read and the revert\'s own read both fail → safety_check_unreadable with the outcome-unknown title', async () => {
+    const reads = stampedReadsWith({ failOn: [2, 3] })
+    expect(await triggerClaimRefund('cl1')).toEqual({ state: 'failed', error: 'safety_check_unreadable' })
+    expect(reads.stamped).toBe(3)
     expect(execMock).not.toHaveBeenCalled()
     const a = calls('claim_payment_blocked')
     expect(a.map((x) => [x.facts.cause, x.facts.engineCalled, x.title])).toEqual([['safety_check_unreadable', false, CLAIM_BLOCKED_OUTCOME_UNKNOWN_TITLE]])
