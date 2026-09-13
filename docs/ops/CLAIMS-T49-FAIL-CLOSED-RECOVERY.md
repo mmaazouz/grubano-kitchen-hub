@@ -873,3 +873,61 @@ Le rapport du workflow affichait 3 P1 « sans entrée de registre ». Mon script
 **Base mesurée avant implémentation.**
 - Suite complète : 404 fichiers, 4424 tests verts.
 - Typecheck : ramené à 41 erreurs, ensemble IDENTIQUE. Les motifs de promesse `u` du rond 13 avaient introduit 11 erreurs TS1501, désormais corrigées.
+
+### Rond 13 — implémentation de la spécification gelée (2026-09-12 → 13)
+
+La spécification gelée (`docs/ops/CLAIMS-T49-ROUND13-SPEC-v1.md`) a été implémentée en huit tranches.
+
+**Méthode par tranche.** Un agent implémente les règles de la tranche et leurs tests. Deux relecteurs indépendants passent ensuite : l'un sur la fidélité à la spécification, l'autre sur l'argent, la véracité et les régressions. Suivent au plus deux tours de correction, chacun vérifié par un vérificateur neuf. Avant chaque commit local, l'orchestrateur relance lui-même la suite complète, la comparaison du typecheck et les fichiers interdits.
+
+Tout écart à la spécification est consigné en « IMPLEMENTATION NOTE (Wn) » sous la règle concernée.
+
+| Tranche | Commit | Contenu |
+|---|---|---|
+| W1 | `31b573c` | Règles pures : miroir du moteur (ordre de refus d'`executeRefund`), retenues et verdict, instant de quiescence, table des sorties, portail de réconciliation, statut client, verrou de publication. |
+| W2 | `7588419` | Chargeur d'argent unique et côté approbation : jeton de tentative T1, revalidation fraîche T2 avant `executeRefund`, identité à trois valeurs T3, CAS sur le jeton pour toute écriture après le moteur T4. |
+| W3 | `d89cc5b` | Aiguillage de réconciliation : l'échelle du rond 12 est supprimée, rédacteur N8 par CAS, parité avec le vrai `executeRefund` sur 95 états. |
+| W4 | `d555f6f` | Identité et concurrence : preuve Stripe avant toute écriture, liaison dans une transaction Serializable, miroir d'adoption dans une transaction Serializable. |
+| W5 | `1829aeb` | Rail de renversement, marquage de la réclamation par le webhook après les écritures d'argent inchangées, reprise avec re-vérification AMF-1, recensement. |
+| W6 | `ad26dac` | Enregistrement de clôture et e-mails de clôture : éligibilité par l'enregistrement de cette version seulement, renvoi par réclamation, saut claims_disabled. |
+| W7 | `4d3e442` | Consoles et parcours client : section « Avis client non envoyés », bouton AMF-1, contrôles alignés sur le serveur. |
+| W8 | `32a7651` | Résiduels (contrat §24 R1–R5, §25), J-M28 par le vrai `executeRefund` sur les 95 états × 13 pré-images avec lecture de tous les textes rendus, H17 (clause « pendant la bêta » retirée de l'e-mail d'annulation payée, 5 locales), précheck opérateur rendu vérifiable (Étape 0 condition de version, Étape 2 sens de `truncated`, Étape 3 répétition réelle), carte de couverture des 315 règles (`docs/ops/CLAIMS-R13-RULE-COVERAGE.md`). |
+
+**Invariants tenus.**
+- Moteur fermé : `lib/refund.ts` est identique à `40da45e`, et les écritures d'argent du webhook gardent leur ordre.
+- Aucun changement de schéma.
+- Une tentative tardive ne réécrit jamais une réclamation liée ou réconciliée depuis : CAS sur le jeton.
+- Une preuve payable est revalidée juste avant l'appel d'argent.
+- Aucune sortie refusée par le moteur n'est proposée : J-M28 le vérifie par le vrai moteur sur chaque état.
+
+**Couverture.** `docs/ops/CLAIMS-R13-RULE-COVERAGE.md` donne, pour chaque règle des sections A–J (315), son site d'implémentation du rond 13 et ses fichiers de test, ou l'endroit où son résiduel est déclaré. Deux lignes n'ont pas de test propre : H18 (couverte par les tests J de chacun de ses points) et J-C19 (garde build / i18n). Le balayage `tests/claims-r13-residuals.test.ts` vérifie chaque cellule.
+
+**Un Refund ne solde qu'une réclamation — répétition réelle.** Répétition sur MariaDB 12.3.2 locale et jetable, sur `d555f6f`, isolation par défaut REPEATABLE-READ, deux connexions :
+- 20 itérations sur 20 : exactement une réclamation soldée, l'autre inchangée, et le perdant reçoit toujours un 409 propre ;
+- contrôle négatif sans niveau d'isolation : 20 itérations sur 20 lient le Refund aux deux réclamations.
+
+Elle est refaite sur la SHA candidate certifiée avant toute fenêtre Claims (précheck Étape 3), jamais contre staging ni la production.
+
+**Mesures au dernier commit d'implémentation.**
+- Suite complète : `452` fichiers / `5890` tests verts (11 ignorés, 17 à faire), sortie 0.
+- Typecheck : 39 erreurs, 0 nouvelle. Deux erreurs TS2353 préexistantes de `tests/claim-emails-routes.test.ts` ont disparu avec l'élargissement du type d'un mock.
+- `check:i18n` : OK.
+
+**Résiduels déclarés (non masqués).**
+- **R1–R5** (contrat §24) : dont **C11**, double remboursement d'une même réclamation si une tentative reste suspendue au-delà de `ATTEMPT_QUIESCENCE_MS`. La garde moteur (`exclusiveReason`) reste une décision fondateur d'un rond ultérieur.
+- **E-08** : fenêtre bornée par la relivraison Stripe si l'écriture en base échoue.
+- **AMF-1** : un échec Stripe signalé plus de 35 jours après le règlement, dont l'événement a été perdu ; au-delà des 100 plus anciennes réclamations d'un passage tronqué, la vérification se fait dans le Dashboard Stripe (pas de curseur).
+- **ER-M01 / E-04** : la première approbation sur une commande portant un remboursement que rien n'explique reste en vérification financière. Pas de clôture par déclaration : c'est un état FERMÉ PAR DÉFAUT et VISIBLE.
+- **E-10** : en Mode A, une réclamation approuvée reste impayée tant que les remboursements sont fermés.
+- **J-M23** : deux attributions de lignes différentes peuvent s'interbloquer ; le perdant n'écrit rien.
+- **§25** : lectures du recensement non paginées (volume bêta), une réclamation sautée pour un chargement par le curseur de la liste H10.
+
+**Certification.** La SHA candidate portant ce paragraphe fait l'objet de la suite de certification :
+- contrôles différentiels de rupture et restauration sur les invariants ;
+- nouvelle répétition réelle ;
+- build à froid ;
+- déploiement staging à SHA exacte, portails Claims et Refunds à 403 ;
+- recensement ;
+- un audit adversarial complet de cette SHA.
+
+Les résultats sont consignés dans le rapport Notion et la mémoire, pas dans un commit ultérieur : la SHA vérifiée est la SHA déployée et auditée.
