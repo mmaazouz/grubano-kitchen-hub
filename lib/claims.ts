@@ -95,7 +95,10 @@ export async function stripeCashTruthForOrder(piId: string | null | undefined): 
         .filter((r) => r.status === 'pending' || r.status === 'requires_action')
         .reduce((a, r) => a + (r.amount || 0), 0)
     } catch { /* a refund list failure must not deny the captured/refunded truth we already hold */ }
-    return { capturedCents, refundedCents, pendingCents }
+    // T-59: a chargeback moves cash out WITHOUT touching amount_refunded and without any Refund
+    // row, and Stripe then refuses a refund on that charge. Reported so the ceiling can be shown
+    // as unproven; it never changes the amount.
+    return { capturedCents, refundedCents, pendingCents, disputed: charge.disputed === true }
   } catch (e) {
     console.warn('[claims scope] Stripe cash truth unavailable —', e instanceof Error ? e.message : e)
     return null
@@ -449,6 +452,15 @@ export type ClaimEligibility = {
   canClaim: boolean
   reason?: 'not_owner' | 'not_paid' | 'window_expired' | 'active_claim'
   maxRefundableCents: number
+  /**
+   * T-59 — is `maxRefundableCents` PROVEN against live Stripe cash truth?
+   * false ⇒ Stripe could not be read (no PaymentIntent, no charge, or the call failed): the
+   * number is a DB-derived REQUEST cap that ignores refunds issued outside the rail and may be
+   * too high. Also false when the charge is DISPUTED (read, but not proven — see ClaimScope.
+   * ceilingContested). The UI must then word it neutrally and never call it refundable cash. Money stays
+   * fail-closed either way — the refund engine re-reads Stripe and refuses anything above it.
+   */
+  ceilingVerified: boolean
   windowHours: number
   // C2: existingClaim carries the refusal reason + whether the client may still CONTEST.
   existingClaim:
@@ -469,7 +481,8 @@ export async function getClaimEligibility(input: { consumerId: string; orderId: 
   })
   if (!order || order.consumerId !== input.consumerId) {
     // Anti-IDOR: a non-owner learns nothing about the order (no total, no lines).
-    return { canClaim: false, reason: 'not_owner', maxRefundableCents: 0, windowHours, existingClaim: null }
+    // T-59: nothing was measured here, so nothing is presented as verified.
+    return { canClaim: false, reason: 'not_owner', maxRefundableCents: 0, ceilingVerified: false, windowHours, existingClaim: null }
   }
   // Server-derived ceiling: order total MINUS what is already refunded (a second claim
   // on a partially refunded order can never ask for the whole order again).
@@ -478,6 +491,9 @@ export async function getClaimEligibility(input: { consumerId: string; orderId: 
   // the form offers an amount the server will refuse.
   const scope = await buildClaimScopeForOrder({ orderId: input.orderId, items: order.items, orderTotalEur: order.total, stripePaymentIntentId: order.stripePaymentIntentId })
   const maxRefundableCents = scope.maxAuthorityCents
+  // T-59: the ceiling travels with its own provenance, so the form can word it honestly.
+  // Proven = live Stripe truth read AND the charge not disputed (see publicClaimScope).
+  const ceilingVerified = scope.ceilingSource === 'stripe' && !scope.ceilingContested
   const publicScope = publicClaimScope(scope)
   const existing = await prisma.claim.findFirst({
     where:   { orderId: input.orderId, consumerId: input.consumerId },
@@ -518,14 +534,14 @@ export async function getClaimEligibility(input: { consumerId: string; orderId: 
     // ROUND 13 (F08): reasons by who wrote them — no Grubano reason on a declaration, no restaurant reason unless it refused.
     ? { id: existing.id, status: customerClaimStatus(existing, existingBoundConfirmed, existingRefundedRow), canContest, ...customerClaimReasons(existing) }
     : null
-  if (order.paymentStatus !== 'paid') return { canClaim: false, reason: 'not_paid', maxRefundableCents, windowHours, existingClaim, scope: publicScope }
+  if (order.paymentStatus !== 'paid') return { canClaim: false, reason: 'not_paid', maxRefundableCents, ceilingVerified, windowHours, existingClaim, scope: publicScope }
   if (Date.now() - order.updatedAt.getTime() > windowHours * 3600 * 1000) {
-    return { canClaim: false, reason: 'window_expired', maxRefundableCents, windowHours, existingClaim, scope: publicScope }
+    return { canClaim: false, reason: 'window_expired', maxRefundableCents, ceilingVerified, windowHours, existingClaim, scope: publicScope }
   }
   if (existing && (ACTIVE_STATUSES as readonly string[]).includes(existing.status)) {
-    return { canClaim: false, reason: 'active_claim', maxRefundableCents, windowHours, existingClaim, scope: publicScope }
+    return { canClaim: false, reason: 'active_claim', maxRefundableCents, ceilingVerified, windowHours, existingClaim, scope: publicScope }
   }
-  return { canClaim: true, maxRefundableCents, windowHours, existingClaim, scope: publicScope }
+  return { canClaim: true, maxRefundableCents, ceilingVerified, windowHours, existingClaim, scope: publicScope }
 }
 
 // ── SAFETY TRIAGE (batch 2 audit fix) ─────────────────────────────────────────────

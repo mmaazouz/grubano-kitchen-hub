@@ -29,9 +29,11 @@ type Eligibility = {
   canClaim: boolean
   reason?: string
   maxRefundableCents: number
+  /** T-59: true only when the ceiling was proven against live Stripe cash truth. */
+  ceilingVerified?: boolean
   windowHours: number
   existingClaim: ExistingClaim | null
-  scope?: { maxAuthorityCents: number; alreadyRefundedCents: number; lines: ScopeLine[]; itemSelectionAvailable: boolean }
+  scope?: { maxAuthorityCents: number; alreadyRefundedCents: number; lines: ScopeLine[]; itemSelectionAvailable: boolean; ceilingVerified?: boolean }
 }
 
 function fileToBase64(file: File): Promise<string> {
@@ -147,10 +149,13 @@ export default function ClaimSection({ orderId }: { orderId: string }) {
     .map(([index, qty]) => ({ index: Number(index), qty }))
     .filter((x) => x.qty > 0)
   // Indicative only: the SERVER prices the claim. Shown so the customer is not surprised.
-  const selectionEstimateCents = itemSelection.reduce((sum, sel) => {
+  // T-59 (same family): the figure is clamped to the server ceiling exactly as resolveClaimAmount
+  // does (Math.min(total, maxAuthorityCents)), so a partially refunded order can never show an
+  // indicative amount larger than what the claim may actually ask for.
+  const selectionEstimateCents = Math.min(itemSelection.reduce((sum, sel) => {
     const line = scopeLines.find((l) => l.index === sel.index)
     return sum + (line ? line.unitCents * sel.qty : 0)
-  }, 0)
+  }, 0), el.maxRefundableCents)
   async function submit() {
     setSubmitting(true)
     try {
@@ -263,7 +268,13 @@ export default function ClaimSection({ orderId }: { orderId: string }) {
           {!needsItems && (
           <div>
             <label className="mb-1 block text-[13px] font-semibold text-[#1a1a1a]">{t('client.amountLabel')}</label>
-            <p className="mb-2 text-xs text-[#888]">{t('client.maxRefundable', { amount: formatEuros(el.maxRefundableCents / 100, locale) })}</p>
+            {/* T-59 — « Maximum remboursable » is a claim about CASH and may only be made when the
+                ceiling was proven against live Stripe truth. Anything else (Stripe unreadable, no
+                charge, older payload without the flag) gets the neutral request wording: the number
+                is what you may ASK for, not money proven to be refundable. Fail-closed by default. */}
+            <p className="mb-2 text-xs text-[#888]">
+              {t(el.ceilingVerified === true ? 'client.maxRefundable' : 'client.maxRequestUnverified', { amount: formatEuros(el.maxRefundableCents / 100, locale) })}
+            </p>
             <div className="flex flex-col gap-2">
               <label className="flex items-center gap-2 text-[14px] text-[#1a1a1a]">
                 <input type="radio" checked={wholeOrder} onChange={() => setWholeOrder(true)} /> {t('client.wholeOrder')}

@@ -71,6 +71,8 @@ interface ClaimEligibility {
   canClaim: boolean
   reason?: 'not_owner' | 'not_paid' | 'window_expired' | 'active_claim'
   maxRefundableCents: number
+  /** T-59: true only when the ceiling was proven against live Stripe cash truth. */
+  ceilingVerified?: boolean
   windowHours: number
   existingClaim:
     | { id: string; status: string; canContest: boolean; restaurantResponseReason: string | null; arbitrationReason: string | null }
@@ -417,8 +419,11 @@ export default function OrderHelpScreen() {
                   ? t.rich('refundEstimate', { amount: formatAmount(estimate, locale), b: (c) => <b><bdi>{c} €</bdi></b> })
                   : t('refundPickToEstimate')}
               </p>
+              {/* T-59 — the cap sentence says « ce qui reste remboursable », a cash claim. It may only
+                  be shown when the ceiling was proven against live Stripe truth; otherwise the cap is
+                  DB-derived and is described as the maximum of the REQUEST, still to be verified. */}
               {estimateCapped && (
-                <p className="refund-note-cap">{t('refundEstimateCapped')}</p>
+                <p className="refund-note-cap">{t(eligibility?.ceilingVerified === true ? 'refundEstimateCapped' : 'refundEstimateCappedUnverified')}</p>
               )}
             </div>
           )}

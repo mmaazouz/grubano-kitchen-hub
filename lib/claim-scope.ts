@@ -50,6 +50,13 @@ export type ClaimScope = {
    *                not proven. Surfaced, never hidden.
    */
   ceilingSource: 'stripe' | 'db_only'
+  /**
+   * T-59 — the charge is DISPUTED (chargeback). Cash can leave on the dispute rail without
+   * ever touching `amount_refunded` or creating a `Refund` row, so both ceilings are blind to
+   * it and Stripe will refuse a refund on that charge anyway. The ceiling stays as computed
+   * (never widened), but it is no longer PROVEN refundable cash.
+   */
+  ceilingContested: boolean
   /** Cash Stripe still considers refundable, minus anything already in flight. */
   stripeRemainingCents: number | null
 }
@@ -62,6 +69,8 @@ export type StripeCashTruth = {
   refundedCents: number
   /** Sum of refunds currently PENDING at Stripe: not yet money out, but already committed. */
   pendingCents: number
+  /** charge.disputed — a chargeback takes cash out on a rail `amount_refunded` never records. */
+  disputed?: boolean
 }
 
 export type ClaimSelection = { index: number; qty: number }
@@ -102,9 +111,11 @@ export function buildClaimScope(input: {
   }
   const maxAuthorityCents = stripeRemainingCents === null ? dbCeiling : Math.min(dbCeiling, stripeRemainingCents)
   const ceilingSource: 'stripe' | 'db_only' = stripeRemainingCents === null ? 'db_only' : 'stripe'
+  // T-59: a disputed charge does not widen or narrow the cap — it only means the cap is not proven.
+  const ceilingContested = input.stripe?.disputed === true
 
   const raw = Array.isArray(input.items) ? (input.items as RawOrderItem[]) : null
-  if (!raw) return { orderTotalCents, alreadyRefundedCents, maxAuthorityCents, lines: [], linesUnavailable: true, ceilingSource, stripeRemainingCents }
+  if (!raw) return { orderTotalCents, alreadyRefundedCents, maxAuthorityCents, lines: [], linesUnavailable: true, ceilingSource, ceilingContested, stripeRemainingCents }
 
   const lines: ClaimScopeLine[] = []
   // AUDIT FIX (batch 2, P1) — PRICE BASIS. `Order.items[].price` is the MenuItem LIST price,
@@ -151,7 +162,7 @@ export function buildClaimScope(input: {
       lineCents: unitCents * qty,
     })
   }
-  return { orderTotalCents, alreadyRefundedCents, maxAuthorityCents, lines, linesUnavailable: raw.length > 0 && lines.length === 0, ceilingSource, stripeRemainingCents }
+  return { orderTotalCents, alreadyRefundedCents, maxAuthorityCents, lines, linesUnavailable: raw.length > 0 && lines.length === 0, ceilingSource, ceilingContested, stripeRemainingCents }
 }
 
 /**
@@ -245,5 +256,13 @@ export function publicClaimScope(scope: ClaimScope) {
     alreadyRefundedCents: scope.alreadyRefundedCents,
     lines: scope.lines.map((l) => ({ index: l.index, name: l.name, maxQty: l.maxQty, unitCents: l.unitCents, lineCents: l.lineCents })),
     itemSelectionAvailable: scope.lines.length > 0,
+    // T-59 — WHAT THE CEILING IS WORTH, not just how big it is. It is PROVEN refundable cash
+    // only when live Stripe truth was read (`db_only` means it was not: the ceiling then ignores
+    // refunds issued outside the rail and can be TOO HIGH) AND the charge is not disputed (a
+    // chargeback removes cash on a rail neither ceiling sees, and Stripe refuses a refund on it).
+    // The number is still the server's cap either way — the engine re-reads Stripe at refund
+    // time — but nothing may present an unproven cap as verified refundable cash. A boolean only:
+    // no Stripe amount, id or error ever crosses to the client.
+    ceilingVerified: scope.ceilingSource === 'stripe' && !scope.ceilingContested,
   }
 }
