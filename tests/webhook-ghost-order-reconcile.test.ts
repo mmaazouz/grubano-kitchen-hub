@@ -29,6 +29,7 @@ vi.mock('@/lib/stripe', () => ({ getStripe: stripe.getStripe, retrieveChargeFact
 vi.mock('@/lib/refund', () => ({ isRefundsEnabled: refund.isRefundsEnabled, isGhostOrderAutoRefundEnabled: refund.isGhostOrderAutoRefundEnabled, executeRefund: refund.executeRefund }))
 // PRE-MODE-B V1 — garde litige : neutre par défaut ici, pilotée par le cas « charge contestée ».
 vi.mock('@/lib/refund-dispute-guard', () => ({ assertChargeNotDisputed: guard.assertChargeNotDisputed }))
+vi.mock('@/lib/refund-preflight', () => ({ preflightRefundFunding: vi.fn(async () => ({ ok: true })) }))
 vi.mock('@/lib/admin-alerts', () => ({ sendAdminGhostOrderAlert: emails.sendAdminGhostOrderAlert, sendAdminStalePiAlert: vi.fn(async () => ({ status: 'sent' })) }))
 
 import { POST } from '@/app/api/webhooks/stripe/route'

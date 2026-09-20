@@ -5,6 +5,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isRefundsEnabled, executeRefund } from '@/lib/refund'
 import { assertChargeNotDisputed } from '@/lib/refund-dispute-guard'
+import { preflightRefundFunding } from '@/lib/refund-preflight'
 import { rateLimit } from '@/lib/rate-limit'
 import { recordAdminAudit, CRON_ACTOR_ID } from '@/lib/admin-audit'
 import { safeEqual } from '@/lib/safe-compare'
@@ -93,6 +94,13 @@ export async function POST(req: Request) {
       const notDisputed = await assertChargeNotDisputed(target.stripePaymentIntentId)
       if (!notDisputed.ok) {
         return NextResponse.json({ error: notDisputed.error }, { status: notDisputed.status })
+      }
+      // MODE B commit A — refuser AVANT la première écriture du moteur la seule cause de rejet
+      // terminal que le dépôt prouve (charge routée sans commission). Une ligne 'pending' créée
+      // puis rejetée par Stripe est irrécupérable : elle prend la clé de cumul @unique à vie.
+      const funded = await preflightRefundFunding({ paymentIntentId: target.stripePaymentIntentId })
+      if (!funded.ok) {
+        return NextResponse.json({ error: funded.error }, { status: funded.status })
       }
     }
 

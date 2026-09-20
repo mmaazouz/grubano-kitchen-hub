@@ -9,6 +9,7 @@ const { flagMock, execMock } = vi.hoisted(() => ({ flagMock: vi.fn(), execMock: 
 vi.mock('@/lib/refund', () => ({ isRefundsEnabled: flagMock, executeRefund: execMock }))
 // PRE-MODE-B V1 — garde litige neutralisée ici (son comportement est épinglé ailleurs).
 vi.mock('@/lib/refund-dispute-guard', () => ({ assertChargeNotDisputed: vi.fn(async () => ({ ok: true })) }))
+vi.mock('@/lib/refund-preflight', () => ({ preflightRefundFunding: vi.fn(async () => ({ ok: true })) }))
 
 const { sessionMock } = vi.hoisted(() => ({ sessionMock: vi.fn() }))
 vi.mock('next-auth', () => ({ getServerSession: sessionMock }))

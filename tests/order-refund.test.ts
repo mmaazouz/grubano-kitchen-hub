@@ -40,6 +40,7 @@ vi.mock('@/lib/refund', () => ({ isRefundsEnabled: flagMock, executeRefund: engi
 // continue de ne tester que le rail admin. Son propre comportement est épinglé par
 // tests/refund-dispute-guard.test.ts et tests/refund-dispute-guard-callers.test.ts.
 vi.mock('@/lib/refund-dispute-guard', () => ({ assertChargeNotDisputed: vi.fn(async () => ({ ok: true })) }))
+vi.mock('@/lib/refund-preflight', () => ({ preflightRefundFunding: vi.fn(async () => ({ ok: true })) }))
 vi.mock('@/lib/refunds', () => ({ refundPayment: legacyRefundMock }))
 vi.mock('@/lib/rate-limit', () => ({ rateLimit: limitMock }))
 

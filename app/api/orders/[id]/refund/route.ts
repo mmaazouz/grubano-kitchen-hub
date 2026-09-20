@@ -5,6 +5,7 @@ import { requireRefundAdmin } from '@/lib/refund-route-guard'
 import { recordAdminAudit } from '@/lib/admin-audit'
 import { isRefundsEnabled, executeRefund } from '@/lib/refund'
 import { assertChargeNotDisputed } from '@/lib/refund-dispute-guard'
+import { preflightRefundFunding } from '@/lib/refund-preflight'
 import { rateLimit } from '@/lib/rate-limit'
 import { sendRefundConfirmation, refundEmailDedupeKey } from '@/lib/transactional-emails'
 
@@ -82,6 +83,11 @@ export async function POST(
     const notDisputed = await assertChargeNotDisputed(order.stripePaymentIntentId)
     if (!notDisputed.ok) {
       return NextResponse.json({ error: notDisputed.error }, { status: notDisputed.status })
+    }
+    // MODE B commit A — voir app/api/admin/refunds/run : refus AVANT la première écriture du moteur.
+    const funded = await preflightRefundFunding({ paymentIntentId: order.stripePaymentIntentId })
+    if (!funded.ok) {
+      return NextResponse.json({ error: funded.error }, { status: funded.status })
     }
 
     const result = await executeRefund({

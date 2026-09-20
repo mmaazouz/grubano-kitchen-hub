@@ -9,6 +9,7 @@ import { reconcileLoyaltyOnRefund } from '@/lib/loyalty-refund-apply'
 import { isChargebacksEnabled, handleDisputeEvent } from '@/lib/dispute'
 import { isGhostOrderAutoRefundEnabled, isRefundsEnabled, executeRefund, computeRefundSplit, finalizeRefundRowFromStripe, markRefundRowFailed } from '@/lib/refund'
 import { assertChargeNotDisputed } from '@/lib/refund-dispute-guard'
+import { preflightRefundFunding } from '@/lib/refund-preflight'
 import { recomputeRoyaltyRefundedCents } from '@/lib/royalty-refunded'
 import { reconcileClaimForRefund, markClaimsForRevertedRefundRow } from '@/lib/claims'
 import { matchFeeRefunds, predictFeeRefund, refundLedgerLine } from '@/lib/refund-fee-truth'
@@ -466,10 +467,14 @@ async function handleOrderPaid(pi: Stripe.PaymentIntent) {
         try {
           // PRE-MODE-B V1 — charge CONTESTÉE : on ne rembourse pas par-dessus le débit du litige.
           // Refus AVANT le moteur ⇒ la commande part en 'reconcile_manual' comme tout échec ici.
+          // MODE B commit A — litige PUIS financement : les deux refus arrivent avant la première
+          // écriture du moteur (une ligne 'pending' rejetée par Stripe est irrécupérable).
           const notDisputed = await assertChargeNotDisputed(pi.id)
-          const res = notDisputed.ok
-            ? await executeRefund({ orderId: order.id, reason: 'ghost_order_expired' })
-            : { ok: false as const, error: notDisputed.error }
+          const funded = notDisputed.ok ? await preflightRefundFunding({ paymentIntentId: pi.id }) : null
+          const blocked = !notDisputed.ok ? notDisputed : (funded && !funded.ok ? funded : null)
+          const res = blocked
+            ? { ok: false as const, error: blocked.error }
+            : await executeRefund({ orderId: order.id, reason: 'ghost_order_expired' })
           refunded = res.ok
           if (!res.ok) {
             console.error(`[stripe webhook] MONEY REVIEW: ghost-order auto-refund not ok for ${order.id}: ${res.error}`)

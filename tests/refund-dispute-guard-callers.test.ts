@@ -17,6 +17,10 @@ import path from 'node:path'
 const { guardMock } = vi.hoisted(() => ({ guardMock: vi.fn() }))
 vi.mock('@/lib/refund-dispute-guard', () => ({ assertChargeNotDisputed: guardMock }))
 
+// MODE B commit A — le préflight FINANCEMENT est le second refus pré-écriture des rails directs.
+const { preflightMock } = vi.hoisted(() => ({ preflightMock: vi.fn() }))
+vi.mock('@/lib/refund-preflight', () => ({ preflightRefundFunding: preflightMock }))
+
 const { flagMock, execMock } = vi.hoisted(() => ({ flagMock: vi.fn(), execMock: vi.fn() }))
 vi.mock('@/lib/refund', () => ({ isRefundsEnabled: flagMock, executeRefund: execMock }))
 
@@ -45,6 +49,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   flagMock.mockReturnValue(true)
   guardMock.mockResolvedValue({ ok: true })
+  preflightMock.mockResolvedValue({ ok: true })
   sessionMock.mockResolvedValue({ user: { email: 'a@b.c' } })
   db.operator.findUnique.mockResolvedValue({ id: 'op1', role: 'admin' })
   db.order.findUnique.mockResolvedValue({ id: 'o1', stripePaymentIntentId: 'pi_1', restaurantId: 'r1', consumerId: 'c1', paymentStatus: 'paid' })
@@ -79,9 +84,28 @@ describe('PRE-MODE-B V1 — POST /api/admin/refunds/run (le déclencheur de la r
     // le PaymentIntent lu est bien celui de LA commande demandée (garder la mauvaise commande
     // contournerait la garde en silence), et on ne lit QUE ce champ
     expect(db.order.findUnique).toHaveBeenCalledWith({ where: { id: 'o1' }, select: { stripePaymentIntentId: true } })
-    // ORDRE RÉEL D'APPEL (pas une position dans le texte) : la garde AVANT le moteur, donc avant
-    // la ligne Refund 'pending' que le moteur écrit avant de contacter Stripe.
-    expect(guardMock.mock.invocationCallOrder[0]).toBeLessThan(execMock.mock.invocationCallOrder[0])
+    // ORDRE RÉEL D'APPEL (pas une position dans le texte) : garde litige PUIS préflight financement,
+    // les deux AVANT le moteur — donc avant la ligne Refund 'pending' qu'il écrit avant Stripe.
+    expect(preflightMock).toHaveBeenCalledWith({ paymentIntentId: 'pi_1' })
+    expect(guardMock.mock.invocationCallOrder[0]).toBeLessThan(preflightMock.mock.invocationCallOrder[0])
+    expect(preflightMock.mock.invocationCallOrder[0]).toBeLessThan(execMock.mock.invocationCallOrder[0])
+  })
+
+  it('MODE B commit A — charge routée SANS commission → 409 et le moteur n’est jamais appelé', async () => {
+    preflightMock.mockResolvedValue({ ok: false, status: 409, cause: 'routed_without_fee', error: 'routée sans commission' })
+    const { POST } = await import('@/app/api/admin/refunds/run/route')
+    const res = await POST(post({ orderId: 'o1', amountCents: 500 }))
+    expect(res.status).toBe(409)
+    expect(execMock).not.toHaveBeenCalled()
+    expect(auditMock).not.toHaveBeenCalled()
+  })
+
+  it('MODE B commit A — financement illisible → 502 propagé verbatim, moteur jamais appelé', async () => {
+    preflightMock.mockResolvedValue({ ok: false, status: 502, cause: 'unreadable', error: 'illisible' })
+    const { POST } = await import('@/app/api/admin/refunds/run/route')
+    const res = await POST(post({ orderId: 'o1', amountCents: 500 }))
+    expect(res.status).toBe(502)
+    expect(execMock).not.toHaveBeenCalled()
   })
 
   it('commande sans PaymentIntent → la garde n’a rien à lire, le moteur répond lui-même', async () => {
@@ -128,8 +152,18 @@ describe('PRE-MODE-B V1 — POST /api/orders/[id]/refund', () => {
     const { POST } = await import('@/app/api/orders/[id]/refund/route')
     await POST(postOrder(), { params: { id: 'o1' } })
     expect(guardMock).toHaveBeenCalledWith('pi_1')
+    expect(preflightMock).toHaveBeenCalledWith({ paymentIntentId: 'pi_1' })
     expect(execMock).toHaveBeenCalledTimes(1)
-    expect(guardMock.mock.invocationCallOrder[0]).toBeLessThan(execMock.mock.invocationCallOrder[0])
+    expect(guardMock.mock.invocationCallOrder[0]).toBeLessThan(preflightMock.mock.invocationCallOrder[0])
+    expect(preflightMock.mock.invocationCallOrder[0]).toBeLessThan(execMock.mock.invocationCallOrder[0])
+  })
+
+  it('MODE B commit A — préflight refusant → le moteur n’est jamais appelé sur ce rail non plus', async () => {
+    preflightMock.mockResolvedValue({ ok: false, status: 409, cause: 'routed_without_fee', error: 'routée sans commission' })
+    const { POST } = await import('@/app/api/orders/[id]/refund/route')
+    const res = await POST(postOrder(), { params: { id: 'o1' } })
+    expect(res.status).toBe(409)
+    expect(execMock).not.toHaveBeenCalled()
   })
 })
 
@@ -158,9 +192,12 @@ describe('PRE-MODE-B V1 — la garde couvre les rails directs, et SEULEMENT eux'
   // Présence seulement : l'ORDRE réel est prouvé par les tests de comportement ci-dessus et
   // ci-dessous (invocationCallOrder), jamais par une position dans le texte — un appel placé plus
   // haut mais dans une branche morte passerait un test textuel.
-  it('chacun des rails gardés consulte la garde', () => {
+  it('chacun des rails gardés consulte la garde LITIGE et le préflight FINANCEMENT', () => {
     for (const f of GUARDED) {
       expect(read(f), f).toMatch(/assertChargeNotDisputed\(/)
+      // MODE B commit A — les deux refus doivent exister sur les trois rails : le litige (l'argent a
+      // pu sortir ailleurs) ET le financement (le moteur écrirait une ligne que Stripe rejette).
+      expect(read(f), f).toMatch(/preflightRefundFunding\(/)
     }
   })
 
@@ -179,11 +216,13 @@ describe('PRE-MODE-B V1 — la garde couvre les rails directs, et SEULEMENT eux'
     expect(claimSurface.length).toBeGreaterThan(10)   // le recensement doit vraiment ratisser
     for (const f of claimSurface) {
       expect(read(f), f).not.toMatch(/refund-dispute-guard|assertChargeNotDisputed/)
+      expect(read(f), f).not.toMatch(/refund-preflight|preflightRefundFunding/)
     }
   })
 
-  it('⭐ CONTRÔLE NÉGATIF — le MOTEUR gelé n’importe pas la garde (son empreinte SHA-256 est épinglée)', () => {
+  it('⭐ CONTRÔLE NÉGATIF — le MOTEUR gelé n’importe ni la garde ni le préflight (empreinte SHA-256 épinglée)', () => {
     expect(read('lib/refund.ts')).not.toMatch(/refund-dispute-guard|assertChargeNotDisputed/)
+    expect(read('lib/refund.ts')).not.toMatch(/refund-preflight|preflightRefundFunding/)
   })
 
   it('l’opérateur de fenêtre voit le litige avant d’ouvrir quoi que ce soit', () => {
