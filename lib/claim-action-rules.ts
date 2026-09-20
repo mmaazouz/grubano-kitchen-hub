@@ -875,6 +875,10 @@ const GUIDANCE: Record<string, string> = {
     'La ligne liée est en attente, sans identifiant Stripe enregistré. « Réconcilier d’après la preuve » lit Stripe pour cette ligne : il applique ce qui est prouvé, ou indique à partir de quand conclure. Aucune clôture manuelle sur cet état.',
   stripe_failed:
     'Notre ligne liée est marquée ÉCHOUÉE (statut enregistré d’après Stripe) ; la réclamation n’est pas encore réconciliée. « Réconcilier d’après la preuve » l’applique, et le dossier devient clôturable.',
+  // MODE B commit B — une ligne LIBÉRÉE n'a JAMAIS existé chez Stripe : ce n'est pas un échec Stripe.
+  // Le texte ne doit affirmer aucun versement : la libération ne paie rien, elle rouvre le rail.
+  row_voided:
+    'La ligne liée a été LIBÉRÉE : il est prouvé qu’aucun remboursement Stripe n’a jamais existé pour elle, elle n’a donc rien versé, et elle n’arrête plus le moteur sur cette commande. Le client n’a PAS été payé. Pour le payer : relancer un remboursement sur cette commande depuis les outils admin, puis « Clôturer ce dossier… » en déclarant qu’il a été payé autrement. Aucune action ici ne déplace d’argent.',
   stripe_succeeded_claim_unreconciled:
     'Notre ligne liée est marquée ABOUTIE (statut enregistré d’après Stripe) ; la réclamation n’est pas encore réconciliée. « Réconcilier d’après la preuve » l’applique.',
   stale_refunding_no_refund_row:

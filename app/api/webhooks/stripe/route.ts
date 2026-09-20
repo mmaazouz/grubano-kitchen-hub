@@ -10,6 +10,7 @@ import { isChargebacksEnabled, handleDisputeEvent } from '@/lib/dispute'
 import { isGhostOrderAutoRefundEnabled, isRefundsEnabled, executeRefund, computeRefundSplit, finalizeRefundRowFromStripe, markRefundRowFailed } from '@/lib/refund'
 import { assertChargeNotDisputed } from '@/lib/refund-dispute-guard'
 import { preflightRefundFunding } from '@/lib/refund-preflight'
+import { isReleasedRow } from '@/lib/refund-void-state'
 import { recomputeRoyaltyRefundedCents } from '@/lib/royalty-refunded'
 import { reconcileClaimForRefund, markClaimsForRevertedRefundRow } from '@/lib/claims'
 import { matchFeeRefunds, predictFeeRefund, refundLedgerLine } from '@/lib/refund-fee-truth'
@@ -923,10 +924,10 @@ async function handleRefundStatusEvent(refund: Stripe.Refund) {
 
     const rowId = refund.metadata?.grubano_refund_row || null
     let row = rowId
-      ? await prisma.refund.findUnique({ where: { id: rowId }, select: { id: true, status: true, orderId: true } })
+      ? await prisma.refund.findUnique({ where: { id: rowId }, select: { id: true, status: true, orderId: true, stripeRefundId: true, idempotencyKey: true } })
       : null
     if (!row) {
-      row = await prisma.refund.findFirst({ where: { stripeRefundId: refund.id }, select: { id: true, status: true, orderId: true } })
+      row = await prisma.refund.findFirst({ where: { stripeRefundId: refund.id }, select: { id: true, status: true, orderId: true, stripeRefundId: true, idempotencyKey: true } })
     }
     // Security review P2-c: a row named by Stripe metadata must belong to THIS event's
     // PaymentIntent — otherwise it is treated as unrelated (external) and never touched.
@@ -958,6 +959,21 @@ async function handleRefundStatusEvent(refund: Stripe.Refund) {
       // B1 — full reconciliation from the Stripe truth (idempotent by construction).
       const rec = await handleChargeRefunded(charge)
       if (rec.status >= 500) return rec
+
+      // MODE B commit B — LE SEUL MODE CATASTROPHIQUE de la libération : une ligne déclarée
+      // « jamais établie chez Stripe » pour laquelle un remboursement Stripe apparaît quand même.
+      // La preuve exigeait une liste complète et l'identité exacte, donc cela ne devrait pas arriver ;
+      // s'il arrive, il doit RÉVEILLER un humain. Alerte seule : on ne réécrit rien ici.
+      if (row && isReleasedRow(row)) {
+        try {
+          await sendAdminMoneyReviewAlert({
+            kind: 'refund_reconciliation_incomplete',
+            dedupeKey: `voided_row_came_alive:${row.id}`,
+            title: 'Ligne LIBÉRÉE « revenue à la vie » chez Stripe — revue humaine immédiate',
+            facts: { rowId: row.id, orderId: row.orderId, stripeRefundId: refund.id, stripeStatus: refund.status ?? 'inconnu', amountCents: refund.amount ?? null },
+          })
+        } catch { /* l'alerte ne doit jamais casser le webhook */ }
+      }
 
       let finalized: string | null = null
       if (row && row.status === 'pending') {

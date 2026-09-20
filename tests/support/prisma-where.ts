@@ -28,6 +28,9 @@ export function matchOp(op: string, expected: unknown, actual: unknown): boolean
     case 'gte':    return (actual as number) >= (expected as number)
     // Round 11: the census counts crash markers with `refundError: { startsWith }`.
     case 'startsWith': return typeof actual === 'string' && actual.startsWith(String(expected))
+    // MODE B commit B: the census counts RELEASED refund rows with `idempotencyKey: { contains: ':void:' }`
+    // — the released key carries its marker in the middle, so startsWith cannot express it.
+    case 'contains':   return typeof actual === 'string' && actual.includes(String(expected))
     default:
       throw new Error(
         `prisma mock: unsupported operator '${op}' — extend tests/support/prisma-where.ts ` +

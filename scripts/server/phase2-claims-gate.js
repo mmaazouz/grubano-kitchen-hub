@@ -299,6 +299,8 @@ async function censusCounts(db, opts) {
     return rows.filter((r) => settled.has(r.orderId)).length
   })
   out.approvedUnpaid = await censusMeasure(() => db.claim.count({ where: { status: 'approved', refundAttempted: false } }))
+  // MODE B commit B — lignes LIBEREES : (failed, stripeRefundId NULL) ET cle marquee ':void:'.
+  out.voidedRefundRows = await censusMeasure(() => db.refund.count({ where: { status: 'failed', stripeRefundId: null, idempotencyKey: { contains: ':void:' } } }))
   try {
     const claims = await db.claim.findMany({ where: { status: { in: CENSUS_TERMINAL.slice() } }, select: { id: true, status: true, refundError: true, arbitrationDecision: true, restaurantResponse: true } })
     const terminal = claims.map((c) => ({ id: c.id, kind: censusClosureKind(c) })).filter((c) => c.kind !== null)
@@ -329,6 +331,7 @@ const CENSUS_LINES = [
   ['rowsBoundToMultipleClaims', 'rowsBoundToMultipleClaims', (n) => n + ' rows bound to two or more claims (E-12)'],
   ['pendingRowsOver20hWithSettledRoyalty', 'pendingRowsOver20hWithSettledRoyalty', (n) => n + ' pending rows over 20 h with a settled royalty: engine resume may refuse forever (E-01 A-S10c)'],
   ['approvedUnpaid', 'approvedUnpaid', (n) => n + ' approved and unpaid claims, exits gated by CLAIMS+REFUNDS (E-10)'],
+  ['voidedRefundRows', 'voidedRefundRows', (n) => n + ' released refund rows (proven never established at Stripe; the order rail was reopened)'],
   ['closureMissing', 'closure.missing', (n) => n + ' closures of this build without a dispatched notice (E-16)'],
   ['closureTerminalWithoutRecord', 'closure.terminalWithoutRecord', (n) => n + ' terminal claims without a this-build closure record (legacy, or record write failed): never notified (E-18)'],
 ]

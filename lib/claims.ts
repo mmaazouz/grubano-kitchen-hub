@@ -29,6 +29,9 @@ import { recordAdminAudit } from '@/lib/admin-audit'
 // ROUND-6 AUDIT FIX: the "is this bound refund actually ours?" predicate lives in ONE place. It
 // used to be re-derived here from `refundId` alone, which is exactly the proxy four rounds removed.
 import { isResumeMismatch } from '@/lib/claim-money-line'
+// MODE B commit B — l'ÉTAT « ligne libérée » vit dans une FEUILLE sans import : le prouveur
+// (lib/refund-row-void.ts) importe ce fichier, donc l'inverse créerait un cycle.
+import { isReleasedRow, VOID_MIN_AGE_MS } from '@/lib/refund-void-state'
 // ROUND 13 (B1): the binder where excludes the engine's disowned bindings by this prefix.
 import { RESUME_MISMATCH } from '@/lib/claim-money-line'
 // ROUND 13 (F15, A-S24-1): a reversal marker means the bound refund pays nothing — never « réellement remboursé ».
@@ -1597,9 +1600,13 @@ export async function reconcileClaimForRefund(input: {
   if (!bound.length) return { reconciled: false, reason: 'no_claim' }
   // The row, read ONCE: its stamp decides whether a legacy own-row mismatch is a candidate (B8), its status the
   // succeeded branch. A failed read concludes nothing (B12): no write.
-  let row: { status: string; reason: string | null } | null
+  // MODE B commit B: the row's idempotencyKey + stripeRefundId are read too — they are the
+  // discriminator that tells a LIBÉRÉE row (proven never established at Stripe) from a row Stripe
+  // itself failed. Without them the failed branch below would assert a Stripe failure that never
+  // happened, substituting the ROW id for a refund id that does not exist.
+  let row: { status: string; reason: string | null; stripeRefundId: string | null; idempotencyKey: string | null } | null
   try {
-    row = await prisma.refund.findUnique({ where: { id: input.refundRowId }, select: { status: true, reason: true } })
+    row = await prisma.refund.findUnique({ where: { id: input.refundRowId }, select: { status: true, reason: true, stripeRefundId: true, idempotencyKey: true } })
   } catch (e) {
     // B12: no write. The swallowed identity read is logged, so a bound claim left on this row stays visible.
     const code = (e as { code?: unknown } | null)?.code
@@ -1656,11 +1663,18 @@ export async function reconcileClaimForRefund(input: {
   // The two pending-path mismatch writers leave the claim bound to a PENDING row that is not
   // its own; when Stripe fails that row, the webhook lands here. Same guard, same answer.
   // (The disowned binding was refused above; only the own-row legacy mismatch reaches here — B8.)
+  // MODE B commit B — VÉRACITÉ : sans id Stripe, « le remboursement Stripe <id> a ÉCHOUÉ » citait l'id
+  // de la LIGNE et affirmait un échec Stripe qui n'a jamais eu lieu. Une ligne LIBÉRÉE porte exactement
+  // cet état : il est PROUVÉ que rien n'a jamais existé chez Stripe pour elle. Le texte est nommé (et
+  // non écrit en ligne) parce que la grille J-C02 recense les marqueurs par écrivain.
+  const released = !input.stripeRefundId && isReleasedRow(row)
   const done = await prisma.claim.updateMany({
     where: { id: claim.id, refundId: input.refundRowId, status: { in: ['refunding', 'approved'] }, refundError: claim.refundError },
     data:  {
       status:      'approved', // actionable again for the admin, never auto-retried
-      refundError: `stripe_failed: le remboursement Stripe ${input.stripeRefundId ?? input.refundRowId} a ÉCHOUÉ — cette ligne n’a donc rien versé. Cela ne dit RIEN des autres remboursements de la commande : vérifiez la commande dans Stripe avant tout paiement. Décision admin requise, aucun nouvel essai automatique.`,
+      refundError: released
+        ? `row_voided: la ligne de remboursement ${input.refundRowId} a été LIBÉRÉE — il est prouvé qu’aucun remboursement Stripe n’a jamais existé pour elle, elle n’a donc rien versé au client. Cela ne dit RIEN des autres remboursements de la commande : vérifiez la commande dans Stripe avant tout paiement. Décision admin requise, aucun nouvel essai automatique.`
+        : `stripe_failed: le remboursement Stripe ${input.stripeRefundId ?? input.refundRowId} a ÉCHOUÉ — cette ligne n’a donc rien versé. Cela ne dit RIEN des autres remboursements de la commande : vérifiez la commande dans Stripe avant tout paiement. Décision admin requise, aucun nouvel essai automatique.`,
     },
   })
   if (done.count !== 1) return { reconciled: false, reason: 'already_final' }
@@ -1699,7 +1713,8 @@ export async function listActionableRefundClaims() {
   const rows = rowIds.length
     ? await prisma.refund.findMany({
         where:  { id: { in: rowIds } },
-        select: { id: true, orderId: true, status: true, amountCents: true, stripeRefundId: true, createdAt: true, reason: true },
+        // MODE B commit B — idempotencyKey = le troisieme discriminant d une ligne LIBEREE.
+        select: { id: true, orderId: true, status: true, amountCents: true, stripeRefundId: true, createdAt: true, reason: true, idempotencyKey: true },
       })
     : []
   const byId = new Map(rows.map((r) => [r.id, r]))
@@ -1730,6 +1745,8 @@ export async function listActionableRefundClaims() {
       | 'absence_proven_payable'
       // ROUND-8 AUDIT FIX (P1): OUR row is pending and carries NO Stripe id — nothing is confirmed at Stripe.
       | 'local_pending_unconfirmed'
+      // MODE B commit B: the bound row was LIBEREE — proven never established at Stripe.
+      | 'row_voided'
     if (isReconcileRequired(c.refundError)) moneyState = gateRefusal?.error === RECONCILE_MARKER_UNREADABLE_TEXT ? 'reconcile_marker_unreadable' : 'reconcile_required'
     else if (c.status === FINANCIAL_VERIFICATION) moneyState = 'reconcile_required'
     // ROUND 13 (F15): only a proof written by this build is payable; a legacy proof is re-proved first (A-S32).
@@ -1747,6 +1764,9 @@ export async function listActionableRefundClaims() {
     // ROUND-8 AUDIT FIX (P1): OUR row being pending says nothing about Stripe. Only a row that
     // carries a Stripe id was ever confirmed there.
     else if (row.status === 'pending') moneyState = row.stripeRefundId ? 'stripe_pending' : 'local_pending_unconfirmed'
+    // MODE B commit B — une ligne LIBÉRÉE n'a jamais existé chez Stripe : dire « échec Stripe »
+    // (« statut enregistré d'après Stripe ») serait faux. Le test est AVANT la branche 'failed'.
+    else if (isReleasedRow(row)) moneyState = 'row_voided'
     else if (row.status === 'failed') moneyState = 'stripe_failed'
     else moneyState = 'stripe_succeeded_claim_unreconciled'
     return {
@@ -2861,7 +2881,7 @@ async function applyRowTruth(
   }
 
   // absent_dead — Stripe holds nothing for this row and the engine will never create it.
-  const deadText = `${ENGINE_ROW_DEAD}: Stripe ne connaît aucun remboursement portant la ligne ${row.id}, et le moteur ne la créera plus : sa fenêtre d’idempotence a expiré le ${truth.windowEnd.toISOString()} (conclusion tirée après une marge d’une heure). Cette ligne n’a donc rien versé. Tant qu’elle reste en attente, le moteur refusera les remboursements de cette commande ; aucun code de l’application ne la retire, et aucune procédure documentée ne lève ce refus. Rien ne sera payé par l’application pour cette réclamation : clôturez le dossier (« Clôturer ce dossier… »).`
+  const deadText = `${ENGINE_ROW_DEAD}: Stripe ne connaît aucun remboursement portant la ligne ${row.id}, et le moteur ne la créera plus : sa fenêtre d’idempotence a expiré le ${truth.windowEnd.toISOString()} (conclusion tirée après une marge d’une heure). Cette ligne n’a donc rien versé. Tant qu’elle reste en attente, le moteur refusera les remboursements de cette commande. À partir du ${new Date(truth.windowEnd.getTime() - RESUME_CREATE_WINDOW_MS + VOID_MIN_AGE_MS).toISOString()}, un administrateur peut la LIBÉRER (outils admin de remboursement) : la libération ne verse rien, elle rouvre seulement le rail de remboursement de la commande, et le remboursement doit ensuite être relancé depuis ces mêmes outils. Cette réclamation-ci ne sera pas payée par une nouvelle approbation : une fois le remboursement relancé et abouti, clôturez le dossier (« Clôturer ce dossier… ») en déclarant ce qui a été réglé, et comment.`
   const done = await prisma.claim.updateMany({
     where: preImage,
     data:  {

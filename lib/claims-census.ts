@@ -8,6 +8,7 @@
 // NOT COUNTED: E-09 (a settled claim on a succeeded row whose Stripe failure event was lost) — it needs a Stripe read.
 // AMF-1's bounded re-verification (POST /api/admin/claims/reconcile-refunds) reads it instead.
 import { prisma } from '@/lib/prisma'
+import { VOID_KEY_MARK } from '@/lib/refund-void-state'
 import { RESUME_CREATE_WINDOW_MS } from '@/lib/refund'
 import { isAdminAuditEnabled } from '@/lib/admin-audit'
 import {
@@ -25,6 +26,8 @@ export type ClaimsLegacyCensus = {
   rowsBoundToMultipleClaims: number | null
   pendingRowsOver20hWithSettledRoyalty: number | null
   approvedUnpaid: number | null
+  /** MODE B commit B — lignes LIBEREES (prouvees jamais etablies chez Stripe) : une mesure, pas une simple alerte. */
+  voidedRefundRows: number | null
 }
 export type ClaimsClosureCensus = { missing: number | null; terminalWithoutRecord: number | null }
 
@@ -49,7 +52,7 @@ const CONTRADICTION_PARK_KEY_TAIL = ':stripe_refund_contradiction'
 export async function claimsLegacyCensus(now: Date = new Date()): Promise<ClaimsLegacyCensus> {
   const [
     legacyPayableProofs, refundedBoundToFailedRow, refundedRowUnproven, ownRows, terminalDeclarationWithArbitrationReason,
-    refundedAfterContradictionAttribution, refundedBoundToOtherClaimStamp, rowsBoundToMultipleClaims, pendingRowsOver20hWithSettledRoyalty, approvedUnpaid,
+    refundedAfterContradictionAttribution, refundedBoundToOtherClaimStamp, rowsBoundToMultipleClaims, pendingRowsOver20hWithSettledRoyalty, approvedUnpaid, voidedRefundRows,
   ] = await Promise.all([
     // A-S32-*: a pre-v13 proof of absence (approval suspended, D14 (1)).
     measure('legacyPayableProofs', () => prisma.claim.count({
@@ -150,11 +153,13 @@ export async function claimsLegacyCensus(now: Date = new Date()): Promise<Claims
     }),
     // E-10: approved and unpaid (this build's claims included).
     measure('approvedUnpaid', () => prisma.claim.count({ where: { status: 'approved', refundAttempted: false } })),
+    // MODE B commit B — une ligne LIBEREE = (failed, stripeRefundId NULL) ET cle marquee.
+    measure('voidedRefundRows', () => prisma.refund.count({ where: { status: 'failed', stripeRefundId: null, idempotencyKey: { contains: VOID_KEY_MARK } } })),
   ])
   return {
     legacyPayableProofs, refundedBoundToFailedRow, refundedRowUnproven, ownRowResumeMismatch: ownRows,
     terminalDeclarationWithArbitrationReason, refundedAfterContradictionAttribution, refundedBoundToOtherClaimStamp,
-    rowsBoundToMultipleClaims, pendingRowsOver20hWithSettledRoyalty, approvedUnpaid,
+    rowsBoundToMultipleClaims, pendingRowsOver20hWithSettledRoyalty, approvedUnpaid, voidedRefundRows,
   }
 }
 

@@ -152,6 +152,8 @@ describe('I-07 — census lines never enter the anomalies array', () => {
     legacyPayableProofs: 0, refundedBoundToFailedRow: 0, refundedRowUnproven: 0, ownRowResumeMismatchNonTerminal: 0, ownRowResumeMismatchTerminal: 0,
     terminalDeclarationWithArbitrationReason: 0, refundedAfterContradictionAttribution: 0, refundedBoundToOtherClaimStamp: 0, rowsBoundToMultipleClaims: 0,
     pendingRowsOver20hWithSettledRoyalty: 0, approvedUnpaid: 0, closureMissing: 0, closureTerminalWithoutRecord: 0,
+    // MODE B commit B: les lignes LIBEREES sont recensees comme toute autre population.
+    voidedRefundRows: 0,
   }
 
   it('a non-zero count and a NOT MEASURED count each print one « CENSUS » line; RESULT inputs (anomalies) are identical to the all-zero run', () => {

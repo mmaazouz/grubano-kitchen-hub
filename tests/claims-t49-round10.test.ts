@@ -610,6 +610,8 @@ const MONEY_STATES = [
   'stale_refunding_no_refund_row', 'approved_not_driven', 'absence_proven_payable', 'refund_error_recorded',
   // W3 round-2 fix (D0 / D5): a marker whose start instant cannot be read.
   'reconcile_marker_unreadable',
+  // MODE B commit B: la ligne liee a ete LIBEREE — preuve qu'aucun remboursement Stripe n'a jamais existe.
+  'row_voided',
 ]
 const PROMISES = [/l[’']appliquera/i, /sera appliqu[ée]e? par/i, /la reprend/i, /son webhook/i, /balayage de récupération/i]
 

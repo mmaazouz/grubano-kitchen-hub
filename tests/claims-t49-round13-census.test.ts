@@ -108,6 +108,8 @@ function populate() {
     row('R_old', { status: 'pending', orderId: 'o_roy', stripeRefundId: null, royaltyRefundCents: 50, createdAt: new Date(NOW - 21 * H) }),
     row('R_m', {}),
     row('R_x', {}),
+    // MODE B commit B — une ligne LIBEREE : (failed, stripeRefundId NULL) ET cle marquee ':void:'.
+    row('R_void', { status: 'failed', stripeRefundId: null, idempotencyKey: 'refund:o_void:0:void:2026-09-20T00:00:00.000Z' }),
   ]
   store.royalties = [{ orderId: 'o_roy', status: 'settled' }]
   store.dispatches = [
@@ -127,6 +129,8 @@ const ONES = {
   legacyPayableProofs: 1, refundedBoundToFailedRow: 1, refundedRowUnproven: 1, ownRowResumeMismatch: { nonTerminal: 1, terminal: 1 },
   terminalDeclarationWithArbitrationReason: 1, refundedAfterContradictionAttribution: 1, refundedBoundToOtherClaimStamp: 1,
   rowsBoundToMultipleClaims: 1, pendingRowsOver20hWithSettledRoyalty: 1, approvedUnpaid: 1,
+  // MODE B commit B — les lignes LIBEREES sont MESUREES, des deux cotes (parite I-07).
+  voidedRefundRows: 1,
 }
 const census = async () => (await (await CENSUS(new Request('https://app.grubano.com/api/admin/claims/census') as never)).json())
 
@@ -273,6 +277,7 @@ describe('J-M53 / J-C35 — phase2-claims-gate.js census lines (I-07)', () => {
     rowsBoundToMultipleClaims: '1 rows bound to two or more claims (E-12)',
     pendingRowsOver20hWithSettledRoyalty: '1 pending rows over 20 h with a settled royalty: engine resume may refuse forever (E-01 A-S10c)',
     approvedUnpaid: '1 approved and unpaid claims, exits gated by CLAIMS+REFUNDS (E-10)',
+    voidedRefundRows: '1 released refund rows (proven never established at Stripe; the order rail was reopened)',
     'closure.missing': '1 closures of this build without a dispatched notice (E-16)',
     'closure.terminalWithoutRecord': '1 terminal claims without a this-build closure record (legacy, or record write failed): never notified (E-18)',
   }
@@ -287,6 +292,9 @@ describe('J-M53 / J-C35 — phase2-claims-gate.js census lines (I-07)', () => {
       terminalDeclarationWithArbitrationReason: l.terminalDeclarationWithArbitrationReason, refundedAfterContradictionAttribution: l.refundedAfterContradictionAttribution,
       refundedBoundToOtherClaimStamp: l.refundedBoundToOtherClaimStamp, rowsBoundToMultipleClaims: l.rowsBoundToMultipleClaims,
       pendingRowsOver20hWithSettledRoyalty: l.pendingRowsOver20hWithSettledRoyalty, approvedUnpaid: l.approvedUnpaid,
+      // MODE B commit B — la parité I-07 couvre aussi la nouvelle mesure : si l'un des deux côtés
+      // définit « ligne libérée » autrement que l'autre, ce test rougit.
+      voidedRefundRows: l.voidedRefundRows,
       closureMissing: c.missing, closureTerminalWithoutRecord: c.terminalWithoutRecord,
     })
     expect(GATE.CENSUS_RESUME_WINDOW_MS).toBe(RESUME_CREATE_WINDOW_MS)
@@ -326,7 +334,7 @@ describe('J-M53 / J-C35 — phase2-claims-gate.js census lines (I-07)', () => {
     GATE.reportCensus(await GATE.censusCounts(db, { adminAuditEnabled: true, nowMs: NOW }))
     const after = GATE._residueLinesForTests()
     expect(after.census.slice(before.census.length)).toEqual([])
-    expect(after.facts.slice(before.facts.length)).toHaveLength(13)
+    expect(after.facts.slice(before.facts.length)).toHaveLength(14)
   })
 
   it('source: C never pushes to anomalies; done() prints the CENSUS block after ANOMALIES; RESULT and WINDOW READINESS read anomalies only', () => {

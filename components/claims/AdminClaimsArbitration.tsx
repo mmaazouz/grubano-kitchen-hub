@@ -50,6 +50,8 @@ type MoneyState =
   | 'absence_proven_payable'
   // ROUND-8 AUDIT FIX (P1): our row is pending with NO Stripe id — nothing is confirmed at Stripe.
   | 'local_pending_unconfirmed'
+  // MODE B commit B: the bound row was released — proven never established at Stripe.
+  | 'row_voided'
 type ActionableRefundClaim = {
   id: string; orderId: string; reason: string; requestedAmountCents: number; status: string
   moneyState: MoneyState; safety?: boolean; refundError?: string | null
@@ -192,6 +194,7 @@ export default function AdminClaimsArbitration({ initial }: { initial?: { claims
     // the crash window, where nothing is confirmed at Stripe. Only a row with a Stripe id reached it.
     // ROUND-9: a fact about OUR row only — Stripe may hold a refund for it; only a Stripe read says.
     local_pending_unconfirmed:            { text: 'Ligne de remboursement liée en attente, sans identifiant Stripe enregistré — l’argent n’est pas établi ici (ni parti, ni non parti)', tone: 'danger' },
+    row_voided:                           { text: 'Ligne de remboursement LIBÉRÉE — il est prouvé qu’aucun remboursement Stripe n’a existé pour elle : le client n’a PAS été payé, et le rail de la commande est rouvert', tone: 'danger' },
     // ROUND-6 AUDIT FIX (P1 class): « le client n’a rien reçu » was a claim about the CUSTOMER read
     // off ONE row's status. The row paid nothing; the order's other refunds are not read here.
     stripe_failed:                        { text: 'Remboursement ÉCHOUÉ chez Stripe — cette ligne n’a rien versé (ne dit rien des autres remboursements de la commande)', tone: 'danger' },

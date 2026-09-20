@@ -58,6 +58,7 @@ import {
   reconcileRefusal, arbitrationRefusal, boundRowShowsInProgress, moneyStateGuidance, type ClaimFacts,
 } from '@/lib/claim-action-rules'
 import { moneyLineFor } from '@/lib/claim-money-line'
+import { VOID_MIN_AGE_MS } from '@/lib/refund-void-state'
 import { GET as CENSUS } from '@/app/api/admin/claims/census/route'
 
 /** Returns only the selected fields, as Prisma does. */
@@ -265,9 +266,17 @@ describe('DEAD ROW COPY — the window end is the engine’s; the margin is said
     expect(e.startsWith(`${ENGINE_ROW_DEAD}:`)).toBe(true)
     expect(e).toContain(new Date(createdAt.getTime() + WINDOW).toISOString())
     expect(e).not.toContain(new Date(createdAt.getTime() + WINDOW + ENGINE_DEAD_MARGIN_MS).toISOString())
-    // ROUND-12 (round-11 audit, P2): cancelling the row by hand is not a proven remedy — no remedy is claimed.
-    expect(e).toContain('aucune procédure documentée')
+    // ROUND-12 (round-11 audit, P2): cancelling the row BY HAND was not a proven remedy, so no remedy
+    // was claimed. MODE B commit B REVERSES that deliberately — not by allowing a by-hand cancellation,
+    // but because a PROVEN release now exists: complete untruncated Stripe list, exact identity match
+    // (never the amount), cursor equality, 26 h age, compare-and-set write, admin-only, audited.
+    // The copy must therefore name the exit and its instant instead of asserting there is none.
+    expect(e).not.toContain('aucune procédure documentée')
+    expect(e).toContain('un administrateur peut la LIBÉRER')
+    expect(e).toContain(new Date(createdAt.getTime() + VOID_MIN_AGE_MS).toISOString())
+    // ce qui reste interdit : prétendre qu'une annulation manuelle suffirait, ou promettre un paiement
     expect(e).not.toContain('annulation manuelle')
+    expect(e).toContain('la libération ne verse rien')
   })
 
   it('the approve refusal no longer asserts a permanence that not every cause has', () => {

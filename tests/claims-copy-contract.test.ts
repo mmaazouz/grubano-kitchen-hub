@@ -337,7 +337,14 @@ const WRITERS: Record<string, Case[]> = {
   ],
   'arbitrateClaim|approved|-': [{ c: ap(null, { arbitrationDecision: 'approved' }), line: 6 }],
   'reconcileClaimForRefund|refunded|null': [{ c: { status: 'refunded', refundId: 'rf1', refundError: null }, refundedRow: true, line: 8 }],
-  'reconcileClaimForRefund|approved|stripe_failed': [{ c: ap('stripe_failed: x', { refundAttempted: true, refundId: 'rf1' }), line: 4 }],
+  // MODE B commit B — ce writer écrit DEUX marqueurs selon la preuve : `stripe_failed` (Stripe a
+  // vraiment échoué) ou `row_voided` (ligne LIBÉRÉE : il est prouvé que rien n'a jamais existé chez
+  // Stripe). Le texte est nommé dans la source, d'où la clé par identifiant — même convention que
+  // `triggerClaimRefund|-|ownText` et `applyRowTruth|approved|failedText`.
+  'reconcileClaimForRefund|approved|released': [
+    { c: ap('stripe_failed: x', { refundAttempted: true, refundId: 'rf1' }), line: 4 },
+    { c: ap('row_voided: x', { refundAttempted: true, refundId: 'rf1' }), line: 4 },
+  ],
   'resolveStuckClaim|(variable)|MARKERS.DECLARED_AFTER_REVERT': [
     { c: { status: 'refunded', refundId: 'rf1', refundError: `${MARKERS.DECLARED_AFTER_REVERT} déclaration admin` }, refundedRow: true, line: 11 },
     { c: { status: 'refunded', refundError: 'engine_failed: x' }, line: 11 },
