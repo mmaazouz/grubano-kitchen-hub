@@ -36,6 +36,10 @@ const { engineMock, flagMock, limitMock, legacyRefundMock } = vi.hoisted(() => (
   engineMock: vi.fn(), flagMock: vi.fn(), limitMock: vi.fn(), legacyRefundMock: vi.fn(),
 }))
 vi.mock('@/lib/refund', () => ({ isRefundsEnabled: flagMock, executeRefund: engineMock }))
+// PRE-MODE-B V1 — la garde litige appelle Stripe ; ici on la neutralise (ok) pour que ce fichier
+// continue de ne tester que le rail admin. Son propre comportement est épinglé par
+// tests/refund-dispute-guard.test.ts et tests/refund-dispute-guard-callers.test.ts.
+vi.mock('@/lib/refund-dispute-guard', () => ({ assertChargeNotDisputed: vi.fn(async () => ({ ok: true })) }))
 vi.mock('@/lib/refunds', () => ({ refundPayment: legacyRefundMock }))
 vi.mock('@/lib/rate-limit', () => ({ rateLimit: limitMock }))
 

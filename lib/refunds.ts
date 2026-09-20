@@ -21,6 +21,7 @@
 // refunds by the webhook when writing the compensating ledger line — never
 // recomputed from rates here.
 import type Stripe from 'stripe'
+import { chargeIsDisputed, DISPUTED_REFUND_REFUSAL } from '@/lib/refund-dispute-guard'
 import { getStripe } from '@/lib/stripe'
 
 export type RefundResult =
@@ -50,7 +51,21 @@ export async function refundPayment(opts: {
     return { ok: false, status: 502, error: 'Charge introuvable sur le paiement.' }
   }
 
-  const refundableCents = charge.amount - (charge.amount_refunded ?? 0)
+  // PRE-MODE-B V1 — charge CONTESTÉE : refus AVANT tout appel Stripe. Ce rail est ouvert par le MÊME
+  // bail REFUNDS_ENABLED que le rail commande ; un chargeback sort l'argent sans toucher
+  // `amount_refunded`, donc rembourser en plus paierait deux fois. La charge est déjà lue ici :
+  // aucune lecture Stripe supplémentaire. Aucune ligne n'est écrite par ce lib — un refus, pas un état.
+  if (chargeIsDisputed(charge)) {
+    return { ok: false, status: 409, error: DISPUTED_REFUND_REFUSAL }
+  }
+
+  // PRE-MODE-B — Rail EMPREINTE = la SEULE capture partielle du projet (capture_method 'manual' +
+  // amount_to_capture, lib/stripe.ts createDepositHold/captureDeposit) : le plafond est le CAPTURÉ,
+  // jamais l'AUTORISÉ. Avant, /api/reservations/[id]/refund-deposit demandait à Stripe de rendre le
+  // hold entier sur une empreinte partiellement capturée — refusé par Stripe, rail mort.
+  // lib/refund.ts (rail commande) lit `charge.amount` À DESSEIN : capture automatique, donc
+  // amount === amount_captured, et cette valeur y est AUSSI le dénominateur du prorata — ne pas aligner.
+  const refundableCents = (charge.amount_captured ?? charge.amount) - (charge.amount_refunded ?? 0)
   const amountCents     = opts.amountCents ?? refundableCents
   if (refundableCents <= 0) {
     return { ok: false, status: 409, error: 'Paiement déjà intégralement remboursé.' }
@@ -71,7 +86,13 @@ export async function refundPayment(opts: {
       {
         payment_intent: pi.id,
         amount:         amountCents,
-        ...(routed ? { refund_application_fee: true, reverse_transfer: true } : {}),
+        // PRE-MODE-B — les deux drapeaux répondent à des questions DIFFÉRENTES et ne sont plus
+        // envoyés ensemble : on ne réclame une commission que s'il y en a eu une. Les empreintes
+        // sont créées avec applicationFeeCents: 0 (app/api/reservations/[id]/deposit), et
+        // lib/stripe.ts connectParams omet alors `application_fee_amount` — demander le
+        // remboursement d'une commission inexistante est au mieux inutile, au pire un rejet.
+        ...(routed ? { reverse_transfer: true } : {}),
+        ...(routed && (charge.application_fee_amount ?? 0) > 0 ? { refund_application_fee: true } : {}),
       },
       // State-dependent determinism: same logical attempt → same key (no double
       // refund on a retry/race); once amount_refunded moved, a NEW refund of the

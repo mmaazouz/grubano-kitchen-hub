@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isRefundsEnabled, executeRefund } from '@/lib/refund'
+import { assertChargeNotDisputed } from '@/lib/refund-dispute-guard'
 import { rateLimit } from '@/lib/rate-limit'
 import { recordAdminAudit, CRON_ACTOR_ID } from '@/lib/admin-audit'
 import { safeEqual } from '@/lib/safe-compare'
@@ -79,6 +80,20 @@ export async function POST(req: Request) {
     const parsed = bodySchema.safeParse(await req.json().catch(() => ({})))
     if (!parsed.success) {
       return NextResponse.json({ error: 'Requête invalide (orderId requis, amountCents entier positif).' }, { status: 400 })
+    }
+
+    // PRE-MODE-B V1 — une charge CONTESTÉE échoue fermée, avant le moteur et avant toute écriture.
+    // Ce rail est le déclencheur de la répétition Mode B ; le moteur (gelé) ne lit pas `charge.disputed`.
+    // Pas de PaymentIntent ⇒ on laisse le moteur répondre (409 « Commande non payée »).
+    const target = await prisma.order.findUnique({
+      where:  { id: parsed.data.orderId },
+      select: { stripePaymentIntentId: true },
+    })
+    if (target?.stripePaymentIntentId) {
+      const notDisputed = await assertChargeNotDisputed(target.stripePaymentIntentId)
+      if (!notDisputed.ok) {
+        return NextResponse.json({ error: notDisputed.error }, { status: notDisputed.status })
+      }
     }
 
     const result = await executeRefund({

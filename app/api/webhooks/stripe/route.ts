@@ -8,6 +8,7 @@ import { recordLedgerEntry, type LedgerEntryInput } from '@/lib/ledger'
 import { reconcileLoyaltyOnRefund } from '@/lib/loyalty-refund-apply'
 import { isChargebacksEnabled, handleDisputeEvent } from '@/lib/dispute'
 import { isGhostOrderAutoRefundEnabled, isRefundsEnabled, executeRefund, computeRefundSplit, finalizeRefundRowFromStripe, markRefundRowFailed } from '@/lib/refund'
+import { assertChargeNotDisputed } from '@/lib/refund-dispute-guard'
 import { recomputeRoyaltyRefundedCents } from '@/lib/royalty-refunded'
 import { reconcileClaimForRefund, markClaimsForRevertedRefundRow } from '@/lib/claims'
 import { matchFeeRefunds, predictFeeRefund, refundLedgerLine } from '@/lib/refund-fee-truth'
@@ -463,7 +464,12 @@ async function handleOrderPaid(pi: Stripe.PaymentIntent) {
         // NEVER leave an expired order at a final 'paid'.
         let refunded = false
         try {
-          const res = await executeRefund({ orderId: order.id, reason: 'ghost_order_expired' })
+          // PRE-MODE-B V1 — charge CONTESTÉE : on ne rembourse pas par-dessus le débit du litige.
+          // Refus AVANT le moteur ⇒ la commande part en 'reconcile_manual' comme tout échec ici.
+          const notDisputed = await assertChargeNotDisputed(pi.id)
+          const res = notDisputed.ok
+            ? await executeRefund({ orderId: order.id, reason: 'ghost_order_expired' })
+            : { ok: false as const, error: notDisputed.error }
           refunded = res.ok
           if (!res.ok) {
             console.error(`[stripe webhook] MONEY REVIEW: ghost-order auto-refund not ok for ${order.id}: ${res.error}`)

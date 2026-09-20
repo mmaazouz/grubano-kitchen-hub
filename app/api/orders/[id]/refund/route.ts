@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { requireRefundAdmin } from '@/lib/refund-route-guard'
 import { recordAdminAudit } from '@/lib/admin-audit'
 import { isRefundsEnabled, executeRefund } from '@/lib/refund'
+import { assertChargeNotDisputed } from '@/lib/refund-dispute-guard'
 import { rateLimit } from '@/lib/rate-limit'
 import { sendRefundConfirmation, refundEmailDedupeKey } from '@/lib/transactional-emails'
 
@@ -74,6 +75,13 @@ export async function POST(
       order.paymentStatus === 'paid' || order.paymentStatus === 'reconcile_manual'
     if (!isRefundablePaymentStatus || !order.stripePaymentIntentId) {
       return NextResponse.json({ error: 'Commande non payée — rien à rembourser.' }, { status: 409 })
+    }
+
+    // PRE-MODE-B V1 — une charge CONTESTÉE échoue fermée, avant le moteur et avant toute écriture.
+    // Le moteur ne lit pas `charge.disputed` (il est gelé) ; le rail réclamation a sa propre garde H5.
+    const notDisputed = await assertChargeNotDisputed(order.stripePaymentIntentId)
+    if (!notDisputed.ok) {
+      return NextResponse.json({ error: notDisputed.error }, { status: notDisputed.status })
     }
 
     const result = await executeRefund({

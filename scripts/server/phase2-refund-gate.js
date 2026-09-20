@@ -266,9 +266,12 @@ async function main() {
     dest = pi.transfer_data && pi.transfer_data.destination ? (typeof pi.transfer_data.destination === 'string' ? pi.transfer_data.destination : pi.transfer_data.destination.id) : null
     F('PAYMENT INTENT (Stripe)', mask(pi.id) + ' · status ' + pi.status + ' · amount ' + pi.amount + ' · amount_received ' + pi.amount_received + ' · fee ' + pi.application_fee_amount + ' · destination ' + mask(dest) + ' · on_behalf_of ' + mask(pi.on_behalf_of))
     if (ch) {
-      F('CHARGE (Stripe)', mask(ch.id) + ' · status ' + ch.status + ' · captured ' + ch.amount_captured + ' · amount_refunded ' + ch.amount_refunded + ' · refunded ' + ch.refunded)
+      F('CHARGE (Stripe)', mask(ch.id) + ' · status ' + ch.status + ' · captured ' + ch.amount_captured + ' · amount_refunded ' + ch.amount_refunded + ' · refunded ' + ch.refunded + ' · disputed ' + ch.disputed)
       F('REMAINING CASH REFUNDABLE (Stripe)', String(ch.amount_captured - ch.amount_refunded))
       if (ch.amount_captured - ch.amount_refunded < AMOUNT_CENTS) A('4 stripe: remaining refundable < ' + AMOUNT_CENTS)
+      // PRE-MODE-B V1 — une charge contestée ne doit JAMAIS entrer dans une fenêtre de remboursement :
+      // le chargeback a déjà sorti l'argent sans toucher amount_refunded.
+      if (ch.disputed === true) A('4 stripe: charge DISPUTED — remboursement interdit (litige)')
       if (ch.application_fee) { fee = await retrieve('application_fees', typeof ch.application_fee === 'string' ? ch.application_fee : ch.application_fee.id); F('APPLICATION FEE (Stripe)', mask(fee.id) + ' · amount ' + fee.amount + ' · amount_refunded ' + fee.amount_refunded) }
       if (ch.transfer) { tr = await retrieve('transfers', ch.transfer); F('TRANSFER (Stripe)', mask(tr.id) + ' · amount ' + tr.amount + ' · amount_reversed ' + tr.amount_reversed + ' · destination ' + mask(tr.destination)) }
     }

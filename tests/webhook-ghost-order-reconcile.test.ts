@@ -9,7 +9,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 // REFUNDS_ENABLED=true seul ne déclenche AUCUN remboursement automatique. The
 // nominal awaiting_payment→received path stays byte-identical (last test).
 
-const { db, stripe, refund, emails } = vi.hoisted(() => ({
+const { db, stripe, refund, emails, guard } = vi.hoisted(() => ({
   db: {
     order:              { findUnique: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
     loyaltyTransaction: { findFirst: vi.fn() },
@@ -22,10 +22,13 @@ const { db, stripe, refund, emails } = vi.hoisted(() => ({
   stripe: { getStripe: vi.fn(), retrieveChargeFacts: vi.fn(), mapAccountStatus: vi.fn(), constructEvent: vi.fn() },
   refund: { isRefundsEnabled: vi.fn(), isGhostOrderAutoRefundEnabled: vi.fn(), executeRefund: vi.fn() },
   emails: { sendAdminGhostOrderAlert: vi.fn() },
+  guard: { assertChargeNotDisputed: vi.fn() },
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
 vi.mock('@/lib/stripe', () => ({ getStripe: stripe.getStripe, retrieveChargeFacts: stripe.retrieveChargeFacts, mapAccountStatus: stripe.mapAccountStatus }))
 vi.mock('@/lib/refund', () => ({ isRefundsEnabled: refund.isRefundsEnabled, isGhostOrderAutoRefundEnabled: refund.isGhostOrderAutoRefundEnabled, executeRefund: refund.executeRefund }))
+// PRE-MODE-B V1 — garde litige : neutre par défaut ici, pilotée par le cas « charge contestée ».
+vi.mock('@/lib/refund-dispute-guard', () => ({ assertChargeNotDisputed: guard.assertChargeNotDisputed }))
 vi.mock('@/lib/admin-alerts', () => ({ sendAdminGhostOrderAlert: emails.sendAdminGhostOrderAlert, sendAdminStalePiAlert: vi.fn(async () => ({ status: 'sent' })) }))
 
 import { POST } from '@/app/api/webhooks/stripe/route'
@@ -53,6 +56,7 @@ beforeEach(() => {
   refund.isGhostOrderAutoRefundEnabled.mockReturnValue(false)
   refund.executeRefund.mockResolvedValue({ ok: true })
   emails.sendAdminGhostOrderAlert.mockResolvedValue({ status: 'sent' })
+  guard.assertChargeNotDisputed.mockResolvedValue({ ok: true })
 })
 afterEach(() => { delete process.env.STRIPE_WEBHOOK_SECRET })
 
@@ -70,6 +74,22 @@ describe('after expiry · AUTO-REFUND ON (GHOST_ORDER_AUTO_REFUND_ENABLED — P0
     expect(refund.executeRefund).toHaveBeenCalledWith({ orderId: 'o1', reason: 'ghost_order_expired' })
     expect(updates()).toEqual([{ paymentStatus: 'paid', stripePaymentIntentId: 'pi_1' }, { paymentStatus: 'refunded' }])
     expect(db.order.updateMany).not.toHaveBeenCalled() // never flipped expired→received
+  })
+
+  // PRE-MODE-B V1 — un chargeback sort déjà l'argent sans toucher amount_refunded : rembourser
+  // par-dessus paierait DEUX fois. Le refus arrive AVANT le moteur, donc avant la ligne Refund
+  // 'pending' que le moteur écrit avant d'appeler Stripe (ligne fantôme que rien ne sait effacer).
+  it('charge CONTESTÉE → le moteur n’est jamais appelé et la commande part en reconcile_manual', async () => {
+    refund.isGhostOrderAutoRefundEnabled.mockReturnValue(true)
+    refund.isRefundsEnabled.mockReturnValue(true)
+    guard.assertChargeNotDisputed.mockResolvedValue({ ok: false, status: 409, error: 'Paiement contesté chez Stripe' })
+    db.order.findUnique.mockResolvedValue(expiredOrder())
+    const res = await fire()
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ order: 'expired_reconciled', refunded: false })
+    expect(guard.assertChargeNotDisputed).toHaveBeenCalledWith('pi_1')
+    expect(refund.executeRefund).not.toHaveBeenCalled()
+    expect(updates()).toEqual([{ paymentStatus: 'paid', stripePaymentIntentId: 'pi_1' }, { paymentStatus: 'reconcile_manual' }])
   })
 
   it('refund returns not-ok → marks reconcile_manual (never final paid)', async () => {

@@ -7,6 +7,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 
 const { flagMock, execMock } = vi.hoisted(() => ({ flagMock: vi.fn(), execMock: vi.fn() }))
 vi.mock('@/lib/refund', () => ({ isRefundsEnabled: flagMock, executeRefund: execMock }))
+// PRE-MODE-B V1 — garde litige neutralisée ici (son comportement est épinglé ailleurs).
+vi.mock('@/lib/refund-dispute-guard', () => ({ assertChargeNotDisputed: vi.fn(async () => ({ ok: true })) }))
 
 const { sessionMock } = vi.hoisted(() => ({ sessionMock: vi.fn() }))
 vi.mock('next-auth', () => ({ getServerSession: sessionMock }))
