@@ -203,8 +203,10 @@ describe('MODE B opérateur — corrections issues de la revue adversariale', ()
     // s'arrêter sur la ligne DB refermerait les gates et redémarrerait Passenger pendant que
     // l'appel Stripe est en vol : exactement l'état absorbant que ce chantier existe pour éviter.
     expect(SRC).toMatch(/ON N'OBSERVE PAS LA LIGNE DB/)
-    expect(SRC).toMatch(/stripe\.refunds\.list\(\{ payment_intent: order\.stripePaymentIntentId/)
-    expect(SRC).toMatch(/data\.length > stripeRefundsBefore/)
+    // l'énumération passe par l'ADAPTATEUR (SDK ou REST) : c'est l'objet Stripe qui est compté
+    expect(SRC).toMatch(/client\.refunds\.list\(\{ payment_intent: piId, limit: REFUND_LIST_CAP \}\)/)
+    expect(SRC).toMatch(/const refunds = await adapter\.listRefunds\(order\.stripePaymentIntentId\)/)
+    expect(SRC).toMatch(/refunds\.length > stripeRefundsBefore/)
     // et la boucle ne doit PAS casser sur un simple compte de lignes
     expect(SRC).not.toMatch(/rows\.length > refundsBefore/)
   })
@@ -251,9 +253,14 @@ describe('MODE B opérateur — corrections issues de la revue adversariale', ()
     expect(SRC).toMatch(/réclamation\(s\) ACTIVE\(s\) — aucune répétition ne démarre/)
   })
 
-  it('un client Stripe en repli sans balance/accounts rend le financement NON VÉRIFIABLE et le dit', () => {
-    expect(SRC).toMatch(/typeof stripe\.balance === 'undefined' \|\| typeof stripe\.accounts === 'undefined'/)
-    expect(SRC).toMatch(/NON VÉRIFIABLES/)
+  it('un client Stripe dont la forme n’est pas comprise est REFUSÉ par l’adaptateur — et le client REST est COMPRIS', () => {
+    // L'ancien contrôle « typeof stripe.balance === undefined » était le défaut lui-même : sur le
+    // runtime standalone (client REST, sans SDK) il refusait TOUTE fenêtre. L'adaptateur parle aux
+    // deux surfaces et ne refuse que ce qu'il ne comprend vraiment pas.
+    expect(SRC).not.toMatch(/typeof stripe\.balance === 'undefined'/)
+    expect(SRC).toMatch(/throw new Error\('stripe_client_shape_unknown'\)/)
+    expect(SRC).toMatch(/client inutilisable .* faits Stripe NON MESURÉS/)
+    expect(SRC).toMatch(/client\.kind === 'rest-readonly' \? client : null/)
   })
 
   it('la fermeture d’urgence écrit chaque clé dans SON try, désarme en premier, et nomme l’action humaine', () => {

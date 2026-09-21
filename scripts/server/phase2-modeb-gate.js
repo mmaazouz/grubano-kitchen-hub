@@ -150,6 +150,161 @@ for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGQUIT', 'SIGBREAK']) {
 }
 process.on('uncaughtException', (e) => { console.log('!! uncaught: ' + scrub(e)); emergencyClose(); process.exit(1) })
 
+/* ── ADAPTATEUR STRIPE : UNE surface, DEUX clients ───────────────────────────────────────────
+ * LE DÉFAUT QUI A ÉCHAPPÉ (précheck final 2026-09-21) : le runtime standalone déployé n'embarque
+ * PAS le SDK `stripe` (Next le bundle dans ses chunks serveur), donc `H.makeStripeClient` renvoie le
+ * client REST lecture seule — qui n'a ni `balance`, ni `accounts`, ni `.data` sur ses listes. La
+ * première version de cet opérateur supposait le SDK complet : elle refusait TOUTE fenêtre
+ * (financement « NON VÉRIFIABLE ») et aurait lu 0 remboursement pour toujours.
+ *
+ * RÈGLES : (1) on n'invente pas un troisième client, on parle aux DEUX surfaces existantes ;
+ * (2) une forme de réponse non comprise n'est JAMAIS lue comme « zéro » — elle échoue fermée ;
+ * (3) une liste plafonnée est ambiguë, donc fermée.
+ *
+ * RESSERREMENTS par rapport à 71caabc (tous dans le sens FERMÉ, aucun refus retiré) : une PI sans
+ * destination Connect refuse (avant : bloc financement sauté en silence) ; tout objet remboursement
+ * Stripe déjà présent sur la PI refuse le precheck (avant : lignes DB seulement) ; charge non
+ * capturée, PI live, devise ≠ EUR, `disputed` / `amount_refunded` illisibles refusent. */
+const REFUND_LIST_CAP = 100
+
+function stripeAdapter(client) {
+  if (!client || typeof client !== 'object') throw new Error('stripe_client_missing')
+  const rest = client.kind === 'rest-readonly' ? client : null
+  const sdk = !rest && client.balance && typeof client.balance.retrieve === 'function'
+    && client.accounts && typeof client.accounts.retrieve === 'function' ? client : null
+  if (!rest && !sdk) throw new Error('stripe_client_shape_unknown')
+  return {
+    kind: rest ? 'rest-readonly' : 'sdk',
+    retrievePaymentIntent: (id) => client.paymentIntents.retrieve(id, { expand: ['latest_charge'] }),
+    retrieveAccount: (id) => (rest ? rest.retrieveAny('accounts', id) : sdk.accounts.retrieve(id)),
+    balanceFor: (id) => (rest ? rest.balanceFor(id) : sdk.balance.retrieve({}, { stripeAccount: id })),
+    /** Énumération des remboursements d'une PI — même chemin pour les deux clients. */
+    listRefunds: async (piId) => normalizeRefundList(await enumerateRefunds(client, piId)),
+  }
+}
+
+/* Les deux clients exposent `.list(params).autoPagingToArray({limit})` : c'est le seul chemin utilisé.
+ * Le résultat brut est passé au normaliseur, qui refuse tout ce qu'il ne comprend pas. */
+async function enumerateRefunds(client, piId) {
+  const res = client.refunds.list({ payment_intent: piId, limit: REFUND_LIST_CAP })
+  if (res && typeof res.autoPagingToArray === 'function') return { kind: 'array', value: await res.autoPagingToArray({ limit: REFUND_LIST_CAP }) }
+  return { kind: 'page', value: await res }
+}
+
+/** Normalise une énumération de remboursements. Échoue FERMÉ sur toute ambiguïté. */
+function normalizeRefundList(raw) {
+  if (!raw || typeof raw !== 'object') throw new Error('stripe_refund_list_unreadable')
+  let items
+  if (raw.kind === 'array') {
+    if (!Array.isArray(raw.value)) throw new Error('stripe_refund_list_shape_unknown')
+    items = raw.value
+    // autoPagingToArray({limit: CAP}) s'arrête au plafond SANS dire s'il reste des éléments : ambigu.
+    if (items.length >= REFUND_LIST_CAP) throw new Error('stripe_refund_list_truncated')
+  } else if (raw.kind === 'page') {
+    const page = raw.value
+    if (!page || typeof page !== 'object' || !Array.isArray(page.data)) throw new Error('stripe_refund_list_shape_unknown')
+    if (page.has_more === true) throw new Error('stripe_refund_list_truncated')
+    // Une page sans `has_more: false` EXPLICITE ne prouve pas qu'elle est complète.
+    if (page.has_more !== false) throw new Error('stripe_refund_list_shape_unknown')
+    items = page.data
+  } else throw new Error('stripe_refund_list_shape_unknown')
+  for (const r of items) {
+    if (!r || typeof r !== 'object' || typeof r.id !== 'string' || !Number.isInteger(r.amount) || typeof r.status !== 'string') {
+      throw new Error('stripe_refund_list_malformed')
+    }
+  }
+  return items
+}
+
+/** Solde disponible EUR d'un compte connecté, ou une erreur — jamais un 0 par défaut. */
+function readAvailableEur(bal) {
+  if (!bal || typeof bal !== 'object' || !Array.isArray(bal.available) || !Array.isArray(bal.pending)) throw new Error('stripe_balance_shape_unknown')
+  const eurA = bal.available.find((x) => x && x.currency === 'eur')
+  const eurP = bal.pending.find((x) => x && x.currency === 'eur')
+  if (eurA && !Number.isInteger(eurA.amount)) throw new Error('stripe_balance_malformed')
+  if (eurP && !Number.isInteger(eurP.amount)) throw new Error('stripe_balance_malformed')
+  return { available: eurA ? eurA.amount : 0, pending: eurP ? eurP.amount : 0, eurListed: !!eurA }
+}
+
+/** Planning de versement d'un compte connecté, ou une erreur — jamais un « ? » lu comme un fait. */
+function readPayoutSchedule(acct) {
+  const interval = acct && acct.settings && acct.settings.payouts && acct.settings.payouts.schedule
+    ? acct.settings.payouts.schedule.interval : undefined
+  if (typeof interval !== 'string' || !interval) throw new Error('stripe_account_shape_unknown')
+  return interval
+}
+
+/* Le bloc de mesure Stripe, factorisé pour être exécuté par les tests contre le client REST forcé
+ * (parité avec le runtime déployé) sans réseau et sans ouvrir quoi que ce soit. Retourne les faits ;
+ * les refus sont émis via A(). */
+async function measureStripeFacts(client, input) {
+  const { piId, amountCents, F, A } = input
+  let adapter
+  try { adapter = stripeAdapter(client) } catch (e) {
+    A('6 stripe: client inutilisable (' + scrub(e) + ') — faits Stripe NON MESURÉS')
+    return { dest: null, charge: null, pi: null, remaining: null, available: null, schedule: null }
+  }
+  F('STRIPE CLIENT', adapter.kind === 'rest-readonly' ? 'REST lecture seule (runtime standalone, sans SDK)' : 'SDK complet')
+  const out = { dest: null, charge: null, pi: null, remaining: null, available: null, schedule: null, adapter }
+  let pi, ch
+  try {
+    pi = await adapter.retrievePaymentIntent(piId)
+    ch = pi && pi.latest_charge && typeof pi.latest_charge === 'object' ? pi.latest_charge : null
+    out.pi = pi; out.charge = ch
+    out.dest = pi && pi.transfer_data && pi.transfer_data.destination
+      ? (typeof pi.transfer_data.destination === 'string' ? pi.transfer_data.destination : pi.transfer_data.destination.id) : null
+    F('PAYMENT INTENT', mask(pi.id) + ' · ' + pi.status + ' · amount ' + pi.amount + ' · fee ' + pi.application_fee_amount + ' · destination ' + mask(out.dest) + ' · livemode ' + pi.livemode)
+    if (pi.livemode === true) A('6 stripe: PaymentIntent LIVE — MODE B est interdit hors Stripe TEST')
+    if (pi.status !== 'succeeded') A('6 stripe: PaymentIntent « ' + pi.status + ' » — rien à rembourser')
+    // Le solde comparé plus bas est la ligne EUR : une PI dans une autre devise rendrait la comparaison fausse.
+    if (pi.currency !== 'eur') A('6 stripe: devise « ' + pi.currency + ' » — comparaison au solde EUR NON PROUVÉE')
+    if (!ch) A('6 stripe: aucune charge exploitable sur la PaymentIntent')
+    else {
+      F('CHARGE', mask(ch.id) + ' · captured ' + ch.amount_captured + ' · refunded ' + ch.amount_refunded + ' · disputed ' + ch.disputed)
+      if (ch.captured !== true || !Number.isInteger(ch.amount_captured) || ch.amount_captured <= 0) A('6 stripe: charge NON capturée — rien à rembourser')
+      // Un `disputed` absent n'est pas « non contesté » : le litige est NON PROUVÉ.
+      if (typeof ch.disputed !== 'boolean') A('6 stripe: disputed illisible — litige NON PROUVÉ')
+      else if (ch.disputed) A('6 stripe: charge CONTESTÉE — remboursement interdit (litige)')
+      if (!Number.isInteger(ch.amount_refunded)) A('6 stripe: amount_refunded illisible — cash remboursable NON PROUVÉ')
+      else {
+        out.remaining = (ch.amount_captured || 0) - ch.amount_refunded
+        F('REMAINING REFUNDABLE (Stripe)', String(out.remaining))
+        if (amountCents > 0 && out.remaining < amountCents) A('6 stripe: cash remboursable ' + out.remaining + ' c < montant de répétition ' + amountCents + ' c')
+      }
+      // commit A : une charge routée SANS commission ferait écrire une ligne que Stripe rejette.
+      if (out.dest && !(ch.application_fee_amount > 0)) A('6 stripe: charge ROUTÉE sans commission — le moteur demanderait le remboursement d’une commission inexistante (préflight refuserait)')
+    }
+  } catch (e) { A('6 stripe: lecture PI/charge — ' + scrub(e)); return out }
+
+  // Remboursements existants : une liste illisible ou ambiguë n'est JAMAIS « zéro ».
+  try {
+    const refunds = await adapter.listRefunds(piId)
+    const pending = refunds.filter((r) => r.status === 'pending' || r.status === 'requires_action')
+    F('STRIPE REFUNDS (existing)', refunds.length + ' · pending ' + pending.length)
+    if (refunds.length) A('6 stripe: ' + refunds.length + ' remboursement(s) Stripe existe(nt) déjà sur cette PI — ce n’est plus une première répétition')
+    if (pending.length) A('6 stripe: ' + pending.length + ' remboursement(s) Stripe en attente — cash déjà engagé')
+    out.existingRefunds = refunds
+  } catch (e) { A('6 stripe: énumération des remboursements illisible/ambiguë (' + scrub(e) + ') — conflits NON PROUVÉS'); return out }
+
+  if (!out.dest) { A('6 funding: aucune destination Connect sur la PI — financement NON VÉRIFIABLE'); return out }
+  try {
+    const bal = readAvailableEur(await adapter.balanceFor(out.dest))
+    out.available = bal.available
+    F('CONNECTED AVAILABLE (EUR c)', String(bal.available) + ' · pending ' + bal.pending + (bal.eurListed ? '' : ' · (aucune ligne EUR listée)'))
+    // T-42 : Stripe inverse un transfert contre le solde DISPONIBLE du compte connecté.
+    if (amountCents > 0 && bal.available < amountCents) {
+      A('6 funding: solde connecté disponible ' + bal.available + ' c < BRUT ' + amountCents + ' c (aucun fonds fabriqué, aucune avance plateforme)')
+    }
+  } catch (e) { A('6 funding: solde connecté illisible (' + scrub(e) + ') — financement NON PROUVÉ'); return out }
+  try {
+    const sched = readPayoutSchedule(await adapter.retrieveAccount(out.dest))
+    out.schedule = sched
+    F('CONNECTED PAYOUT SCHEDULE', sched)
+    if (sched !== 'manual') A('6 funding: planning de versement « ' + sched + ' » — un versement automatique peut vider le compte avant la fenêtre (précondition : manual)')
+  } catch (e) { A('6 funding: planning de versement illisible (' + scrub(e) + ') — précondition NON PROUVÉE') }
+  return out
+}
+
 /* ── sondes de gate (mêmes sondes runtime que les opérateurs existants) ─────────────────────── */
 async function probe(base, pathname) {
   try {
@@ -322,47 +477,14 @@ async function main() {
   let stripe = null
   try { stripe = H.makeStripeClient(process.env.STRIPE_SECRET_KEY, APP_ROOT, { apiBase: process.env.PHASE2_STRIPE_API_BASE }).client }
   catch (e) { A('6 stripe: client — ' + scrub(e)) }
-  if (stripe && (typeof stripe.balance === 'undefined' || typeof stripe.accounts === 'undefined')) {
-    A('6 stripe: client en repli LECTURE-REST — solde connecté et planning de versement NON VÉRIFIABLES (financement non prouvé)')
-  }
-  let dest = null
+  // Toutes les lectures Stripe passent par l'ADAPTATEUR (SDK complet en local, REST lecture seule
+  // sur le runtime standalone déployé). Un fait non mesurable est une anomalie, jamais un défaut.
+  let stripeFacts = null
+  let adapter = null
   if (stripe && order && order.stripePaymentIntentId) {
-    try {
-      const pi = await stripe.paymentIntents.retrieve(order.stripePaymentIntentId, { expand: ['latest_charge'] })
-      const ch = pi.latest_charge && typeof pi.latest_charge === 'object' ? pi.latest_charge : null
-      dest = pi.transfer_data && pi.transfer_data.destination
-        ? (typeof pi.transfer_data.destination === 'string' ? pi.transfer_data.destination : pi.transfer_data.destination.id) : null
-      F('PAYMENT INTENT', mask(pi.id) + ' · ' + pi.status + ' · amount ' + pi.amount + ' · fee ' + pi.application_fee_amount + ' · destination ' + mask(dest))
-      if (pi.status !== 'succeeded') A('6 stripe: PaymentIntent « ' + pi.status + ' » — rien à rembourser')
-      if (!ch) A('6 stripe: aucune charge exploitable sur la PaymentIntent')
-      else {
-        F('CHARGE', mask(ch.id) + ' · captured ' + ch.amount_captured + ' · refunded ' + ch.amount_refunded + ' · disputed ' + ch.disputed)
-        if (ch.disputed === true) A('6 stripe: charge CONTESTÉE — remboursement interdit (litige)')
-        const remaining = (ch.amount_captured || 0) - (ch.amount_refunded || 0)
-        F('REMAINING REFUNDABLE (Stripe)', String(remaining))
-        if (AMOUNT_CENTS > 0 && remaining < AMOUNT_CENTS) A('6 stripe: cash remboursable ' + remaining + ' c < montant de répétition ' + AMOUNT_CENTS + ' c')
-        // commit A : une charge routée SANS commission ferait écrire une ligne que Stripe rejette.
-        if (dest && !(ch.application_fee_amount > 0)) A('6 stripe: charge ROUTÉE sans commission — le moteur demanderait le remboursement d’une commission inexistante (préflight refuserait)')
-      }
-    } catch (e) { A('6 stripe: lecture PI/charge — ' + scrub(e)) }
-  }
-  if (stripe && dest) {
-    try {
-      const bal = await stripe.balance.retrieve({}, { stripeAccount: dest })
-      const eurA = (bal.available || []).find((x) => x.currency === 'eur')
-      const eurP = (bal.pending || []).find((x) => x.currency === 'eur')
-      const available = eurA ? eurA.amount : 0
-      F('CONNECTED AVAILABLE (EUR c)', String(available) + ' · pending ' + (eurP ? eurP.amount : 0))
-      // T-42 : Stripe inverse un transfert contre le solde DISPONIBLE du compte connecté.
-      if (AMOUNT_CENTS > 0 && available < AMOUNT_CENTS) {
-        A('6 funding: solde connecté disponible ' + available + ' c < BRUT ' + AMOUNT_CENTS + ' c (aucun fonds fabriqué, aucune avance plateforme)')
-      }
-      const acct = await stripe.accounts.retrieve(dest)
-      const sched = acct.settings && acct.settings.payouts && acct.settings.payouts.schedule ? acct.settings.payouts.schedule.interval : '?'
-      F('CONNECTED PAYOUT SCHEDULE', sched)
-      if (sched !== 'manual') A('6 funding: planning de versement « ' + sched + ' » — un versement automatique peut vider le compte avant la fenêtre (précondition : manual)')
-    } catch (e) { A('6 funding: solde connecté — ' + scrub(e)) }
-  }
+    stripeFacts = await measureStripeFacts(stripe, { piId: order.stripePaymentIntentId, amountCents: AMOUNT_CENTS, F, A })
+    adapter = stripeFacts.adapter || null
+  } else if (stripe) A('6 stripe: pas de PaymentIntent lisible sur la commande — faits Stripe NON MESURÉS')
 
   // [7] baux : la fenêtre demandée doit tenir sous le PLUS COURT des deux plafonds
   F('LEASE CEILINGS', 'claims ' + (CLAIMS_LEASE_MAX_MS / 60000) + ' min · refunds ' + (REFUND_LEASE_MAX_MS / 60000) + ' min ⇒ commun ' + (Math.min(CLAIMS_LEASE_MAX_MS, REFUND_LEASE_MAX_MS) / 60000) + ' min')
@@ -385,13 +507,16 @@ async function main() {
   const stamp = new Date().toISOString()
   // Référence AVANT : le nombre d'objets STRIPE (pas de lignes DB — voir la boucle d'observation).
   let stripeRefundsBefore = 0
-  if (stripe && order && order.stripePaymentIntentId) {
+  if (adapter && order && order.stripePaymentIntentId) {
     try {
-      const l0 = await stripe.refunds.list({ payment_intent: order.stripePaymentIntentId, limit: 100 })
-      stripeRefundsBefore = ((l0 && l0.data) || []).length
-    } catch (e) { return fail('8 window: état Stripe AVANT illisible (' + scrub(e) + ') — rien changé') }
-  } else return fail('8 window: pas de client Stripe ou pas de PaymentIntent — rien changé')
+      // Énumération NORMALISÉE : une liste illisible ou ambiguë refuse la fenêtre, jamais « 0 ».
+      stripeRefundsBefore = (await adapter.listRefunds(order.stripePaymentIntentId)).length
+    } catch (e) { return fail('8 window: état Stripe AVANT illisible/ambigu (' + scrub(e) + ') — rien changé') }
+  } else return fail('8 window: pas de client Stripe utilisable ou pas de PaymentIntent — rien changé')
   F('STRIPE REFUNDS BEFORE', String(stripeRefundsBefore))
+  // Le precheck a prouvé ZÉRO objet Stripe quelques secondes plus tôt : un objet apparu entre-temps
+  // (Dashboard) ferait de la fenêtre une seconde répétition — refus, rien changé.
+  if (stripeRefundsBefore !== 0) return fail('8 window: ' + stripeRefundsBefore + ' remboursement(s) Stripe apparu(s) depuis le precheck — rien changé')
   const leaseUntil = new Date(Date.now() + Math.min(WINDOW_MS + LEASE_SLACK_MS, REFUND_LEASE_MAX_MS)).toISOString()
   try {
     armedClose = { envFile, stamp }   // ARMER AVANT la première écriture
@@ -420,6 +545,7 @@ async function main() {
     // l'OBJET STRIPE (il n'existe que si Stripe a accepté), comme le fait l'opérateur de remboursement.
     let seenRefunds = null
     let blips = 0
+    let stripeBlips = 0
     while (Date.now() < deadline) {
       const cc = await probeClaims(base), rr = await probeRefunds(base)
       if (cc !== 'OPEN' || rr !== 'OPEN') {
@@ -428,12 +554,18 @@ async function main() {
         blips++
         if (blips >= 2) { A('9 window: incohérence confirmée (claims ' + cc + ', refunds ' + rr + ') — fermeture immédiate'); break }
       } else blips = 0
-      if (stripe && order && order.stripePaymentIntentId) {
+      if (adapter && order && order.stripePaymentIntentId) {
         try {
-          const list = await stripe.refunds.list({ payment_intent: order.stripePaymentIntentId, limit: 100 })
-          const data = (list && list.data) || []
-          if (data.length > stripeRefundsBefore) { seenRefunds = data; break }
-        } catch (e) { A('9 window: liste Stripe — ' + scrub(e)) }
+          const refunds = await adapter.listRefunds(order.stripePaymentIntentId)
+          stripeBlips = 0
+          if (refunds.length > stripeRefundsBefore) { seenRefunds = refunds; break }
+        } catch (e) {
+          // Aveugle sur Stripe, on ne garde PAS les gates ouvertes : deux lectures illisibles
+          // consécutives ferment (le bloc « settle » ci-dessous protège encore une tentative en vol).
+          stripeBlips++
+          A('9 window: énumération Stripe illisible/ambiguë (' + stripeBlips + '/2) — ' + scrub(e))
+          if (stripeBlips >= 2) { A('9 window: Stripe illisible deux fois de suite — fermeture immédiate'); break }
+        }
       }
       await sleep(POLL_MS)
     }
@@ -499,6 +631,8 @@ if (require.main === module) main().catch((e) => { emergencyClose(); fail('unexp
 
 module.exports = {
   writeFlag, emergencyClose, takeLock, releaseLock,
+  // Seams de test — la parité avec le runtime déployé (client REST forcé) se prouve ici.
+  stripeAdapter, normalizeRefundList, readAvailableEur, readPayoutSchedule, measureStripeFacts, REFUND_LIST_CAP,
   armClose: (envFile, stamp) => { armedClose = { envFile, stamp } },
   isCloseArmed: () => armedClose !== null,
   CONFIRM_SENTENCE, REFUND_LEASE_MAX_MS, CLAIMS_LEASE_MAX_MS, LEASE_SLACK_MS, LOCK_FILE,
