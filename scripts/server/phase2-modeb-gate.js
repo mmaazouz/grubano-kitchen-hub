@@ -25,8 +25,20 @@
  *   PHASE2_MODEB_CONFIRM="I AUTHORIZE THE STAGING MODE B REHEARSAL"
  *   PHASE2_MODEB_ORDER_ID=<id de la commande fraîche>
  *   PHASE2_MODEB_AMOUNT_CENTS=<montant exact de la répétition>
- *   PHASE2_MODEB_EXPECT_SHA=<SHA court certifié, ex. 0227d59>
- *   PHASE2_MODEB_WINDOW_MS (défaut 15 min ; plafond 28 min — voir LEASES)
+ *   PHASE2_MODEB_EXPECT_SHA=<SHA court certifié — les 7 premiers caractères de version.json>
+ *
+ * VARIABLES OPTIONNELLES (ne pas les poser pour la répétition : les défauts sont les valeurs certifiées)
+ *   PHASE2_MODEB_WINDOW_MS  défaut 15 min ; plafond 28 min (bail = fenêtre + 2 min ≤ 30 min)
+ *   PHASE2_MODEB_GRACE_MS   défaut 20 s ; attente entre l'objet Stripe observé et la fermeture (bornée par le bail)
+ *   PHASE2_MODEB_POLL_MS · PHASE2_RELOAD_DEADLINE_MS · PHASE2_RELOAD_INTERVAL_MS · PHASE2_APP_ROOT (tests)
+ *
+ * RÉSULTATS (dernière ligne « RESULT = … ») — seuls READY et PASS sortent en code 0
+ *   READY FOR FOUNDER AUTHORIZATION   precheck vert, rien ouvert
+ *   BLOCKED — voir anomalies          precheck refusé, rien ouvert
+ *   PASS                              fenêtre ouverte puis refermée ; EXACTEMENT UN remboursement Stripe
+ *                                     « succeeded » du montant autorisé, payé PAR la réclamation (jointure DB)
+ *   NOT EXECUTED — …                  fenêtre ouverte puis refermée proprement, aucun remboursement
+ *   FAIL                              toute anomalie (y compris un refus avant ouverture : rien changé)
  *
  * AUCUNE VALEUR SECRÈTE N'EST IMPRIMÉE. Aucune sauvegarde .env.local ancienne n'est jamais
  * restaurée : on n'écrit QUE les quatre clés, une par une, avec sauvegarde horodatée.
@@ -55,13 +67,23 @@ const RELOAD_INTERVAL_MS = Number(process.env.PHASE2_RELOAD_INTERVAL_MS || 10000
 const REFUND_LEASE_MAX_MS = 30 * 60 * 1000
 const CLAIMS_LEASE_MAX_MS = 60 * 60 * 1000
 const LEASE_SLACK_MS = 2 * 60 * 1000
+/* Marge exigée avant l'expiration de la fenêtre de réclamation (48 h ancrées sur Order.updatedAt). */
+const CLAIM_WINDOW_MARGIN_H = 1
+/* GRÂCE entre l'observation de l'objet Stripe et la fermeture. La requête d'approbation CONTINUE après
+ * la création du remboursement : écritures DB, puis e-mail client — dont l'envoi relit la gate
+ * (arbitrate/route.ts → isClaimsEnabled()). La réclamation lit « refunded » AVANT l'envoi SMTP :
+ * refermer et redémarrer Passenger à cet instant couperait l'e-mail de succès, et le renvoyer
+ * exigerait une nouvelle fenêtre. Toujours bornée par le bail. */
+const GRACE_MS = Number(process.env.PHASE2_MODEB_GRACE_MS || 20000)
+/* Toute sonde HTTP est bornée : une requête pendue ne doit jamais porter la boucle au-delà du bail. */
+const FETCH_TIMEOUT_MS = 20000
 
 const LOCK_DIR = path.join(process.env.HOME || process.env.USERPROFILE || APP_ROOT, '.grubano')
 /* PORTÉE DU VERROU — à dire honnêtement : ce fichier de verrou est pris et rendu par CET
  * opérateur seulement. phase2-refund-gate.js et phase2-claims-gate.js ne l'écrivent pas (encore),
- * donc le verrou exclut un second Mode B, PAS un opérateur frère lancé en parallèle. Le vrai
- * garde-fou contre ce cas est le balayage de processus ci-dessous, plus la règle humaine : un seul
- * opérateur à la fois. Ne pas présenter ce verrou comme davantage qu'il n'est. */
+ * donc le verrou exclut un second Mode B, PAS un opérateur frère lancé en parallèle. Aucun
+ * balayage de processus n'existe dans ce fichier : le seul garde-fou contre ce cas est la règle
+ * humaine, un seul opérateur à la fois. Ne pas présenter ce verrou comme davantage qu'il n'est. */
 const LOCK_FILE = path.join(LOCK_DIR, 'phase2-operator.lock')
 
 const facts = []
@@ -80,6 +102,10 @@ const scrub = (m) => String(m == null ? '' : ((m && m.message) || m))
   .slice(0, 160)
 
 function done(result) {
+  // TOUTE sortie rend le verrou : un `return fail(…)` précoce laissait ~/.grubano/phase2-operator.lock
+  // derrière lui (pid mort) — faux positif « opérateur en cours » si le pid est réutilisé, et preuve
+  // « aucun verrou périmé » fausse après un simple refus. releaseLock ne rend que NOTRE verrou.
+  releaseLock()
   console.log('')
   console.log('RESULT = ' + result)
   console.log('ANOMALIES = ' + (anomalies.length || 'none'))
@@ -145,10 +171,12 @@ function emergencyClose() {
     console.log('!! EMERGENCY CLOSE — les quatre clés sont fermées sur le disque')
   }
 }
+// Ces sorties court-circuitent done() : elles rendent le verrou elles-mêmes (releaseLock ne retire que
+// NOTRE verrou — jamais celui d'un autre opérateur vivant).
 for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGQUIT', 'SIGBREAK']) {
-  process.on(sig, () => { emergencyClose(); process.exit(1) })
+  process.on(sig, () => { emergencyClose(); releaseLock(); process.exit(1) })
 }
-process.on('uncaughtException', (e) => { console.log('!! uncaught: ' + scrub(e)); emergencyClose(); process.exit(1) })
+process.on('uncaughtException', (e) => { console.log('!! uncaught: ' + scrub(e)); emergencyClose(); releaseLock(); process.exit(1) })
 
 /* ── ADAPTATEUR STRIPE : UNE surface, DEUX clients ───────────────────────────────────────────
  * LE DÉFAUT QUI A ÉCHAPPÉ (précheck final 2026-09-21) : le runtime standalone déployé n'embarque
@@ -305,12 +333,60 @@ async function measureStripeFacts(client, input) {
   return out
 }
 
+/** Verdict d'une répétition : la liste FINALE des remboursements Stripe de la PI doit être exactement
+ *  UN objet, du montant autorisé, « succeeded ». Retourne les anomalies (vide = conforme ou rien observé). */
+function refundVerdict(refunds, amountCents) {
+  const out = []
+  if (refunds.length > 1) out.push('11 verdict: ' + refunds.length + ' objets remboursement Stripe sur la PI — la répétition en autorise UN SEUL')
+  for (const r of refunds) {
+    if (r.amount !== amountCents) out.push('11 verdict: remboursement ' + mask(r.id) + ' de ' + r.amount + ' c ≠ montant autorisé ' + amountCents + ' c')
+    if (r.status !== 'succeeded') out.push('11 verdict: remboursement ' + mask(r.id) + ' « ' + r.status + ' » — PAS un succès ; refund.updated / refund.failed font foi')
+  }
+  return out
+}
+
+/** Verdict DB d'une répétition Mode B — la jointure réclamation ↔ ligne Refund ↔ objet Stripe.
+ *  Exécutée (un objet Stripe existe) : EXACTEMENT une nouvelle ligne Refund, « succeeded », du montant
+ *  autorisé, portant l'id Stripe observé et `reason = claim:<id>` ; EXACTEMENT une nouvelle réclamation,
+ *  « refunded », liée à cette ligne, sans erreur ; aucune réclamation ACTIVE ; les réclamations
+ *  préexistantes inchangées. Non exécutée : aucune nouvelle ligne ni réclamation active ne doit rester. */
+const ACTIVE_CLAIM_STATUSES = ['restaurant_review', 'approved', 'refunding', 'arbitration', 'financial_verification']
+function dbVerdict(i) {
+  const out = []
+  const beforeRowIds = new Set((i.rowsBefore || []).map((r) => r.id))
+  const beforeClaims = new Map((i.claimsBefore || []).map((c) => [c.id, c.status]))
+  const newRows = i.rowsAfter.filter((r) => !beforeRowIds.has(r.id))
+  const newClaims = i.claimsAfter.filter((c) => !beforeClaims.has(c.id))
+  for (const c of i.claimsAfter) {
+    if (beforeClaims.has(c.id) && beforeClaims.get(c.id) !== c.status) out.push('12 db: une réclamation PRÉEXISTANTE de la commande a changé (' + beforeClaims.get(c.id) + ' → ' + c.status + ')')
+  }
+  const active = i.claimsAfter.filter((c) => ACTIVE_CLAIM_STATUSES.includes(c.status))
+  if (active.length) out.push('12 db: ' + active.length + ' réclamation(s) ACTIVE(S) laissée(s) sur la commande (' + active.map((c) => c.status).join(', ') + ') — elle(s) tien(nen)t activeOrderKey')
+  if (!i.executed) {
+    if (newRows.length) out.push('12 db: ' + newRows.length + ' nouvelle(s) ligne(s) Refund SANS objet Stripe observé — état NON RÉSOLU')
+    return out
+  }
+  if (newRows.length !== 1) { out.push('12 db: ' + newRows.length + ' nouvelle(s) ligne(s) Refund — la répétition en attend EXACTEMENT UNE'); return out }
+  const row = newRows[0]
+  const re = i.finalRefunds && i.finalRefunds.length === 1 ? i.finalRefunds[0] : null
+  if (row.status !== 'succeeded') out.push('12 db: la ligne Refund est « ' + row.status + ' », pas « succeeded »')
+  if (row.amountCents !== i.amountCents) out.push('12 db: la ligne Refund porte ' + row.amountCents + ' c ≠ ' + i.amountCents + ' c autorisés')
+  if (!re || row.stripeRefundId !== re.id) out.push('12 db: la ligne Refund ne porte PAS l’id de l’objet Stripe observé — jointure ligne ↔ Stripe NON PROUVÉE')
+  if (newClaims.length !== 1) { out.push('12 db: ' + newClaims.length + ' nouvelle(s) réclamation(s) — le remboursement n’est pas prouvé payé PAR la réclamation de la répétition'); return out }
+  const claim = newClaims[0]
+  if (claim.status !== 'refunded') out.push('12 db: la réclamation est « ' + claim.status + ' », pas « refunded »')
+  if (claim.refundError) out.push('12 db: la réclamation porte une erreur de remboursement')
+  if (claim.refundId !== row.id) out.push('12 db: la réclamation n’est PAS liée à la ligne Refund (refundId) — jointure réclamation ↔ ligne NON PROUVÉE')
+  if (row.reason !== 'claim:' + claim.id) out.push('12 db: la ligne Refund ne porte PAS l’identité de la réclamation (reason) — remboursement non attribué')
+  return out
+}
+
 /* ── sondes de gate (mêmes sondes runtime que les opérateurs existants) ─────────────────────── */
 async function probe(base, pathname) {
   try {
     const r = await fetch(base + pathname, {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'User-Agent': 'grubano-phase2-modeb-gate/1' },
-      body: '{}', redirect: 'manual',
+      body: '{}', redirect: 'manual', signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     })
     const b = await r.json().catch(() => null)
     if (r.status === 403 && b && (b.gated === true || b.enabled === false)) return 'CLOSED'
@@ -374,7 +450,11 @@ async function main() {
   // Les deux opérateurs de référence lisent la vue FUSIONNÉE des fichiers .env : on fait pareil.
   const prov = require(path.join(__dirname, 'env-provenance.js'))
   let merged = {}
-  try { merged = prov.mergeNextEnvFiles(prov.readNextEnvFiles(APP_ROOT)).merged || {} } catch (e) { return fail('1 env: lecture des fichiers .env — ' + scrub(e)) }
+  // ⚠️ SIGNATURE : readNextEnvFiles(fs, path, dir). Appelé avec le seul APP_ROOT, l'helper avale sa
+  // propre TypeError fichier par fichier et renvoie {} : NEXTAUTH_URL « ABSENT », refus à chaque
+  // lancement (défaut livré en 71caabc/3e32e01, jamais vu parce que main() n'était exécuté par aucun test).
+  try { merged = prov.mergeNextEnvFiles(prov.readNextEnvFiles(fs, path, APP_ROOT)).merged || {} } catch (e) { return fail('1 env: lecture des fichiers .env — ' + scrub(e)) }
+  if (!Object.keys(merged).length) return fail('1 env: aucune clé lue dans les fichiers .env de ' + APP_ROOT + ' — vue FICHIERS vide, rien n’est prouvable')
   const fileUrl = (merged.NEXTAUTH_URL || '').replace(/\/$/, '')
   const shellUrl = (process.env.NEXTAUTH_URL || '').replace(/\/$/, '')
   F('NEXTAUTH_URL (fichiers)', fileUrl || 'ABSENT')
@@ -400,7 +480,7 @@ async function main() {
 
   // [2] SHA déployé = SHA certifié
   let version = null
-  try { version = await (await fetch(base + '/version.json', { headers: { 'User-Agent': 'grubano-phase2-modeb-gate/1' } })).json() } catch (e) { A('2 version: illisible — ' + scrub(e)) }
+  try { version = await (await fetch(base + '/version.json', { headers: { 'User-Agent': 'grubano-phase2-modeb-gate/1' }, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) })).json() } catch (e) { A('2 version: illisible — ' + scrub(e)) }
   if (version) F('DEPLOYED SHA', version.shortCommit + ' (branche ' + version.branch + ', build ' + version.buildDate + ')')
   if (version && version.branch && version.branch !== 'develop') return fail('2 version: branche déployée « ' + version.branch + ' » — MODE B est interdit hors develop/staging')
   if (!EXPECT_SHA) A('2 version: PHASE2_MODEB_EXPECT_SHA absent — le SHA certifié n’est pas vérifié')
@@ -440,10 +520,17 @@ async function main() {
       F('ORDER', mask(order.id) + ' · paymentStatus ' + order.paymentStatus + ' · status ' + order.status + ' · total ' + order.total + ' € · PI ' + mask(order.stripePaymentIntentId))
       if (order.paymentStatus !== 'paid') A('4 order: paymentStatus « ' + order.paymentStatus + ' » — le rail réclamation exige « paid »')
       if (!order.stripePaymentIntentId) A('4 order: aucune PaymentIntent sur la commande')
-      const windowHours = Number(process.env.CLAIM_WINDOW_HOURS || 48)
+      // PARITÉ avec l'application (lib/claims.ts envHours) : parseInt base 10, défaut 48 si non fini/≤ 0.
+      // Un Number('48h') = NaN rendait la comparaison toujours fausse : la fenêtre n'était jamais signalée.
+      const whRaw = Number.parseInt(process.env.CLAIM_WINDOW_HOURS ?? '', 10)
+      const windowHours = Number.isFinite(whRaw) && whRaw > 0 ? whRaw : 48
       const ageH = (Date.now() - new Date(order.updatedAt).getTime()) / 3600000
       F('CLAIM WINDOW', 'âge ' + ageH.toFixed(1) + ' h / fenêtre ' + windowHours + ' h (ancrée sur Order.updatedAt)')
-      if (ageH > windowHours) A('4 order: hors fenêtre de réclamation (' + ageH.toFixed(1) + ' h > ' + windowHours + ' h) — ne PAS remonter CLAIM_WINDOW_HOURS, c’est global')
+      if (!Number.isFinite(ageH)) A('4 order: Order.updatedAt illisible — fenêtre de réclamation NON PROUVÉE')
+      else if (ageH > windowHours) A('4 order: hors fenêtre de réclamation (' + ageH.toFixed(1) + ' h > ' + windowHours + ' h) — ne PAS remonter CLAIM_WINDOW_HOURS, c’est global')
+      // Le dépôt côté client a lieu plusieurs minutes APRÈS ce contrôle : sans marge, la réclamation
+      // serait refusée (409 window_expired) dans une fenêtre déjà ouverte.
+      else if (ageH > windowHours - CLAIM_WINDOW_MARGIN_H) A('4 order: fenêtre de réclamation trop proche de l’expiration (' + ageH.toFixed(1) + ' h, marge exigée ' + CLAIM_WINDOW_MARGIN_H + ' h) — le dépôt client risquerait un refus en pleine fenêtre')
       F('CLAIMS ON ORDER', claimsOnOrder.length ? claimsOnOrder.map((c) => mask(c.id) + ':' + c.status).join(' ') : 'aucune')
       const ACTIVE = ['restaurant_review', 'approved', 'refunding', 'arbitration', 'financial_verification']
       if (claimsOnOrder.some((c) => ACTIVE.includes(c.status))) A('4 claim: une réclamation ACTIVE existe déjà sur cette commande (activeOrderKey tenu)')
@@ -505,6 +592,7 @@ async function main() {
   if (c0 !== 'CLOSED' || r0 !== 'CLOSED') return fail('8 window: les deux gates ne sont pas CLOSED avant ouverture — rien changé')
 
   const stamp = new Date().toISOString()
+  let executed = false
   // Référence AVANT : le nombre d'objets STRIPE (pas de lignes DB — voir la boucle d'observation).
   let stripeRefundsBefore = 0
   if (adapter && order && order.stripePaymentIntentId) {
@@ -569,12 +657,32 @@ async function main() {
       }
       await sleep(POLL_MS)
     }
+    // Une approbation cliquée dans le DERNIER intervalle de sondage crée son objet Stripe APRÈS la
+    // dernière lecture de la boucle : on relit une fois avant de conclure, pour ne jamais lui refuser
+    // la grâce (son e-mail de succès est encore en vol).
+    let lateSeen = false
+    if (!seenRefunds && adapter && order && order.stripePaymentIntentId) {
+      try {
+        const late = await adapter.listRefunds(order.stripePaymentIntentId)
+        if (late.length > stripeRefundsBefore) { seenRefunds = late; lateSeen = true }
+      } catch (e) { A('9 window: lecture Stripe après la boucle illisible/ambiguë — ' + scrub(e)) }
+    }
+    // GRÂCE avant toute fermeture (voir GRACE_MS) — une seule fois, jamais au-delà du bail.
+    let graced = false
+    const grace = async (why) => {
+      if (graced) return
+      graced = true
+      const graceMs = Math.max(0, Math.min(Number.isFinite(GRACE_MS) ? GRACE_MS : 20000, leaseEndMs - 30_000 - Date.now()))
+      F('GRACE BEFORE CLOSE', Math.round(graceMs / 1000) + ' s — ' + why)
+      await sleep(graceMs)
+    }
     if (seenRefunds) {
-      F('REFUND OBSERVED (Stripe)', seenRefunds.map((r) => mask(r.id) + ':' + (r.status || '?') + ':' + r.amount).join(' '))
+      F('REFUND OBSERVED (Stripe)', seenRefunds.map((r) => mask(r.id) + ':' + (r.status || '?') + ':' + r.amount).join(' ') + (lateSeen ? ' (vu APRÈS la dernière lecture de la boucle)' : ''))
       if (seenRefunds.some((r) => r.status !== 'succeeded')) {
         F('REFUND STATUS TRUTH', 'au moins un remboursement n’est PAS « succeeded » — ne PAS conclure à un succès : refund.updated / refund.failed font foi')
       }
-    } else F('REFUND OBSERVED (Stripe)', 'AUCUN nouvel objet Stripe pendant la fenêtre — rien exécuté')
+      await grace('la requête d’approbation finit ses écritures et son e-mail avant toute fermeture')
+    } else F('REFUND OBSERVED (Stripe)', 'AUCUN nouvel objet Stripe pendant la fenêtre (le verdict final relit Stripe APRÈS fermeture)')
 
     // AVANT de refermer et de redémarrer : ne JAMAIS couper une tentative en vol. On attend, dans
     // la limite du bail, qu'aucune ligne de la commande ne soit encore « pending » et que la
@@ -582,18 +690,29 @@ async function main() {
     if (prisma) {
       const settleUntil = Math.min(Date.now() + 90_000, leaseEndMs - 15_000)
       let unresolved = null
+      let settleReadFailed = false
+      let sawAttempt = false
       while (Date.now() < settleUntil) {
         try {
           const rows = await prisma.refund.findMany({ where: { orderId: ORDER_ID, status: 'pending' }, select: { id: true, stripeRefundId: true } })
           const claimsNow = await prisma.claim.findMany({ where: { orderId: ORDER_ID, status: 'refunding' }, select: { id: true } })
           unresolved = { rows, claims: claimsNow }
           if (!rows.length && !claimsNow.length) break
-        } catch (e) { A('9 settle: lecture — ' + scrub(e)); break }
+          sawAttempt = true
+        } catch (e) { A('9 settle: lecture — ' + scrub(e)); settleReadFailed = true; break }
         await sleep(5000)
       }
       if (unresolved && (unresolved.rows.length || unresolved.claims.length)) {
         A('9 settle: une tentative est encore NON RÉSOLUE à la fermeture (lignes pending ' + unresolved.rows.length + ', réclamations refunding ' + unresolved.claims.length + ') — la fermeture et le redémarrage ont lieu quand même car le bail expire ; réconciliation humaine requise')
-      } else F('SETTLE BEFORE CLOSE', 'aucune ligne « pending », aucune réclamation « refunding » — fermeture sans couper de tentative')
+      } else if (!unresolved) {
+        // Rien n'a été lu (bail trop proche, ou lecture en erreur) : on ne prétend PAS que tout est réglé.
+        if (!settleReadFailed) A('9 settle: NON MESURÉ — le bail ne laissait plus le temps de lire l’état avant fermeture')
+      } else {
+        F('SETTLE BEFORE CLOSE', 'aucune ligne « pending », aucune réclamation « refunding » — fermeture sans couper de tentative')
+        // Une tentative vue EN COURS pendant le règlement vient de se résoudre : sa requête d'approbation
+        // envoie maintenant l'e-mail — même grâce, si elle n'a pas déjà été accordée.
+        if (sawAttempt) await grace('une tentative vient de se résoudre pendant le règlement — son e-mail part avant la fermeture')
+      }
     }
   } catch (e) {
     A('9 window: ' + scrub(e))
@@ -611,20 +730,46 @@ async function main() {
       const w2 = await waitBoth(base, 'CLOSED', RELOAD_DEADLINE_MS, RELOAD_INTERVAL_MS)
       F('GATES APRÈS FERMETURE', 'claims ' + w2.claims + ' · refunds ' + w2.refunds + ' après ' + Math.round(w2.elapsedMs / 1000) + ' s')
       if (!w2.ok) A('10 refreeze: les deux gates NE SONT PAS prouvées fermées — ATTENTION HUMAINE REQUISE')
-    } catch (e) { A('10 refreeze: ' + scrub(e)) }
-    // état APRÈS (preuve)
+    } catch (e) {
+      A('10 refreeze: ' + scrub(e))
+      // Les quatre écritures partageaient UN try : si l'une a levé, les suivantes n'ont pas eu lieu.
+      // La fermeture d'urgence (encore armée) réessaie clé par clé, baux d'abord, et redémarre.
+      const stillArmed = armedClose !== null
+      emergencyClose()
+      if (stillArmed) {
+        try {
+          const w3 = await waitBoth(base, 'CLOSED', RELOAD_DEADLINE_MS, RELOAD_INTERVAL_MS)
+          F('GATES APRÈS FERMETURE D’URGENCE', 'claims ' + w3.claims + ' · refunds ' + w3.refunds + ' après ' + Math.round(w3.elapsedMs / 1000) + ' s')
+          if (!w3.ok) A('10 refreeze: les deux gates NE SONT PAS prouvées fermées après la fermeture d’urgence — ATTENTION HUMAINE REQUISE')
+        } catch (e2) { A('10 refreeze: sondes après fermeture d’urgence — ' + scrub(e2)) }
+      }
+    }
+    // VERDICT — vérité Stripe relue APRÈS la fermeture. « Ouvert puis refermé proprement » n'est PAS
+    // une répétition réussie : il faut EXACTEMENT UN objet remboursement, du montant autorisé, et
+    // « succeeded ». Une énumération finale illisible laisse l'issue NON PROUVÉE (anomalie, jamais PASS).
+    let finalRefunds = null
+    try {
+      finalRefunds = await adapter.listRefunds(order.stripePaymentIntentId)
+      F('STRIPE REFUNDS AFTER', finalRefunds.length ? finalRefunds.map((r) => mask(r.id) + ':' + r.status + ':' + r.amount).join(' ') : '0')
+      for (const m of refundVerdict(finalRefunds, AMOUNT_CENTS)) A(m)
+      executed = finalRefunds.length > 0
+    } catch (e) { A('11 verdict: énumération Stripe finale illisible/ambiguë (' + scrub(e) + ') — issue NON PROUVÉE') }
+    // état APRÈS (preuve) — et JUGÉ : Stripe seul ne prouve pas que c'est la RÉCLAMATION qui a payé.
     if (prisma) {
       try {
-        const after = await prisma.refund.findMany({ where: { orderId: ORDER_ID }, select: { id: true, status: true, stripeRefundId: true, amountCents: true } })
+        const after = await prisma.refund.findMany({ where: { orderId: ORDER_ID }, select: { id: true, status: true, stripeRefundId: true, amountCents: true, reason: true } })
         const claimsAfter = await prisma.claim.findMany({ where: { orderId: ORDER_ID }, select: { id: true, status: true, refundId: true, refundError: true } })
         F('AFTER · REFUND ROWS', after.length ? after.map((r) => mask(r.id) + ':' + r.status + ':' + r.amountCents).join(' ') : 'aucune')
         F('AFTER · CLAIMS', claimsAfter.length ? claimsAfter.map((c) => mask(c.id) + ':' + c.status + (c.refundError ? ':err' : '')).join(' ') : 'aucune')
-      } catch (e) { A('10 after: ' + scrub(e)) }
+        for (const m of dbVerdict({ executed, finalRefunds, amountCents: AMOUNT_CENTS, rowsBefore: refundRows, claimsBefore: claimsOnOrder, rowsAfter: after, claimsAfter })) A(m)
+      } catch (e) { A('10 after: ' + scrub(e) + ' — état DB NON PROUVÉ') }
       try { await prisma.$disconnect() } catch { /* best-effort */ }
     }
     releaseLock()
   }
-  return done(anomalies.length ? 'FAIL' : 'PASS')
+  // PASS = la répétition a EU LIEU et Stripe la prouve conforme. Une fenêtre refermée sans aucun objet
+  // Stripe n'est ni un succès ni une anomalie de sûreté : « NOT EXECUTED » (code de sortie ≠ 0).
+  return done(anomalies.length ? 'FAIL' : executed ? 'PASS' : 'NOT EXECUTED — fenêtre ouverte puis refermée proprement, AUCUN remboursement observé chez Stripe')
 }
 
 if (require.main === module) main().catch((e) => { emergencyClose(); fail('unexpected: ' + scrub(e)) })
@@ -632,7 +777,7 @@ if (require.main === module) main().catch((e) => { emergencyClose(); fail('unexp
 module.exports = {
   writeFlag, emergencyClose, takeLock, releaseLock,
   // Seams de test — la parité avec le runtime déployé (client REST forcé) se prouve ici.
-  stripeAdapter, normalizeRefundList, readAvailableEur, readPayoutSchedule, measureStripeFacts, REFUND_LIST_CAP,
+  stripeAdapter, normalizeRefundList, readAvailableEur, readPayoutSchedule, measureStripeFacts, REFUND_LIST_CAP, refundVerdict, dbVerdict, CLAIM_WINDOW_MARGIN_H,
   armClose: (envFile, stamp) => { armedClose = { envFile, stamp } },
   isCloseArmed: () => armedClose !== null,
   CONFIRM_SENTENCE, REFUND_LEASE_MAX_MS, CLAIMS_LEASE_MAX_MS, LEASE_SLACK_MS, LOCK_FILE,

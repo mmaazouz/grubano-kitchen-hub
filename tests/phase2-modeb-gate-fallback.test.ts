@@ -330,7 +330,7 @@ describe('MODE B — main() passe par l’adaptateur, jamais par le SDK seul', (
     expect(mainSrc).not.toMatch(/stripe\.accounts\./)
     expect(mainSrc).not.toMatch(/\.data\)\s*\|\|\s*\[\]|l0 && l0\.data|list && list\.data/)
     expect(mainSrc).toMatch(/measureStripeFacts\(stripe, \{ piId: order\.stripePaymentIntentId/)
-    expect((mainSrc.match(/adapter\.listRefunds\(order\.stripePaymentIntentId\)/g) || []).length).toBe(2)   // AVANT + boucle
+    expect((mainSrc.match(/adapter\.listRefunds\(order\.stripePaymentIntentId\)/g) || []).length).toBe(4)   // AVANT + boucle + relecture APRÈS la boucle (grâce) + verdict FINAL (relu après fermeture)
   })
   it('la fenêtre refuse une référence AVANT ≠ 0 et ferme après deux énumérations Stripe illisibles', () => {
     const mainSrc = SRC.slice(SRC.indexOf('async function main()'))
@@ -338,6 +338,12 @@ describe('MODE B — main() passe par l’adaptateur, jamais par le SDK seul', (
     expect(mainSrc).toMatch(/stripeBlips\+\+/)
     expect(mainSrc).toMatch(/if \(stripeBlips >= 2\) \{ A\('9 window: Stripe illisible deux fois de suite — fermeture immédiate'\); break \}/)
     expect(mainSrc).toMatch(/stripeBlips = 0/)   // remise à zéro sur une lecture réussie
+  })
+  it('toute sonde HTTP est BORNÉE (une requête pendue ne porte jamais la boucle au-delà du bail) ; toute sortie brutale rend le verrou', () => {
+    expect(SRC).toContain("body: '{}', redirect: 'manual', signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),")
+    expect(SRC).toContain("fetch(base + '/version.json', { headers: { 'User-Agent': 'grubano-phase2-modeb-gate/1' }, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) })")
+    expect(SRC).toContain("process.on('uncaughtException', (e) => { console.log('!! uncaught: ' + scrub(e)); emergencyClose(); releaseLock(); process.exit(1) })")
+    expect(SRC).toContain("if (!settleReadFailed) A('9 settle: NON MESURÉ")
   })
   it('l’ancien contrôle de capacité (typeof stripe.balance) a disparu — remplacé par l’adaptateur', () => {
     expect(SRC).not.toMatch(/typeof stripe\.balance === 'undefined'/)

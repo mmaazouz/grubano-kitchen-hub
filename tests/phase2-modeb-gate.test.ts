@@ -15,6 +15,14 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
+// L'opérateur lit PHASE2_APP_ROOT et HOME UNE fois au chargement (touchRestart écrit tmp/restart.txt,
+// le verrou vit dans ~/.grubano). Bac à sable AVANT le require : ce fichier ne doit toucher ni la
+// racine du dépôt (un tmp/restart.txt y traînait) ni le vrai dossier personnel du développeur.
+const SANDBOX = fs.mkdtempSync(path.join(os.tmpdir(), 'grubano-modeb-gate-root-'))
+process.env.PHASE2_APP_ROOT = SANDBOX
+process.env.HOME = SANDBOX
+process.env.USERPROFILE = SANDBOX
+
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const OP = require('../scripts/server/phase2-modeb-gate.js') as {
   writeFlag: (envFile: string, key: string, value: string, stamp: string) => { changed: boolean; backup: string | null }
@@ -229,7 +237,9 @@ describe('MODE B opérateur — corrections issues de la revue adversariale', ()
   })
 
   it('le garde-fou PRODUCTION lit les FICHIERS .env, pas le shell, et refuse une divergence', () => {
-    expect(SRC).toMatch(/mergeNextEnvFiles\(prov\.readNextEnvFiles\(APP_ROOT\)\)/)
+    // ⚠️ l'ancienne épingle figeait l'appel FAUTIF (un seul argument) : la signature est (fs, path, dir).
+    expect(SRC).toMatch(/mergeNextEnvFiles\(prov\.readNextEnvFiles\(fs, path, APP_ROOT\)\)/)
+    expect(SRC).not.toMatch(/readNextEnvFiles\(APP_ROOT\)/)
     expect(SRC).toMatch(/NEXTAUTH_URL des FICHIERS n’est pas https:\/\/app\.grubano\.com/)
     expect(SRC).toMatch(/diverge des fichiers — refus/)
   })
