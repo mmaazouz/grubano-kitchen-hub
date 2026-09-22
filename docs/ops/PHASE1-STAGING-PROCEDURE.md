@@ -1,5 +1,7 @@
 # PHASE 1 — STAGING MIGRATION PROCEDURE (founder-executed)
 
+> **Note 2026-09-22 (D′ L0) :** le dossier `prisma/manual-migrations/` n'est PAS livré par `deploy-staging.yml` (seul `prisma/schema.prisma` est copié) ; l'artefact SQL sert de référence, l'opérateur `phase1-staging-migrate.js` porte les `ALTER TABLE`. Idem pour D′ (`dprime-staging-migrate.js`).
+
 > The agent cannot reach the o2switch DB and holds **no** credentials (DB password, `INTERNAL_CRON_TOKEN`, Stripe secret). This is the single, exact, copy-paste procedure Mohammed runs in the **cPanel Terminal**. Every command is read-only or strictly additive. **Do not run any refund during the freeze.**
 >
 > All paths assume staging `~/app.grubano.com`. The migration is the reviewable SQL artifact `prisma/manual-migrations/phase1-loyalty-refund.sql` — **not** `db push --accept-data-loss`.

@@ -12,7 +12,8 @@ import { z } from 'zod'
 
 // ── Valid status machine ──────────────────────────────────────────────────────
 //   received → preparing → ready → picked_up → delivered
-//   any state → cancelled  (restaurant/admin only)
+//   received | preparing | ready → cancelled  (restaurant/admin only; picked_up and delivered
+//   have NO cancel exit — the TRANSITIONS table below is the truth, fixed 2026-09-22)
 
 const TRANSITIONS: Record<string, string[]> = {
   received:  ['preparing', 'cancelled'],

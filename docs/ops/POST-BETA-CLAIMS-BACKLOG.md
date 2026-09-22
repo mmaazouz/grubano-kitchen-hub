@@ -1,5 +1,7 @@
 # POST-BETA — CLAIMS MODULE (dette explicite, priorité P1 post-bêta)
 
+> **2026-09-22 — décision D4 ABANDONNÉE par le fondateur.** Les réclamations sont réactivées en bêta sous l'architecture D′ (`CLAIMS-DPRIME-SPEC-v2.md`) : client 24/7 → restaurant 24/7 → décision Grubano 24/7 → file financière séparée → remboursement uniquement sous bail REFUNDS. Les conditions de réactivation ci-dessous restent lisibles comme historique ; les CGV consommateur (condition 1) sont livrées par le lot L10, avec validation juridique avant production.
+
 > **Décision fondateur D4 (2026-08, FINALE pour la bêta du 1er septembre)** :
 > `CLAIMS_ENABLED=false` toute la closed beta — faute de temps pour éprouver le
 > module. **L'escalade incident = support humain réel** (contact@grubano.com,
@@ -59,3 +61,9 @@
 - Accept restaurateur → arbitration SANS argent (P0-24 tenu).
 - Rejeu/duplication : `activeOrderKey` anti-doublon ; refund idempotent.
 - Flag OFF → retour exact au comportement bêta (masquages, email OFF, 403).
+
+## Dette produit D′ — ANTI-REPEAT ITEM CLAIM POLICY — POST-BETA
+
+Décision fondateur (2026-09-22, correction T-50) : en bêta, `Claim.selection` est PERSISTÉE (traçabilité : quels articles/quantités ont été contestés, visibles par le restaurant et Grubano) mais AUCUNE quantité historique ne constitue une autorité de refus automatique. Un article déjà réclamé peut être signalé visuellement à l'admin/au restaurant, jamais bloqué. Protections en vigueur : une seule réclamation ACTIVE par commande (`activeOrderKey @unique`), plafond financier restant `min(DB, Stripe)`, historique visible.
+
+À décider APRÈS observation des réclamations réelles de la bêta : (a) si/quand une quantité déjà réclamée (`refunded`, `refused` encore contestable, active) réduit `maxQty` ; (b) le traitement d'une réclamation antérieure en mode `amount` (non attribuable à des lignes) ; (c) la règle pour un `refused` hors délai de contestation ; (d) le rendu client éventuel. Prérequis techniques en place après L7 : `selection.lines[]` persistées, `previouslyClaimed[]` calculé pour l'admin et le restaurant.

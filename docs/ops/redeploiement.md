@@ -41,7 +41,7 @@ chmod 600    ~/app.grubano.com/.env.local
 mkdir -p ~/app.grubano.com/tmp && touch ~/app.grubano.com/tmp/restart.txt
 ```
 
-Schéma modifié depuis le dernier push → `bash ~/app.grubano.com/scripts/server/prisma-push.sh`
+Schéma modifié depuis le dernier push → ⚠️ `prisma-push.sh` n'existe PAS sur staging (non déployé) et vise la production : utiliser l'opérateur additif du lot (`scripts/server/phase1-staging-migrate.js`, `scripts/server/dprime-staging-migrate.js`) puis `*-regen-client.js` — voir `CLAUDE.md` §7 (corrigé 2026-09-22).
 (utilise `./node_modules/.bin/prisma` pinné 5.22.0 — JAMAIS le prisma global v7).
 
 ## Rollback (procédure de référence — jamais testée à chaud, à répéter avant bêta)

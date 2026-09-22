@@ -2,6 +2,65 @@
 
 > Source: design workflow run `wf_37c4911a-7b4` (pass 2 and the convergence stage), on HEAD `40da45e` plus the independent round-13 fixes. Frozen under the founder’s CONVERGENCE MODE order. Rule ids are stable: cite them in code comments and tests. `lib/refund.ts`, the money writes of the Stripe webhook and `prisma/schema.prisma` are NOT changed in round 13.
 
+## v1.1 AMENDMENTS — D′ (founder decisions 2026-09-22; tracked, never rewritten silently)
+
+> Reference: `docs/ops/CLAIMS-DPRIME-SPEC-v2.md`. The frozen v1 texts below stay in place, unedited,
+> for the audit trail; where a v1 rule is superseded, this block is the binding text and the rule
+> carries a one-line pointer. Money engine, webhook money writes and the 95-state table (A-S*) are
+> untouched. Effective per implementation lot (L2 = approve/E-10/D2/F13/AM-B3/D1/I-01; L1 = H02/H09).
+
+- **D2 (superseded, L2)** — APPROVE is no longer « the only exit that can move new money »: it is a
+  business decision only. After the decision CAS (count 1), `arbitrateClaim` **never** calls
+  `triggerClaimRefund`, whatever the REFUNDS lease says; `approveClaim` (machine paths, flags OFF)
+  writes `status:'arbitration'`, never `'approved'`; `runClaimAutoApproval` step 2 is deleted. The
+  ONLY caller of `triggerClaimRefund` is the financial rail `POST /api/admin/claims/pay-approved`
+  (admin session, `isRefundsEnabled() ∧ isClaimsSurfaceEnabled()`, dryRun → PAYER). (5) becomes
+  `executeRefund({orderId, amountCents: approvedAmountCents, reason: claim:<id>})` — T1 reads and
+  pins `approvedAmountCents` (v2 §8.3), everything after T1 is unchanged.
+- **E-10 (superseded, L2/L4)** — « Approved, unpaid » is the NORMAL state APPROVED_AWAITING_PAYMENT
+  (`approved ∧ arbitrationDecision 'approved' ∧ refundAttempted false ∧ refundId null ∧ refundError
+  null ∧ approvedAmountCents ≠ null`). Exits: `pay` (rail), `withdraw` (v2 §4). It is NOT payable by a
+  later approval and it is NOT an incident: the I-01 cause `refunds_disabled` is removed together
+  with its two writers; visibility = queue « À rembourser », the ungated admin badge and the census
+  line `approvedUnpaid`. Legacy rows with `arbitrationDecision null` or `approvedAmountCents null`
+  are « à ratifier » (v2 T-08), never paid as they stand.
+- **D1 (superseded rows 1-2, L2/L4)** — row 1 (approved, null error) → `['pay' (gated RE∧SURFACE),
+  'withdraw']` when `approvedAmountCents ≠ null`, `['ratify']` otherwise; row 2 (v13 payable proof)
+  → `['pay' (claimIds explicit only, after Q-INSTANT), 'reconcile']`, `['ratify','reconcile']`
+  when `approvedAmountCents null`. `arbitrationRefusal('approve')` on any `status='approved'` claim
+  whose `approvedAmountCents ≠ null` returns 409 `APPROVE_ALREADY_SET`. Exit union gains
+  `ratify | withdraw | pay`. Rows 3-14 unchanged.
+- **D13 / AM-B3 (text superseded, L2)** — no refuse_final on an approved claim (unchanged), but the
+  text no longer names re-approval as the way to be paid: « Cette réclamation a été approuvée — elle
+  ne peut plus être refusée. Selon son état : elle sera payée par le rail financier (« Payer les
+  approuvées »), retirez l'approbation (« Retirer l'approbation »), réconciliez-la, ou clôturez le
+  dossier si le détail le propose. » Same rewrite for the F15 guidance `approved_not_driven`,
+  `absence_proven_payable`, `absenceProvenPayableLabel`, LOCKED_CLOSE, AWAITING_CLOSE and
+  `payableTail`: « approuvez-la à nouveau » / « nouvelle approbation » never appear in copy.
+- **F13 (superseded, L2)** — the engine toasts `approvedRefunded`, `approvedPending`,
+  `approvedFailed`, `approvedResumeMismatch`, `approvedIdentityUnverified`, `approvedSuperseded`,
+  `approvedNotSentUntil` are removed with the inline engine call; `approvedNotSent` becomes the
+  nominal toast: fr « Réclamation approuvée — le remboursement sera traité par le rail financier lors
+  d'une fenêtre autorisée. » (en/es/it/ar equivalents, no bank delay, no « déclenché »).
+- **H02 (superseded, L1)** — the senders keep `claimsOpen: boolean`; every call under app/ passes
+  `claimsOpen: claimNoticeGate('pre_money' | 'post_money' | 'closure')` from `lib/claim-flags.ts`,
+  evaluated immediately before the call, class chosen by the CALLER FILE (v2 §6.2). `pre_money` =
+  `claimsSurfaceOpen()` (product flag OR legacy lease); `post_money` and `closure` = `true`.
+  `isClaimsEnabled()` is never a sender argument any more.
+- **H09 §23 → §26 (amended, L1)** — H09 (1)(2)(3)(9) unchanged (no send from the webhook, the
+  recovery sweep, a cron/script, or an automatic sweep). H09 (7) « anything while claimsOpen is
+  false » now applies to PRE-MONEY notices only. **§26 (FIN-EMAIL-01):** a notice attesting a
+  Stripe-proven refund (`claim_decision_refunded`, closure `refunded*`, `refund_confirmation`,
+  restaurant refunded notice) or an explicit terminal closure sent by an admin action is sendable
+  whatever `CLAIMS_SURFACE_ENABLED`, `CLAIMS_INTAKE_ENABLED` or the legacy lease say; (8) resend
+  rules and the `EmailDispatch @@unique([trigger, dedupeKey])` dedupe are unchanged, except
+  `claim_decision_approved` whose key becomes per decision `claim:<id>:approved:<arbitratedAt ISO>`.
+- **I-01 (amended, L2)** — cause `refunds_disabled` removed from `ClaimBlockedCause` and from both
+  writers (`approveClaim`, `arbitrateClaim`); every other cause unchanged.
+- **H15 (amended list, L1/L4/L5/L9)** — `H15_IMPORTERS` gains `withdraw-approval`, `pay-approved`
+  (and `rows/[rowId]/notify` only if the restaurant refunded sender lives in `lib/claim-emails`);
+  the webhook still imports no sender.
+
 ## CONVERGENCE REPORT
 
 ```text
@@ -1137,6 +1196,7 @@ IMPLEMENTATION NOTE (targeted re-audit of 75f1601, P3): the d9fb194 note above o
 IMPLEMENTATION NOTE (targeted re-audit of 68621aa, P3): the rendered pin's style checks now read display:none; visibility:hidden or collapse; opacity 0 in the spellings 0, 0.0, .0 and 0%; a zero width, height, max-width, max-height, block-size or inline-size, with or without a unit; any clip or clip-path; a negative left, top, right, bottom, margin-left, margin-top or text-indent, including calc(-…); a transform scale(0) or negative translate. Elements: details, dialog, template. Classes: hidden, invisible, sr-only. The zero-height negative control now carries overflow:hidden, and negative controls were added for opacity 0%, a 0rem height, clip-path, visibility:collapse, a calc(-…) offset and scale(0). A class or rule a stylesheet hides, and a portal, are not checked.
 
 ### D1 [CORE] Exit table (lib/claim-action-rules.ts acceptedExits)
+> **v1.1 (D′, 2026-09-22): rows 1-2 superseded — see « v1.1 AMENDMENTS » at the top of this file.**
 acceptedExits({claim, boundRow, orderId, now}) returns exactly these sets. It replaces the Track A §3 table; 'awaiting_other_row' and every E5b dependency are removed.
 1. approved, refundAttempted false, refundError null, refundId null → ['approve' (gated; E-10)].
 2. approved, refundAttempted false, refundId null, startsWith(PROOF_PAYABLE_V13) → ['approve' (gated; refused before Q-INSTANT; E-10), 'reconcile'].
@@ -1160,6 +1220,7 @@ IMPLEMENTATION NOTE (W1): acceptedExits is computed from the same predicates the
 IMPLEMENTATION NOTE (W1, round-1 fix): the « approved … bound with a null error → ['reconcile'] » row covers refundAttempted false as well as true (D2 (1)(b): approve refused; J-M30 fixture). A canonical v13 proof whose instant cannot be read → ['reconcile']: approve is refused until reconcile re-derives the instant, so it is not a revisable approval; a readable instant keeps ['approve', 'reconcile'] before and after it.
 
 ### D2 [CORE] APPROVE — the only exit that can move new money
+> **v1.1 (D′, 2026-09-22): SUPERSEDED — approve is a business decision only; see « v1.1 AMENDMENTS ».**
 ROUTE: POST /api/admin/claims/[id]/arbitrate {decision:'approve'}. GATED by the CLAIMS lease (route 27-29 answers 403), and by the REFUNDS lease for any payment. Server order:
 (1) arbitrationRefusal('approve', claim, now) must be null (D14 order). It is null only for:
    (a) an arbitration-status claim, or a restaurant_review claim whose response delay expired, on the existing decision path: arbitrateClaim casWhere + updateMany to 'approved' with the arbitration metadata (lib/claims.ts ~897-924);
@@ -1373,6 +1434,7 @@ WHY NO MONEY: the helper writes Claim rows only (updateMany on the exact pre-ima
 IMPLEMENTATION NOTE (W5): landed in app/api/webhooks/stripe/route.ts handleRefundStatusEvent. The failed / canceled branch keeps its calls and their order (markRefundRowFailed → reconcileClaimForRefund; the refund_failed alert), then: row pending → helper(failed_row); row succeeded → the existing alert with facts.claimIds (a comma-joined id list, or 'unread' — MoneyReview facts are scalars) then helper(stripe_object, ROUTED true only when the event's refund carries a transfer_reversal, unknown otherwise); row failed → the helper only. helper failed → 503 {received:false}; every other response body is unchanged (no new key). The succeeded branch is untouched (its three 503 exits, J-M06). ER-R29 / H05 site 2: reconcileClaimForRefund records the closure itself with noNoticeSource unless its caller says it records it (applyRowTruth passes closureRecordedByCaller) — inverted from « the webhook and recovery callers pass noNoticeSource » so that the webhook's reconcileClaimForRefund call stays byte-identical (binding rule 9). Pinned by tests/claims-t49-round13-reversal.test.ts (J-M40), tests/webhook-refund-reconciliation.test.ts (J-C43), tests/claims-closure-webhook.test.ts (J-C28) and tests/claims-r13-engine-closed.test.ts (J-M06 order).
 
 ### D13 [CORE] Exits that do not exist in round 13
+> **v1.1 (D′, 2026-09-22): AM-B3 text superseded (no « approuvez-la à nouveau ») — see « v1.1 AMENDMENTS ».**
 - No « annuler l’approbation » power (R-D5).
 - No refuse_final on an approved claim: AM-B3 text « Cette réclamation a été approuvée — elle ne peut plus être refusée. Selon son état : approuvez-la à nouveau (réclamations et remboursements ouverts), réconciliez-la, ou clôturez le dossier (« Clôturer ce dossier… ») si le détail le propose. » This also removes the exit for approvals with arbitrationDecision null (R-B0-3; E-10).
 - No apply-row-failure route or button, no recovery pass 2, no revertedAfterRefund list (R-X0-5, R-X0-6).
@@ -1610,6 +1672,7 @@ IMPLEMENTATION NOTE (W5): the re-verification landed (reverifySettledClaimRefund
 IMPLEMENTATION NOTE (W5 fixer): the residual sentence is in docs/ops/REFUND-FINANCIAL-CONTRACT.md §21; the Mode-A precheck step is in docs/ops/CLAIMS-R13-OPERATOR-PRECHECK.md. The console button remains W7.
 
 ### E-10 [CORE] Approved, unpaid, payable only through a gated or time-bound approval (REG-8, B5)
+> **v1.1 (D′, 2026-09-22): SUPERSEDED — APPROVED_AWAITING_PAYMENT is the normal state, paid by the rail, never by re-approval; refunds_disabled alert removed — see « v1.1 AMENDMENTS ».**
 STATES: A-S01, A-S02, A-S08b, A-S30b-1, A-S30b-2a, A-S30b-2b, A-S30e-3, and approved_not_driven (approved, refundAttempted false, refundError null, including legacy approvals with arbitrationDecision null). Track B J16.
 CONDITION: any of
 - the CLAIMS lease is closed;
@@ -2073,6 +2136,7 @@ approvalToast(refund) maps, in order:
 These result shapes are a contract: triggerClaimRefund returns exactly them. A test gives each Section A approval state its toast (J-C15).
 
 ### F13 [CORE] Admin approval toast copy (claims.admin.*), all 5 locales
+> **v1.1 (D′, 2026-09-22): engine toasts removed, approvedNotSent reworded — see « v1.1 AMENDMENTS ».**
 REWORD approvedNotSent. The current « aucun remboursement confirmé… À vérifier dans « Remboursements à traiter » » was true for 'pending' only by vagueness.
 - fr « Réclamation approuvée — aucun remboursement n’a été lancé par cette action. »
 - en « Claim approved — no refund was started by this action. »
@@ -2570,6 +2634,7 @@ The record trigger claim_closure_record (H05) is never sent.
 At most two closure notices exist for one claim, in this order only: claim_decision_refunded, then claim_closed_by_support, and only after that claim passed through REVERTED_AFTER_REFUND and was declared (either declaration kind).
 
 ### H02 [CORE] CLAIMS_ENABLED skip (R-D7)
+> **v1.1 (D′, 2026-09-22): SUPERSEDED — claimsOpen is claimNoticeGate(class), never isClaimsEnabled() — see « v1.1 AMENDMENTS ».**
 sendClaimAckEmail, sendClaimDecisionEmail and sendClaimClosureEmail take a required `claimsOpen: boolean`.
 
 Every call under app/ passes the literal expression `claimsOpen: isClaimsEnabled()`, evaluated immediately before the call.
@@ -2801,6 +2866,7 @@ This resend is the only path for a closure whose notice was not dispatched. It c
 IMPLEMENTATION NOTE (W6): landed as app/api/admin/claims/[id]/closure-notice/route.ts. (1) Step 3 reads the claim through prisma (a read only) to answer 404 or 409 before any Stripe read; beyond its guards and that read the route calls only reconcileClaimEvidence, sendClaimClosureEmail and recordAdminAudit. (2) reconcileClaimEvidence takes {claimId}: no adminId parameter exists. (3) A missing body and `{}` are both accepted; a non-JSON body or any field answers 400. (4) The reverted_after_refund marking written by the R0 read is audited as claim.reconcile_evidence {outcome, moneyMoved:false, via:'closure_notice'}, the same trail as the reconcile route, then 409; a 409 writes no claim.closure_notice audit. Pinned by tests/claims-closure-notice-route.test.ts (J-C27), tests/claims-reconcile-no-money.test.ts (the route joins the G14 run) and tests/claim-emails-routes-closure.test.ts (J-M38).
 
 ### H09 [CORE] What is never sent
+> **v1.1 (D′, 2026-09-22): (7) restricted to pre-money notices; §26 FIN-EMAIL-01 added — see « v1.1 AMENDMENTS ».**
 No customer e-mail is sent from any of these:
 - (1) the Stripe webhook, including reconcileClaimForRefund settlement, markClaimsForRevertedRefundRow and the 503 redelivery (R-D3, R-D8);
 - (2) recoverStrandedClaimReconciliations and app/api/admin/claims/reconcile-refunds/route.ts;
