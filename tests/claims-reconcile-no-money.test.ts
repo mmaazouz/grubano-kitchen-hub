@@ -37,7 +37,7 @@ const { stripeMock } = vi.hoisted(() => ({
 }))
 vi.mock('@/lib/stripe', () => ({ getStripe: () => stripeMock }))
 
-import { attributeClaimRefund, adoptStripeRefundForClaim, resolveStuckClaim, recoverStrandedClaimReconciliations, arbitrateClaim, markClaimsForRevertedRefundRow, reverifySettledClaimRefunds } from '@/lib/claims'
+import { attributeClaimRefund, adoptStripeRefundForClaim, resolveStuckClaim, recoverStrandedClaimReconciliations, arbitrateClaim, triggerClaimRefund, markClaimsForRevertedRefundRow, reverifySettledClaimRefunds } from '@/lib/claims'
 import { POST as RECONCILE } from '@/app/api/admin/claims/[id]/reconcile/route'
 import { POST as CLOSURE_NOTICE } from '@/app/api/admin/claims/[id]/closure-notice/route'
 import { MARKERS } from '@/lib/claim-action-rules'
@@ -228,18 +228,32 @@ describe('J-M49 — the call graph of reconcileClaimEvidence reaches none of the
     expect(engineReach(injected)).toEqual(['reconcileNoRowByDerivation: executeRefund('])
   })
 
-  it('NEGATIVE CONTROL — the spy works: a gated approval of an A-S01 payable proof past its instant is the ONE path that reaches executeRefund', async () => {
-    // W3 round-1 fix: driven through arbitrateClaim — the function POST /api/admin/claims/[id]/arbitrate calls — so the
-    // D14 / C4 refusal, the decision CAS and the REFUNDS lease are part of the proof, not only triggerClaimRefund.
+  it('NEGATIVE CONTROL — the spy works: the DIRECT triggerClaimRefund on an A-S01 payable proof past its instant is the ONE path that reaches executeRefund (the L5 rail’s entry point); the approval before it reaches nothing (D′ L2)', async () => {
+    // W3 round-1 fix, re-scoped by D′ L2 (spec v2 S-02, R13 v1.1 E-10): arbitrateClaim — the function POST
+    // /api/admin/claims/[id]/arbitrate calls — is a DECISION only. It is still driven here so the D14 / C4 refusal and the
+    // decision CAS stay part of the proof, but the engine is reached only by the direct triggerClaimRefund that follows (the
+    // T1 C4 instant check and the REFUNDS lease live there).
     setWorld('A-S01', 'lock')
     claimOf(w).refundError = `${MARKERS.PROOF_PAYABLE_V13} … Elle est payable au plus tôt le ${new Date(Date.now() + 3_600_000).toISOString()} (UTC).`
-    // before its instant the same approval is refused (C4) and reaches nothing
+    // before its instant the same approval is refused (C4) and reaches nothing — and so does the direct rail step (T1 C4)
     expect(await arbitrateClaim({ claimId: 'cl1', adminId: 'op1', decision: 'approve' })).toMatchObject({ ok: false, status: 409 })
+    expect(engine.executeRefund).not.toHaveBeenCalled()
+    expect(await triggerClaimRefund('cl1')).toEqual({ state: 'already_handled' })
     expect(engine.executeRefund).not.toHaveBeenCalled()
     setWorld('A-S01', 'lock')
     claimOf(w).refundError = `${MARKERS.PROOF_PAYABLE_V13} … Elle est payable au plus tôt le ${new Date(Date.now() - 60_000).toISOString()} (UTC).`
+    const leaseReadsBefore = engine.isRefundsEnabled.mock.calls.length // the direct rail step above read it once (T1), the decision never does
     const r = await arbitrateClaim({ claimId: 'cl1', adminId: 'op1', decision: 'approve' })
     expect(r.ok).toBe(true)
+    // D′ L2 DIFFERENTIAL: the won decision (a ratification) reaches nothing, carries no refund field, starts no attempt
+    expect(r).not.toHaveProperty('refund')
+    expect(engine.executeRefund).not.toHaveBeenCalled()
+    expect(engine.isRefundsEnabled).toHaveBeenCalledTimes(leaseReadsBefore)
+    expect(claimOf(w)).toMatchObject({ status: 'approved', refundAttempted: false, refundId: null })
+    expect(String(claimOf(w).refundError).startsWith(MARKERS.PROOF_PAYABLE_V13)).toBe(true)
+    // the ONE path: the direct rail step → T1 admits the v13 past its instant → T2 re-derives payable → the engine, once
+    expect(await triggerClaimRefund('cl1')).toMatchObject({ state: 'refunded', refundId: 'rf_new' })
     expect(engine.executeRefund).toHaveBeenCalledTimes(1)
+    expect(engine.executeRefund.mock.calls[0][0]).toMatchObject({ reason: 'claim:cl1', amountCents: 500 })
   })
 })

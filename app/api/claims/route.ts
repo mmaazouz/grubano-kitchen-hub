@@ -8,7 +8,7 @@ import {
 } from '@/lib/claims'
 import { ALLOWED_IMAGE_TYPES } from '@/lib/dish-photo'
 import { rateLimit } from '@/lib/rate-limit'
-import { sendClaimAckEmail, sendClaimDecisionEmail } from '@/lib/claim-emails'
+import { sendClaimAckEmail } from '@/lib/claim-emails'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -79,11 +79,13 @@ export async function POST(req: NextRequest) {
     photoUrl,
   })
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
-  // C2 auto-resolution — a small, obvious claim from a non-flagged consumer is approved
-  // immediately (→ engine refund). NO-OP for non-small/flagged → exactly the C1 flow.
-  // The client refetches eligibility right after, so it sees the resolved status.
-  // The canonical reason travels with it: safety reports are excluded from the machine path.
+  // C2 auto-resolution — INERT BY CONSTRUCTION under D′ (L2, S-13): autoResolveSmallClaim returns
+  // { state:'not_eligible' } unconditionally, so no product flag can reach a machine approval through this
+  // route. The call is kept so the pin « the route consults it and it approves nothing » stays testable.
+  // (Pinned by tests/claims-dprime-l2-approve-decision-only.test.ts: the function is inert, the route sends no
+  // decision e-mail from it, and no machine writer of status='approved' exists.)
   const auto = await autoResolveSmallClaim(result.claim as { id: string; consumerId: string; requestedAmountCents: number; status: string; reason?: string | null })
+  void auto
 
   // ── T43 (vague 3) — accusé de réception au CLIENT, post-succès, BEST-EFFORT ──
   // Additif : la création/l'auto-résolution ci-dessus sont INTOUCHÉES ; un échec
@@ -99,23 +101,7 @@ export async function POST(req: NextRequest) {
       // ROUND 13 (H02, R-D7): the lease read at send time — one that closed since the entry gate skips the e-mail.
       claimsOpen:           isClaimsEnabled(),
     })
-    // Revue T43 : le chemin de décision MACHINE auto_small (config post-pilote
-    // CLAIM_AUTO_RESOLVE_ENABLED + plafond) n'envoyait AUCUN email — l'ack aurait
-    // menti (« vous serez informé de la décision »). On lit le RÉSULTAT de
-    // l'auto-résolution déjà jouée (rien n'est re-déclenché) : remboursée →
-    // claim_decision_refunded ; approuvée sans émission → claim_decision_approved.
-    // En config bêta (flag OFF), auto.state = 'not_eligible' → aucun envoi.
-    if (auto.state === 'refunded' || auto.state === 'pending') {
-      await sendClaimDecisionEmail({
-        claimId:       c.id,
-        consumerId:    c.consumerId,
-        orderId:       c.orderId,
-        decision:      auto.state === 'refunded' ? 'refunded' : 'approved',
-        // Email truthfulness hotfix (2026-09-06): ENGINE amount, never the requested amount.
-        refundedCents: auto.state === 'refunded' ? auto.amountCents : null,
-        claimsOpen:    isClaimsEnabled(),
-      })
-    }
+    // D′ L2: the former auto_small decision e-mail branch is gone with the machine approval path (S-02).
   }
 
   // photoAccepted:false is EXPLICIT: beta stores no evidence photo, and the client must

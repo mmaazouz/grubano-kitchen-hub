@@ -10,11 +10,12 @@ import { refusalEmailKind, type ClaimFacts } from '@/lib/claim-action-rules'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-// ── POST /api/admin/claims/[id]/arbitrate (P4.5-C2) ───────────────────────────────
-// A NEUTRAL Grubano admin (never the resto, never the client) decides a contested
-// claim: approve → the SAME idempotent engine refund (≤1 per claim) / refuse_final →
-// terminal, no refund. Gated by CLAIMS_ENABLED. ADMIN-ONLY (resolveAdmin: role set re-read from the DB). The
-// real refund still moves money only when REFUNDS_ENABLED is ON (else 'approved' pending).
+// ── POST /api/admin/claims/[id]/arbitrate (P4.5-C2 · D′ L2) ───────────────────────
+// A NEUTRAL Grubano admin (never the resto, never the client) decides a contested claim:
+// approve → the BUSINESS DECISION only (APPROVED_AWAITING_PAYMENT — spec v2 T-07/T-08, S-02):
+// this route NEVER calls the refund engine, whatever the REFUNDS lease says; the financial rail
+// (POST /api/admin/claims/pay-approved, admin session, REFUNDS lease) pays later. refuse_final →
+// terminal, no refund. Gated by CLAIMS_ENABLED. ADMIN-ONLY (resolveAdmin: role set re-read from the DB).
 const bodySchema = z.object({
   decision: z.enum(['approve', 'refuse_final']),
   reason:   z.string().max(1000).optional(),
@@ -51,34 +52,35 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     action:     'claim.arbitrate',
     targetType: 'claim',
     targetId:   params.id,
-    metadata:   { decision: parsed.data.decision, refunded: result.refund != null },
+    // D′ L2: the audit states the truth — an arbitration never moves money (S-02).
+    metadata:   { decision: parsed.data.decision, moneyMoved: false },
     req,
   })
 
-  // ── T43 (vague 3) + ROUND 13 (H03) — the decision e-mail, post-success, best-effort: the decision, the engine and the
+  // ── T43 (vague 3) + ROUND 13 (H03) + D′ L2 — the decision e-mail, post-success, best-effort: the decision and the
   // transition are already played; an e-mail failure changes nothing in the response.
   // Kind by provenance: a refuse_final is « Refus confirmé » (refused_final) only when the restaurant itself refused on
-  // record, otherwise refused_by_grubano. 'refunded' is sent only when triggerClaimRefund returned state 'refunded'
-  // (engine ok, T3 'ours', T4 CAS count 1), with the ENGINE's amount (never the requested amount). Every other approval —
-  // attempt_superseded, identity_unverified, resume_mismatch, 202 pending, every T2 outcome — sends claim_decision_approved,
-  // which states only the approval the arbitrate CAS wrote. The lease is read at send time (R-D7): one that closed since
-  // the entry gate skips the e-mail as claims_disabled. Idempotent (dedupeKey claim:<id>).
+  // record, otherwise refused_by_grubano. An approve ALWAYS sends claim_decision_approved (the decision the CAS wrote,
+  // no amount, no promise): 'refunded' is never sent from here any more — it belongs to the financial rail, on the
+  // ENGINE's amount (D′ L5). The lease is read at send time (R-D7): one that closed since the entry gate skips the
+  // e-mail as claims_disabled. Idempotent (dedupeKey claim:<id>).
   const c = result.claim as { id: string; consumerId: string; orderId: string }
-  const refunded = result.refund?.state === 'refunded'
   let customerEmail: ClaimEmailResult
   try {
     customerEmail = await sendClaimDecisionEmail({
       claimId:       c.id,
       consumerId:    c.consumerId,
       orderId:       c.orderId,
-      decision:      parsed.data.decision === 'refuse_final' ? refusalEmailKind(result.claim as ClaimFacts | null) : (refunded ? 'refunded' : 'approved'),
+      decision:      parsed.data.decision === 'refuse_final' ? refusalEmailKind(result.claim as ClaimFacts | null) : 'approved',
       reason:        parsed.data.reason ?? null,
-      refundedCents: refunded && result.refund?.state === 'refunded' ? result.refund.amountCents : null,
+      refundedCents: null,
       claimsOpen:    isClaimsEnabled(),
     })
   } catch {
     customerEmail = { status: 'failed', why: 'sender_error' }
   }
 
-  return NextResponse.json({ claim: result.claim, refund: result.refund ?? null, customerEmail })
+  // D′ L2: no refund field — this route moves no money and reports none (S-02). The console's approve toast is the
+  // nominal approvedNotSent (F13 v1.1).
+  return NextResponse.json({ claim: result.claim, customerEmail })
 }

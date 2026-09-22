@@ -8,7 +8,6 @@ import { useState, useEffect, useCallback } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
 import { Button, Badge, EmptyState, useToast } from '@/components/design-system'
 import { formatEuros } from '@/lib/format-money'
-import { approvalToast } from '@/lib/claim-approval-toast'
 // ROUND 13 (H07, H11): the customer e-mail result of a decision or a declaration, as a toast.
 import { customerEmailLine } from '@/lib/claim-email-toast'
 
@@ -107,23 +106,13 @@ export default function AdminClaimsArbitration({ initial }: { initial?: { claims
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) { toast.error(data.error || t('admin.processing')); return }
-      // AUDIT FIX (batch 2): this used to assert "remboursement déclenché" on EVERY approval —
-      // including the ordinary case where the refund rail is closed and nothing moves, and the
-      // RESUME-FIRST case where the engine ended on a refund that is not this claim's (money may
-      // have moved for somebody else, or may still be pending) but reports 'failed'. The mapping is
-      // a pure function in lib/claim-approval-toast so it is tested, not re-derived here.
+      // D′ L2 (spec v2 S-02, F13 v1.1): an approval is a DECISION and moves no money — the route returns no
+      // engine outcome any more, so the only honest toast is the nominal « décision enregistrée, aucun
+      // remboursement lancé par cette action ». The rail (D′ L5) reports its own per-claim outcomes.
       if (decision !== 'approve') {
         toast.success(t('admin.refusedFinalDone'))
       } else {
-        const m = approvalToast((data as { refund?: { state?: string; amountCents?: number; error?: string; reason?: string; until?: string } }).refund)
-        const text = m.key === 'approvedRefunded'
-          ? t('admin.approvedRefunded', { amount: formatEuros(m.amountCents / 100, locale) })
-          // ROUND 13 (F12): the date from which a conclusion is possible is the server's `until`.
-          : m.key === 'approvedNotSentUntil'
-            ? t('admin.approvedNotSentUntil', { date: new Date(m.until).toLocaleString(locale) })
-            : t(`admin.${m.key}`)
-        if (m.tone === 'error') toast.error(text)
-        else toast.success(text)
+        toast.success(t('admin.approvedNotSent'))
       }
       // ROUND 13 (H07, H11): what happened to the customer e-mail of this decision.
       const e = customerEmailLine((data as { customerEmail?: { status?: string; why?: string } | null }).customerEmail)

@@ -43,5 +43,17 @@ Staging au moment de la mesure : `version.json` = `dab754de25ad024ea41b4b81220f4
 - Docs périmées : `CLAUDE.md` §7/§9/§10 (`prisma-push.sh`), `docs/ops/redeploiement.md`, `docs/ops/PHASE1-STAGING-PROCEDURE.md` (artefact SQL non livré), `docs/ops/CLAIMS-DELTA-CHECK-2026-09-07.md` (population legacy mesurée vide), commentaire d'en-tête `app/api/orders/[id]/status/route.ts` (« any state → cancelled » faux). `prisma/schema.prisma:2107/2249` : différé à L3b (aucune modification de schema.prisma avant L3b).
 - `package.json` : script `typecheck`.
 
+## L0 — déployé
+Commit `b5ff49c4d924c79cd3a3c2d629960a52e464c663` ; CI staging run 35760935576 = success ; `https://app.grubano.com/version.json` → `b5ff49c` (buildDate 2026-09-22T17:35:57Z). Docs seulement : 0 changement de comportement.
+
+## L2 — approve = décision métier seule (S-02/S-03/S-13, D1 v1.1)
+**Périmètre livré** : `arbitrateClaim(approve)` n'appelle plus ni `triggerClaimRefund` ni `executeRefund` (0 alerte « refunds_disabled », plus de champ `refund` dans la réponse, audit `moneyMoved:false`, e-mail `claim_decision_approved` sans montant) ; ratification d'une approuvée non payée sans réécriture des décisions (S-06) ; `approveClaim` supprimé ; balayage → `routeClaimToArbitration` (jamais d'approbation machine, étape 2 supprimée) ; `autoResolveSmallClaim` inerte ; cause `refunds_disabled` retirée ; table des sorties v1.1 (`ratify` / `withdraw`+`pay`, `APPROVE_ALREADY_SET`) ; copies v1.1 (AM-B3, C4/D14, F15, G8, F14 `said.*`, T-56) sans « approuvez-la à nouveau » / « nouvelle approbation » / « sera payée » ; toast nominal `approvedNotSent` ×5, clé morte `admin.approved` supprimée ×5. `lib/refund.ts` intact (SHA épinglé vert). 0 schéma, 0 flag.
+
+**Preuves** : `tests/claims-dprime-l2-approve-decision-only.test.ts` 15/15 (moteur RÉEL derrière un espion, 2 baux OUVERTS : approve → 0 executeRefund / 0 refunds.create / 0 ligne Refund ; contrôle négatif : `triggerClaimRefund` à la main → 1/1/1, réclamation `refunded`). 90 pins hérités inversés dans 23 fichiers, chacun avec contrôle négatif prouvant que l'ancien comportement (appel moteur inline après le CAS, étape 2 du balayage, copie v1) serait rouge. Suite complète : **465 fichiers / 6227 tests verts** (11 skipped, 17 todo — préexistants). `tsc` : 39 = 39 (baseline dab754d, 0 nouvelle erreur, 0 erreur produit). `next lint` 0 ; `check:i18n` 5/5 complètes ; `check:flags` OK ; build à froid OK.
+
+**Constats de la revue (groupe B) corrigés dans le même lot** : (1) la première rédaction v1.1 de AM-B3 / `APPROVE_ALREADY_SET` promettait « elle sera payée par le rail financier » — phrase interdite par le pin gelé J-M31 → « elle relève du rail financier » (amendement R13 corrigé et tracé, J-M31 inchangé) ; (2) `said.no_refund_proven` / `said.no_refund_proven_rail_locked` (lib/claim-console-copy.ts) et le texte T-56 (`deadText`) nommaient encore « une nouvelle approbation » comme voie de paiement → rail financier (amendement v1.1 F14 tracé, valeurs v1 conservées) ; le scan statique L2 couvre désormais TOUTES les sources de copie réclamations + messages ×5 (commentaires exclus).
+
+**Écarts de spec** : aucun sur spec v2. Sur R13 v1.1 : correction de wording AM-B3 (J-M31) et F13 (le toast livré est plus long que l'échantillon de l'amendement ; spec v2 §7 n'impose que « réécrit ») — tous deux tracés dans le bloc « v1.1 AMENDMENTS ».
+
 ## Lots suivants
 (complété lot par lot : SHA, preuves, CI, SHA déployé)

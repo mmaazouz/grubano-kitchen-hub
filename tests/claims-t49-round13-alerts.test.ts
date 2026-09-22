@@ -49,10 +49,12 @@ const spy = sendAdminMoneyReviewAlert as unknown as ReturnType<typeof vi.fn>
 type Alert = { kind: string; dedupeKey: string; title: string; facts: Record<string, unknown> }
 const calls = (kind: string): Alert[] => (spy.mock.calls as Array<[Alert]>).map((c) => c[0]).filter((a) => a.kind === kind)
 const BLOCKED_KEYS = ['claimId', 'orderId', 'claimStatusAfter', 'cause', 'refundRowIds', 'stripeRefundIds', 'firstEngineRefusal', 'holds', 'routed', 'exits', 'engineCalled', 'registry']
+// D′ L2 (spec v2 C14, R13 v1.1 I-01): 'refunds_disabled' is no longer a cause — « approved, unpaid » is the normal state
+// APPROVED_AWAITING_PAYMENT, and an approval never reads the REFUNDS lease. The closed enum below is ClaimBlockedCause verbatim.
 const CAUSES = [
   'no_refund_proven:v13:', 'no_refund_proven_rail_locked:awaiting_finalization:', 'no_refund_proven_rail_locked:', 'safety_hold', 'safety_check_unreadable',
   'unconfirmed_within_window', 'own_row_exists', 'resume_mismatch', 'identity_unverified', 'engine_own_row', 'engine_failed', 'stripe_failed',
-  'engine_row_dead', 'stripe_reverted', 'reverted_after_refund', 'refunds_disabled', 'attempt_crashed',
+  'engine_row_dead', 'stripe_reverted', 'reverted_after_refund', 'attempt_crashed',
 ]
 
 let w: World
@@ -337,7 +339,18 @@ describe('I-01 title — certification audit c32d8d3 and targeted re-audit of 24
     expect(titleViolation({ title: CLAIM_BLOCKED_TITLE, facts: { cause: 'safety_check_unreadable', engineCalled: false } }, true)).not.toBeNull()
     // A fixture that declares the frozen title where the alert facts forbid it is itself caught.
     expect(titleViolation({ title: CLAIM_BLOCKED_TITLE, facts: { cause: 'engine_failed', engineCalled: true } }, false)).not.toBeNull()
-    expect(titleViolation({ title: CLAIM_BLOCKED_OUTCOME_UNKNOWN_TITLE, facts: { cause: 'refunds_disabled', engineCalled: false } }, false)).not.toBeNull()
+    expect(titleViolation({ title: CLAIM_BLOCKED_OUTCOME_UNKNOWN_TITLE, facts: { cause: 'unconfirmed_within_window', engineCalled: false } }, false)).not.toBeNull()
+  })
+
+  it('D′ L2 (C14): the closed cause enum no longer carries refunds_disabled (source pin + the list above is the enum verbatim)', () => {
+    const src = stripComments(read('lib/claims.ts'))
+    const enumBlock = src.slice(src.indexOf('export type ClaimBlockedCause'), src.indexOf('export const CLAIM_BLOCKED_TITLE'))
+    expect(enumBlock).toBeTruthy()
+    expect(enumBlock).not.toMatch(/'refunds_disabled'/)
+    const declared = Array.from(enumBlock.matchAll(/'([^']+)'/g)).map((m) => m[1]).sort()
+    expect(declared).toEqual([...CAUSES].sort())
+    // NEGATIVE CONTROL — the dab754d enum line is caught
+    expect("| 'reverted_after_refund' | 'refunds_disabled' | 'attempt_crashed'").toMatch(/'refunds_disabled'/)
   })
 })
 
@@ -410,52 +423,116 @@ describe('J-M52 / J-C39 — claim_payment_blocked after a won CAS only (I-01)', 
     })
   }
 
-  it('refunds_disabled from arbitrateClaim: after the decision CAS, facts approved / engineCalled false / E-10; a lost decision CAS → 409, no trigger, no alert', async () => {
-    refundsFlag.mockReturnValue(false)
-    Object.assign(claimOf(w), { status: 'arbitration', arbitrationDecision: null })
-    const out = await arbitrateClaim({ claimId: 'cl1', adminId: 'admin1', decision: 'approve' })
-    expect(out).toMatchObject({ ok: true, refund: { state: 'pending', reason: 'refunds_disabled' } })
-    expectBlocked('refunds_disabled', { status: 'approved', engineCalled: false, registry: 'E-10' })
-    const a = calls('claim_payment_blocked')[0]
-    expect(a.facts.firstEngineRefusal).toBeNull()
-    expect(a.facts.exits).toBe('approve (réclamations+remboursements ouverts)')
-    expect(w.writes.filter((x) => String(x.data.refundError ?? '').startsWith('reconcile_required'))).toEqual([])
+  // ── D′ L2 (spec v2 T-07/T-08, S-02; R13 v1.1 E-10): approve is a DECISION ONLY ───────────────────────────────────
+  // dab754d's arbitrateClaim called triggerClaimRefund right after its decision CAS and, with the rail closed, sent a
+  // « refunds_disabled » claim_payment_blocked alert. Under D′ the approval reaches nothing: no REFUNDS read, no engine,
+  // no alert, no `refund` field — whatever the lease says. APPROVED_AWAITING_PAYMENT is the normal state (E-10).
+  for (const rail of [false, true]) {
+    it(`D′ L2: arbitrateClaim approve with the rail ${rail ? 'OPEN' : 'CLOSED'} → the decision CAS only; no refund field, no REFUNDS read, no engine, no alert; a lost decision CAS → 409, no trigger, no alert`, async () => {
+      refundsFlag.mockReturnValue(rail)
+      Object.assign(claimOf(w), { status: 'arbitration', arbitrationDecision: null })
+      const out = await arbitrateClaim({ claimId: 'cl1', adminId: 'admin1', decision: 'approve' })
+      expect(out).toMatchObject({ ok: true })
+      expect(out).not.toHaveProperty('refund')
+      expect(claimOf(w)).toMatchObject({ status: 'approved', arbitrationDecision: 'approved', arbitratedBy: 'admin1', refundAttempted: false, refundId: null, refundError: null })
+      expect(refundsFlag).not.toHaveBeenCalled()      // the lease is never read by an approval
+      expect(execMock).not.toHaveBeenCalled()
+      expect(calls('claim_payment_blocked')).toEqual([])
+      expect(spy).not.toHaveBeenCalled()
+      expect(w.writes.filter((x) => String(x.data.refundError ?? '').startsWith('reconcile_required'))).toEqual([])  // T1 never ran
+      expect(w.writes).toHaveLength(1)                 // exactly the decision CAS
 
+      spy.mockClear()
+      w = payableWorld({ status: 'arbitration', arbitrationDecision: null })
+      wireWorld(w, db, stripeMock)
+      w.beforeClaimWrite = (n) => { if (n === 1) claimOf(w).arbitrationDecision = 'approved' }
+      expect(await arbitrateClaim({ claimId: 'cl1', adminId: 'admin1', decision: 'approve' })).toEqual({ ok: false, status: 409, error: 'Cette réclamation a déjà été arbitrée.' })
+      expect(refundsFlag).not.toHaveBeenCalled()
+      expect(execMock).not.toHaveBeenCalled()
+      expect(calls('claim_payment_blocked')).toEqual([])
+    })
+  }
+
+  it('NEGATIVE CONTROL (D′ L2) — the same approved claim IS driven when triggerClaimRefund is called directly: rail closed → {pending, refunds_disabled} with NO alert (E-10 is not an incident); rail open → the engine once', async () => {
+    Object.assign(claimOf(w), { status: 'arbitration', arbitrationDecision: null })
+    expect((await arbitrateClaim({ claimId: 'cl1', adminId: 'admin1', decision: 'approve' })).ok).toBe(true)
+    refundsFlag.mockReturnValue(false)
+    expect(await triggerClaimRefund('cl1')).toEqual({ state: 'pending', reason: 'refunds_disabled' })
+    expect(refundsFlag).toHaveBeenCalledTimes(1)      // the direct call reads the lease; the approval above did not
+    expect(calls('claim_payment_blocked')).toEqual([])
+    expect(claimOf(w)).toMatchObject({ status: 'approved', refundAttempted: false, refundId: null, refundError: null })
+    refundsFlag.mockReturnValue(true)
+    expect(await triggerClaimRefund('cl1')).toMatchObject({ state: 'refunded', refundId: 'rf_new' })
+    expect(execMock).toHaveBeenCalledTimes(1)
+    expect(execMock.mock.calls[0][0]).toMatchObject({ reason: 'claim:cl1', amountCents: 500 })
+  })
+
+  it('a rejecting sender does not fail the T2 write nor change triggerClaimRefund\'s result (the only path that still alerts); arbitrateClaim never calls the sender at all', async () => {
+    // T2 (c): a disputed charge → safety hold written by CAS, then ONE alert whose sender rejects.
+    w.pis.pi_1.latest_charge.disputed = true
+    spy.mockRejectedValueOnce(new Error('smtp down'))
+    const out = await triggerClaimRefund('cl1')
+    expect(out).toEqual({ state: 'failed', error: 'safety_hold' })
+    expect(claimOf(w)).toMatchObject({ status: 'approved', refundAttempted: true })
+    expect(String(claimOf(w).refundError).startsWith(MARKERS.SAFETY_HOLD)).toBe(true)
+    expect(spy).toHaveBeenCalledTimes(1)
+    expect(execMock).not.toHaveBeenCalled()
+    // D′ L2: the approval path has no sender to reject — a rejecting sender cannot touch it because it is never invoked.
     spy.mockClear()
     w = payableWorld({ status: 'arbitration', arbitrationDecision: null })
     wireWorld(w, db, stripeMock)
-    w.beforeClaimWrite = (n) => { if (n === 1) claimOf(w).arbitrationDecision = 'approved' }
-    expect(await arbitrateClaim({ claimId: 'cl1', adminId: 'admin1', decision: 'approve' })).toEqual({ ok: false, status: 409, error: 'Cette réclamation a déjà été arbitrée.' })
-    expect(calls('claim_payment_blocked')).toEqual([])
-  })
-
-  it('a rejecting sender does not fail the write nor change arbitrateClaim\'s result', async () => {
-    refundsFlag.mockReturnValue(false)
-    Object.assign(claimOf(w), { status: 'arbitration', arbitrationDecision: null })
     spy.mockRejectedValueOnce(new Error('smtp down'))
-    const out = await arbitrateClaim({ claimId: 'cl1', adminId: 'admin1', decision: 'approve' })
-    expect(out).toMatchObject({ ok: true, refund: { state: 'pending', reason: 'refunds_disabled' } })
+    expect((await arbitrateClaim({ claimId: 'cl1', adminId: 'admin1', decision: 'approve' })).ok).toBe(true)
     expect(claimOf(w)).toMatchObject({ status: 'approved', arbitrationDecision: 'approved' })
+    expect(spy).not.toHaveBeenCalled()
   })
 
-  it('approveClaim via runClaimAutoApproval with the rail closed: the same alert after its own CAS', async () => {
-    refundsFlag.mockReturnValue(false)
-    Object.assign(claimOf(w), { status: 'restaurant_review', responseDeadlineAt: new Date(Date.now() - HOURS), reason: 'quality', arbitrationDecision: null })
-    await runClaimAutoApproval()
-    expectBlocked('refunds_disabled', { status: 'approved', engineCalled: false, registry: 'E-10' })
-  })
+  // ── D′ L2 (spec v2 S-13; R13 v1.1 D2): the sweep ROUTES, never approves, never pays ─────────────────────────────
+  // dab754d's runClaimAutoApproval approved an expired restaurant_review claim (approveClaim) and drove the engine inline,
+  // alerting « refunds_disabled » with the rail closed. Under D′ it writes {status:'arbitration'} by CAS and nothing else.
+  for (const rail of [false, true]) {
+    it(`D′ L2 sweep with the rail ${rail ? 'OPEN' : 'CLOSED'}: an expired restaurant_review claim is ROUTED to arbitration — never approved, no REFUNDS read, no engine, no alert`, async () => {
+      refundsFlag.mockReturnValue(rail)
+      Object.assign(claimOf(w), { status: 'restaurant_review', responseDeadlineAt: new Date(Date.now() - HOURS), reason: 'quality', arbitrationDecision: null, restaurantResponse: null })
+      const summary = await runClaimAutoApproval()
+      expect(summary).toEqual({ scannedExpired: 1, routedToArbitration: 1, skippedSafety: 0, skippedAlreadyHandled: 0 })
+      expect(claimOf(w)).toMatchObject({ status: 'arbitration', arbitrationDecision: null, restaurantResponse: null, refundAttempted: false, refundId: null, refundError: null })
+      expect(w.writes).toEqual([{ where: { id: 'cl1', status: 'restaurant_review' }, data: { status: 'arbitration' }, count: 1 }])
+      expect(w.writes.some((x) => x.data.status === 'approved')).toBe(false)
+      expect(refundsFlag).not.toHaveBeenCalled()
+      expect(execMock).not.toHaveBeenCalled()
+      expect(calls('claim_payment_blocked')).toEqual([])
+      expect(spy).not.toHaveBeenCalled()
+    })
+  }
 
-  it('approveClaim via runClaimAutoApproval, its restaurant_review CAS lost → already_handled, triggerClaimRefund not reached, no alert', async () => {
+  it('D′ L2 sweep: the restaurant_review CAS lost → skippedAlreadyHandled, one count-0 write, no REFUNDS read, no engine, no alert', async () => {
     refundsFlag.mockReturnValue(false)
     Object.assign(claimOf(w), { status: 'restaurant_review', responseDeadlineAt: new Date(Date.now() - HOURS), reason: 'quality', arbitrationDecision: null })
     // a restaurant answered at the same instant: the claim left restaurant_review before the sweep's CAS
     w.beforeClaimWrite = (n) => { if (n === 1) claimOf(w).status = 'arbitration' }
     const summary = await runClaimAutoApproval()
-    expect(summary.autoApproved).toBe(0)
+    expect(summary).toEqual({ scannedExpired: 1, routedToArbitration: 0, skippedSafety: 0, skippedAlreadyHandled: 1 })
     expect(w.writes.map((x) => x.count)).toEqual([0])
-    // the sweep's own step-2 check is the only REFUNDS read: triggerClaimRefund (which reads it first) was not reached
-    expect(refundsFlag).toHaveBeenCalledTimes(1)
+    // D′ L2: the sweep has no step 2 and no engine call — it never reads the REFUNDS lease (dab754d read it once here)
+    expect(refundsFlag).not.toHaveBeenCalled()
+    expect(execMock).not.toHaveBeenCalled()
     expect(calls('claim_payment_blocked')).toEqual([])
+  })
+
+  it('NEGATIVE CONTROL (D′ L2 sweep) — an approved-unpaid claim beside the expired one is not driven by the sweep (dab754d step 2 would have); the direct triggerClaimRefund on it IS driven exactly once', async () => {
+    refundsFlag.mockReturnValue(true)
+    w.claims.push({ ...claimOf(w), id: 'cl_exp', orderId: 'o2', activeOrderKey: 'o2', status: 'restaurant_review', responseDeadlineAt: new Date(Date.now() - HOURS), reason: 'quality', arbitrationDecision: null })
+    const summary = await runClaimAutoApproval()
+    expect(summary).toEqual({ scannedExpired: 1, routedToArbitration: 1, skippedSafety: 0, skippedAlreadyHandled: 0 })
+    expect(claimOf(w)).toMatchObject({ status: 'approved', refundAttempted: false, refundId: null })
+    expect(execMock).not.toHaveBeenCalled()
+    expect(refundsFlag).not.toHaveBeenCalled()
+    expect(w.writes.filter((x) => x.where.id === 'cl1')).toEqual([])
+    // the rail's only entry point (D′ L5) — called by hand here — does reach the engine on that claim
+    expect(await triggerClaimRefund('cl1')).toMatchObject({ state: 'refunded', refundId: 'rf_new' })
+    expect(execMock).toHaveBeenCalledTimes(1)
+    expect(execMock.mock.calls[0][0]).toMatchObject({ reason: 'claim:cl1' })
   })
 
   it('N8 (D4) × 3 prefixes: a reconcile proof write sends one alert per prefix after its won CAS; a lost CAS sends nothing', async () => {
@@ -553,16 +630,30 @@ describe('J-M52 / J-C39 — claim_payment_blocked after a won CAS only (I-01)', 
     expect((await sendOnceMock.mock.results[2].value).status).toBe('sent')
   })
 
-  it('v13 facts carry quiescenceInstant; facts never carry a customer e-mail or address', async () => {
+  it('v13 facts carry quiescenceInstant; exits per D1 v1.1 (ratify when the amount is not fixed, the time-bound rail pay when it is — never approve); facts never carry a customer e-mail or address', async () => {
     const instant = new Date(Date.now() - 1000)
-    await alertClaimPaymentBlocked('cl1', 'no_refund_proven:v13:', { orderId: 'o1', engineCalled: false, claimAfter: { status: 'approved', refundAttempted: false, refundId: null, refundError: `${MARKERS.PROOF_PAYABLE_V13} ${HEAD_A} … Elle est payable au plus tôt le ${instant.toISOString()} (UTC).` } })
+    const v13 = `${MARKERS.PROOF_PAYABLE_V13} ${HEAD_A} … Elle est payable au plus tôt le ${instant.toISOString()} (UTC).`
+    // amount not fixed (legacy / column not migrated): a ratification is the only decision exit; no money exit is named
+    await alertClaimPaymentBlocked('cl1', 'no_refund_proven:v13:', { orderId: 'o1', engineCalled: false, claimAfter: { status: 'approved', refundAttempted: false, refundId: null, refundError: v13 } })
     const a = calls('claim_payment_blocked')[0]
     expect(a.facts.quiescenceInstant).toBe(instant.toISOString())
-    // W7 fixer (I-01, W2 carry-over): the gated approve exit of a v13 proof states its time bound too.
-    expect(a.facts.exits).toContain(`approve (réclamations+remboursements ouverts, au plus tôt le ${instant.toISOString()} UTC)`)
-    expect(a.facts.exits).not.toContain('approve (réclamations+remboursements ouverts),')
+    expect(a.facts.exits).toBe('ratify, reconcile')
+    expect(a.facts.registry).toBe('E-10')
     expect(Object.keys(a.facts).sort()).toEqual([...BLOCKED_KEYS, 'quiescenceInstant'].sort())
     expect(JSON.stringify(a.facts)).not.toMatch(/@|consumer|email|adresse/i)
+    // amount fixed: the rail pays (W7 fixer carry-over: the v13 pay exit states its time bound too), withdraw reverses
+    spy.mockClear(); sent.clear()
+    await alertClaimPaymentBlocked('cl1', 'no_refund_proven:v13:', { orderId: 'o1', engineCalled: false, claimAfter: { status: 'approved', refundAttempted: false, refundId: null, refundError: v13, approvedAmountCents: 500 } })
+    const b = calls('claim_payment_blocked')[0]
+    expect(b.facts.quiescenceInstant).toBe(instant.toISOString())
+    expect(b.facts.exits).toBe(`withdraw, pay (rail « Payer les approuvées », remboursements ouverts, au plus tôt le ${instant.toISOString()} UTC), reconcile`)
+    expect(b.facts.exits).not.toContain('pay (rail « Payer les approuvées », remboursements ouverts),')
+    // NEGATIVE CONTROL — the dab754d exit shape (a gated re-approval as the money path) is gone from both
+    for (const x of [a, b]) {
+      expect(String(x.facts.exits)).not.toMatch(/approve/)
+      expect(String(x.facts.exits)).not.toContain('réclamations+remboursements ouverts')
+    }
+    expect(JSON.stringify(b.facts)).not.toMatch(/@|consumer|email|adresse/i)
   })
 })
 

@@ -3,11 +3,14 @@ import { updateManyMock } from './support/prisma-where'
 import { Prisma } from '@prisma/client'
 
 // ── P4.5-C2 — lib/claims extensions: auto-resolution, contest, arbitration, abuse ──
-// Reuses the C1 idempotent refund trigger. Prisma + the P4.5-A engine are mocked.
-// P0-27 (vague 1) : l'auto-résolution est désormais FAIL-SAFE — double verrou
-// CLAIM_AUTO_RESOLVE_ENABLED (défaut OFF) + CLAIM_AUTO_APPROVE_MAX_CENTS (défaut 0,
-// mal formée → 0). Les tests positifs du bloc (a) stubbent donc la config post-pilote
-// COMPLÈTE ; le bloc (a-bis) épingle le contrat fail-safe sans configuration.
+// Prisma + the P4.5-A engine are mocked.
+// P0-27 (vague 1) : l'auto-résolution était FAIL-SAFE — double verrou CLAIM_AUTO_RESOLVE_ENABLED
+// (défaut OFF) + CLAIM_AUTO_APPROVE_MAX_CENTS (défaut 0, mal formée → 0).
+// D′ L2 (spec v2 S-02/S-13) : `autoResolveSmallClaim` est INERTE PAR CONSTRUCTION — elle rend
+// { state:'not_eligible' } quelle que soit la config (même la config post-pilote COMPLÈTE), sans lire la
+// base ni le bail, sans écrire, sans moteur. Le bloc (a) l'épingle avec la config la plus permissive ;
+// le bloc (a-bis) garde le parse strict des LECTEURS P0-27 (check-flags/recensement) et prouve qu'ils
+// n'autorisent plus rien. `arbitrateClaim` approve = DÉCISION MÉTIER seule (bloc (c)) : jamais le moteur.
 
 const { db } = vi.hoisted(() => ({
   db: {
@@ -25,7 +28,7 @@ vi.mock('@/lib/refund', () => ({ executeRefund: execMock, isRefundsEnabled: refu
 const { stripeMock } = vi.hoisted(() => ({ stripeMock: { paymentIntents: { retrieve: vi.fn() }, refunds: { list: vi.fn(), retrieve: vi.fn(), create: vi.fn() } } }))
 vi.mock('@/lib/stripe', () => ({ getStripe: () => stripeMock }))
 vi.mock('@/lib/admin-alerts', () => ({ sendAdminMoneyReviewAlert: vi.fn(async () => ({ status: 'sent' })) }))
-import { payableWorld, wireWorld, engineOk } from './support/claims-world'
+import { payableWorld, wireWorld, engineOk, claimOf } from './support/claims-world'
 /** ROUND 13 (C3): T1 → T2 on fresh reads → the engine → T4, driven in an in-memory world. */
 const world = (claim: Record<string, unknown>) => {
   const w = payableWorld(claim)
@@ -36,7 +39,8 @@ const world = (claim: Record<string, unknown>) => {
 
 import {
   autoResolveSmallClaim, contestClaim, arbitrateClaim, isConsumerAbuseFlagged,
-  consumerClaimStats, restaurantRefusalStats,
+  consumerClaimStats, restaurantRefusalStats, triggerClaimRefund,
+  isClaimAutoResolveEnabled, claimAutoApproveMaxCents,
 } from '@/lib/claims'
 
 const fx = { row: null as Record<string, unknown> | null, updateManyCount: 1, recent: 0 }
@@ -72,112 +76,147 @@ beforeEach(() => {
 
 afterEach(() => vi.unstubAllEnvs())
 
-describe('(a) auto-resolution of small claims — config post-pilote EXPLICITE (P0-27)', () => {
-  // Sans ces DEUX stubs, plus rien ne s'auto-résout (contrat épinglé en (a-bis)).
+/** D′ L2: what an inert auto-resolution must leave — no claim read, no abuse read, no write, no lease read, no engine. */
+const expectInert = (r: unknown) => {
+  expect(r).toEqual({ state: 'not_eligible' })
+  expect(db.claim.updateMany).not.toHaveBeenCalled()
+  expect(db.claim.update).not.toHaveBeenCalled()
+  expect(db.claim.findUnique).not.toHaveBeenCalled()
+  expect(db.claim.count).not.toHaveBeenCalled()      // the abuse orientation is not even consulted
+  expect(refundsFlag).not.toHaveBeenCalled()         // nor the REFUNDS lease
+  expect(execMock).not.toHaveBeenCalled()
+}
+
+describe('(a) auto-resolution of small claims — INERT BY CONSTRUCTION even under the config post-pilote EXPLICITE (D′ L2 S-13, ex-P0-27)', () => {
+  // The two stubs that USED to unlock the machine approval: under D′ they unlock nothing.
   beforeEach(() => {
     vi.stubEnv('CLAIM_AUTO_RESOLVE_ENABLED', 'true')
     vi.stubEnv('CLAIM_AUTO_APPROVE_MAX_CENTS', '1000')
   })
 
-  it('≤ ceiling + not flagged → approve + ONE refund', async () => {
-    world({ status: 'restaurant_review', arbitrationDecision: null })
+  it('≤ ceiling + not flagged + REFUNDS on + payable world → not_eligible, ZERO writes, ZERO engine (the old « approve + ONE refund » is gone)', async () => {
+    const w = world({ status: 'restaurant_review', arbitrationDecision: null })
+    expect(isClaimAutoResolveEnabled()).toBe(true)     // the readers DO say « permissive »…
+    expect(claimAutoApproveMaxCents()).toBe(1000)
     const r = await autoResolveSmallClaim({ id: 'cl1', consumerId: 'c1', requestedAmountCents: 500, status: 'restaurant_review' })
-    expect(r).toMatchObject({ state: 'refunded', refundId: 'rf1' })
+    expectInert(r)                                     // …and the function ignores them
+    expect(w.writes).toEqual([])
+    expect(claimOf(w)).toMatchObject({ status: 'restaurant_review', arbitrationDecision: null })
+    expect(claimOf(w).decidedBy).toBeUndefined()      // no 'auto_small' decision was ever written
+  })
+
+  it('NEGATIVE CONTROL — the same world DOES pay when the old machine path (status approved → triggerClaimRefund) is executed by hand: the « 0 engine » above observes the function, not the mocks', async () => {
+    const w = world({ status: 'restaurant_review', arbitrationDecision: null })
+    const r = await autoResolveSmallClaim({ id: 'cl1', consumerId: 'c1', requestedAmountCents: 500, status: 'restaurant_review' })
+    expectInert(r)
+    // what the pre-D′ autoResolveSmallClaim did: a machine approval, then the engine
+    Object.assign(claimOf(w), { status: 'approved', decidedBy: 'auto_small', decidedAt: new Date() })
+    const t = await triggerClaimRefund('cl1')
+    expect(t).toMatchObject({ state: 'refunded', refundId: 'rf1' })
     expect(execMock).toHaveBeenCalledTimes(1)
-    const approved = db.claim.updateMany.mock.calls.find((c) => c[0]?.data?.decidedBy === 'auto_small')
-    expect(approved).toBeTruthy()
+    expect(claimOf(w).status).toBe('refunded')
   })
 
-  it('> ceiling → NOT eligible (normal C1 flow, no refund)', async () => {
+  it('> ceiling → not_eligible (as before — but for no reason the ceiling decides: nothing is read)', async () => {
     const r = await autoResolveSmallClaim({ id: 'cl1', consumerId: 'c1', requestedAmountCents: 5000, status: 'restaurant_review' })
-    expect(r).toEqual({ state: 'not_eligible' })
-    expect(db.claim.updateMany).not.toHaveBeenCalled()
-    expect(execMock).not.toHaveBeenCalled()
+    expectInert(r)
   })
 
-  it('≤ ceiling BUT consumer flagged for abuse → NOT auto (oriented to resto review)', async () => {
+  it('≤ ceiling BUT consumer flagged for abuse → not_eligible (the abuse orientation is not what refuses: it is never read)', async () => {
     fx.recent = 5 // ≥ threshold 3
     const r = await autoResolveSmallClaim({ id: 'cl1', consumerId: 'c1', requestedAmountCents: 500, status: 'restaurant_review' })
-    expect(r).toEqual({ state: 'not_eligible' })
-    expect(execMock).not.toHaveBeenCalled()
+    expectInert(r)
   })
 
-  it('REFUNDS off → small claim approved but refund PENDING (no double, no silent refund)', async () => {
+  it('REFUNDS off → not_eligible, never { pending, refunds_disabled }: no approval is written for a rail to pay later', async () => {
     refundsFlag.mockReturnValue(false)
     const r = await autoResolveSmallClaim({ id: 'cl1', consumerId: 'c1', requestedAmountCents: 500, status: 'restaurant_review' })
-    expect(r).toEqual({ state: 'pending', reason: 'refunds_disabled' })
-    expect(execMock).not.toHaveBeenCalled()
+    expectInert(r)
+  })
+
+  it('a safety reason, an ordinary reason, an absent reason → the same not_eligible: the function has no branch', async () => {
+    for (const reason of ['allergen_safety', 'quality', undefined, null]) {
+      const r = await autoResolveSmallClaim({ id: 'cl1', consumerId: 'c1', requestedAmountCents: 500, status: 'restaurant_review', reason })
+      expectInert(r)
+    }
   })
 })
 
-// ── P0-27 — le contrat FAIL-SAFE : sans config, une réclamation de 5 € ne
-// déclenche RIEN ; une valeur mal formée ne réactive JAMAIS l'auto-remboursement.
-describe('(a-bis) P0-27 — verrou fail-safe de l’auto-résolution', () => {
+// ── P0-27 — les LECTEURS fail-safe restent stricts (check-flags / recensement les lisent encore) ; et sous D′ L2
+// ils n'AUTORISENT plus rien : autoResolveSmallClaim rend not_eligible sans les consulter, config ou pas.
+describe('(a-bis) P0-27 readers stay fail-safe — and authorise nothing (D′ L2: the auto-resolution is inert whatever they return)', () => {
   const smallClaim = { id: 'cl1', consumerId: 'c1', requestedAmountCents: 500, status: 'restaurant_review' }
 
-  it('⭐ SANS AUCUNE configuration (état bêta) : réclamation de 5 € → not_eligible, ZÉRO refund, ZÉRO écriture, et le refus est TRACÉ (console.warn)', async () => {
+  it('⭐ SANS AUCUNE configuration (état bêta) : les lecteurs disent OFF / 0 ; réclamation de 5 € → not_eligible, ZÉRO refund, ZÉRO écriture, et AUCUNE trace de verrou config (le refus n’est plus une décision de config : rien à tracer)', async () => {
     vi.stubEnv('CLAIM_AUTO_RESOLVE_ENABLED', '')     // déterministe même si l'env CI pose la var
     vi.stubEnv('CLAIM_AUTO_APPROVE_MAX_CENTS', '')
+    expect(isClaimAutoResolveEnabled()).toBe(false)
+    expect(claimAutoApproveMaxCents()).toBe(0)
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const r = await autoResolveSmallClaim(smallClaim)
-    expect(r).toEqual({ state: 'not_eligible' })
-    expect(execMock).not.toHaveBeenCalled()
-    expect(db.claim.updateMany).not.toHaveBeenCalled()
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('CLAIM_AUTO_RESOLVE_ENABLED'))
+    expectInert(r)
+    expect(warnSpy).not.toHaveBeenCalled()
     warnSpy.mockRestore()
   })
 
-  it('flag ON mais plafond ABSENT → 0 = désactivé (le verrou n°2 tient seul) ET tracé « config incomplète » (revue : jamais un no-op silencieux)', async () => {
+  it('flag ON mais plafond ABSENT → le lecteur rend 0 (désactivé) ; la fonction reste not_eligible sans lire quoi que ce soit', async () => {
     vi.stubEnv('CLAIM_AUTO_RESOLVE_ENABLED', 'true')
     vi.stubEnv('CLAIM_AUTO_APPROVE_MAX_CENTS', '')
+    expect(isClaimAutoResolveEnabled()).toBe(true)
+    expect(claimAutoApproveMaxCents()).toBe(0)
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const r = await autoResolveSmallClaim(smallClaim)
-    expect(r).toEqual({ state: 'not_eligible' })
-    expect(execMock).not.toHaveBeenCalled()
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('absent/0'))
+    expectInert(r)
+    expect(warnSpy).not.toHaveBeenCalled()
     warnSpy.mockRestore()
   })
 
-  it('flag ON + plafond NON NUMÉRIQUE (« dix-euros ») → 0 tracé, jamais permissif', async () => {
+  it('flag ON + plafond NON NUMÉRIQUE (« dix-euros ») → le LECTEUR rend 0 et le TRACE (« mal formée ») ; la fonction, elle, ne le lit pas', async () => {
     vi.stubEnv('CLAIM_AUTO_RESOLVE_ENABLED', 'true')
     vi.stubEnv('CLAIM_AUTO_APPROVE_MAX_CENTS', 'dix-euros')
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const r = await autoResolveSmallClaim(smallClaim)
-    expect(r).toEqual({ state: 'not_eligible' })
-    expect(execMock).not.toHaveBeenCalled()
+    expect(claimAutoApproveMaxCents()).toBe(0)
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('mal formée'))
+    warnSpy.mockClear()
+    const r = await autoResolveSmallClaim(smallClaim)
+    expectInert(r)
+    expect(warnSpy).not.toHaveBeenCalled()             // no reader ran inside the function
     warnSpy.mockRestore()
   })
 
-  it('flag ON + plafond NÉGATIF (« -1000 ») → rejeté par le parse strict (regex \\d+) → 0, aucun refund', async () => {
+  it('flag ON + plafond NÉGATIF (« -1000 ») → rejeté par le parse strict (regex \\d+) → 0 ; not_eligible, aucun refund', async () => {
     vi.stubEnv('CLAIM_AUTO_RESOLVE_ENABLED', 'true')
     vi.stubEnv('CLAIM_AUTO_APPROVE_MAX_CENTS', '-1000')
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(claimAutoApproveMaxCents()).toBe(0)
     const r = await autoResolveSmallClaim(smallClaim)
-    expect(r).toEqual({ state: 'not_eligible' })
-    expect(execMock).not.toHaveBeenCalled()
+    expectInert(r)
     warnSpy.mockRestore()
   })
 
-  it("flag ON + plafond PARTIELLEMENT numérique (« 1000abc » — parseInt laxiste l'accepterait) → rejeté strict, 0, aucun refund", async () => {
+  it("flag ON + plafond PARTIELLEMENT numérique (« 1000abc » — parseInt laxiste l'accepterait) → rejeté strict, 0 ; not_eligible, aucun refund", async () => {
     vi.stubEnv('CLAIM_AUTO_RESOLVE_ENABLED', 'true')
     vi.stubEnv('CLAIM_AUTO_APPROVE_MAX_CENTS', '1000abc')
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(claimAutoApproveMaxCents()).toBe(0)
     const r = await autoResolveSmallClaim(smallClaim)
-    expect(r).toEqual({ state: 'not_eligible' })
-    expect(execMock).not.toHaveBeenCalled()
+    expectInert(r)
     warnSpy.mockRestore()
   })
 
-  it("seul le string exact 'true' active le verrou n°1 — 'TRUE' et '1' restent OFF", async () => {
+  it("seul le string exact 'true' active le lecteur n°1 — 'TRUE' et '1' restent OFF ; et 'true' lui-même n'autorise rien", async () => {
     vi.stubEnv('CLAIM_AUTO_APPROVE_MAX_CENTS', '1000')
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     for (const v of ['TRUE', '1']) {
       vi.stubEnv('CLAIM_AUTO_RESOLVE_ENABLED', v)
-      const r = await autoResolveSmallClaim(smallClaim)
-      expect(r).toEqual({ state: 'not_eligible' })
+      expect(isClaimAutoResolveEnabled()).toBe(false)
+      expect(await autoResolveSmallClaim(smallClaim)).toEqual({ state: 'not_eligible' })
     }
+    vi.stubEnv('CLAIM_AUTO_RESOLVE_ENABLED', 'true')
+    expect(isClaimAutoResolveEnabled()).toBe(true)
+    expect(await autoResolveSmallClaim(smallClaim)).toEqual({ state: 'not_eligible' })
     expect(execMock).not.toHaveBeenCalled()
+    expect(db.claim.updateMany).not.toHaveBeenCalled()
     warnSpy.mockRestore()
   })
 })
@@ -215,14 +254,30 @@ describe('(b) contest a refusal', () => {
   })
 })
 
-describe('(c) admin arbitration', () => {
-  it('approve → CAS + ONE refund + approved', async () => {
-    world({ status: 'arbitration', arbitrationDecision: null })
+describe('(c) admin arbitration — approve is a DECISION only (D′ L2 S-02/T-07)', () => {
+  it('approve → CAS to approved + NO refund (0 engine, 0 lease read, no refund field): APPROVED_AWAITING_PAYMENT', async () => {
+    const w = world({ status: 'arbitration', arbitrationDecision: null })
     const r = await arbitrateClaim({ claimId: 'cl1', adminId: 'admin1', decision: 'approve' })
     expect(r.ok).toBe(true)
-    expect(execMock).toHaveBeenCalledTimes(1)
+    expect(r).not.toHaveProperty('refund')
+    expect(execMock).not.toHaveBeenCalled()
+    expect(refundsFlag).not.toHaveBeenCalled()
     const approved = db.claim.updateMany.mock.calls.find((c) => c[0]?.data?.arbitrationDecision === 'approved')
     expect(approved?.[0].data).toMatchObject({ status: 'approved', arbitratedBy: 'admin1', decidedBy: 'admin' })
+    expect(db.claim.updateMany).toHaveBeenCalledTimes(1)   // the decision CAS and nothing else (no T1 token)
+    expect(claimOf(w)).toMatchObject({ status: 'approved', arbitrationDecision: 'approved', refundAttempted: false, refundId: null, refundError: null })
+  })
+
+  it('NEGATIVE CONTROL — after that approve, the rail run by hand (triggerClaimRefund) DOES reach the engine once: the approve stopped short of it, the world did not', async () => {
+    const w = world({ status: 'arbitration', arbitrationDecision: null })
+    const r = await arbitrateClaim({ claimId: 'cl1', adminId: 'admin1', decision: 'approve' })
+    expect(r.ok).toBe(true)
+    expect(execMock).not.toHaveBeenCalled()
+    const t = await triggerClaimRefund('cl1')
+    expect(t).toMatchObject({ state: 'refunded', refundId: 'rf1' })
+    expect(execMock).toHaveBeenCalledTimes(1)
+    expect(refundsFlag).toHaveBeenCalledTimes(1)             // the lease is the RAIL's concern
+    expect(claimOf(w)).toMatchObject({ status: 'refunded', refundId: 'rf1' })
   })
 
   it('refuse_final → terminal, NO refund', async () => {

@@ -40,7 +40,7 @@ vi.mock('@/lib/stripe', () => ({ getStripe: () => stripeMock }))
 
 import {
   reconcileClaimEvidence, enterFinancialVerification, listFinancialVerificationClaims,
-  listReconcileRequiredClaims, isStuckResolvable, isReconcileRequired, claimRefundReason, attributeClaimRefund, reconcileMarkerAge, RECONCILE_GRACE_MS, runClaimAutoApproval,
+  listReconcileRequiredClaims, isStuckResolvable, isReconcileRequired, claimRefundReason, attributeClaimRefund, reconcileMarkerAge, RECONCILE_GRACE_MS, runClaimAutoApproval, triggerClaimRefund,
   FINANCIAL_VERIFICATION, RECONCILE_REQUIRED,
   // round 7
   adoptStripeRefundForClaim, reconcileClaimForRefund, isNoRefundProven, NO_REFUND_PROVEN, EXTERNAL_REFUND_KEY_PREFIX,
@@ -668,20 +668,29 @@ describe('the marker the code WRITES is the marker the code can READ', () => {
     // ROUND-4 AUDIT FIX (P1). The previous version called reconcileClaimEvidence, which never
     // writes a marker, then fell through to a hand-typed string — so it asserted its own literal
     // and would NOT have caught the writer/reader divergence it was named after. That divergence
-    // is exactly what shipped in round 2 (the inert regex). This drives the real producer:
-    // runClaimAutoApproval -> approveClaim -> triggerClaimRefund, whose CAS writes the marker.
+    // is exactly what shipped in round 2 (the inert regex). This drives the real producer.
+    // D′ L2 (spec v2 S-02/S-13, R13 v1.1 D2/E-10): the producer used to be reached through
+    // runClaimAutoApproval -> approveClaim -> triggerClaimRefund. approveClaim is deleted and the sweep drives
+    // nothing, so the ONE shipped writer of the marker — T1's attempt CAS inside triggerClaimRefund — is reached by
+    // calling it directly (the L5 rail's entry point). The sweep, run first on the same fixtures, writes no marker.
     refundsFlag.mockReturnValue(true)
-    fx.row = { status: 'restaurant_review', refundAttempted: false, refundId: null, refundError: null }
+    fx.row = { status: 'approved', refundAttempted: false, refundId: null, refundError: null }
     db.claim.findMany.mockImplementation(({ where }: { where: Record<string, unknown> }) =>
-      Promise.resolve(where.status === 'restaurant_review' ? [{ id: 'cl1', reason: 'quality' }] : []))
+      Promise.resolve(where.status === 'restaurant_review' ? [] : where.status === 'approved' ? [{ id: 'cl1', refundError: null }] : []))
     // ROUND 13 (C2): T1 reads the full pre-image before its CAS.
     db.claim.findUnique.mockResolvedValue({ id: 'cl1', orderId: 'o1', status: 'approved', refundAttempted: false, refundId: null, refundError: null, requestedAmountCents: 500 })
     execMock.mockResolvedValue({ ok: false, status: 502, error: 'boom' })
-    await runClaimAutoApproval()
-
-    const markers = db.claim.updateMany.mock.calls
+    const markersWritten = () => db.claim.updateMany.mock.calls
       .map((c) => (c[0].data as { refundError?: unknown }).refundError)
       .filter((v): v is string => typeof v === 'string' && v.startsWith(RECONCILE_REQUIRED))
+    // DIFFERENTIAL (D′ L2): the sweep is no longer a producer — no marker, no T1 read, no engine
+    expect(await runClaimAutoApproval()).toEqual({ scannedExpired: 0, routedToArbitration: 0, skippedSafety: 0, skippedAlreadyHandled: 0 })
+    expect(markersWritten()).toEqual([])
+    expect(db.claim.findUnique).not.toHaveBeenCalled()
+    expect(execMock).not.toHaveBeenCalled()
+
+    await triggerClaimRefund('cl1')
+    const markers = markersWritten()
     // If the producer stopped writing a marker at all, that is itself the regression: fail here
     // rather than quietly substituting a literal, which is what the old version did.
     expect(markers.length).toBeGreaterThan(0)
@@ -713,27 +722,51 @@ describe('the marker the code WRITES is the marker the code can READ', () => {
   })
 })
 
-// ══ ROUND 13 (J-M53, A-S32-*, slice W5 fixer) — the automatic sweep skips a legacy proof of absence ═══════════════════
-describe('J-M53 — A-S32-*: runClaimAutoApproval never drives a legacy (pre-v13) proof of absence', () => {
+// ══ ROUND 13 (J-M53, A-S32-*, slice W5 fixer) → D′ L2 — the automatic sweep reads NO approved-unpaid claim at all ════
+// R13 made the sweep's approved-unpaid pass skip a legacy proof (A-S32-*). D′ L2 (spec v2 S-13, R13 v1.1 D2) deletes
+// that pass: the sweep scans expired restaurant_review claims only. The legacy-proof refusal now lives in T1 alone
+// (triggerClaimRefund, the L5 rail's entry point), which is the only producer the negative control may drive.
+describe('J-M53 — A-S32-* (D′ L2): runClaimAutoApproval never reads, writes or drives an approved-unpaid claim — legacy proof or not', () => {
   const pendingOnly = (refundError: string | null) => ({ where }: { where: Record<string, unknown> }) =>
-    Promise.resolve(where.status === 'approved' && where.refundAttempted === false ? [{ id: 'cl_legacy', refundError }] : [])
+    Promise.resolve(where.status === 'approved' ? [{ id: 'cl_legacy', refundError }] : [])
+  const EMPTY_SWEEP = { scannedExpired: 0, routedToArbitration: 0, skippedSafety: 0, skippedAlreadyHandled: 0 }
 
-  it('REFUNDS open: the approved-unpaid pass reads the legacy proof and skips it — no T1 read, no claim write, no engine', async () => {
+  for (const [label, refundError] of [['a legacy proof', 'no_refund_proven: preuve héritée'], ['no recorded error', null]] as const) {
+    it(`REFUNDS open, approved-unpaid claim with ${label}: the sweep scans restaurant_review only — no approved read, no T1 read, no claim write, no engine, no lease read`, async () => {
+      refundsFlag.mockReturnValue(true)
+      db.claim.findMany.mockImplementation(pendingOnly(refundError))
+      const summary = await runClaimAutoApproval()
+      expect(summary).toEqual(EMPTY_SWEEP)
+      for (const k of ['scannedPending', 'refundsTriggered', 'refundsPending', 'refundsFailed', 'autoApproved']) expect(summary).not.toHaveProperty(k)
+      const scans = (db.claim.findMany.mock.calls as Array<[{ where: Record<string, unknown> }]>).map((c) => c[0].where.status)
+      expect(scans).toEqual(['restaurant_review'])
+      expect(db.claim.findUnique).not.toHaveBeenCalled()
+      expect(db.claim.updateMany).not.toHaveBeenCalled()
+      expect(execMock).not.toHaveBeenCalled()
+      expect(refundsFlag).not.toHaveBeenCalled()
+    })
+  }
+
+  it('NEGATIVE CONTROL — the DIRECT triggerClaimRefund on the same approved-unpaid claim: no recorded error → driven (T1 reads it, CASes, reaches the engine); a legacy proof → refused by T1 after its read, no write, no engine', async () => {
     refundsFlag.mockReturnValue(true)
-    db.claim.findMany.mockImplementation(pendingOnly('no_refund_proven: preuve héritée'))
-    const summary = await runClaimAutoApproval()
-    expect(summary).toMatchObject({ scannedPending: 1, refundsTriggered: 0, refundsPending: 0, refundsFailed: 0 })
-    expect(db.claim.findUnique).not.toHaveBeenCalled()
+    execMock.mockResolvedValue({ ok: false, status: 502, error: 'boom' })
+    // legacy proof: T1 reads the pre-image, refuses before its CAS (A-S32-* lives in T1 now)
+    fx.row = { status: 'approved', refundAttempted: false, refundId: null, refundError: 'no_refund_proven: preuve héritée' }
+    db.claim.findUnique.mockResolvedValue({ id: 'cl_legacy', orderId: 'o1', status: 'approved', refundAttempted: false, refundId: null, refundError: 'no_refund_proven: preuve héritée', requestedAmountCents: 500 })
+    expect(await triggerClaimRefund('cl_legacy')).toEqual({ state: 'already_handled' })
+    expect(db.claim.findUnique).toHaveBeenCalledTimes(1)
     expect(db.claim.updateMany).not.toHaveBeenCalled()
     expect(execMock).not.toHaveBeenCalled()
-  })
-
-  it('NEGATIVE CONTROL — the same approved-unpaid claim with no recorded error IS driven (T1 reads it)', async () => {
-    refundsFlag.mockReturnValue(true)
-    db.claim.findMany.mockImplementation(pendingOnly(null))
-    db.claim.findUnique.mockResolvedValue({ id: 'cl_legacy', orderId: 'o1', status: 'approved', refundAttempted: false, refundId: null, refundError: null, requestedAmountCents: 500 })
-    execMock.mockResolvedValue({ ok: false, status: 502, error: 'boom' })
-    await runClaimAutoApproval()
+    // no recorded error: T1 reads it, wins its CAS, T2 finds the world payable, the engine is reached
+    vi.clearAllMocks()
+    fx.row = { status: 'approved', refundAttempted: false, refundId: null, refundError: null }
+    // T1 and T2 (f) read the claim as the CAS chain left it (the simulated row carries each write)
+    db.claim.findUnique.mockImplementation(async () => ({ id: 'cl_legacy', orderId: 'o1', requestedAmountCents: 500, ...fx.row }))
+    const r = await triggerClaimRefund('cl_legacy')
     expect(db.claim.findUnique).toHaveBeenCalled()
+    expect(db.claim.updateMany).toHaveBeenCalled()
+    expect(execMock).toHaveBeenCalledTimes(1)
+    expect(execMock.mock.calls[0][0]).toMatchObject({ reason: 'claim:cl_legacy', amountCents: 500 })
+    expect(r).toMatchObject({ state: 'failed', error: 'boom' })
   })
 })

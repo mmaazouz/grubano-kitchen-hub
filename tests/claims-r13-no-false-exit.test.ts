@@ -1,14 +1,18 @@
 // tests/claims-r13-no-false-exit.test.ts — T-49 round 13, J-M28 (D1, D2 (1), D14, G9, A-S00)
 //
-// HARD INVARIANT: no exit is offered that the engine would refuse. In the pure layer that reads:
-//   – approve is offered only on a pre-image T2 re-derives (null or a v13 proof), and T2 calls the engine
-//     only when its derivation on the fresh facts is payable — which the mirror says the engine accepts;
-//   – every state whose facts make the engine refuse has approve absent, refused Claims-side (D14), or
-//     blocked by that same T2 derivation (ER-M05: the approved-null states of D1 row 1);
-//   – an empty or gated-only exit set names its registry entry; no refusal text carries a false exit.
-// ROUND 13 (slice W8, W2 carry-over): the last describe runs the full approve path — arbitrateClaim → T1 → T2 → the REAL
-// lib/refund.ts executeRefund — on every J-M01 fixture world, with every pre-image D1 knows, both leases open, and scans
-// every text the run renders (detail, approval toast, refusal, MONEY label, GUIDANCE, customer status, reconcile toast).
+// HARD INVARIANT: no exit is offered that the engine would refuse. D′ L2 (spec v2 T-07/T-08, S-02; R13 v1.1 D1/E-10)
+// split the exits of an approved claim: 'ratify' is a DECISION (amount not fixed — never money, never the engine),
+// 'pay' is the financial rail (amount fixed — the L5 rail runs T1 → T2 → the engine), 'approve' is the decision exit of
+// arbitration / silence-expired claims only. In the pure layer the invariant reads:
+//   – 'approve' is never offered on an approved claim; 'ratify' reaches nothing (the last describe proves it);
+//   – the rail's money path (T1 → T2 → engine) admits only a pre-image T1 re-derives (null or a v13 proof past its
+//     instant), and T2 calls the engine only when its derivation on the fresh facts is payable — which the mirror says
+//     the engine accepts (ER-M05: the approved-null states of D1 row 1 are ratifiable, and T2 blocks before the engine);
+//   – an empty, decision-only or gated-only exit set names its registry entry; no refusal text carries a false exit.
+// ROUND 13 (slice W8, W2 carry-over) → D′ L2: the last describe runs the decision (arbitrateClaim, which reaches NOTHING)
+// and then the rail's money path by hand (the DIRECT triggerClaimRefund → T1 → T2 → the REAL lib/refund.ts executeRefund)
+// on every J-M01 fixture world, with every pre-image D1 knows, both leases open, and scans every text the run renders
+// (detail, decision toast, rail toast, refusal, MONEY label, GUIDANCE, customer status, reconcile toast).
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 
@@ -51,7 +55,7 @@ import {
   HEAD_A, customerClaimStatus, boundRowShowsInProgress, refundedRowTruth,
   type ClaimFacts, type ReapprovalFacts, type MoneyRow, type ExitInput, type Refusal, type BoundRowFacts,
 } from '@/lib/claim-action-rules'
-import { reconcileClaimEvidence, resolveStuckClaim, listActionableRefundClaims, arbitrateClaim } from '@/lib/claims'
+import { reconcileClaimEvidence, resolveStuckClaim, listActionableRefundClaims, arbitrateClaim, triggerClaimRefund } from '@/lib/claims'
 import { approvalToast } from '@/lib/claim-approval-toast'
 import { reconcileToast } from '@/lib/claim-console-copy'
 import { payableWorld, claimOf } from './support/claims-world'
@@ -114,27 +118,42 @@ const FORBIDDEN = ['payable à nouveau', 'à nouveau payable', 'de nouveau payab
 type ExitsFn = (i: ExitInput) => string[]
 type RefusalFn = (c: ClaimFacts, d: 'approve' | 'refuse_final', now: Date) => Refusal | null
 
-const t2Runs = (c: ClaimFacts) => c.refundError === null || (typeof c.refundError === 'string' && c.refundError.startsWith(MARKERS.PROOF_PAYABLE_V13))
-const t2Payable = (s: State) => {
+/** T1 (C2) admits a pre-image only when it is null or a v13 proof (past its instant); every other recorded error is refused there. */
+const t1Admits = (c: ClaimFacts) => c.refundError === null || (typeof c.refundError === 'string' && c.refundError.startsWith(MARKERS.PROOF_PAYABLE_V13))
+const t2Runs = t1Admits
+type T2PayableFn = (s: State) => boolean
+const t2Payable: T2PayableFn = (s) => {
   const o = deriveNoRowOutcome({ readable: true, facts: s.facts }, s.claim.id!)
   return o.kind === 'proof' && o.basis === 'verdict' && o.verdict === 'payable'
 }
+/** D1 v1.1: the money exit of an approved claim is 'pay', offered once its amount is fixed (never in these fixtures as they stand). */
+const withAmount = (c: ClaimFacts): ClaimFacts => ({ ...c, approvedAmountCents: 500 })
+const DECISION_EXITS = ['approve', 'ratify', 'refuse_final']
 
-/** The invariant, as a checker: the empty list means no exit reaches an engine refusal. */
-function violations(s: State, exitsFn: ExitsFn = acceptedExits, refusalFn: RefusalFn = arbitrationRefusal): string[] {
+/**
+ * The invariant, as a checker (D1 v1.1): the empty list means no exit reaches an engine refusal.
+ *   – 'approve' never on an approved claim; 'ratify' is a decision (no money), so no engine condition applies to it;
+ *   – 'pay' (the rail, amount fixed) runs T1 → T2 → the engine: T1 refuses every recorded pre-image but null / v13, and T2
+ *     calls the engine only on a payable derivation — so an engine refusal is reachable only if T2 says payable while the
+ *     mirror says the engine refuses (the one violation), or if 'pay' were offered on a state neither T1 nor T2 blocks.
+ */
+function violations(s: State, exitsFn: ExitsFn = acceptedExits, refusalFn: RefusalFn = arbitrationRefusal, t2PayableFn: T2PayableFn = t2Payable): string[] {
   const out: string[] = []
   const exits = exitsFn({ claim: s.claim, now: NOW })
   const refusal = refusalFn(s.claim, 'approve', NOW)
-  const approvable = exits.includes('approve') && refusal === null
   const engineAccepts = engineRefusalOnReapproval(s.facts) === null
-  if (approvable && !t2Runs(s.claim)) out.push('approve offered on a pre-image T2 does not re-derive')
-  if (approvable && t2Runs(s.claim) && t2Payable(s) && !engineAccepts) out.push('T2 would call an engine that refuses')
-  if (!engineAccepts && exits.includes('approve')) {
-    const claimsSide = !!refusal && (refusal.error === APPROVE_LEGACY_PROOF || refusal.error.startsWith('Approbation impossible') || refusal.error === 'Cette réclamation n’est pas en arbitrage.')
-    const t2Blocks = t2Runs(s.claim) && !t2Payable(s)
-    if (!claimsSide && !t2Blocks) out.push('the engine refuses, and approve is neither refused nor blocked by T2')
+  if (s.claim.status === 'approved' && exits.includes('approve')) out.push('approve offered on an approved claim (D1 v1.1: ratify or pay, never a re-approval)')
+  // the rail's money exit, as the table offers it once the amount is fixed
+  const payOffered = exitsFn({ claim: withAmount(s.claim), now: NOW }).includes('pay')
+  if (payOffered && t1Admits(s.claim) && t2PayableFn(s) && !engineAccepts) out.push('T2 would call an engine that refuses')
+  if (payOffered && !engineAccepts) {
+    const t1Refuses = !t1Admits(s.claim)
+    const t2Blocks = t1Admits(s.claim) && !t2PayableFn(s)
+    if (!t1Refuses && !t2Blocks) out.push('the engine refuses, and pay is neither refused by T1 nor blocked by T2')
   }
-  if (exits.every((x) => x === 'approve' || x === 'refuse_final') && exitRegistry({ claim: s.claim, now: NOW }) === null) out.push('empty or gated-only set without a registry entry')
+  // a ratification with a refusal is the D3 REVISABLE row only (a v13 proof before its instant, refused by the C4 instant text)
+  if (exits.includes('ratify') && refusal !== null && !refusal.error.startsWith('Approbation prématurée')) out.push('ratify offered with a refusal that is not the C4 premature text')
+  if (exits.every((x) => DECISION_EXITS.includes(x)) && exitRegistry({ claim: s.claim, now: NOW }) === null) out.push('empty, decision-only or gated-only set without a registry entry')
   const text = refusal?.error ?? ''
   if (FORBIDDEN.some((p) => text.toLowerCase().includes(p.toLowerCase()))) out.push('forbidden phrase in the refusal')
   return out
@@ -147,22 +166,40 @@ describe('J-M28 — HARD INVARIANT: no exit offered that the engine would refuse
     })
   }
 
-  it('A-S01: approvable past its instant; T2 re-derives payable; the mirrored engine accepts', () => {
+  it('D1 v1.1 — every approved fixture: approve never offered; pay (and withdraw) offered exactly when the amount is fixed, whatever the recorded money state (the rail\'s T1/T2 decide, not the table)', () => {
+    for (const s of PURE_STATES) {
+      expect(acceptedExits({ claim: s.claim, now: NOW }), s.id).not.toContain('approve')
+      expect(acceptedExits({ claim: s.claim, now: NOW }), s.id).not.toContain('pay')
+      const fixed = acceptedExits({ claim: withAmount(s.claim), now: NOW })
+      expect(fixed, s.id).toContain('pay')
+      expect(fixed, s.id).toContain('withdraw')
+      expect(fixed, s.id).not.toContain('ratify')
+      expect(fixed, s.id).not.toContain('approve')
+    }
+  })
+
+  it('A-S01: ratifiable past its instant (a decision, never approve); the rail\'s T2 re-derives payable; the mirrored engine accepts', () => {
     const s = state('A-S01')
-    expect(acceptedExits({ claim: s.claim, now: NOW })).toContain('approve')
+    const exits = acceptedExits({ claim: s.claim, now: NOW })
+    expect(exits).toContain('ratify')
+    expect(exits).not.toContain('approve')
     expect(arbitrationRefusal(s.claim, 'approve', NOW)).toBeNull()
+    expect(t1Admits(s.claim)).toBe(true)
     expect(t2Payable(s)).toBe(true)
     expect(engineRefusalOnReapproval(s.facts)).toBeNull()
   })
 
-  it('A-S01b, A-S03, A-S32-1 and A-S26 are never approvable, at any instant', () => {
+  it('A-S01b, A-S03, A-S32-1 and A-S26 are never approvable nor ratifiable, at any instant; T1 refuses their pre-image', () => {
     for (const id of ['A-S01b', 'A-S03', 'A-S32-1', 'A-S26']) {
       const s = state(id)
       for (const now of [T0, INSTANT, NOW]) {
-        const approvable = acceptedExits({ claim: s.claim, now }).includes('approve') && arbitrationRefusal(s.claim, 'approve', now) === null
-        expect(approvable, `${id} @${now.toISOString()}`).toBe(false)
+        const exits = acceptedExits({ claim: s.claim, now })
+        expect(exits, `${id} @${now.toISOString()}`).not.toContain('approve')
+        expect(exits, `${id} @${now.toISOString()}`).not.toContain('ratify')
+        expect(arbitrationRefusal(s.claim, 'approve', now), `${id} @${now.toISOString()}`).not.toBeNull()
       }
       expect(engineRefusalOnReapproval(s.facts), id).not.toBeNull()
+      expect(t1Admits(s.claim), id).toBe(false)
     }
   })
 
@@ -180,11 +217,16 @@ describe('J-M28 — HARD INVARIANT: no exit offered that the engine would refuse
     expect(arbitrationRefusal(state('A-S10b').claim, 'approve', NOW)?.error).toBe(approveRevisableText(true))
   })
 
-  it('ER-M05: the approved-null and stale-v13 states whose engine refuses are approvable, and T2 blocks before the engine', () => {
+  it('ER-M05 (D1 v1.1): the approved-null and stale-v13 states whose engine refuses are RATIFIABLE (a decision, not a money exit — the engine-refusal invariant does not apply to it), and the rail\'s T2 blocks before the engine', () => {
     for (const id of ['A-S12', 'A-S30e-1', 'A-S38-2']) {
       const s = state(id)
-      expect(acceptedExits({ claim: s.claim, now: NOW }), id).toContain('approve')
+      const exits = acceptedExits({ claim: s.claim, now: NOW })
+      expect(exits, id).toContain('ratify')
+      expect(exits, id).not.toContain('approve')
+      expect(arbitrationRefusal(s.claim, 'approve', NOW), id).toBeNull()
       expect(engineRefusalOnReapproval(s.facts), id).not.toBeNull()
+      // the money path: T1 admits the pre-image (null / v13 past), T2's derivation on the fresh facts is NOT payable → no engine
+      expect(t1Admits(s.claim), id).toBe(true)
       expect(t2Payable(s), id).toBe(false)
     }
     expect(deriveNoRowOutcome({ readable: true, facts: state('A-S12').facts }, 'cl1')).toMatchObject({ kind: 'no_write', outcome: 'unconfirmed_within_window' })
@@ -192,16 +234,24 @@ describe('J-M28 — HARD INVARIANT: no exit offered that the engine would refuse
     expect(deriveNoRowOutcome({ readable: true, facts: state('A-S38-1').facts }, 'cl1')).toMatchObject({ kind: 'park', reason: 'refund_moved_unattributed' })
   })
 
-  it('NEGATIVE CONTROL — the round-12 otherClaimRows fixture (A-S03) with its proof written as v13: approvable, and T2 locks it before the engine', () => {
+  it('NEGATIVE CONTROL — the round-12 otherClaimRows fixture (A-S03) with its proof written as v13: ratifiable (never approve), and the rail\'s T2 locks it before the engine', () => {
     const s: State = { ...state('A-S03'), claim: approved(V13) }
-    expect(acceptedExits({ claim: s.claim, now: NOW })).toContain('approve')
+    const exits = acceptedExits({ claim: s.claim, now: NOW })
+    expect(exits).toContain('ratify')
+    expect(exits).not.toContain('approve')
     expect(arbitrationRefusal(s.claim, 'approve', NOW)).toBeNull()
     const o = deriveNoRowOutcome({ readable: true, facts: s.facts }, 'cl1')
     expect(o).toMatchObject({ kind: 'proof', basis: 'verdict', prefix: 'no_refund_proven_rail_locked:' })
     expect(violations(s)).toEqual([])
   })
 
-  it('BREAK — offering approve on the rail-locked row (D1 row 4) is caught on A-S01b; a « à nouveau payable » refusal is caught too', () => {
+  it('BREAK — the R13 v1.0 table (approve on an approved claim) is caught on every approved fixture; a T2 that called payable on the rail-locked row (A-S01b) is caught; a « à nouveau payable » refusal is caught too', () => {
+    // the v1.0 shape: 'approve' where v1.1 offers 'ratify'
+    const v10Exits: ExitsFn = (i) => acceptedExits(i).map((x) => (x === 'ratify' ? 'approve' : x))
+    for (const id of ['A-S01', 'A-S12', 'A-S30e-1', 'A-S38-2']) {
+      expect(violations(state(id), v10Exits), id).toContain('approve offered on an approved claim (D1 v1.1: ratify or pay, never a re-approval)')
+    }
+    // the dab754d exit shape brought back on the rail-locked row (D1 row 4)
     const exitsMutant: ExitsFn = (i) => {
       const e = acceptedExits(i)
       return typeof i.claim.refundError === 'string' && i.claim.refundError.startsWith('no_refund_proven_rail_locked:') ? ['approve', ...e] : e
@@ -209,6 +259,11 @@ describe('J-M28 — HARD INVARIANT: no exit offered that the engine would refuse
     const refusalMutant: RefusalFn = (c, d, now) =>
       typeof c.refundError === 'string' && c.refundError.startsWith('no_refund_proven_rail_locked:') && d === 'approve' ? null : arbitrationRefusal(c, d, now)
     expect(violations(state('A-S01b'), exitsMutant, refusalMutant)).not.toEqual([])
+    // the money path's guard: a T2 whose derivation ignored the E6 row would send the rail into an engine that refuses
+    const t2Mutant: T2PayableFn = () => true
+    const railLockedV13: State = { ...state('A-S01b'), claim: approved(V13) } // T1 admits a v13 pre-image, so only T2 stands before the engine
+    expect(violations(railLockedV13, acceptedExits, arbitrationRefusal, t2Mutant)).toContain('T2 would call an engine that refuses')
+    expect(violations(railLockedV13)).toEqual([])
     const copyMutant: RefusalFn = (c, d, now) => {
       const r = arbitrationRefusal(c, d, now)
       return r ? { ...r, error: r.error + ' Elle est à nouveau payable.' } : r
@@ -315,6 +370,7 @@ type Row = Record<string, any>
 type Run = {
   state: string
   pre: string
+  /** D1 v1.1: the rail's money exit — 'pay' as the table offers it on the claim the decision left, once its amount is fixed. */
   approvable: boolean
   table: { engine?: EngineAnswer; resume?: ResumeAnswer }
   engineResults: Row[]
@@ -323,14 +379,19 @@ type Run = {
   /** Stripe facts of the world, read before the run: standing refunds on the order's payment, the reported cursor, the page cap. */
   stripe: { standing: number; overCap: boolean }
   texts: string[]
+  /** D′ L2: what the DECISION alone (arbitrateClaim) reached, measured before the rail's step is driven by hand. */
+  decision?: { engine: number; creates: number; token: boolean }
 }
 
 /** J-M28 on one run, as a checker (empty = no exit reached a refusal and no rendered text states an unestablished money truth). */
 function runViolations(run: Run): string[] {
   const out: string[] = []
   const reached = run.engineResults.length > 0
-  if (reached && !run.approvable) out.push('the engine was reached from a state that offers no approve')
-  if (run.engineResults.length > 1) out.push('more than one engine call for one approval')
+  // D′ L2 (S-02): the decision reaches nothing — no engine, no Stripe create, no T1 attempt token
+  if (run.decision && (run.decision.engine > 0 || run.decision.creates > 0)) out.push('arbitrateClaim reached the engine (D′ L2: approve is a decision only)')
+  if (run.decision?.token) out.push('arbitrateClaim wrote a T1 attempt token (D′ L2: the decision never starts an attempt)')
+  if (reached && !run.approvable) out.push('the engine was reached from a state the rail would not offer (no pay exit once the amount is fixed)')
+  if (run.engineResults.length > 1) out.push('more than one engine call for one rail attempt')
   for (const res of run.engineResults) if (!res.ok && res.status !== 202) out.push(`the engine refused (${res.status} « ${res.error} »)`)
   if (reached && run.table.resume) out.push('a resume-first (E3) state reached the engine')
   if (reached && run.table.engine && !run.table.engine.accepts) out.push(`the table says NO (${run.table.engine.step}) and the engine was reached`)
@@ -350,7 +411,7 @@ function runViolations(run: Run): string[] {
   return out
 }
 
-describe('J-M28 — every J-M01 state × every D1 pre-image: arbitrateClaim → T1 → T2 → the REAL executeRefund (both leases open)', () => {
+describe('J-M28 (D′ L2) — every J-M01 state × every D1 pre-image: arbitrateClaim reaches NOTHING; then the DIRECT triggerClaimRefund → T1 → T2 → the REAL executeRefund (both leases open)', () => {
   const FR = JSON.parse(readFileSync('messages/fr.json', 'utf8')) as Row
   const LABELS = consoleMoneyLabels()
   const HOLD_TEXT = `${MARKERS.SAFETY_HOLD} Aucun remboursement n’a été lancé pour cette réclamation : x Décision humaine requise.`
@@ -434,50 +495,64 @@ describe('J-M28 — every J-M01 state × every D1 pre-image: arbitrateClaim → 
     return texts.filter((t) => t !== '')
   }
 
-  async function approveRun(s: StateEntry, pre: string): Promise<Run & { exits: string[]; server: Row }> {
+  const tokenWritten = () => w.writes.some((x) => String(x.data.refundError ?? '').startsWith(MARKERS.RECONCILE_REQUIRED))
+  const DECISION_TOAST = String(FR.claims.admin[approvalToast(undefined).key]) // F13 v1.1: the console's nominal toast on a decision
+
+  /**
+   * D′ L2: the DECISION first (arbitrateClaim — measured to reach nothing), then the rail's money path BY HAND (the direct
+   * triggerClaimRefund, L5's only engine entry point) on the claim the decision left. dab754d ran the second inline after the first.
+   */
+  async function approveRun(s: StateEntry, pre: string): Promise<Run & { exits: string[]; server: Row; rail: Row; decision: NonNullable<Run['decision']> }> {
     setWorld(s, pre)
     const before = { ...claimOf(w) }
     const stripe = stripeFacts(w)
     const now = new Date()
     const boundRow = boundRowOf(before)
     const exits = acceptedExits({ claim: before as ClaimFacts, boundRow, now })
-    const approvable = exits.includes('approve') && arbitrationRefusal({ ...before, boundRow } as ClaimFacts, 'approve', now) === null
     const server = await arbitrateClaim({ claimId: 'cl1', adminId: 'op1', decision: 'approve' })
+    const decision = { engine: engineSpy.fn.mock.calls.length, creates: stripeMock.refunds.create.mock.calls.length, token: tokenWritten() }
+    const afterDecision = { ...claimOf(w) }
+    // D1 v1.1: the rail's exit is 'pay', offered on the claim the decision left once its amount is fixed
+    const approvable = acceptedExits({ claim: { ...afterDecision, approvedAmountCents: 500 } as ClaimFacts, boundRow: boundRowOf(afterDecision), now }).includes('pay')
+    const rail = await triggerClaimRefund('cl1')
     const engineResults = await Promise.all(engineSpy.fn.mock.results.map((x) => x.value as Promise<Row>))
     const creates = stripeMock.refunds.create.mock.calls.length
     const texts = await renderedTexts(before, now)
     if (!server.ok) texts.push(server.error)
-    else {
-      const toast = approvalToast((server as { refund?: Row }).refund as never)
-      texts.push(String(FR.claims.admin[toast.key] ?? ''))
-    }
+    else texts.push(DECISION_TOAST)
+    texts.push(String(FR.claims.admin[approvalToast(rail as never).key] ?? ''))
     const claimAfter = { ...claimOf(w) }
     // the customer reads « Remboursée » only after an engine success on its own row (or when it already did)
     if (texts.includes('[customer:refunded]') && pre !== 'refunded' && !(engineResults[0]?.ok && claimAfter.refundId === engineResults[0].refundId)) texts.push('the customer reads refunded without an engine success')
-    return { state: s.id, pre, approvable, table: { engine: s.engine, resume: s.resume }, engineResults, creates, claimAfter, stripe, texts: texts.filter((t) => !t.startsWith('[customer:')), exits, server }
+    return { state: s.id, pre, approvable, table: { engine: s.engine, resume: s.resume }, engineResults, creates, claimAfter, stripe, texts: texts.filter((t) => !t.startsWith('[customer:')), exits, server, rail, decision }
   }
 
   for (const s of STATES) {
-    it(`${s.id}: every pre-image — the engine is reached only where approve is offered, and then it accepts; every rendered text is true`, async () => {
+    it(`${s.id}: every pre-image — the decision reaches nothing; the rail reaches the engine only where pay is offered, and then it accepts; every rendered text is true`, async () => {
       const found: string[] = []
       for (const pre of Object.keys(PRE)) {
         const run = await approveRun(s, pre)
         for (const v of runViolations(run)) found.push(`${pre}: ${v}`)
         for (const t of run.texts) if (t === 'the customer reads refunded without an engine success') found.push(`${pre}: ${t}`)
-        // (4) an empty or gated-only set names its registry entry
+        // D′ L2 differential: a won decision never carries a refund field, and a refused one leaves the pre-image untouched
+        if (run.server.ok && 'refund' in run.server) found.push(`${pre}: the decision result carries a refund field`)
+        // (4) an empty, decision-only or gated-only set names its registry entry
         const beforeRun = { ...PRE[pre](w.refunds[0]?.id ?? null) }
-        if (run.exits.every((x) => x === 'approve' || x === 'refuse_final') && exitRegistry({ claim: { ...claimOf(payableWorld()), ...beforeRun } as ClaimFacts, boundRow: null, now: new Date() }) === null) {
-          found.push(`${pre}: empty or gated-only set without a registry entry`)
+        if (run.exits.every((x) => DECISION_EXITS.includes(x)) && exitRegistry({ claim: { ...claimOf(payableWorld()), ...beforeRun } as ClaimFacts, boundRow: null, now: new Date() }) === null) {
+          found.push(`${pre}: empty, decision-only or gated-only set without a registry entry`)
         }
       }
       expect(found).toEqual([])
     })
   }
 
-  it('the run is not vacuous: the engine is reached, accepts and creates exactly once on the payable states, and never on a resume-first or NO state', async () => {
+  it('the run is not vacuous: the DIRECT rail step reaches the engine, which accepts and creates exactly once on the payable states, and never on a resume-first or NO state; the decision before it reached nothing every time', async () => {
     const reachedOn: string[] = []
     for (const id of ['A-S01', 'A-S02', 'A-S08b', 'A-S17', 'A-S30d', 'A-S32-2']) {
       const run = await approveRun(stateOf(id), 'approved_null')
+      expect(run.decision, id).toEqual({ engine: 0, creates: 0, token: false })
+      expect(run.server.ok, id).toBe(true)
+      expect(run.rail, id).toMatchObject({ state: 'refunded' })
       expect(run.engineResults, id).toHaveLength(1)
       expect(run.engineResults[0], id).toMatchObject({ ok: true, resumed: false })
       expect(run.creates, id).toBe(1)
@@ -487,7 +562,27 @@ describe('J-M28 — every J-M01 state × every D1 pre-image: arbitrateClaim → 
     expect(reachedOn).toHaveLength(6)
     for (const id of ['A-S01b', 'A-S03', 'A-S10b', 'A-S12', 'A-S14b', 'A-S26']) {
       const run = await approveRun(stateOf(id), 'v13_past')
+      expect(run.decision, id).toEqual({ engine: 0, creates: 0, token: false })
       expect(run.engineResults, id).toEqual([])
+    }
+  })
+
+  it('D′ L2 DIFFERENTIAL — on the payable world (A-S01, both leases open) the decision alone leaves APPROVED_AWAITING_PAYMENT with zero money, and only the direct rail step moves it; the arbitration pre-image too', async () => {
+    for (const pre of ['approved_null', 'arbitration', 'v13_past']) {
+      setWorld(stateOf('A-S01'), pre)
+      const r = await arbitrateClaim({ claimId: 'cl1', adminId: 'op1', decision: 'approve' })
+      expect(r.ok, pre).toBe(true)
+      expect(r, pre).not.toHaveProperty('refund')
+      expect(claimOf(w), pre).toMatchObject({ status: 'approved', arbitrationDecision: 'approved', refundAttempted: false, refundId: null })
+      expect(engineSpy.fn, pre).not.toHaveBeenCalled()
+      expect(stripeMock.refunds.create, pre).not.toHaveBeenCalled()
+      expect(w.refunds, pre).toEqual([])
+      expect(tokenWritten(), pre).toBe(false)
+      // the rail's step, by hand: T1 → T2 → the REAL engine → Stripe, once
+      expect(await triggerClaimRefund('cl1'), pre).toMatchObject({ state: 'refunded', refundId: 'rf_new' })
+      expect(engineSpy.fn, pre).toHaveBeenCalledTimes(1)
+      expect(stripeMock.refunds.create, pre).toHaveBeenCalledTimes(1)
+      expect(claimOf(w), pre).toMatchObject({ status: 'refunded', refundId: 'rf_new' })
     }
   })
 
@@ -529,14 +624,22 @@ describe('J-M28 — every J-M01 state × every D1 pre-image: arbitrateClaim → 
     expect(found).toEqual([])
   })
 
-  it('NEGATIVE CONTROL — A-S03 (the round-12 otherClaimRows fixture) with its proof written as v13: T2 locks before the engine; the engine’s own P2002 answer on A-S01b, or a « à nouveau payable » text, is caught', async () => {
+  it('NEGATIVE CONTROL — A-S03 (the round-12 otherClaimRows fixture) with its proof written as v13: the decision ratifies with zero money, the direct rail step is locked by T2 before the engine; the engine’s own P2002 answer on A-S01b, a decision that reached the engine, or a « à nouveau payable » text, is caught', async () => {
     const run = await approveRun(stateOf('A-S03'), 'v13_past')
     expect(run.approvable).toBe(true)
+    expect(run.decision).toEqual({ engine: 0, creates: 0, token: false })
+    expect(run.server.ok).toBe(true)
     expect(engineSpy.fn).not.toHaveBeenCalled()
-    // T2 (c): the H1 hold (re_O failed at Stripe) stops the attempt before its derivation and before the engine
+    // T2 (c): the H1 hold (re_O failed at Stripe) stops the rail's attempt before its derivation and before the engine
+    expect(run.rail).toEqual({ state: 'failed', error: 'safety_hold' })
     expect(String(run.claimAfter.refundError).startsWith(MARKERS.SAFETY_HOLD)).toBe(true)
     expect(run.claimAfter).toMatchObject({ status: 'approved', refundId: null })
     expect(runViolations(run)).toEqual([])
+    // the checker catches the dab754d shape: a decision that reached the engine, or that wrote the T1 token
+    expect(runViolations({ ...run, decision: { engine: 1, creates: 1, token: true } })).toEqual([
+      'arbitrateClaim reached the engine (D′ L2: approve is a decision only)',
+      'arbitrateClaim wrote a T1 attempt token (D′ L2: the decision never starts an attempt)',
+    ])
     // the checker is not vacuous: what an approval that reached the engine on A-S01b would get back
     setWorld(stateOf('A-S01b'), 'approved_null')
     const refused = await engineSpy.real!({ orderId: 'o1', amountCents: 500, reason: 'claim:cl1' })

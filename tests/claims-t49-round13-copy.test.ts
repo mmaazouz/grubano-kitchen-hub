@@ -69,15 +69,38 @@ describe('J-M46 — G8 HEADs and tails, exact', () => {
     ])).toContain('re_1 (ligne rf_1, réclamation cl_A, identité portée par la ligne), 300 c ; re_2 (ligne rf_2, réclamation cl_B, liaison seule), 300 c.')
   })
 
-  it('PAYABLE tail with « payable au plus tôt le <ISO> (UTC) »', () => {
-    expect(payableTail(500, new Date('2026-09-12T09:00:00.000Z'))).toBe('Aucune ligne de remboursement de cette commande n’est en attente, et au moment de cette lecture aucune condition de refus du moteur ni aucun blocage de sûreté n’était rempli pour le montant de cette réclamation (500 c). La réclamation repasse en « approuvée, non payée ». Rien ne la paiera automatiquement : elle devra être approuvée à nouveau par un admin, réclamations et remboursements ouverts ; une vérification relira alors Stripe et nos lignes avant le moteur. Elle est payable au plus tôt le 2026-09-12T09:00:00.000Z (UTC).')
+  // D′ L2 (R13 spec v1.1, D13 / G8): payableTail, LOCKED_* and AWAITING_* no longer name a re-approval — the rail
+  // (« Payer les approuvées ») is the only payer, and « approuvez-la à nouveau » / « nouvelle approbation » never appear.
+  it('PAYABLE tail with « payable au plus tôt le <ISO> (UTC) » (text v1.1 — D′ L2)', () => {
+    expect(payableTail(500, new Date('2026-09-12T09:00:00.000Z'))).toBe('Aucune ligne de remboursement de cette commande n’est en attente, et au moment de cette lecture aucune condition de refus du moteur ni aucun blocage de sûreté n’était rempli pour le montant de cette réclamation (500 c). La réclamation repasse en « approuvée, non payée ». Rien ne la paiera automatiquement : elle devra être sélectionnée explicitement par un admin dans le rail financier (« Payer les approuvées »), remboursements ouverts ; une vérification relira alors Stripe et nos lignes avant le moteur. Elle est payable au plus tôt le 2026-09-12T09:00:00.000Z (UTC).')
+    // the parser-critical phrase C4 reads is unchanged
+    expect(proofInstant(payableTail(500, new Date('2026-09-12T09:00:00.000Z')))?.toISOString()).toBe('2026-09-12T09:00:00.000Z')
   })
 
-  it('LOCKED and AWAITING tails', () => {
-    expect(LOCKED_OPEN).toBe('MAIS une nouvelle approbation ne paierait pas cette réclamation :')
-    expect(LOCKED_CLOSE).toBe('Rien ne sera payé par le rail pour cette réclamation tant que cet état est enregistré : l’approbation est refusée et le balayage automatique l’ignore. « Réconcilier d’après la preuve » réévalue toutes les conditions ; une cause qui ne dépend d’aucune action ultérieure ne cessera pas. Si elle a été remboursée hors système (Dashboard Stripe), déclarez-le (« Clôturer ce dossier… ») ; sinon clôturez sans paiement. Décision humaine requise.')
-    expect(AWAITING_OPEN).toBe('MAIS une nouvelle approbation ne paierait pas cette réclamation tant que')
-    expect(AWAITING_CLOSE).toBe('Relancez « Réconcilier d’après la preuve » lorsque cette ligne ne sera plus « en attente » dans notre base : la réconciliation réévaluera alors toutes les conditions. En attendant, rien ne sera payé par le rail pour cette réclamation (approbation refusée, balayage automatique ignoré). Si elle a été remboursée hors système (Dashboard Stripe), déclarez-le (« Clôturer ce dossier… »).')
+  it('LOCKED and AWAITING tails (text v1.1 — D′ L2)', () => {
+    expect(LOCKED_OPEN).toBe('MAIS le rail financier ne paierait pas cette réclamation :')
+    expect(LOCKED_CLOSE).toBe('Rien ne sera payé par le rail pour cette réclamation tant que cet état est enregistré : le rail la refuse et aucun balayage ne la paie. « Réconcilier d’après la preuve » réévalue toutes les conditions ; une cause qui ne dépend d’aucune action ultérieure ne cessera pas. Si elle a été remboursée hors système (Dashboard Stripe), déclarez-le (« Clôturer ce dossier… ») ; sinon clôturez sans paiement. Décision humaine requise.')
+    expect(AWAITING_OPEN).toBe('MAIS le rail financier ne paierait pas cette réclamation tant que')
+    expect(AWAITING_CLOSE).toBe('Relancez « Réconcilier d’après la preuve » lorsque cette ligne ne sera plus « en attente » dans notre base : la réconciliation réévaluera alors toutes les conditions. En attendant, rien ne sera payé par le rail pour cette réclamation (le rail la refuse, aucun balayage ne la paie). Si elle a été remboursée hors système (Dashboard Stripe), déclarez-le (« Clôturer ce dossier… »).')
+  })
+
+  it('NEGATIVE CONTROL (D′ L2) — the v1 G8 pieces are not the shipped ones, and no shipped piece names a re-approval', () => {
+    const V1 = {
+      payableTail: 'Rien ne la paiera automatiquement : elle devra être approuvée à nouveau par un admin, réclamations et remboursements ouverts ;',
+      LOCKED_OPEN: 'MAIS une nouvelle approbation ne paierait pas cette réclamation :',
+      LOCKED_CLOSE_clause: 'l’approbation est refusée et le balayage automatique l’ignore',
+      AWAITING_OPEN: 'MAIS une nouvelle approbation ne paierait pas cette réclamation tant que',
+      AWAITING_CLOSE_clause: '(approbation refusée, balayage automatique ignoré)',
+    }
+    expect(payableTail(500, T0)).not.toContain(V1.payableTail)
+    expect(LOCKED_OPEN).not.toBe(V1.LOCKED_OPEN)
+    expect(LOCKED_CLOSE).not.toContain(V1.LOCKED_CLOSE_clause)
+    expect(AWAITING_OPEN).not.toBe(V1.AWAITING_OPEN)
+    expect(AWAITING_CLOSE).not.toContain(V1.AWAITING_CLOSE_clause)
+    for (const t of [payableTail(500, T0), LOCKED_OPEN, LOCKED_CLOSE, AWAITING_OPEN, AWAITING_CLOSE]) {
+      expect(t).not.toMatch(/approuvez-la à nouveau|nouvelle approbation|approuvée à nouveau/)
+    }
+    expect(payableTail(500, T0)).toContain('Payer les approuvées')
   })
 })
 
@@ -188,13 +211,17 @@ describe('J-M46 — the N8 write: compare-and-set on the read, ALERT-B after cou
   // W3 round-1 fix (J-M46): complete written texts, verbatim (instant masked), on the J-M01 worlds — so a defect in how
   // absenceProofText joins HEAD_A / HEAD_B, « De plus, », ROUTED and the tail is caught, not only the sentence builders.
   const ISO_MASK = (t: string) => t.replace(/payable au plus tôt le \d{4}-\d{2}-\d{2}T[\d:.]+Z \(UTC\)/, 'payable au plus tôt le <ISO> (UTC)')
-  const PAYABLE_500 = 'Aucune ligne de remboursement de cette commande n’est en attente, et au moment de cette lecture aucune condition de refus du moteur ni aucun blocage de sûreté n’était rempli pour le montant de cette réclamation (500 c). La réclamation repasse en « approuvée, non payée ». Rien ne la paiera automatiquement : elle devra être approuvée à nouveau par un admin, réclamations et remboursements ouverts ; une vérification relira alors Stripe et nos lignes avant le moteur. Elle est payable au plus tôt le <ISO> (UTC).'
+  // D′ L2 (R13 spec v1.1, G8): the complete texts N8 writes, regenerated verbatim from the v1.1 pieces (HEAD, payableTail,
+  // LOCKED_OPEN … LOCKED_CLOSE, AWAITING_OPEN … AWAITING_CLOSE). They name the rail, never a re-approval.
+  const PAYABLE_500 = 'Aucune ligne de remboursement de cette commande n’est en attente, et au moment de cette lecture aucune condition de refus du moteur ni aucun blocage de sûreté n’était rempli pour le montant de cette réclamation (500 c). La réclamation repasse en « approuvée, non payée ». Rien ne la paiera automatiquement : elle devra être sélectionnée explicitement par un admin dans le rail financier (« Payer les approuvées »), remboursements ouverts ; une vérification relira alors Stripe et nos lignes avant le moteur. Elle est payable au plus tôt le <ISO> (UTC).'
   const FULL: Array<[string, string, string]> = [
     ['A-S01', 'no_refund_proven', `no_refund_proven:v13: Stripe ne rapporte aujourd’hui aucun remboursement abouti ni en attente sur ce paiement (liste complète lue). ${PAYABLE_500}`],
     ['A-S02', 'no_refund_proven', `no_refund_proven:v13: Stripe rapporte 300 c remboursés sur ce paiement, et chacun de ses remboursements aboutis ou en attente est rattaché à une AUTRE réclamation, soldée sur sa ligne : re_O (ligne rf_o, réclamation cl_X, liaison seule), 300 c. Aucun n’est rattaché à celle-ci. ${PAYABLE_500}`],
-    ['A-S03', 'no_refund_proven_rail_locked', 'no_refund_proven_rail_locked: Stripe ne rapporte aujourd’hui aucun remboursement abouti ni en attente sur ce paiement (liste complète lue). MAIS une nouvelle approbation ne paierait pas cette réclamation : le moteur calculerait la clé refund:o1:0 pour un nouveau remboursement, et la ligne rf_o la détient déjà ; il refuserait (« Un remboursement est déjà en cours sur ce montant cumulé. ») tant que le montant remboursé rapporté par Stripe reste 0 c. De plus, la ligne rf_o est marquée ABOUTIE dans notre base, mais Stripe ne la compte pas sur ce paiement (son remboursement re_O est « failed » chez Stripe) ; notre base la compte toujours comme remboursée et aucune action de l’application n’est prévue pour la corriger ; l’approbation est refusée par sûreté (blocage de sûreté, pas un refus du moteur). Ce paiement est routé : un remboursement échoué a pu laisser le transfert du restaurant inversé, et Stripe ne le restaure pas — vérifiez-le dans le Dashboard Stripe. Rien ne sera payé par le rail pour cette réclamation tant que cet état est enregistré : l’approbation est refusée et le balayage automatique l’ignore. « Réconcilier d’après la preuve » réévalue toutes les conditions ; une cause qui ne dépend d’aucune action ultérieure ne cessera pas. Si elle a été remboursée hors système (Dashboard Stripe), déclarez-le (« Clôturer ce dossier… ») ; sinon clôturez sans paiement. Décision humaine requise.'],
-    ['A-S10b', 'no_refund_proven_awaiting_finalization', 'no_refund_proven_rail_locked:awaiting_finalization: Stripe rapporte 300 c remboursés sur ce paiement, et chacun de ses remboursements aboutis ou en attente est rattaché à une AUTRE réclamation, soldée sur sa ligne : re_rf_A (ligne rf_A, réclamation cl_A, identité portée par la ligne), 300 c. Aucun n’est rattaché à celle-ci. MAIS une nouvelle approbation ne paierait pas cette réclamation tant que la plus ancienne ligne en attente de la commande, rf_A (identité claim:cl_A), est reprise par le moteur avant tout nouveau remboursement : son remboursement Stripe re_rf_A est ABOUTI mais la ligne n’est pas finalisée ici ; le moteur finaliserait cette ligne, pas un remboursement de cette réclamation, tant qu’elle reste en attente. Relancez « Réconcilier d’après la preuve » lorsque cette ligne ne sera plus « en attente » dans notre base : la réconciliation réévaluera alors toutes les conditions. En attendant, rien ne sera payé par le rail pour cette réclamation (approbation refusée, balayage automatique ignoré). Si elle a été remboursée hors système (Dashboard Stripe), déclarez-le (« Clôturer ce dossier… »).'],
+    ['A-S03', 'no_refund_proven_rail_locked', 'no_refund_proven_rail_locked: Stripe ne rapporte aujourd’hui aucun remboursement abouti ni en attente sur ce paiement (liste complète lue). MAIS le rail financier ne paierait pas cette réclamation : le moteur calculerait la clé refund:o1:0 pour un nouveau remboursement, et la ligne rf_o la détient déjà ; il refuserait (« Un remboursement est déjà en cours sur ce montant cumulé. ») tant que le montant remboursé rapporté par Stripe reste 0 c. De plus, la ligne rf_o est marquée ABOUTIE dans notre base, mais Stripe ne la compte pas sur ce paiement (son remboursement re_O est « failed » chez Stripe) ; notre base la compte toujours comme remboursée et aucune action de l’application n’est prévue pour la corriger ; l’approbation est refusée par sûreté (blocage de sûreté, pas un refus du moteur). Ce paiement est routé : un remboursement échoué a pu laisser le transfert du restaurant inversé, et Stripe ne le restaure pas — vérifiez-le dans le Dashboard Stripe. Rien ne sera payé par le rail pour cette réclamation tant que cet état est enregistré : le rail la refuse et aucun balayage ne la paie. « Réconcilier d’après la preuve » réévalue toutes les conditions ; une cause qui ne dépend d’aucune action ultérieure ne cessera pas. Si elle a été remboursée hors système (Dashboard Stripe), déclarez-le (« Clôturer ce dossier… ») ; sinon clôturez sans paiement. Décision humaine requise.'],
+    ['A-S10b', 'no_refund_proven_awaiting_finalization', 'no_refund_proven_rail_locked:awaiting_finalization: Stripe rapporte 300 c remboursés sur ce paiement, et chacun de ses remboursements aboutis ou en attente est rattaché à une AUTRE réclamation, soldée sur sa ligne : re_rf_A (ligne rf_A, réclamation cl_A, identité portée par la ligne), 300 c. Aucun n’est rattaché à celle-ci. MAIS le rail financier ne paierait pas cette réclamation tant que la plus ancienne ligne en attente de la commande, rf_A (identité claim:cl_A), est reprise par le moteur avant tout nouveau remboursement : son remboursement Stripe re_rf_A est ABOUTI mais la ligne n’est pas finalisée ici ; le moteur finaliserait cette ligne, pas un remboursement de cette réclamation, tant qu’elle reste en attente. Relancez « Réconcilier d’après la preuve » lorsque cette ligne ne sera plus « en attente » dans notre base : la réconciliation réévaluera alors toutes les conditions. En attendant, rien ne sera payé par le rail pour cette réclamation (le rail la refuse, aucun balayage ne la paie). Si elle a été remboursée hors système (Dashboard Stripe), déclarez-le (« Clôturer ce dossier… »).'],
   ]
+  /** The v1 (pre-D′) payable tail, kept as the negative control's witness — never what N8 writes now. */
+  const V1_PAYABLE_500 = 'Aucune ligne de remboursement de cette commande n’est en attente, et au moment de cette lecture aucune condition de refus du moteur ni aucun blocage de sûreté n’était rempli pour le montant de cette réclamation (500 c). La réclamation repasse en « approuvée, non payée ». Rien ne la paiera automatiquement : elle devra être approuvée à nouveau par un admin, réclamations et remboursements ouverts ; une vérification relira alors Stripe et nos lignes avant le moteur. Elle est payable au plus tôt le <ISO> (UTC).'
   for (const [id, outcome, text] of FULL) {
     it(`${id} — the complete written refundError, verbatim (instant masked)`, async () => {
       setWorld((x) => stateOf(id).world!(x as never))
@@ -223,7 +250,24 @@ describe('J-M46 — the N8 write: compare-and-set on the read, ALERT-B after cou
     expect(PAYABLE_500).toBe(ISO_MASK(payableTail(500, new Date('2026-09-12T09:00:00.000Z'))))
     const locked = FULL[2][2]
     expect(lockedStructureViolations(locked)).toEqual([])
+    expect(locked).toContain(` ${LOCKED_OPEN} `)
+    expect(FULL[3][2]).toContain(` ${AWAITING_OPEN} `)
     expect(FULL[3][2].endsWith(AWAITING_CLOSE)).toBe(true)
+  })
+
+  it('NEGATIVE CONTROL (D′ L2) — the v1 written texts (re-approval vocabulary) are not what N8 writes any more, and the structure check rejects a v1 LOCKED_OPEN', async () => {
+    expect(V1_PAYABLE_500).not.toBe(PAYABLE_500)
+    expect(V1_PAYABLE_500).toMatch(/approuvée à nouveau/)
+    setWorld((x) => stateOf('A-S01').world!(x as never))
+    await reconcileClaimEvidence({ claimId: 'cl1' })
+    const written = ISO_MASK(String(claimOf(w).refundError))
+    expect(written).not.toBe(`${MARKERS.PROOF_PAYABLE_V13} ${HEAD_A} ${V1_PAYABLE_500}`)
+    expect(written).not.toMatch(/approuvez-la à nouveau|nouvelle approbation|approuvée à nouveau/)
+    // a locked text opened by the v1 « MAIS une nouvelle approbation ne paierait pas cette réclamation : » fails the structure check
+    const v1Locked = FULL[2][2].replace(LOCKED_OPEN, 'MAIS une nouvelle approbation ne paierait pas cette réclamation :')
+    expect(v1Locked).not.toBe(FULL[2][2])
+    expect(lockedStructureViolations(v1Locked)).toContain('prefix, HEAD_A and LOCKED_OPEN do not open the text')
+    for (const [, , text] of FULL) expect(text).not.toMatch(/approuvez-la à nouveau|nouvelle approbation|approuvée à nouveau/)
   })
 
   it('NEGATIVE CONTROL (W8) — the A-S03 text with its holds joined without « De plus, » fails the structure check; so does ROUTED moved before the hold', () => {

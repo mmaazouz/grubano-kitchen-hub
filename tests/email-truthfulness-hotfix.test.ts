@@ -222,15 +222,27 @@ describe('REFUND — source scan: success e-mail only after Stripe `succeeded`, 
       expect(/refundedCents:\s*result\.refundedCents/.test(emailBlock)).toBe(false) // the audit metadata may still log the estimate
     }
   })
-  it('claims: the refunded decision carries the ENGINE amount, never the requested amount', () => {
+  it('claims (D′ L2): the RAIL result (triggerClaimRefund) still carries the ENGINE amount; the arbitrate route never sends \'refunded\' at all (refundedCents: null — approve ≠ refund) and the create route sends no decision e-mail', () => {
+    const strip = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')
+    // lib/claims.ts — the rail's success shape is the engine's amount, never the requested one (unchanged T4).
     expect(/state: 'refunded'; refundId: string; amountCents: number/.test(read('lib/claims.ts'))).toBe(true)
     expect(/state: 'refunded', refundId: result\.refundId, amountCents: result\.amountCents/.test(read('lib/claims.ts'))).toBe(true)
-    const arb = read('app/api/admin/claims/[id]/arbitrate/route.ts')
-    expect(/refundedCents: refunded \? c\.requestedAmountCents/.test(arb)).toBe(false)
-    expect(/result\.refund\?\.state === 'refunded' \? result\.refund\.amountCents : null/.test(arb)).toBe(true)
-    const claims = read('app/api/claims/route.ts')
+    // arbitrate route — INVERTED pin: the old `result.refund?.state === 'refunded' ? result.refund.amountCents : null`
+    // is gone with the inline money path; an approve is a decision, the e-mail is 'approved' with no amount.
+    const arb = strip(read('app/api/admin/claims/[id]/arbitrate/route.ts'))
+    expect(/refundedCents: refunded \? c\.requestedAmountCents/.test(arb)).toBe(false)   // never the requested amount
+    expect(/result\.refund\?\.state === 'refunded'/.test(arb)).toBe(false)              // never the engine result either
+    expect(/'refunded'/.test(arb)).toBe(false)                                          // the kind does not exist here
+    expect(/refundedCents:\s*null/.test(arb)).toBe(true)                                // no amount is ever promised
+    expect(/requestedAmountCents/.test(arb)).toBe(false)
+    // create route — INVERTED pin: no auto_small decision e-mail of any kind (the machine approval path is gone).
+    const claims = strip(read('app/api/claims/route.ts'))
     expect(/auto\.state === 'refunded' \? c\.requestedAmountCents/.test(claims)).toBe(false)
-    expect(/auto\.state === 'refunded' \? auto\.amountCents : null/.test(claims)).toBe(true)
+    expect(/auto\.state === 'refunded'/.test(claims)).toBe(false)
+    expect(/sendClaimDecisionEmail|refundedCents/.test(claims)).toBe(false)
+    // NEGATIVE CONTROL — the pins recognise the dab754d shapes they replaced
+    expect(/result\.refund\?\.state === 'refunded'/.test("refundedCents: result.refund?.state === 'refunded' ? result.refund.amountCents : null")).toBe(true)
+    expect(/auto\.state === 'refunded'/.test("refundedCents: auto.state === 'refunded' ? auto.amountCents : null")).toBe(true)
   })
   it('the refund template itself carries no restaurant-actor or fixed-delay wording', () => {
     const lib = read('lib/transactional-emails.ts')

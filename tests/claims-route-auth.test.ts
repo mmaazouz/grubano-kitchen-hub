@@ -230,15 +230,19 @@ describe('BATCH 2 — an item-specific reason cannot claim the whole order throu
 
 // ── AUDIT FIX (batch 2) — THE SAFETY GUARD MUST NOT BE INERT ─────────────────────
 // A previous fix in this very batch looked correct and did nothing at runtime (a CAS whose
-// `where` could never match). `autoResolveSmallClaim` now refuses safety reasons — but only
-// if the reason actually REACHES it. This drives the REAL route end to end: the object the
-// route hands to the machine path is whatever `prisma.claim.create` returned, so if that
-// object has no `reason` field the guard silently evaporates. Assert the behaviour, through
-// the route, with the auto-resolve configuration deliberately switched ON.
-describe('AUDIT FIX — the safety exclusion survives the real route (not inert)', () => {
+// `where` could never match). `autoResolveSmallClaim` then refused safety reasons — but only
+// if the reason actually REACHED it. This drives the REAL route end to end with the
+// auto-resolve configuration deliberately switched ON.
+// D′ L2 (spec v2 S-13): the machine path itself is now INERT BY CONSTRUCTION — the route still
+// consults `autoResolveSmallClaim` after the create, but it approves nothing for ANY reason,
+// reads nothing (not even the anti-abuse count) and the route sends no decision e-mail from
+// it. The old « a NON-safety claim DOES take the machine path » control is therefore INVERTED;
+// the liveness control is the ack e-mail, sent by the route AFTER the hook: it proves the
+// route ran past the auto-resolution and that the zero-write observation is not a dead route.
+describe('AUDIT FIX → D′ L2 — no claim takes the machine path through the real route, safety or not (the path is inert; the route runs past it)', () => {
   beforeEach(() => {
     process.env.CLAIM_AUTO_RESOLVE_ENABLED = 'true'
-    process.env.CLAIM_AUTO_APPROVE_MAX_CENTS = '10000' // well above the order total
+    process.env.CLAIM_AUTO_APPROVE_MAX_CENTS = '10000' // well above the order total — the OLD unlock
     db.claim.updateMany.mockResolvedValue({ count: 1 })
   })
   afterEach(() => {
@@ -252,22 +256,34 @@ describe('AUDIT FIX — the safety exclusion survives the real route (not inert)
     expect(db.claim.create.mock.calls[0][0].data.reason).toBe('not_received')
   })
 
-  it('an allergen claim is created but NEVER approved by the machine', async () => {
+  it('an allergen claim is created but NEVER approved by the machine; the route still reaches the ack (liveness) and sends no decision e-mail', async () => {
     const res = await post({ orderId: 'o1', reason: 'allergen_safety', description: 'réaction' })
     expect(res.status).toBe(201)
     expect(db.claim.create).toHaveBeenCalled()          // the claim is filed…
     expect(db.claim.updateMany).not.toHaveBeenCalled()  // …and no approval transition happens
+    expect(db.claim.count).not.toHaveBeenCalled()       // the anti-abuse orientation is never read
+    expect(ackMock).toHaveBeenCalledTimes(1)            // the route ran PAST the hook
+    expect(ackMock.mock.calls[0][0]).toMatchObject({ claimId: 'cl1', consumerId: 'owner', orderId: 'o1' })
+    expect(decisionMock).not.toHaveBeenCalled()         // no auto_small decision e-mail exists any more
   })
 
-  it('a comparable NON-safety claim DOES take the machine path — proving the test can tell them apart', async () => {
+  it('INVERTED — a comparable NON-safety claim does NOT take the machine path either: same 201, same zero writes, same ack, no decision e-mail (D′ L2: the path is inert by construction, not a reason filter)', async () => {
     const res = await post({ orderId: 'o1', reason: 'quality', description: 'froid' })
     expect(res.status).toBe(201)
-    expect(db.claim.updateMany).toHaveBeenCalled()
+    expect(db.claim.create).toHaveBeenCalledTimes(1)
+    expect(db.claim.create.mock.calls[0][0].data).toMatchObject({ reason: 'quality', status: 'restaurant_review' })
+    expect(db.claim.updateMany).not.toHaveBeenCalled()
+    expect(db.claim.update).not.toHaveBeenCalled()
+    expect(db.claim.count).not.toHaveBeenCalled()
+    expect(ackMock).toHaveBeenCalledTimes(1)            // the route ran PAST the hook — the zero writes are not a dead route
+    expect(decisionMock).not.toHaveBeenCalled()
+    expect((await res.json()).claim).toMatchObject({ id: 'cl1', status: 'restaurant_review' })
   })
 
-  it('with auto-resolve OFF neither reason is auto-approved (the guard is not what carries this)', async () => {
+  it('with auto-resolve OFF neither reason is auto-approved (the config is not what carries this: ON or OFF, the same nothing)', async () => {
     delete process.env.CLAIM_AUTO_RESOLVE_ENABLED
     await post({ orderId: 'o1', reason: 'quality', description: 'froid' })
     expect(db.claim.updateMany).not.toHaveBeenCalled()
+    expect(decisionMock).not.toHaveBeenCalled()
   })
 })

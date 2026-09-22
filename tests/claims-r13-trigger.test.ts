@@ -28,7 +28,7 @@ const { stripeMock } = vi.hoisted(() => ({
 vi.mock('@/lib/stripe', () => ({ getStripe: () => stripeMock }))
 
 import { triggerClaimRefund, reconcileRequiredMarker, RECONCILE_REQUIRED } from '@/lib/claims'
-import { reconcileMarkerAge, MARKERS, LOCKED_CLOSE, AWAITING_CLOSE, HEAD_A, LIST_OVER_CAP_CLAUSE } from '@/lib/claim-action-rules'
+import { reconcileMarkerAge, MARKERS, LOCKED_OPEN, LOCKED_CLOSE, AWAITING_CLOSE, HEAD_A, LIST_OVER_CAP_CLAUSE } from '@/lib/claim-action-rules'
 import { approvalToast } from '@/lib/claim-approval-toast'
 
 const read = (p: string) => readFileSync(p, 'utf8').replace(/\r\n/g, '\n')
@@ -342,7 +342,11 @@ describe('J-M19 — T2: every branch writes by CAS on M and never calls the engi
     const c = claimOf(w)
     expect(c).toMatchObject({ status: 'approved', refundAttempted: false, refundId: null })
     expect(c.refundError).not.toBeNull()
-    expect(String(c.refundError)).toBe(`no_refund_proven_rail_locked: ${HEAD_A} MAIS une nouvelle approbation ne paierait pas cette réclamation : la plus ancienne ligne en attente de la commande, rf_D (identité claim:cl_OTHER), est reprise par le moteur avant tout nouveau remboursement : Stripe ne connaît aucun remboursement pour elle et le moteur ne la créera plus (fenêtre d’idempotence expirée) ; il refuse donc sa reprise (« Reprise impossible : la fenêtre d’idempotence Stripe du remboursement initial a expiré… ») ; aucun code de l’application ne retire cette ligne. ${LOCKED_CLOSE}`)
+    // D′ L2 (R13 v1.1 G8): the LOCKED opening names the rail, never a re-approval, as the thing that would not pay.
+    expect(String(c.refundError)).toBe(`no_refund_proven_rail_locked: ${HEAD_A} MAIS le rail financier ne paierait pas cette réclamation : la plus ancienne ligne en attente de la commande, rf_D (identité claim:cl_OTHER), est reprise par le moteur avant tout nouveau remboursement : Stripe ne connaît aucun remboursement pour elle et le moteur ne la créera plus (fenêtre d’idempotence expirée) ; il refuse donc sa reprise (« Reprise impossible : la fenêtre d’idempotence Stripe du remboursement initial a expiré… ») ; aucun code de l’application ne retire cette ligne. ${LOCKED_CLOSE}`)
+    expect(String(c.refundError)).toContain(LOCKED_OPEN)
+    // NEGATIVE CONTROL — the R13 v1.0 opening (« une nouvelle approbation ne paierait pas ») is gone from the written proof
+    expect(String(c.refundError)).not.toMatch(/nouvelle approbation|approuvez-la à nouveau/)
     expect(blockedCauses()).toEqual(['no_refund_proven_rail_locked:'])
     expect(approvalToast(r)).toEqual({ key: 'approvedNotSent', tone: 'error' })
     noEngine()

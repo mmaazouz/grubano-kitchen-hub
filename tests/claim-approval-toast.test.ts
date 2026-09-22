@@ -8,6 +8,12 @@
 // PENDING path. « le remboursement a ÉCHOUÉ : aucun argent n'est parti » is false on the first two
 // and invites a second payment; « de l'argent EST parti » is false on the other two (ROUND-7 AUDIT
 // FIX — this suite used to ENFORCE that sentence). Only "not this claim's refund" holds on all four.
+//
+// D′ L2 (spec v2 S-02, F13 v1.1): an admin approval no longer reaches the engine, so the arbitration console
+// shows the nominal `admin.approvedNotSent` on every approve and never calls this mapper; the mapper stays the
+// tested rendering of a RAIL attempt (triggerClaimRefund, D′ L5). The approvedNotSent copy was reworded ×5
+// (decision recorded, no refund started by THIS action, payment by the financial rail) and the dead key
+// `admin.approved` (« remboursement déclenché ») was deleted ×5 — both pinned below.
 import { describe, it, expect, expectTypeOf } from 'vitest'
 import fs from 'node:fs'
 import { approvalToast, type ApprovalToast, type ApprovalRefundOutcome } from '@/lib/claim-approval-toast'
@@ -91,23 +97,45 @@ describe('everything else claims only what THIS action confirmed', () => {
     }
   })
 
-  it('the fallback copy does not assert that nothing left — it may have, under already_handled', () => {
+  it('the fallback copy (D′ L2, F13 v1.1: the nominal toast of EVERY approve) says only what THIS action did — decision recorded, no refund started, paid by the rail — and never that nothing left, never « remboursement déclenché »', () => {
     const fr = JSON.parse(fs.readFileSync('messages/fr.json', 'utf8'))
-    // ROUND 13 (F13): the reworded key says only what THIS action did, in all five locales, and names no console
-    // section (a T2 (e') park lands in financial verification, which « Remboursements à traiter » never lists).
+    // ROUND 13 (F13) → D′ L2 (F13 v1.1): the reworded key says only what THIS action did, in all five locales, names
+    // no console section (a T2 (e') park lands in financial verification, which « Remboursements à traiter » never
+    // lists) and now states where payment comes from — the financial rail, in an authorised window — so an admin
+    // never reads an approval as a payment and never re-approves to be paid.
     const EXPECTED: Record<string, string> = {
-      fr: 'Réclamation approuvée — aucun remboursement n’a été lancé par cette action.',
-      en: 'Claim approved — no refund was started by this action.',
-      es: 'Reclamación aprobada — esta acción no inició ningún reembolso.',
-      it: 'Reclamo approvato — nessun rimborso è stato avviato da questa azione.',
-      ar: 'تمت الموافقة على الشكوى — لم يُطلَق أي استرداد بهذا الإجراء.',
+      fr: 'Réclamation approuvée — décision enregistrée, aucun remboursement n’a été lancé par cette action : le paiement sera traité séparément par le rail financier lors d’une fenêtre autorisée.',
+      en: 'Claim approved — decision recorded, no refund was started by this action: payment is handled separately by the financial rail during an authorised window.',
+      es: 'Reclamación aprobada — decisión registrada, esta acción no inició ningún reembolso: el pago se tramita por separado en el raíl financiero durante una ventana autorizada.',
+      it: 'Reclamo approvato — decisione registrata, nessun rimborso è stato avviato da questa azione: il pagamento viene gestito separatamente dal binario finanziario durante una finestra autorizzata.',
+      ar: 'تمت الموافقة على الشكوى — تم تسجيل القرار، ولم يُطلَق أي استرداد بهذا الإجراء: تتم معالجة الدفع بشكل منفصل عبر المسار المالي خلال نافذة مصرّح بها.',
+    }
+    // The truthfulness rule, unchanged: the copy scopes its claim to THIS action, promises no amount, asserts no cash
+    // outcome either way, and names no console section.
+    const SCOPED_TO_THIS_ACTION: Record<string, RegExp> = {
+      fr: /par cette action/, en: /by this action/, es: /esta acción/, it: /da questa azione/, ar: /بهذا الإجراء/,
     }
     expect(fr.claims.admin.approvedNotSent).toBe(EXPECTED.fr)
     for (const loc of Object.keys(EXPECTED)) {
-      const t = JSON.parse(fs.readFileSync(`messages/${loc}.json`, 'utf8')).claims.admin.approvedNotSent as string
+      const admin = JSON.parse(fs.readFileSync(`messages/${loc}.json`, 'utf8')).claims.admin as Record<string, string | undefined>
+      const t = admin.approvedNotSent as string
       expect(t, loc).toBe(EXPECTED[loc])
+      expect(t, loc).toMatch(SCOPED_TO_THIS_ACTION[loc])
       expect(t, loc).not.toContain('Remboursements à traiter')
+      expect(t, loc).not.toMatch(/aucun argent n[’']est parti|no money left|no ha salido dinero|nessun denaro|لم يخرج/i)
+      expect(t, loc).not.toMatch(/remboursement déclenché|refund triggered|reembolso activado|rimborso attivato|approuvez-la à nouveau|nouvelle approbation/i)
+      expect(t, loc).not.toMatch(/\d+[.,]?\d*\s?(€|EUR)/) // no amount is ever promised by a decision
+      // the dead key the console used to show on every approve (« Réclamation approuvée — remboursement déclenché ») is gone
+      expect(admin.approved, `${loc} admin.approved deleted`).toBeUndefined()
     }
+  })
+
+  it('NEGATIVE CONTROL — the truthfulness pins reject the pre-D′ console copy', () => {
+    const dead = 'Réclamation approuvée — remboursement déclenché.'
+    expect(dead).toMatch(/remboursement déclenché/)
+    expect(dead).not.toMatch(/par cette action/)
+    const promise = 'Réclamation approuvée — 12,50 € seront remboursés.'
+    expect(promise).toMatch(/\d+[.,]?\d*\s?(€|EUR)/)
   })
 })
 

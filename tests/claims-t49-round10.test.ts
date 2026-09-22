@@ -61,7 +61,7 @@ import {
 } from '@/lib/claims'
 import {
   MARKERS, TERMINAL, reconcileRefusal, arbitrationRefusal, customerClaimStatus, moneyStateGuidance, type ClaimFacts,
-  acceptedExits as pureAcceptedExits, exitRegistry, REFUSE_APPROVED_AM_B3, type BoundRowFacts, type ExitNote,
+  acceptedExits as pureAcceptedExits, exitRegistry, REFUSE_APPROVED_AM_B3, APPROVE_ALREADY_SET, type BoundRowFacts, type ExitNote,
 } from '@/lib/claim-action-rules'
 import { attributionRefusal } from '@/lib/claim-attribution-rules'
 import { payableWorld, wireWorld, refundRow, claimOf, type World } from './support/claims-world'
@@ -160,10 +160,14 @@ const v13At = (at: Date) => `${MARKERS.PROOF_PAYABLE_V13} Stripe ne rapporte auj
 const OWN_ROW: BoundRowFacts = { id: 'rf1', orderId: 'o1', status: 'pending', stripeRefundId: null, reason: 'claim:cl1' }
 type TableRow = { state: string; d1: string; claim: ClaimFacts; boundRow?: BoundRowFacts | null; attributableRows?: number; exits: Exit[]; registry: ExitNote | null }
 const EXIT_TABLE: TableRow[] = [
-  { d1: '1', state: 'approved, unpaid — admin-decided', claim: S({ status: A, arbitrationDecision: A }), exits: ['approve'], registry: 'E-10' },
-  { d1: '1', state: 'approved, unpaid — legacy, no decision', claim: S({ status: A }), exits: ['approve'], registry: 'E-10' },
-  { d1: '2', state: 'absence proven (v13), instant passed', claim: S({ status: A, arbitrationDecision: A, refundError: v13At(new Date(NOW.getTime() - 60_000)) }), exits: ['approve', 'reconcile'], registry: 'E-10' },
-  { d1: '2', state: 'absence proven (v13), before its instant', claim: S({ status: A, arbitrationDecision: A, refundError: v13At(FUTURE) }), exits: ['approve', 'reconcile'], registry: 'E-10' },
+  // D′ L2 (D1 v1.1, R13 spec « v1.1 AMENDMENTS »): an approved claim is NEVER re-approved as a money path. Amount not
+  // fixed (approvedAmountCents null — the column is not migrated yet, so every legacy row) → 'ratify' (a decision, no
+  // money); amount fixed → ['withdraw', 'pay'] (the audited reversal, the gated rail). The v13 shape keeps 'reconcile'.
+  { d1: '1', state: 'approved, unpaid — admin-decided', claim: S({ status: A, arbitrationDecision: A }), exits: ['ratify'], registry: 'E-10' },
+  { d1: '1', state: 'approved, unpaid — legacy, no decision', claim: S({ status: A }), exits: ['ratify'], registry: 'E-10' },
+  { d1: '1', state: 'approved, unpaid — amount fixed (APPROVED_AWAITING_PAYMENT, v1.1)', claim: S({ status: A, arbitrationDecision: A, approvedAmountCents: 500 }), exits: ['withdraw', 'pay'], registry: 'E-10' },
+  { d1: '2', state: 'absence proven (v13), instant passed', claim: S({ status: A, arbitrationDecision: A, refundError: v13At(new Date(NOW.getTime() - 60_000)) }), exits: ['ratify', 'reconcile'], registry: 'E-10' },
+  { d1: '2', state: 'absence proven (v13), before its instant', claim: S({ status: A, arbitrationDecision: A, refundError: v13At(FUTURE) }), exits: ['ratify', 'reconcile'], registry: 'E-10' },
   // W1 round-1 fix (D1 row 2 / D3): an unreadable instant refuses approval until reconcile re-derives it — not revisable.
   { d1: '2', state: 'absence proven (v13), instant unreadable', claim: S({ status: A, arbitrationDecision: A, refundError: `${MARKERS.PROOF_PAYABLE_V13} Stripe ne rapporte aujourd’hui aucun remboursement … (sans instant)` }), exits: ['reconcile'], registry: 'E-10' },
   // W1 round-1 fix (D2 (1)(b)): an approval BOUND to a row is not re-driven by approve, whatever refundAttempted says.
@@ -212,9 +216,12 @@ describe('EXIT TABLE (ROUND 13, J-M30) — acceptedExits returns exactly the D1 
     })
   }
 
+  /** D′ L2: every exit that needs a lease — the decisions (CLAIMS), the rail 'pay' (REFUNDS ∧ SURFACE) and the audited
+   *  'withdraw' (admin session). A set made only of these has no ungated way out and must name its registry entry. */
+  const GATED: Exit[] = ['approve', 'ratify', 'refuse_final', 'withdraw', 'pay']
   it('every empty or gated-only set names its registry entry (or its terminal / non-money note)', () => {
     for (const row of EXIT_TABLE) {
-      const gatedOnly = row.exits.every((x) => x === 'approve' || x === 'refuse_final')
+      const gatedOnly = row.exits.every((x) => GATED.includes(x))
       if (gatedOnly) expect(row.registry, row.state).not.toBeNull()
     }
     const rowsFor = (d1: string) => EXIT_TABLE.filter((r) => r.d1 === d1).map((r) => r.registry)
@@ -223,15 +230,39 @@ describe('EXIT TABLE (ROUND 13, J-M30) — acceptedExits returns exactly the D1 
     expect(EXIT_TABLE.find((r) => r.state.includes('attempt in flight'))!.registry).toBe('E-05')
     expect(EXIT_TABLE.find((r) => r.state.includes('route-only'))!.registry).toBe('E-09')
     expect(new Set(rowsFor('13'))).toEqual(new Set(['terminal']))
+    // NEGATIVE CONTROL: the pre-D′ predicate (approve / refuse_final only) would read ['ratify'] and ['withdraw', 'pay']
+    // as ungated sets and stop requiring an E id for the two E-10 shapes.
+    const oldPredicate = (exits: Exit[]) => exits.every((x) => x === 'approve' || x === 'refuse_final')
+    expect(oldPredicate(['ratify'])).toBe(false)
+    expect(oldPredicate(['withdraw', 'pay'])).toBe(false)
+    expect(['ratify'].every((x) => GATED.includes(x as Exit)) && ['withdraw', 'pay'].every((x) => GATED.includes(x as Exit))).toBe(true)
   })
 
-  it('refuse_final on EVERY approved claim → the exact AM-B3 text (D13)', () => {
+  it('D′ L2 (D1 v1.1): the amount-fixed shape refuses approve with APPROVE_ALREADY_SET; "approve" is never an exit of an approved claim', () => {
+    const fixed = EXIT_TABLE.find((r) => r.state.includes('amount fixed'))!.claim
+    expect(arbitrationRefusal(fixed, 'approve', NOW)).toEqual({ status: 409, error: APPROVE_ALREADY_SET })
+    expect(APPROVE_ALREADY_SET).not.toMatch(/approuvez-la à nouveau|nouvelle approbation/)
+    for (const r of EXIT_TABLE.filter((r) => r.claim.status === A)) expect(acceptedExits(r.claim, NOW, extraOf(r)), r.state).not.toContain('approve')
+    // NEGATIVE CONTROL: the same two shapes with the amount NOT fixed are ratifiable, and 'approve' is still the exit of
+    // an arbitration claim — the rule reads approvedAmountCents, not the status alone.
+    expect(acceptedExits({ ...fixed, approvedAmountCents: null })).toEqual(['ratify'])
+    expect(arbitrationRefusal({ ...fixed, approvedAmountCents: null }, 'approve', NOW)).toBeNull()
+    expect(acceptedExits(S({ status: 'arbitration' }))).toEqual(['approve', 'refuse_final'])
+  })
+
+  it('refuse_final on EVERY approved claim → the exact AM-B3 text (D13, text v1.1 — D′ L2)', () => {
     const approvedRows = EXIT_TABLE.filter((r) => r.claim.status === A)
     expect(approvedRows.length).toBeGreaterThan(8)
     for (const r of approvedRows) {
-      expect(arbitrationRefusal(r.claim, 'refuse_final', NOW)?.error, r.state).toBe('Cette réclamation a été approuvée — elle ne peut plus être refusée. Selon son état : approuvez-la à nouveau (réclamations et remboursements ouverts), réconciliez-la, ou clôturez le dossier (« Clôturer ce dossier… ») si le détail le propose.')
+      expect(arbitrationRefusal(r.claim, 'refuse_final', NOW)?.error, r.state).toBe('Cette réclamation a été approuvée — elle ne peut plus être refusée. Selon son état : elle relève du rail financier (« Payer les approuvées »), retirez l’approbation (« Retirer l’approbation »), réconciliez-la, ou clôturez le dossier (« Clôturer ce dossier… ») si le détail le propose.')
     }
     expect(REFUSE_APPROVED_AM_B3).toBe(arbitrationRefusal(S({ status: A }), 'refuse_final', NOW)?.error)
+    // NEGATIVE CONTROL: the v1 text named a re-approval as the way to be paid; it is not the shipped text any more.
+    const V1_AM_B3 = 'Cette réclamation a été approuvée — elle ne peut plus être refusée. Selon son état : approuvez-la à nouveau (réclamations et remboursements ouverts), réconciliez-la, ou clôturez le dossier (« Clôturer ce dossier… ») si le détail le propose.'
+    expect(V1_AM_B3).toMatch(/approuvez-la à nouveau/)
+    expect(REFUSE_APPROVED_AM_B3).not.toBe(V1_AM_B3)
+    expect(REFUSE_APPROVED_AM_B3).not.toMatch(/approuvez-la à nouveau|nouvelle approbation/)
+    expect(REFUSE_APPROVED_AM_B3).toContain('Retirer l’approbation')
   })
 
   it('markers are matched with startsWith — a marker quoted inside another text is not that marker (an includes mutant is red)', () => {
@@ -242,11 +273,17 @@ describe('EXIT TABLE (ROUND 13, J-M30) — acceptedExits returns exactly the D1 
   })
 
   it('no row offers a power that does not exist: no « annuler », no apply_row_failure, no declaration from FV', () => {
-    const ALLOWED: Exit[] = ['approve', 'refuse_final', 'reconcile', 'attribute', 'adopt', 'stuck_close']
+    // D′ L2 (D1 v1.1): the exit union gains ratify | withdraw | pay — and nothing else.
+    const ALLOWED: Exit[] = ['approve', 'ratify', 'refuse_final', 'withdraw', 'pay', 'reconcile', 'attribute', 'adopt', 'stuck_close']
     for (const r of EXIT_TABLE) {
       for (const x of acceptedExits(r.claim, NOW, extraOf(r))) expect(ALLOWED, r.state).toContain(x)
       if (r.claim.status === FINANCIAL_VERIFICATION) expect(acceptedExits(r.claim, NOW, extraOf(r)), r.state).not.toContain('stuck_close')
     }
+    // NEGATIVE CONTROL: the three v1.1 exits really are exercised by the table (the list above is not slack), and none of
+    // the powers that do not exist ever appears.
+    const seen = new Set(EXIT_TABLE.flatMap((r) => acceptedExits(r.claim, NOW, extraOf(r))))
+    for (const x of ['ratify', 'withdraw', 'pay']) expect(seen.has(x as Exit), x).toBe(true)
+    for (const x of ['annuler', 'apply_row_failure', 'cancel', 'declare']) expect(seen.has(x as Exit), x).toBe(false)
   })
 
   it('NEGATIVE CONTROL — an FV claim with no attributable row → reconcile + adopt, never attribute', () => {
@@ -330,8 +367,9 @@ describe('ARBITRATION PARITY — the queue carries exactly the refusal the serve
       }
     }
     // ROUND 13 (J-M30): AM-B3 removes refuse_final on approved claims and D14 refuses approval on recorded
-    // errors — the enabled decisions are exactly: approve on the two unpaid approvals and the v13 proof past
-    // its instant, and both decisions on arbitration and on an expired restaurant delay.
+    // errors — the enabled decisions are exactly: the RATIFICATION (D′ L2: approve on an approved claim whose amount is
+    // not fixed — a decision, no money) of the two unpaid approvals and of the v13 proof past its instant, and both
+    // decisions on arbitration and on an expired restaurant delay. The amount-fixed shape is refused (APPROVE_ALREADY_SET).
     expect(successes).toBe(7)
     expect(execMock).not.toHaveBeenCalled()
   })
@@ -948,8 +986,16 @@ describe('J-C17 (F15) — money state classification: legacy proof → reconcile
     expect(byId.legacy).not.toBe('absence_proven_payable')
   })
 
-  it('guidance equals F15 (with ER-R27), and absence_proven_payable says « au plus tôt »', () => {
+  it('guidance equals F15 (with ER-R27, text v1.1 — D′ L2), and absence_proven_payable says « au plus tôt »', () => {
     expect(moneyStateGuidance('absence_proven_payable')).toContain('au plus tôt')
-    expect(moneyStateGuidance('approved_not_driven')).toBe('Approuvée, jamais payée. Elle ne se paie que par l’approbation admin (file d’arbitrage), réclamations et remboursements ouverts, et seulement si la vérification avant moteur le permet à ce moment. Aucune clôture manuelle sur cet état.')
+    expect(moneyStateGuidance('approved_not_driven')).toBe('Approuvée, en attente de paiement. Elle ne se paie que par le rail financier (« Payer les approuvées », session admin, remboursements ouverts), et seulement si la vérification avant moteur le permet à ce moment  ; une ré-approbation ne paie jamais. Aucune clôture manuelle sur cet état.')
+    // NEGATIVE CONTROL: the v1 line named the arbitration queue's approval as the way to be paid — it is gone, and no
+    // F15 line names a re-approval any more.
+    const V1_APPROVED_NOT_DRIVEN = 'Approuvée, jamais payée. Elle ne se paie que par l’approbation admin (file d’arbitrage), réclamations et remboursements ouverts, et seulement si la vérification avant moteur le permet à ce moment. Aucune clôture manuelle sur cet état.'
+    expect(moneyStateGuidance('approved_not_driven')).not.toBe(V1_APPROVED_NOT_DRIVEN)
+    for (const s of ['approved_not_driven', 'absence_proven_payable']) {
+      expect(moneyStateGuidance(s), s).not.toMatch(/approuvez-la à nouveau|nouvelle approbation|approbation admin \(file d’arbitrage\)/)
+      expect(moneyStateGuidance(s), s).toContain('Payer les approuvées')
+    }
   })
 })

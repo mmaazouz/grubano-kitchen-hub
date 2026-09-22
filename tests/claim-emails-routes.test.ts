@@ -7,9 +7,14 @@ import { readFileSync } from 'node:fs'
 // le moteur de remboursement et la logique d'arbitrage sont mockés TELS QUELS —
 // aucune assertion ne change sur leurs appels (non-régression du circuit prouvé).
 //
-// ROUND 13 (slice W6): J-C22 (H03 — the arbitrate e-mail kind by provenance, 'refunded' only on the engine's CAS-won
-// result, the lease read at send time) and J-C47 (E-17 — a non-terminal e-mail skipped as claims_disabled when the lease
-// closes mid-request). The closure send sites of J-M38 run in tests/claim-emails-routes-closure.test.ts.
+// ROUND 13 (slice W6): J-C22 (H03 — the arbitrate e-mail kind by provenance, the lease read at send time) and J-C47
+// (E-17 — a non-terminal e-mail skipped as claims_disabled when the lease closes mid-request). The closure send sites
+// of J-M38 run in tests/claim-emails-routes-closure.test.ts.
+//
+// D′ L2 (spec v2 S-02/S-13): an approve is a DECISION only — the arbitrate route sends 'approved' with refundedCents
+// null on EVERY approve (never 'refunded': that e-mail belongs to the financial rail, on the engine's amount, D′ L5),
+// reports no `refund` field and audits moneyMoved:false. POST /api/claims sends the ack ONLY: the former auto_small
+// decision e-mail is gone with the machine approval path (autoResolveSmallClaim is inert; the route ignores its result).
 
 const { claims } = vi.hoisted(() => ({
   claims: {
@@ -131,29 +136,42 @@ describe('POST /api/claims — accusé de réception à l’ouverture', () => {
     expect(res.status).toBe(201)
   })
 
-  it("⭐ chemin MACHINE auto_small (revue) : auto-résolution 'refunded' → l'email de décision part AUSSI (ack + refunded), rien n'est re-déclenché", async () => {
+  it("⭐ D′ L2 — chemin MACHINE auto_small SUPPRIMÉ : même si l'auto-résolution (mockée) rendait le VIEUX shape 'refunded', la route n'envoie AUCUN email de décision — ack SEUL, la fonction consultée une fois, son résultat ignoré", async () => {
     claims.createClaim.mockResolvedValue({ ok: true, claim: CLAIM })
-    // truthfulness hotfix 2026-09-06: the engine's ACTUAL amount (1000) differs from the requested 1250 → the e-mail must carry 1000
+    // NEGATIVE-SHAPE CONTROL: the shape that USED to make this route send { decision:'refunded', refundedCents:1000 }.
+    // Under D′ the real function can never return it (inert by construction); the route must not react to it either.
     claims.autoResolveSmallClaim.mockResolvedValue({ state: 'refunded', refundId: 'rf1', amountCents: 1000 })
     const res = await CREATE(jsonReq('http://x/api/claims', { orderId: 'ord123abc', reason: 'quality' }))
     expect(res.status).toBe(201)
     expect(ackMock).toHaveBeenCalledTimes(1)
-    expect(decisionMock).toHaveBeenCalledWith(expect.objectContaining({
-      claimId: 'cl1', decision: 'refunded', refundedCents: 1000, claimsOpen: true,
-    }))
-    expect(claims.autoResolveSmallClaim).toHaveBeenCalledTimes(1) // pas de re-déclenchement
+    expect(decisionMock).not.toHaveBeenCalled()
+    expect(claims.autoResolveSmallClaim).toHaveBeenCalledTimes(1) // consultée une fois (pin « la route la consulte »), jamais re-déclenchée
+    expect(claims.autoResolveSmallClaim).toHaveBeenCalledWith(expect.objectContaining({ id: 'cl1', consumerId: 'c1', requestedAmountCents: 1250, status: 'restaurant_review' }))
+    expect(await res.json()).toMatchObject({ claim: CLAIM, photoAccepted: false })
   })
 
-  it("auto-résolution 'pending' (REFUNDS off) → email 'approved' sans montant ; 'not_eligible' (bêta) → ack SEUL", async () => {
+  it("D′ L2 — quel que soit le shape rendu par l'auto-résolution ('pending', 'failed', 'not_eligible') → ack SEUL, jamais d'email de décision, 201", async () => {
     claims.createClaim.mockResolvedValue({ ok: true, claim: CLAIM })
-    claims.autoResolveSmallClaim.mockResolvedValue({ state: 'pending', reason: 'refunds_disabled' })
-    await CREATE(jsonReq('http://x/api/claims', { orderId: 'ord123abc', reason: 'quality' }))
-    expect(decisionMock).toHaveBeenCalledWith(expect.objectContaining({ decision: 'approved', refundedCents: null }))
+    for (const shape of [
+      { state: 'pending', reason: 'refunds_disabled' },
+      { state: 'pending', reason: 'stripe_pending', refundId: 'rf1' },
+      { state: 'failed', error: 'resume_mismatch' },
+      { state: 'not_eligible' },
+    ]) {
+      ackMock.mockClear(); decisionMock.mockClear()
+      claims.autoResolveSmallClaim.mockResolvedValue(shape)
+      const res = await CREATE(jsonReq('http://x/api/claims', { orderId: 'ord123abc', reason: 'quality' }))
+      expect(res.status, JSON.stringify(shape)).toBe(201)
+      expect(ackMock, JSON.stringify(shape)).toHaveBeenCalledTimes(1)
+      expect(decisionMock, JSON.stringify(shape)).not.toHaveBeenCalled()
+    }
+  })
 
-    decisionMock.mockClear()
-    claims.autoResolveSmallClaim.mockResolvedValue({ state: 'not_eligible' })
-    await CREATE(jsonReq('http://x/api/claims', { orderId: 'ord456def', reason: 'quality' }))
-    expect(decisionMock).not.toHaveBeenCalled()
+  it('STATIC PIN — app/api/claims/route.ts imports no decision sender and names no decision kind', () => {
+    const src = readFileSync('app/api/claims/route.ts', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')
+    expect(src).not.toMatch(/sendClaimDecisionEmail/)
+    expect(src).not.toMatch(/'refunded'|'approved'|refundedCents/)
+    expect(src).toMatch(/sendClaimAckEmail/)
   })
 })
 
@@ -193,27 +211,35 @@ describe('POST /api/claims/[id]/respond — décision du RESTAURANT', () => {
   })
 })
 
-describe('POST /api/admin/claims/[id]/arbitrate — décision de GRUBANO (bloc strictement additif)', () => {
-  it("⭐ approve + remboursement ÉMIS → email 'refunded' avec le montant ; l'audit admin reste appelé AVANT", async () => {
+describe('POST /api/admin/claims/[id]/arbitrate — décision de GRUBANO (D′ L2 : approuver ≠ rembourser)', () => {
+  it("⭐ D′ L2 — approve → email 'approved' SANS montant, audit { decision:'approve', moneyMoved:false } appelé AVANT, pas de champ refund ; CONTRÔLE NÉGATIF : même le vieux shape { refund: refunded 1000 } (qui produisait 'refunded') est ignoré", async () => {
     claims.arbitrateClaim.mockResolvedValue({
-      ok: true, claim: CLAIM, refund: { state: 'refunded', refundId: 'rf1', amountCents: 1000 }, // engine amount ≠ requested 1250
+      ok: true, claim: CLAIM, refund: { state: 'refunded', refundId: 'rf1', amountCents: 1000 }, // legacy dab754d shape — the route must not read it
     })
     const res = await ARBITRATE(jsonReq('http://x/api/admin/claims/cl1/arbitrate', { decision: 'approve' }), { params: { id: 'cl1' } })
     expect(res.status).toBe(200)
-    expect(auditMock).toHaveBeenCalledTimes(1) // la route d'arbitrage n'est PAS modifiée dans sa logique
+    expect(auditMock).toHaveBeenCalledTimes(1)
+    expect(auditMock).toHaveBeenCalledWith(expect.objectContaining({ action: 'claim.arbitrate', targetId: 'cl1', metadata: { decision: 'approve', moneyMoved: false } }))
+    expect(auditMock.mock.invocationCallOrder[0]).toBeLessThan(decisionMock.mock.invocationCallOrder[0]) // l'audit AVANT l'email
+    expect(decisionMock).toHaveBeenCalledTimes(1)
     expect(decisionMock).toHaveBeenCalledWith(expect.objectContaining({
-      decision: 'refunded', refundedCents: 1000,
+      claimId: 'cl1', consumerId: 'c1', orderId: 'ord123abc', decision: 'approved', refundedCents: null, claimsOpen: true,
     }))
+    expect(decisionMock.mock.calls[0][0].decision).not.toBe('refunded')
+    const body = await res.json() as Record<string, unknown>
+    expect(body).toEqual({ claim: CLAIM, customerEmail: { status: 'sent' } })
+    expect(body).not.toHaveProperty('refund')
+    expect(execMock).not.toHaveBeenCalled()
   })
 
-  it("approve SANS émission (REFUNDS off → pending) → email 'approved', aucun montant promis", async () => {
-    claims.arbitrateClaim.mockResolvedValue({
-      ok: true, claim: CLAIM, refund: { state: 'pending', reason: 'refunds_disabled' },
-    })
-    await ARBITRATE(jsonReq('http://x/api/admin/claims/cl1/arbitrate', { decision: 'approve' }), { params: { id: 'cl1' } })
+  it("approve sur le shape RÉEL de D′ (ok + claim, sans refund) → email 'approved', aucun montant promis", async () => {
+    claims.arbitrateClaim.mockResolvedValue({ ok: true, claim: { ...CLAIM, status: 'approved', arbitrationDecision: 'approved' } })
+    const res = await ARBITRATE(jsonReq('http://x/api/admin/claims/cl1/arbitrate', { decision: 'approve' }), { params: { id: 'cl1' } })
+    expect(res.status).toBe(200)
     expect(decisionMock).toHaveBeenCalledWith(expect.objectContaining({
       decision: 'approved', refundedCents: null,
     }))
+    expect(await res.json()).not.toHaveProperty('refund')
   })
 
   it("refuse_final sans refus du restaurant au dossier → email 'refused_by_grubano' (ROUND 13, H03: « Refus confirmé » exige le refus du restaurant) avec le motif admin", async () => {
@@ -233,8 +259,8 @@ describe('POST /api/admin/claims/[id]/arbitrate — décision de GRUBANO (bloc s
   })
 })
 
-// ══ ROUND 13 — J-C22 ══════════════════════════════════════════════════════════════════════════════
-describe('J-C22 — arbitrate decision e-mail: kind by provenance, refunded only on the engine\'s CAS-won result', () => {
+// ══ ROUND 13 — J-C22 (re-pinned under D′ L2) ══════════════════════════════════════════════════════
+describe('J-C22 (D′ L2) — arbitrate decision e-mail: refusal kind by provenance; every approve is \'approved\' with no amount, never \'refunded\'', () => {
   const arbitrate = async (decision: string, result: Record<string, unknown>, reason?: string) => {
     claims.arbitrateClaim.mockResolvedValue({ ok: true, ...result })
     const res = await ARBITRATE(jsonReq('http://x/api/admin/claims/cl1/arbitrate', { decision, ...(reason ? { reason } : {}) }), { params: { id: 'cl1' } })
@@ -251,12 +277,17 @@ describe('J-C22 — arbitrate decision e-mail: kind by provenance, refunded only
     expect(actual.DECISION_TRIGGER.refused_by_grubano).toBe('claim_decision_refused_final')
   })
 
-  it('(c) approve + refund {refunded, 1250} → refunded with refundedCents 1250', async () => {
-    const c = await arbitrate('approve', { claim: CLAIM, refund: { state: 'refunded', refundId: 'rf1', amountCents: 1250 } })
-    expect(c.arg).toMatchObject({ decision: 'refunded', refundedCents: 1250 })
+  it('(c) INVERTED (D′ L2) — approve on the real shape (no refund field) → approved with refundedCents null, no refund in the body; NEGATIVE CONTROL: the legacy {refund: refunded 1250} shape that USED to yield refunded/1250 yields the same approved/null', async () => {
+    const real = await arbitrate('approve', { claim: { ...CLAIM, status: 'approved', arbitrationDecision: 'approved' } })
+    expect(real.arg).toMatchObject({ decision: 'approved', refundedCents: null })
+    expect(real.body).not.toHaveProperty('refund')
+    const legacy = await arbitrate('approve', { claim: CLAIM, refund: { state: 'refunded', refundId: 'rf1', amountCents: 1250 } })
+    expect(legacy.arg).toMatchObject({ decision: 'approved', refundedCents: null })
+    expect(legacy.arg.decision).not.toBe('refunded')
+    expect(legacy.body).not.toHaveProperty('refund')
   })
 
-  it('(d)(e) every other approval — failed with each error, pending — → approved with refundedCents null; NEGATIVE CONTROL: never refunded', async () => {
+  it('(d)(e) every other legacy approval shape — failed with each error, pending — → approved with refundedCents null; never refunded', async () => {
     const shapes = [
       ...['attempt_superseded', 'identity_unverified', 'resume_mismatch', 'safety_hold', 'proof_locked', 'refunds_disabled'].map((error) => ({ state: 'failed', error })),
       { state: 'pending', reason: 'refunds_disabled' },
@@ -266,6 +297,7 @@ describe('J-C22 — arbitrate decision e-mail: kind by provenance, refunded only
       const r = await arbitrate('approve', { claim: CLAIM, refund })
       expect(r.arg, JSON.stringify(refund)).toMatchObject({ decision: 'approved', refundedCents: null })
       expect(r.arg.decision, JSON.stringify(refund)).not.toBe('refunded')
+      expect(r.body, JSON.stringify(refund)).not.toHaveProperty('refund')
     }
   })
 
@@ -277,15 +309,20 @@ describe('J-C22 — arbitrate decision e-mail: kind by provenance, refunded only
     expect(f.body.customerEmail).toEqual({ status: 'skipped', why: 'claims_disabled' })
   })
 
-  it('the response includes customerEmail; a sender that throws keeps the 200 with sender_error; the route never calls the engine', async () => {
-    const ok = await arbitrate('approve', { claim: CLAIM, refund: { state: 'refunded', refundId: 'rf1', amountCents: 1250 } })
-    expect(ok.body).toMatchObject({ claim: CLAIM, refund: { state: 'refunded' }, customerEmail: { status: 'sent' } })
+  it('the response is exactly { claim, customerEmail } (no refund field); a sender that throws keeps the 200 with sender_error; the route never calls the engine (source pinned: no engine import, no \'refunded\', refundedCents: null, moneyMoved: false)', async () => {
+    const approved = { ...CLAIM, status: 'approved', arbitrationDecision: 'approved' }
+    const ok = await arbitrate('approve', { claim: approved })
+    expect(ok.body).toEqual({ claim: approved, customerEmail: { status: 'sent' } })
     decisionMock.mockRejectedValueOnce(new Error('boom'))
     const thrown = await arbitrate('refuse_final', { claim: refusedClaim(null) })
     expect(thrown).toMatchObject({ status: 200, body: { customerEmail: { status: 'failed', why: 'sender_error' } } })
     expect(execMock).not.toHaveBeenCalled()
-    const src = readFileSync('app/api/admin/claims/[id]/arbitrate/route.ts', 'utf8')
-    expect(src).not.toMatch(/executeRefund|@\/lib\/refund['"]/)
+    const src = readFileSync('app/api/admin/claims/[id]/arbitrate/route.ts', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')
+    expect(src).not.toMatch(/executeRefund|triggerClaimRefund|@\/lib\/refund['"]/)
+    expect(src).not.toMatch(/'refunded'/)
+    expect(src).toMatch(/refundedCents:\s*null/)
+    expect(src).toMatch(/moneyMoved:\s*false/)
+    expect(src).not.toMatch(/refund:\s*result/)
   })
 })
 

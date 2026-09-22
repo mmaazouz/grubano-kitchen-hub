@@ -606,7 +606,10 @@ export type ClaimBlockedCause =
   | 'no_refund_proven:v13:' | 'no_refund_proven_rail_locked:awaiting_finalization:' | 'no_refund_proven_rail_locked:'
   | 'safety_hold' | 'safety_check_unreadable' | 'unconfirmed_within_window' | 'own_row_exists' | 'resume_mismatch'
   | 'identity_unverified' | 'engine_own_row' | 'engine_failed' | 'stripe_failed' | 'engine_row_dead' | 'stripe_reverted'
-  | 'reverted_after_refund' | 'refunds_disabled' | 'attempt_crashed'
+  | 'reverted_after_refund' | 'attempt_crashed'
+// D′ L2 (spec v2 §1.2 C14, R13 v1.1 I-01): 'refunds_disabled' is no longer a cause. « Approved, unpaid » is the
+// NORMAL state APPROVED_AWAITING_PAYMENT — approve never touches the engine, so a closed REFUNDS lease at approval
+// time is not an incident. Visibility = the « À rembourser » queue, the ungated admin badge, the census line.
 export const CLAIM_BLOCKED_TITLE = 'Réclamation non payée par le rail — décision admin requise'
 /**
  * ROUND 13 — certification audit of c32d8d3 (P1, I-01): once executeRefund was invoked for this attempt, or when a row
@@ -620,14 +623,15 @@ export const CLAIM_BLOCKED_OUTCOME_UNKNOWN_TITLE = 'Tentative de remboursement s
  * targeted re-audits of 75f1601 and 68621aa: every non-engine exit of the trigger, the park included, takes a stamped read right
  * before its own write).
  * Callers outside triggerClaimRefund omit ownRowAbsent: applyRowTruth and R0 act on row or Stripe evidence for the bound row; N8
- * re-reads the rows stamped for the claim immediately before its CAS; refunds_disabled is sent when triggerClaimRefund returned
- * before T1, so this request made no engine call (a row left by an earlier stalled attempt is the declared C11 / A-S33 residual).
+ * re-reads the rows stamped for the claim immediately before its CAS (a row left by an earlier stalled attempt is the declared
+ * C11 / A-S33 residual).
  */
 export function claimBlockedTitle(cause: ClaimBlockedCause, engineCalled: boolean, ownRowAbsent = true): string {
   return engineCalled || cause === 'own_row_exists' || !ownRowAbsent ? CLAIM_BLOCKED_OUTCOME_UNKNOWN_TITLE : CLAIM_BLOCKED_TITLE
 }
 export const CLAIM_ATTEMPT_SUPERSEDED_TITLE = 'Tentative de remboursement terminée après un changement d’état de la réclamation'
-const GATED_EXIT_SUFFIX = ' (réclamations+remboursements ouverts)'
+// D′ L2 (D1 v1.1): the money exit is the rail, never a (re-)approval. 'ratify' (a decision, no money) carries no suffix.
+const PAY_EXIT_SUFFIX = ' (rail « Payer les approuvées », remboursements ouverts)'
 
 /** The claim as a write left it — for the exits and registry of an alert. Positional on purpose. */
 const stateAfter = (status: string, refundAttempted: boolean, refundId: string | null, errorAfter: string | null, boundRow?: BoundRowFacts): ClaimFacts => ({
@@ -658,13 +662,13 @@ export async function alertClaimPaymentBlocked(claimId: string, cause: ClaimBloc
     const now = new Date()
     const c: ClaimFacts = { ...input.claimAfter, id: claimId, ...(input.orderId ? { orderId: input.orderId } : {}) }
     const v13 = typeof c.refundError === 'string' && c.refundError.startsWith(MARKERS.PROOF_PAYABLE_V13)
-    // W7 fixer (I-01, W2 carry-over): a v13 proof is approvable only from its C4 instant, so its gated approve exit states
-    // that bound too (the instant also travels in quiescenceInstant); every other approve keeps the lease-only suffix.
+    // W7 fixer (I-01, W2 carry-over): a v13 proof is payable only from its C4 instant, so its gated pay exit states
+    // that bound too (the instant also travels in quiescenceInstant); every other pay keeps the rail-only suffix.
     const v13Instant = v13 ? proofInstant(c.refundError) : null
-    const approveSuffix = v13Instant
-      ? `${GATED_EXIT_SUFFIX.slice(0, -1)}, au plus tôt le ${v13Instant.toISOString()} UTC)`
-      : GATED_EXIT_SUFFIX
-    const exits = acceptedExits({ claim: c, now }).map((x) => (x === 'approve' ? `approve${approveSuffix}` : x)).join(', ')
+    const paySuffix = v13Instant
+      ? `${PAY_EXIT_SUFFIX.slice(0, -1)}, au plus tôt le ${v13Instant.toISOString()} UTC)`
+      : PAY_EXIT_SUFFIX
+    const exits = acceptedExits({ claim: c, now }).map((x) => (x === 'pay' ? `pay${paySuffix}` : x)).join(', ')
     const stripeIds = (input.stripeRefundIds ?? []).filter((x): x is string => !!x)
     await sendAdminMoneyReviewAlert({
       kind:      'claim_payment_blocked',
@@ -1093,24 +1097,22 @@ export async function triggerClaimRefund(claimId: string): Promise<RefundTrigger
   }
 }
 
-// ── APPROVE — restaurant accept OR auto-timeout ───────────────────────────────────
-async function approveClaim(claimId: string, decidedBy: 'restaurant' | 'auto_timeout' | 'auto_small' | 'admin'): Promise<RefundTriggerResult> {
-  // ATOMIC transition restaurant_review → approved (only one caller wins).
-  const claimed = await prisma.claim.updateMany({
+// ── MACHINE PATHS — route to the admin queue, never approve, never pay ─────────────
+// D′ L2 (spec v2 S-02, R13 v1.1 D2): no machine path writes status='approved' and none reaches the engine.
+// `approveClaim` used to move restaurant_review → approved and call triggerClaimRefund inline; under D′ the
+// silence sweep (auto_timeout) and the small-claim auto-resolution (auto_small, inert by construction below)
+// can only ROUTE a claim to 'arbitration', where a human decides (T-07) and the financial rail pays (§8).
+// `restaurantResponse` is left untouched: the restaurant did NOT answer, and the queue must not claim it did.
+export type MachineRouteResult = { state: 'routed_to_arbitration' } | { state: 'already_handled' }
+async function routeClaimToArbitration(claimId: string, routedBy: 'auto_timeout' | 'auto_small'): Promise<MachineRouteResult> {
+  // ATOMIC transition restaurant_review → arbitration (only one caller wins). activeOrderKey stays held (active).
+  const moved = await prisma.claim.updateMany({
     where: { id: claimId, status: 'restaurant_review' },
-    data:  { status: 'approved', restaurantResponse: 'accepted', decidedBy, decidedAt: new Date() },
+    data:  { status: 'arbitration' },
   })
-  if (claimed.count !== 1) return { state: 'already_handled' }
-  const refund = await triggerClaimRefund(claimId)
-  // I-01 / D2 (2): the refund rail is closed — nothing was started. After this function's own won CAS only.
-  if (refund.state === 'pending' && refund.reason === 'refunds_disabled') {
-    let orderId: string | null = null
-    try {
-      orderId = (await prisma.claim.findUnique({ where: { id: claimId }, select: { orderId: true } }))?.orderId ?? null
-    } catch { /* best effort */ }
-    await alertClaimPaymentBlocked(claimId, 'refunds_disabled', { orderId, engineCalled: false, firstEngineRefusal: null, claimAfter: stateAfter('approved', false, null, null) })
-  }
-  return refund
+  if (moved.count !== 1) return { state: 'already_handled' }
+  console.warn(`[claims] ${routedBy}: claim ${claimId} routed to admin arbitration (no approval, no money — D′ L2)`)
+  return { state: 'routed_to_arbitration' }
 }
 
 // ── RESTO — respond to a claim (owner-scoped by the route) ────────────────────────
@@ -1172,29 +1174,29 @@ export async function respondToClaim(input: {
   return { ok: true, claim: updated }
 }
 
-// ── CRON — auto-approve expired claims + drive pending refunds ────────────────────
+// ── CRON — silence sweep: route expired claims to the admin queue (D′ L2: never approve, never pay) ──
+// D′ L2 (spec v2 S-02, S-13; R13 v1.1 D2/E-10): the former « auto-approve + drive pending refunds » sweep is gone.
+//   • Step 1 no longer APPROVES an expired restaurant_review claim: it routes it to 'arbitration', where a human
+//     decides (T-07). It still skips SAFETY reports (batch 2 rule: a machine never closes a safety report).
+//   • Step 2 (« approved-but-unrefunded → drive the refund ») is DELETED: APPROVED_AWAITING_PAYMENT is paid ONLY by
+//     the financial rail (POST /api/admin/claims/pay-approved, admin session, REFUNDS lease), never by a sweep.
+// ROUND 13 (C4, v1.1): no sweep drives a refund any more — « skip every claim carrying a refundError » holds by
+//   construction: the sweep reads no refundError, writes no approved claim and reaches no engine (S-13).
+// The route POST /api/admin/claims/auto-approve stays behind CLAIMS_AUTO_APPROVE_ENABLED (OFF for the whole beta).
 export type ClaimSweepSummary = {
-  autoApproved: number
-  refundsTriggered: number
-  refundsPending: number
-  refundsFailed: number
   scannedExpired: number
-  scannedPending: number
+  routedToArbitration: number
+  skippedSafety: number
+  skippedAlreadyHandled: number
 }
 
 export async function runClaimAutoApproval(): Promise<ClaimSweepSummary> {
-  const summary: ClaimSweepSummary = {
-    autoApproved: 0, refundsTriggered: 0, refundsPending: 0, refundsFailed: 0, scannedExpired: 0, scannedPending: 0,
-  }
+  const summary: ClaimSweepSummary = { scannedExpired: 0, routedToArbitration: 0, skippedSafety: 0, skippedAlreadyHandled: 0 }
   const now = new Date()
 
-  // 1. Expired restaurant_review → auto-approve (and attempt the refund).
-  // AUDIT FIX (batch 2, defence in depth). This sweep is unreachable in every authorized
-  // configuration — CLAIMS_AUTO_APPROVE_ENABLED is documented OFF for the whole beta and its
-  // scheduler was deleted by founder decision P0-07 precisely because it pays out with no admin
-  // in the loop. But the batch's rule is "a machine never closes a safety report", and a rule
-  // that holds on one automatic path and not the other is not a rule. Safety claims are skipped
-  // here too, so the invariant does not depend on a flag staying off.
+  // Expired restaurant_review → 'arbitration' (admin-actionable already; this only moves the row into the queue).
+  // AUDIT FIX (batch 2, defence in depth): safety claims are skipped here too, so the invariant does not depend on
+  // a flag staying off — a human must see them where they are.
   const expired = await prisma.claim.findMany({
     where:  { status: 'restaurant_review', responseDeadlineAt: { lt: now } },
     select: { id: true, reason: true },
@@ -1203,46 +1205,21 @@ export async function runClaimAutoApproval(): Promise<ClaimSweepSummary> {
   summary.scannedExpired = expired.length
   for (const c of expired) {
     if (isSafetyReason(c.reason)) {
-      console.warn(`[claims auto-approval] SAFETY reason (${c.reason}) on claim ${c.id} — skipped by design; a human must decide.`)
+      console.warn(`[claims silence sweep] SAFETY reason (${c.reason}) on claim ${c.id} — skipped by design; a human must decide.`)
+      summary.skippedSafety++
       continue
     }
-    const r = await approveClaim(c.id, 'auto_timeout')
-    if (r.state !== 'already_handled') summary.autoApproved++
-    if (r.state === 'refunded') summary.refundsTriggered++
-    else if (r.state === 'pending') summary.refundsPending++
-    else if (r.state === 'failed') summary.refundsFailed++
+    const r = await routeClaimToArbitration(c.id, 'auto_timeout')
+    if (r.state === 'routed_to_arbitration') summary.routedToArbitration++
+    else summary.skippedAlreadyHandled++
   }
-
-  // 2. Approved-but-unrefunded (e.g. REFUNDS_ENABLED was OFF at approval, now ON) →
-  //    drive the refund exactly once (refundAttempted guard). Skipped when REFUNDS off.
-  if (isRefundsEnabled()) {
-    const pending = await prisma.claim.findMany({
-      where:  { status: 'approved', refundAttempted: false },
-      // ROUND 13 (C4): the sweep reads refundError so it can skip every recorded state.
-      select: { id: true, refundError: true },
-      take:   500,
-    })
-    summary.scannedPending = pending.length
-    for (const c of pending) {
-      // ROUND 13 (C4, J-M21/J-M47): the sweep never drives a claim carrying a refundError — a proof of
-      // absence (v13 before or after its instant, or legacy), a lock, a safety hold, a recorded failure.
-      // Only a human approval re-drives those, through the arbitration checks.
-      if (c.refundError) continue
-      const r = await triggerClaimRefund(c.id)
-      if (r.state === 'refunded') summary.refundsTriggered++
-      else if (r.state === 'pending') summary.refundsPending++
-      else if (r.state === 'failed') summary.refundsFailed++
-    }
-  }
-
   return summary
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════
-// P4.5-C2 — neutrality & anti-abuse layer (Agent 53): auto-resolution of small cases,
-// contest → ADMIN arbitration, and read-only abuse signals. Reuses the C1 idempotent
-// refund trigger; the C1 cycle (createClaim/respondToClaim/runClaimAutoApproval) is
-// untouched. The arbiter is ALWAYS a neutral Grubano admin — never a party.
+// P4.5-C2 — neutrality & anti-abuse layer (Agent 53): contest → ADMIN arbitration, and
+// read-only abuse signals. The arbiter is ALWAYS a neutral Grubano admin — never a party.
+// D′ L2: the small-claim auto-resolution is INERT BY CONSTRUCTION (see autoResolveSmallClaim).
 // ═══════════════════════════════════════════════════════════════════════════════════
 
 /** SOFT abuse orientation (no money sanction, no hard block): a consumer with ≥ N claims
@@ -1253,41 +1230,18 @@ export async function isConsumerAbuseFlagged(consumerId: string): Promise<boolea
   return recent >= abuseRecentThreshold()
 }
 
-// ── AUTO-RESOLUTION of small, obvious claims (called by the create route post-create) ──
-// At/below the ceiling, from a non-flagged consumer → approve immediately (carried by
-// the resto via the engine prorata), no resto round-trip. Otherwise a NO-OP → the claim
-// stays 'restaurant_review' = the exact C1 flow. Reuses approveClaim (CAS) +
-// triggerClaimRefund (≤1 refund/claim). Never a second refund (refundAttempted guard).
-// P0-27 : DOUBLE VERROU FAIL-SAFE — flag booléen (défaut OFF, gate n°1) ET plafond > 0
-// (défaut 0, gate n°2). Sans configuration explicite des DEUX, aucun remboursement
-// automatique ne part : la réclamation suit le flux C1 (revue restaurant), et le
-// non-déclenchement est TRACÉ (console.warn), jamais silencieux.
+// ── AUTO-RESOLUTION of small claims — INERT BY CONSTRUCTION (D′ L2) ───────────────
+// Founder decision (2026-09-22): « Aucune approbation automatique. Aucun remboursement automatique à partir
+// d'une décision client ou restaurant. » This function used to approve a small claim (≤ CLAIM_AUTO_APPROVE_MAX_CENTS)
+// and call the engine, behind CLAIM_AUTO_RESOLVE_ENABLED + a ceiling (P0-27). Under D′ it returns
+// { state:'not_eligible' } UNCONDITIONALLY — whatever the flags, the ceiling, the reason or the consumer — so no
+// product flag (CLAIMS_SURFACE_ENABLED / CLAIMS_INTAKE_ENABLED) can ever reach a machine approval through
+// POST /api/claims (S-13). The P0-27 readers (isClaimAutoResolveEnabled, claimAutoApproveMaxCents) stay exported for
+// check-flags and the census; they authorise nothing here. The signature is kept for the create route.
 export async function autoResolveSmallClaim(
-  claim: { id: string; consumerId: string; requestedAmountCents: number; status: string; reason?: string | null },
-): Promise<RefundTriggerResult | { state: 'not_eligible' }> {
-  // AUDIT FIX (batch 2): a SAFETY report — allergen exposure, foreign body, illness — must
-  // never be closed by a machine paying out a few euros. Money is not the answer to it: a
-  // human has to see it. Small amounts made this the MOST likely path to auto-close, so the
-  // check comes FIRST, before every other gate, and routes the claim to human review.
-  if (claim.reason && isSafetyReason(claim.reason)) {
-    console.warn(`[claims auto-resolve] SAFETY reason (${claim.reason}) — auto-resolution refused by design; human review required.`)
-    return { state: 'not_eligible' }
-  }
-  if (!isClaimAutoResolveEnabled()) {
-    console.warn('[claims auto-resolve] [P0-27] CLAIM_AUTO_RESOLVE_ENABLED est OFF — aucune auto-résolution, la réclamation part en revue restaurant (validation humaine).')
-    return { state: 'not_eligible' }
-  }
-  if (claim.status !== 'restaurant_review') return { state: 'not_eligible' }
-  const ceiling = claimAutoApproveMaxCents()
-  if (ceiling <= 0) {
-    // Revue P0-27 : flag ON mais plafond absent/0 = config incomplète — sans cette
-    // trace, le no-op serait TOTALEMENT silencieux (sûr mais indébuggable).
-    console.warn('[claims auto-resolve] [P0-27] CLAIM_AUTO_RESOLVE_ENABLED est ON mais le plafond CLAIM_AUTO_APPROVE_MAX_CENTS est absent/0 — auto-résolution inopérante (fail-safe).')
-    return { state: 'not_eligible' }
-  }
-  if (claim.requestedAmountCents > ceiling) return { state: 'not_eligible' }
-  if (await isConsumerAbuseFlagged(claim.consumerId)) return { state: 'not_eligible' } // orient to resto review
-  return approveClaim(claim.id, 'auto_small')
+  _claim: { id: string; consumerId: string; requestedAmountCents: number; status: string; reason?: string | null },
+): Promise<{ state: 'not_eligible' }> {
+  return { state: 'not_eligible' }
 }
 
 // ── CLIENT — contest a refusal → admin arbitration ───────────────────────────────
@@ -1324,43 +1278,36 @@ export async function contestClaim(input: { claimId: string; consumerId: string;
 }
 
 // ── ADMIN — arbitrate a claim awaiting a Grubano decision ─────────────────────────
-// P0-24 : la file admin reçoit désormais TROIS provenances — (1) contestation client
-// (C2, chemin historique), (2) acceptation RESTAURATEUR (routée ici sans argent),
-// (3) HÉRITAGE : les réclamations déjà 'approved' AVANT P0-24 avec refundAttempted
-// false (acceptées sous l'ancienne règle, argent jamais parti car REFUNDS était OFF).
-// Pour (3), l'admin décide aussi : approve → déclenche le remboursement idempotent ;
-// refuse_final → clôture sans argent. Les 'approved' avec refundAttempted=true sont
-// EXCLUS (l'argent a pu bouger — reprise manuelle uniquement, jamais un re-trigger).
+// P0-24 : la file admin reçoit TROIS provenances — (1) contestation client (C2), (2) acceptation
+// RESTAURATEUR (routée ici sans argent), (3) HÉRITAGE : réclamations déjà 'approved' avec
+// refundAttempted false (approuvées sous l'ancienne règle, argent jamais parti).
+//
+// D′ L2 (spec v2 T-07/T-08, S-02 ; R13 v1.1 D2/E-10) — APPROUVER ≠ REMBOURSER. Cette fonction n'appelle
+// JAMAIS triggerClaimRefund ni executeRefund, quel que soit l'état du bail REFUNDS : elle n'écrit qu'une
+// DÉCISION MÉTIER. L'état qui en résulte (status 'approved', arbitrationDecision 'approved',
+// refundAttempted false, refundId null, refundError null) est APPROVED_AWAITING_PAYMENT : un état NORMAL,
+// payé uniquement par le rail financier séparé (POST /api/admin/claims/pay-approved, session admin,
+// bail REFUNDS), jamais par une ré-approbation. Aucune alerte « refunds_disabled » n'est plus émise.
+// Pour (3) : l'approbation est une RATIFICATION — elle ne réécrit JAMAIS arbitratedBy/arbitratedAt/decidedAt
+// déjà posés (la première décision reste la décision), elle ne fait que compléter ce qui est nul.
+// refuse_final → clôture sans argent (AM-B3 : jamais sur une réclamation déjà approuvée).
 export async function arbitrateClaim(input: { claimId: string; adminId: string; decision: 'approve' | 'refuse_final'; reason?: string | null }): Promise<ClaimActionResult> {
   const claim = await prisma.claim.findUnique({
     where:  { id: input.claimId },
     // ROUND 13 (D14 (0), D2 (1)(c)): a payable proof is approvable only unbound — the rule reads refundId.
-    // ROUND 13 (I-01): orderId feeds the refunds_disabled alert facts.
-    select: { id: true, orderId: true, status: true, refundAttempted: true, responseDeadlineAt: true, arbitrationDecision: true, refundId: true, refundError: true },
+    select: { id: true, orderId: true, status: true, refundAttempted: true, responseDeadlineAt: true, arbitrationDecision: true, refundId: true, refundError: true, arbitratedBy: true, arbitratedAt: true, arbitrationReason: true, decidedBy: true, decidedAt: true },
   })
   if (!claim) return { ok: false, status: 404, error: 'Réclamation introuvable.' }
 
-  // FINALIZATION LOCK (Claims batch 1, baseline P1): a DECIDED outcome must not be rewritten
-  // — the historic guard re-admitted an 'approved' + refundAttempted:false row even after an
-  // admin had ruled, so a second decision could flip an approval into refused_final.
-  //
-  // AUDIT FIX (P1): the first version of this lock was too wide and REGRESSED the beta. In the
-  // beta's real configuration (CLAIMS on, REFUNDS off) `triggerClaimRefund` returns
-  // refunds_disabled BEFORE flipping `refundAttempted`, so an admin-approved claim rests at
-  // status 'approved' / arbitrationDecision 'approved' / refundAttempted false — money owed,
-  // nothing paid. Locking that row made it unarbitrable AND removed it from the queue: the
-  // customer had been e-mailed "approved" and no in-app path could ever pay them.
-  // An UNPAID approval is not a final state. Re-driving it is allowed; REVERSING it is not.
-  // ROUND-9 AUDIT FIX (P1, Class 3 again): every pre-check — the rail lock, the finalization lock,
-  // "already approved cannot be refused", terminal, the restaurant's delay, "not in arbitration" —
-  // lives in ONE rule the arbitration queue also applies (lib/claim-action-rules → approveRefusal /
-  // refuseFinalRefusal). Round 9 disabled approve on a rail-locked claim and left « Refuser » live,
-  // which this function always refused there. Same checks, same order, same messages.
+  // FINALIZATION LOCK (Claims batch 1, baseline P1): a DECIDED outcome must not be rewritten.
+  // An UNPAID approval is not a final state: it may be RATIFIED (metadata completed), never REVERSED here
+  // (the audited exit is withdraw-approval, D′ L4). Every pre-check lives in ONE rule the arbitration queue
+  // also applies (lib/claim-action-rules → arbitrationRefusal). Same checks, same order, same messages.
   const now = new Date()
   const refusal = arbitrationRefusal(claim, input.decision, now)
   if (refusal) return { ok: false, status: refusal.status, error: refusal.error }
   // ROUND 13 (D2 (1)(b)): unpaid AND unbound — the same admission as arbitrationRefusal.
-  const legacyApproved = claim.status === 'approved' && !claim.refundAttempted && !claim.refundId // héritage pré-P0-24
+  const legacyApproved = claim.status === 'approved' && !claim.refundAttempted && !claim.refundId // héritage / ratification
   // RESTAURANT SILENCE (Claims batch 1): once the response deadline has passed the claim is
   // ADMIN-ACTIONABLE. Silence never triggers a refund by itself.
   const deadline = claim.responseDeadlineAt instanceof Date ? claim.responseDeadlineAt : null
@@ -1371,14 +1318,10 @@ export async function arbitrateClaim(input: { claimId: string; adminId: string; 
   const casWhere: Prisma.ClaimWhereInput = silenceExpired
     ? { id: claim.id, status: 'restaurant_review', responseDeadlineAt: { lte: now }, arbitrationDecision: null } // deadline re-checked in the CAS
     : legacyApproved
-      // RE-AUDIT FIX (P1, my own incomplete fix): `arbitrationDecision: null` here means IS NULL
-      // in Prisma, so this CAS matched ZERO rows for the exact case the guard above now allows —
-      // an admin-approved but unpaid claim — and the call still 409'd. The money stayed stranded
-      // and only the pre-CAS half of the fix was real. `refundAttempted: false` here, plus the
-      // atomic flip inside triggerClaimRefund, already guarantee at most one refund per claim,
-      // so this branch needs no second-admin filter. The other two branches keep theirs.
       // ROUND 13 (D2 (1)(b)/(c)): the pre-image the refusal read — a proof rewritten meanwhile is not re-decided.
-      ? { id: claim.id, status: 'approved', refundAttempted: false, refundId: null, refundError: claim.refundError }
+      // D′ L2: the ratification CAS also pins the metadata it may complete (arbitratedAt/decidedAt as read), so two
+      // concurrent ratifications cannot both win, and a row already carrying a decision instant is never rewritten.
+      ? { id: claim.id, status: 'approved', refundAttempted: false, refundId: null, refundError: claim.refundError, arbitratedAt: claim.arbitratedAt, decidedAt: claim.decidedAt }
       : { id: claim.id, status: 'arbitration', arbitrationDecision: null }
 
   if (input.decision === 'refuse_final') {
@@ -1397,28 +1340,35 @@ export async function arbitrateClaim(input: { claimId: string; adminId: string; 
     return { ok: true, claim: updated }
   }
 
-  // approve → CAS vers 'approved' avec les métadonnées d'arbitrage (count===1),
-  // puis le MÊME remboursement idempotent (triggerClaimRefund, ≤1 par réclamation).
-  // Héritage : déjà 'approved' → on n'écrit QUE les métadonnées (même garde CAS).
+  // approve → CAS vers 'approved' avec les métadonnées d'arbitrage (count===1). AUCUN appel moteur (D′ L2).
+  // ROUND 13 (E-10, v1.1): APPROVED_AWAITING_PAYMENT is the normal state — written here, paid by the rail, never by a re-approval.
+  const stamp = new Date()
+  if (legacyApproved) {
+    // Ratification : une décision déjà posée n'est JAMAIS réécrite (S-06) — chaque champ garde sa valeur lue (le CAS
+    // l'épingle) et n'est renseigné que s'il est encore nul ; seule la motivation peut être complétée.
+    const ratified = await prisma.claim.updateMany({
+      where: casWhere,
+      data:  {
+        status: 'approved', arbitrationDecision: 'approved',
+        arbitratedBy: claim.arbitratedBy ?? input.adminId, arbitratedAt: claim.arbitratedAt ?? stamp,
+        arbitrationReason: input.reason ?? claim.arbitrationReason ?? null,
+        decidedBy: claim.decidedBy ?? 'admin', decidedAt: claim.decidedAt ?? stamp,
+      },
+    })
+    if (ratified.count !== 1) return { ok: false, status: 409, error: 'Cette réclamation a déjà été arbitrée.' }
+    const updated = await prisma.claim.findUnique({ where: { id: claim.id } })
+    return { ok: true, claim: updated }
+  }
   const moved = await prisma.claim.updateMany({
     where: casWhere,
     data:  {
       status: 'approved', arbitratedBy: input.adminId, arbitrationDecision: 'approved',
-      arbitrationReason: input.reason ?? null, arbitratedAt: new Date(), decidedBy: 'admin', decidedAt: new Date(),
+      arbitrationReason: input.reason ?? null, arbitratedAt: stamp, decidedBy: 'admin', decidedAt: stamp,
     },
   })
   if (moved.count !== 1) return { ok: false, status: 409, error: 'Cette réclamation a déjà été arbitrée.' }
-  const refund = await triggerClaimRefund(claim.id)
-  // ROUND 13 (D2 (2), I-01, N-C-2): the beta writer of E-10 — claims open, refunds closed. triggerClaimRefund
-  // wrote nothing; this decision CAS won. The alert is best-effort and never changes the result.
-  if (refund.state === 'pending' && refund.reason === 'refunds_disabled') {
-    await alertClaimPaymentBlocked(claim.id, 'refunds_disabled', {
-      orderId: claim.orderId ?? null, engineCalled: false, firstEngineRefusal: null,
-      claimAfter: stateAfter('approved', false, null, claim.refundError ?? null),
-    })
-  }
   const updated = await prisma.claim.findUnique({ where: { id: claim.id } })
-  return { ok: true, claim: updated, refund }
+  return { ok: true, claim: updated }
 }
 
 // ── ANTI-ABUSE SIGNALS — read-only aggregation (display + orientation, NO sanction) ──
@@ -1683,7 +1633,10 @@ export async function reconcileClaimForRefund(input: {
 
 /** ROUND 13 (D0 / I-09, slice W7): the approvable flag of a list row — acceptedExits ∋ approve && arbitrationRefusal('approve') === null. */
 function approvableNow(c: ClaimFacts, now: Date = new Date()): boolean {
-  return acceptedExits({ claim: c, now }).includes('approve') && arbitrationRefusal(c, 'approve', now) === null
+  // D′ L2 (D1 v1.1): the « Approuver » control is live for a decision ('approve' on arbitration / silence-expired) or a
+  // ratification ('ratify' on an approved claim whose amount is not fixed) — never for a money exit ('pay' is the rail).
+  const exits = acceptedExits({ claim: c, now })
+  return (exits.includes('approve') || exits.includes('ratify')) && arbitrationRefusal(c, 'approve', now) === null
 }
 
 /** Claims whose MONEY needs a human: stuck in refunding, or carrying a refund error.
@@ -2881,7 +2834,7 @@ async function applyRowTruth(
   }
 
   // absent_dead — Stripe holds nothing for this row and the engine will never create it.
-  const deadText = `${ENGINE_ROW_DEAD}: Stripe ne connaît aucun remboursement portant la ligne ${row.id}, et le moteur ne la créera plus : sa fenêtre d’idempotence a expiré le ${truth.windowEnd.toISOString()} (conclusion tirée après une marge d’une heure). Cette ligne n’a donc rien versé. Tant qu’elle reste en attente, le moteur refusera les remboursements de cette commande. À partir du ${new Date(truth.windowEnd.getTime() - RESUME_CREATE_WINDOW_MS + VOID_MIN_AGE_MS).toISOString()}, un administrateur peut la LIBÉRER (outils admin de remboursement) : la libération ne verse rien, elle rouvre seulement le rail de remboursement de la commande, et le remboursement doit ensuite être relancé depuis ces mêmes outils. Cette réclamation-ci ne sera pas payée par une nouvelle approbation : une fois le remboursement relancé et abouti, clôturez le dossier (« Clôturer ce dossier… ») en déclarant ce qui a été réglé, et comment.`
+  const deadText = `${ENGINE_ROW_DEAD}: Stripe ne connaît aucun remboursement portant la ligne ${row.id}, et le moteur ne la créera plus : sa fenêtre d’idempotence a expiré le ${truth.windowEnd.toISOString()} (conclusion tirée après une marge d’une heure). Cette ligne n’a donc rien versé. Tant qu’elle reste en attente, le moteur refusera les remboursements de cette commande. À partir du ${new Date(truth.windowEnd.getTime() - RESUME_CREATE_WINDOW_MS + VOID_MIN_AGE_MS).toISOString()}, un administrateur peut la LIBÉRER (outils admin de remboursement) : la libération ne verse rien, elle rouvre seulement le rail de remboursement de la commande, et le remboursement doit ensuite être relancé depuis ces mêmes outils. Cette réclamation-ci n’est pas payée par une approbation : une fois le remboursement relancé et abouti, clôturez le dossier (« Clôturer ce dossier… ») en déclarant ce qui a été réglé, et comment.`
   const done = await prisma.claim.updateMany({
     where: preImage,
     data:  {

@@ -10,11 +10,12 @@ import { safeEqual } from '@/lib/safe-compare'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-// ── POST /api/admin/claims/auto-approve (P4.5-C1) ─────────────────────────────────
-// Sweeps claims whose 24h restaurant-response window expired → auto-approves them (a
-// resto can't block by ignoring) and drives any approved-but-unrefunded claim once
-// REFUNDS_ENABLED is ON. Idempotent (atomic status guards in lib/claims). Triggered by
-// the internal cron OR an admin — Mohammed wires the cron when CLAIMS_ENABLED is ON.
+// ── POST /api/admin/claims/auto-approve (P4.5-C1 · D′ L2) ──────────────────────────
+// Sweeps claims whose restaurant-response window expired → ROUTES them to 'arbitration'
+// (a resto can't block by ignoring; a human decides — spec v2 T-07, S-13). Under D′ the
+// sweep never approves and never drives a refund: APPROVED_AWAITING_PAYMENT is paid only
+// by the financial rail (admin session, REFUNDS lease). Idempotent (atomic status guards
+// in lib/claims). Triggered by the internal cron OR an admin. The route name is historical.
 //
 // GATE ORDER (all BEFORE any work):
 //   1. CLAIMS_ENABLED kill-switch (default OFF) → 403 gated.

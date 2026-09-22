@@ -6,6 +6,10 @@
 //   • the LEGACY FINALIZATION LOCK — an already-arbitrated claim cannot be re-arbitrated;
 //   • REFUND IDENTITY BINDING — a RESUME-FIRST mismatch never reports the claim settled;
 //   • REFUND → CLAIM RECONCILIATION, which must work with CLAIMS_ENABLED=false.
+// D′ L2 (spec v2 S-02/S-13): an admin approve is a BUSINESS DECISION only — arbitrateClaim never reaches the
+// engine. The T1..T4 rail (triggerClaimRefund, unchanged) is exercised here by calling it BY HAND after the
+// decision; each such call is also the negative control proving the « 0 engine » pins observe a property.
+// The silence sweep routes to arbitration and approves nothing; autoResolveSmallClaim is inert by construction.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { updateManyMock } from './support/prisma-where'
 
@@ -25,7 +29,7 @@ const { stripeMock } = vi.hoisted(() => ({ stripeMock: { paymentIntents: { retri
 vi.mock('@/lib/stripe', () => ({ getStripe: () => stripeMock }))
 vi.mock('@/lib/admin-alerts', () => ({ sendAdminMoneyReviewAlert: vi.fn(async () => ({ status: 'sent' })) }))
 
-import { arbitrateClaim, reconcileClaimForRefund, listActionableRefundClaims, claimAuthority, isClaimsEnabled, resolveStuckClaim, recoverStrandedClaimReconciliations, autoResolveSmallClaim, isStuckResolvable, runClaimAutoApproval, listArbitrationQueue } from '@/lib/claims'
+import { arbitrateClaim, reconcileClaimForRefund, listActionableRefundClaims, claimAuthority, isClaimsEnabled, resolveStuckClaim, recoverStrandedClaimReconciliations, autoResolveSmallClaim, isStuckResolvable, runClaimAutoApproval, listArbitrationQueue, triggerClaimRefund } from '@/lib/claims'
 import { payableWorld, wireWorld, refundRow, claimOf, engineOk, engine202 } from './support/claims-world'
 
 /** ROUND 13 (C3): the approval path runs T1 → T2 on fresh reads → the engine → T4; these tests drive it in an in-memory world. */
@@ -107,13 +111,23 @@ describe('RESTAURANT SILENCE — never blocks resolution for ever, never auto-re
     expect(execMock).not.toHaveBeenCalled()
   })
 
-  it('silence alone NEVER refunds — money only moves on an explicit admin approve', async () => {
+  it('silence alone NEVER refunds — and an explicit admin approve is a DECISION only (D′ L2): the claim rests APPROVED_AWAITING_PAYMENT; only the rail, run by hand, moves money (negative control)', async () => {
     db.claim.findUnique.mockResolvedValue({ id: 'cl1', status: 'restaurant_review', refundAttempted: false, responseDeadlineAt: past(), arbitrationDecision: null })
     await arbitrateClaim({ claimId: 'cl1', adminId: 'admin1', decision: 'refuse_final' })
     expect(execMock).not.toHaveBeenCalled()
     const w = world({ id: 'cl2', status: 'restaurant_review', responseDeadlineAt: past(), arbitrationDecision: null })
-    await arbitrateClaim({ claimId: 'cl2', adminId: 'admin1', decision: 'approve' })
-    expect(execMock).toHaveBeenCalledTimes(1) // the ADMIN decided, not the clock
+    const res = await arbitrateClaim({ claimId: 'cl2', adminId: 'admin1', decision: 'approve' })
+    expect(res.ok).toBe(true)
+    expect(res).not.toHaveProperty('refund')
+    expect(execMock).not.toHaveBeenCalled()                    // the ADMIN decided — and a decision moves no money
+    expect(refundsFlag).not.toHaveBeenCalled()
+    expect(claimOf(w, 'cl2')).toMatchObject({ status: 'approved', arbitrationDecision: 'approved', decidedBy: 'admin', refundAttempted: false, refundId: null, refundError: null })
+    expect(w.writes).toHaveLength(1)                           // the silence CAS, nothing else
+    expect(w.writes[0].where).toMatchObject({ id: 'cl2', status: 'restaurant_review', arbitrationDecision: null })
+    // NEGATIVE CONTROL — the same world pays the moment the RAIL runs: the engine is reachable, the approve just does not reach it
+    const t = await triggerClaimRefund('cl2')
+    expect(t).toMatchObject({ state: 'refunded', refundId: 'rf1' })
+    expect(execMock).toHaveBeenCalledTimes(1)
     expect(claimOf(w, 'cl2').status).toBe('refunded')
   })
 
@@ -159,13 +173,23 @@ describe('LEGACY FINALIZATION LOCK — a decided claim is decided', () => {
   })
 })
 
-describe('REFUND IDENTITY BINDING — a claim never claims an amount nobody asked for', () => {
+describe('REFUND IDENTITY BINDING — a claim never claims an amount nobody asked for (the RAIL after the decision, D′ L2)', () => {
+  /** D′ L2: the admin decision first (no engine), then the rail by hand — what the pay-approved rail will do. */
+  const decideThenRail = async (w: ReturnType<typeof world>) => {
+    const res = await arbitrateClaim({ claimId: 'cl1', adminId: 'admin1', decision: 'approve' })
+    expect(res.ok).toBe(true)
+    expect(res).not.toHaveProperty('refund')
+    expect(execMock).not.toHaveBeenCalled()
+    expect(claimOf(w)).toMatchObject({ status: 'approved', refundAttempted: false, refundId: null })
+    return triggerClaimRefund('cl1')
+  }
+
   it('RESUME-FIRST mismatch → claim NOT marked refunded, bound to the real refund, admin required', async () => {
     const w = world({ status: 'arbitration', responseDeadlineAt: past(), arbitrationDecision: null })
     execMock.mockResolvedValue(engineOk({ refundId: 'rf_older', stripeRefundId: 're_older', amountCents: 1200, resumed: true, resumedIgnoredAmount: true }))
-    const res = await arbitrateClaim({ claimId: 'cl1', adminId: 'admin1', decision: 'approve' })
-    expect(res.ok).toBe(true)
-    expect((res as { refund?: { state: string } }).refund).toMatchObject({ state: 'failed' })
+    const t = await decideThenRail(w)
+    expect(t).toMatchObject({ state: 'failed', error: 'resume_mismatch' })
+    expect(execMock).toHaveBeenCalledTimes(1)
     const c = claimOf(w)
     expect(c.refundId).toBe('rf_older')          // bound to the ACTUAL refund driven
     expect(c.status).toBe('refunding')           // NOT flipped to 'refunded'
@@ -175,8 +199,8 @@ describe('REFUND IDENTITY BINDING — a claim never claims an amount nobody aske
 
   it('a clean refund still settles the claim on the exact refund identity', async () => {
     const w = world({ status: 'arbitration', responseDeadlineAt: past(), arbitrationDecision: null })
-    const res = await arbitrateClaim({ claimId: 'cl1', adminId: 'admin1', decision: 'approve' })
-    expect(res.ok).toBe(true)
+    const t = await decideThenRail(w)
+    expect(t).toEqual({ state: 'refunded', refundId: 'rf1', amountCents: 500 })
     expect(claimOf(w)).toMatchObject({ status: 'refunded', refundId: 'rf1', activeOrderKey: null })
   })
 })
@@ -300,14 +324,26 @@ describe('negative control — a CLAIMS_ENABLED-gated reconciliation would be ca
 // batch found in my own implementation. They are regression locks, not new features.
 // ═══════════════════════════════════════════════════════════════════════════════
 describe('AUDIT FIX P1 — an UNPAID approval stays visible and payable', () => {
-  it('a claim approved while REFUNDS was off can still be re-driven (the lock must not strand money owed)', async () => {
+  it('a claim approved while REFUNDS was off is RATIFIED, never re-driven, by a second approve (D′ L2 T-08); the RAIL run by hand still pays it (the lock must not strand money owed)', async () => {
     // the CAS is now evaluated against this simulated row, so a wrong where clause fails here
     // ROUND 13 (D2 (1)(b)): the legacy CAS also requires refundId null — the simulated row carries the column.
     // ROUND 13: the in-memory world evaluates every CAS (decision, T1, T4) against one claim row.
-    world({ status: 'approved', refundAttempted: false, refundId: null, responseDeadlineAt: past(), arbitrationDecision: 'approved' })
+    const arbitratedAt = past()
+    const w = world({ status: 'approved', refundAttempted: false, refundId: null, responseDeadlineAt: past(), arbitrationDecision: 'approved', arbitratedBy: 'admin0', arbitratedAt, decidedBy: 'admin', decidedAt: arbitratedAt })
     const res = await arbitrateClaim({ claimId: 'cl1', adminId: 'admin1', decision: 'approve' })
     expect(res.ok).toBe(true)
-    expect(execMock).toHaveBeenCalledTimes(1) // the refund finally goes out
+    expect(res).not.toHaveProperty('refund')
+    expect(execMock).not.toHaveBeenCalled()                    // a re-approval moves NO money (S-02)
+    expect(refundsFlag).not.toHaveBeenCalled()
+    // the ratification CAS pins the instants it read and rewrites none of the existing decision fields
+    expect(w.writes).toHaveLength(1)
+    expect(w.writes[0].where).toMatchObject({ id: 'cl1', status: 'approved', refundAttempted: false, refundId: null, arbitratedAt, decidedAt: arbitratedAt })
+    expect(claimOf(w)).toMatchObject({ status: 'approved', arbitrationDecision: 'approved', arbitratedBy: 'admin0', arbitratedAt, decidedBy: 'admin', decidedAt: arbitratedAt, refundAttempted: false, refundId: null })
+    // NEGATIVE CONTROL — money owed is not stranded: the rail pays the ratified claim
+    const t = await triggerClaimRefund('cl1')
+    expect(t).toMatchObject({ state: 'refunded', refundId: 'rf1' })
+    expect(execMock).toHaveBeenCalledTimes(1)                  // the refund finally goes out — from the rail
+    expect(claimOf(w).status).toBe('refunded')
   })
 
   it('but the SAME claim cannot be flipped to a refusal after the customer was told "approved"', async () => {
@@ -380,12 +416,23 @@ describe('AUDIT FIX P1 — a succeeded EVENT never overrides our own row status'
   })
 })
 
-describe('RE-AUDIT FIX P1 — a stuck refund is no longer a dead end', () => {
+describe('RE-AUDIT FIX P1 — a stuck refund is no longer a dead end (the RAIL after the decision, D′ L2)', () => {
+  /** D′ L2: the admin decision first (no engine, no refund field), then the rail by hand. */
+  const decideThenRail = async (w: ReturnType<typeof world>) => {
+    const res = await arbitrateClaim({ claimId: 'cl1', adminId: 'admin1', decision: 'approve' })
+    expect(res.ok).toBe(true)
+    expect(res).not.toHaveProperty('refund')
+    expect(execMock).not.toHaveBeenCalled()
+    expect(claimOf(w)).toMatchObject({ status: 'approved', refundAttempted: false, refundId: null, refundError: null })
+    return triggerClaimRefund('cl1')
+  }
+
   it('the PENDING resume path now detects a mismatch too (the 202 outcome carries no resumedIgnoredAmount)', async () => {
     const w = world({ status: 'arbitration', responseDeadlineAt: past(), arbitrationDecision: null })
     execMock.mockResolvedValue(engine202({ refundId: 'rf_older', stripeRefundId: 're_older', amountCents: 1200 }))
-    const res = await arbitrateClaim({ claimId: 'cl1', adminId: 'admin1', decision: 'approve' })
-    expect((res as { refund?: { state: string } }).refund).toMatchObject({ state: 'failed' })
+    const t = await decideThenRail(w)
+    expect(t).toMatchObject({ state: 'failed', error: 'resume_mismatch' })
+    expect(execMock).toHaveBeenCalledTimes(1)
     expect(String(claimOf(w).refundError)).toMatch(/resume_mismatch/)
     expect(claimOf(w).refundError).not.toBeNull()
   })
@@ -394,8 +441,8 @@ describe('RE-AUDIT FIX P1 — a stuck refund is no longer a dead end', () => {
     const w = world({ status: 'arbitration', responseDeadlineAt: past(), arbitrationDecision: null })
     // the engine wrote this claim's own row (T3 reads its stamp on the 202 path)
     execMock.mockImplementation(async () => { w.refunds.push(refundRow('rf1', { reason: 'claim:cl1', status: 'pending', stripeRefundId: 're_1' })); return engine202({ refundId: 'rf1', stripeRefundId: 're_1', amountCents: 500 }) })
-    const res = await arbitrateClaim({ claimId: 'cl1', adminId: 'admin1', decision: 'approve' })
-    expect((res as { refund?: { state: string; reason?: string } }).refund).toMatchObject({ state: 'pending', reason: 'stripe_pending' })
+    const t = await decideThenRail(w)
+    expect(t).toMatchObject({ state: 'pending', reason: 'stripe_pending' })
     expect(claimOf(w)).toMatchObject({ status: 'refunding', refundId: 'rf1', refundError: null })
   })
 
@@ -494,12 +541,16 @@ describe('BATCH 2 — RECOVERY when the reconciliation webhook never arrived', (
 })
 
 // ── AUDIT FIX (batch 2) — SAFETY IS NOT A SMALL CLAIM ────────────────────────────
-// `autoResolveSmallClaim` is the machine path: under the ceiling, from a non-flagged
-// consumer, it approves and drives the refund with no human in the loop. An allergen
+// `autoResolveSmallClaim` WAS the machine path: under the ceiling, from a non-flagged
+// consumer, it approved and drove the refund with no human in the loop. An allergen
 // exposure or a foreign body is precisely the report that must NOT be closed that way —
 // and because such claims are usually SMALL, this was the most likely path for one to
 // take. The taxonomy already knew which reasons are safety reasons; nothing consulted it.
-describe('AUDIT FIX — a safety report never takes the machine path', () => {
+// D′ L2 (spec v2 S-13): the machine path itself is gone — autoResolveSmallClaim is INERT BY
+// CONSTRUCTION, so the safety exclusion is no longer a filter inside a live path but a
+// consequence of there being no path at all. The pins below keep the safety property and
+// INVERT the old « a non-safety claim still takes the machine path » control.
+describe('AUDIT FIX — a safety report never takes the machine path (D′ L2: no claim does — the path is inert by construction)', () => {
   const claim = (reason: string) => ({ id: 'c1', consumerId: 'u1', requestedAmountCents: 400, status: 'restaurant_review', reason })
   beforeEach(() => {
     process.env.CLAIM_AUTO_RESOLVE_ENABLED = 'true'
@@ -533,17 +584,34 @@ describe('AUDIT FIX — a safety report never takes the machine path', () => {
     expect(r).toEqual({ state: 'not_eligible' })
   })
 
-  it('a NON-safety small claim still takes the machine path (the fix is not a blanket kill)', async () => {
+  it('a NON-safety small claim does NOT take the machine path either (D′ L2: the blanket kill IS the contract — inert, 0 reads, 0 writes, 0 money)', async () => {
     db.claim.findUnique.mockResolvedValue({ id: 'c1', status: 'approved', orderId: 'o1', consumerId: 'u1', requestedAmountCents: 400, refundAttempted: false })
     const r = await autoResolveSmallClaim(claim('missing_item'))
-    expect(r).not.toEqual({ state: 'not_eligible' })
-    expect(db.claim.updateMany).toHaveBeenCalled()
+    expect(r).toEqual({ state: 'not_eligible' })
+    expect(db.claim.updateMany).not.toHaveBeenCalled()   // no approval transition
+    expect(db.claim.findUnique).not.toHaveBeenCalled()   // not even a read of the claim
+    expect(db.claim.count).not.toHaveBeenCalled()        // nor of the abuse signal
+    expect(refundsFlag).not.toHaveBeenCalled()           // nor of the REFUNDS lease
+    expect(execMock).not.toHaveBeenCalled()
+  })
+
+  it('NEGATIVE CONTROL — the same non-safety claim, on a payable world, IS paid when the old machine path (approve + engine) is executed by hand: the inertness above is the function’s, not the world’s', async () => {
+    const w = world({ id: 'c1', consumerId: 'u1', status: 'restaurant_review', arbitrationDecision: null, requestedAmountCents: 400, reason: 'missing_item' })
+    expect(await autoResolveSmallClaim(claim('missing_item'))).toEqual({ state: 'not_eligible' })
+    expect(w.writes).toEqual([])
+    // what the pre-D′ machine path did after its eligibility checks: a machine approval, then the engine
+    Object.assign(claimOf(w, 'c1'), { status: 'approved', decidedBy: 'auto_small', decidedAt: new Date() })
+    const t = await triggerClaimRefund('c1')
+    expect(t).toMatchObject({ state: 'refunded', refundId: 'rf1' })
+    expect(execMock).toHaveBeenCalledTimes(1)
+    expect(execMock).toHaveBeenCalledWith({ orderId: 'o1', amountCents: 400, reason: 'claim:c1' })
   })
 
   it('NEGATIVE CONTROL — the pre-fix rule (amount + flags only) would have auto-approved it', () => {
     const preFix = (c: { requestedAmountCents: number; status: string }) =>
       c.status === 'restaurant_review' && c.requestedAmountCents <= 1000
     expect(preFix(claim('allergen_safety'))).toBe(true) // ← the defect the audit found
+    expect(preFix(claim('missing_item'))).toBe(true)    // ← and under D′ even this one is no longer approved by a machine
   })
 })
 
@@ -593,31 +661,45 @@ describe('stuck-money resolvability is declared by the server, not guessed by th
 // configuration: CLAIMS_AUTO_APPROVE_ENABLED is documented OFF for the whole beta and founder
 // decision P0-07 deleted its scheduler. That makes it not a live hole — but "a machine never
 // closes a safety report" is either an invariant or it is a flag setting. It is now an invariant.
-describe('AUDIT FIX — the timeout sweep skips safety claims too', () => {
-  it('an expired allergen claim is skipped; the ordinary ones beside it still sweep', async () => {
+describe('AUDIT FIX — the timeout sweep skips safety claims too (D′ L2: and ROUTES the others to arbitration — it approves nothing, pays nothing)', () => {
+  it('an expired allergen claim is skipped; the ordinary one beside it is ROUTED to arbitration (no approval, no decision fields, no engine, no lease read)', async () => {
     db.claim.findMany.mockImplementation(({ where }: { where: Record<string, unknown> }) =>
       Promise.resolve(where.status === 'restaurant_review'
         ? [{ id: 'safe1', reason: 'allergen_safety' }, { id: 'ord1', reason: 'quality' }]
         : []))
-    // REFUNDS is closed (the real beta state): approveClaim wins its CAS, then the refund rests
-    // pending activation. That isolates what this test is about — WHICH claims get approved.
+    // REFUNDS is closed (the real beta state) — and under D′ the sweep never even reads it: that isolates
+    // what this test is about — WHICH claims get routed.
     refundsFlag.mockReturnValue(false)
     fx.row = { status: 'restaurant_review', refundAttempted: false }
     const summary = await runClaimAutoApproval()
-    expect(summary.scannedExpired).toBe(2)
-    expect(summary.autoApproved).toBe(1) // the safety claim was NOT one of them
-    expect(summary.refundsPending).toBe(1) // …and no money moved: the rail is closed
+    expect(summary).toEqual({ scannedExpired: 2, routedToArbitration: 1, skippedSafety: 1, skippedAlreadyHandled: 0 })
+    expect(summary).not.toHaveProperty('autoApproved')
+    expect(summary).not.toHaveProperty('refundsPending')
+    expect(db.claim.updateMany).toHaveBeenCalledTimes(1)
+    const [args] = db.claim.updateMany.mock.calls[0]
+    expect(args).toEqual({ where: { id: 'ord1', status: 'restaurant_review' }, data: { status: 'arbitration' } })
+    expect(db.claim.updateMany.mock.calls.some((c) => c[0]?.where?.id === 'safe1')).toBe(false)
+    expect(refundsFlag).not.toHaveBeenCalled()
     expect(execMock).not.toHaveBeenCalled()
   })
 
-  it('a sweep of nothing but safety claims approves nothing and refunds nothing', async () => {
+  it('a sweep of nothing but safety claims routes nothing, approves nothing and refunds nothing', async () => {
     db.claim.findMany.mockImplementation(({ where }: { where: Record<string, unknown> }) =>
       Promise.resolve(where.status === 'restaurant_review'
         ? [{ id: 's1', reason: 'allergen_safety' }, { id: 's2', reason: 'allergen_safety' }]
         : []))
     const summary = await runClaimAutoApproval()
-    expect(summary.autoApproved).toBe(0)
-    expect(summary.refundsTriggered).toBe(0)
+    expect(summary).toEqual({ scannedExpired: 2, routedToArbitration: 0, skippedSafety: 2, skippedAlreadyHandled: 0 })
+    expect(db.claim.updateMany).not.toHaveBeenCalled()
+    expect(execMock).not.toHaveBeenCalled()
+  })
+
+  it('a claim that left restaurant_review between the scan and the CAS is counted skippedAlreadyHandled, never forced', async () => {
+    db.claim.findMany.mockImplementation(({ where }: { where: Record<string, unknown> }) =>
+      Promise.resolve(where.status === 'restaurant_review' ? [{ id: 'ord1', reason: 'quality' }] : []))
+    fx.row = { status: 'refused', refundAttempted: false }   // the restaurant answered meanwhile
+    const summary = await runClaimAutoApproval()
+    expect(summary).toEqual({ scannedExpired: 1, routedToArbitration: 0, skippedSafety: 0, skippedAlreadyHandled: 1 })
     expect(execMock).not.toHaveBeenCalled()
   })
 

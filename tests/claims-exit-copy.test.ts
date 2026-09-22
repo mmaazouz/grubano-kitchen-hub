@@ -9,7 +9,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   arbitrationRefusal, reconcileRefusal, moneyStateGuidance, absenceProvenPayableLabel, deriveNoRowOutcome, proofInstantFor,
-  APPROVE_INSTANT_UNREADABLE, APPROVE_LEGACY_PROOF, REFUSE_APPROVED_AM_B3, approvePrematureText, approveRevisableText, approvePermanentText, approveMarkerFutureText,
+  APPROVE_INSTANT_UNREADABLE, APPROVE_LEGACY_PROOF, REFUSE_APPROVED_AM_B3, APPROVE_ALREADY_SET, approvePrematureText, approveRevisableText, approvePermanentText, approveMarkerFutureText,
   ATTEMPT_QUIESCENCE_MS, MARKERS, RECONCILE_MARKER_UNREADABLE_TEXT, acceptedExits, exitRegistry, type ClaimFacts,
 } from '@/lib/claim-action-rules'
 import { moneyLineFor, IDENTITY_UNREAD_TEXT, IDENTITY_UNREAD_NO_EXIT_TEXT, BOUND_REVERTED_TEXT } from '@/lib/claim-money-line'
@@ -20,12 +20,15 @@ const read = (p: string) => readFileSync(p, 'utf8').replace(/\r\n/g, '\n')
 const stripComments = (s: string) =>
   s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '').replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
 
-/** D14 PIN + J-M31 additions, case-insensitive. */
+/** D14 PIN + J-M31 additions, case-insensitive. D′ L2 (R13 spec v1.1, D13 / F15 / G8): a re-approval is never the way
+ *  to be paid — « approuvez-la à nouveau », « nouvelle approbation », « approuvée à nouveau » and the v1 « approbation
+ *  admin (file d’arbitrage) » are forbidden promises too. */
 const FORBIDDEN_PHRASES = [
   'payable à nouveau', 'à nouveau payable', 'de nouveau payable', 'peut maintenant être rembours', 'relancez le remboursement',
   'réessayez le remboursement', 'sera remboursée', 'sera payée', 'jamais déplacé', 'n’a déplacé d’argent',
   'Absence de remboursement PROUVÉE', 'relèvent d’AUTRES', 'Aucun ne paie celle-ci', 'refusera tout remboursement',
   'aucun code ne sort une ligne de l’état échoué', 'définitif',
+  'approuvez-la à nouveau', 'nouvelle approbation', 'approuvée à nouveau', 'approbation admin (file d’arbitrage)',
 ]
 const hits = (text: string) => FORBIDDEN_PHRASES.filter((p) => text.toLowerCase().includes(p.toLowerCase()))
 
@@ -35,12 +38,19 @@ const approved = (refundError: string | null, o: Partial<ClaimFacts> = {}): Clai
 const markerAt = (at: Date) => `reconcile_required: tentative de remboursement démarrée à ${at.toISOString()} (tentative 1a2b) — identité du remboursement pas encore liée.`
 
 describe('J-M31 — D14 (0)-(3) exact, selected in order', () => {
-  it('(0) v13 → the C4 checks only', () => {
+  it('(0) v13 → the C4 checks only (premature text v1.1 — D′ L2: the rail selects it, never a re-approval)', () => {
     const instant = new Date(NOW.getTime() + 60_000)
     const v13 = approved(`${MARKERS.PROOF_PAYABLE_V13} … Elle est payable au plus tôt le ${instant.toISOString()} (UTC).`)
-    expect(arbitrationRefusal(v13, 'approve', NOW)?.error).toBe(`Approbation prématurée : la preuve d’absence de cette réclamation ne permet un paiement qu’à partir du ${instant.toISOString()} (UTC) ; ce délai sépare toute nouvelle tentative de remboursement d’une éventuelle tentative antérieure. Rien n’est payé avant cette heure ; approuvez-la à nouveau ensuite.`)
+    const premature = `Approbation prématurée : la preuve d’absence de cette réclamation ne permet un paiement qu’à partir du ${instant.toISOString()} (UTC) ; ce délai sépare toute nouvelle tentative de remboursement d’une éventuelle tentative antérieure. Rien n’est payé avant cette heure ; le rail financier (« Payer les approuvées », session admin, remboursements ouverts) pourra la sélectionner ensuite.`
+    expect(arbitrationRefusal(v13, 'approve', NOW)?.error).toBe(premature)
+    expect(approvePrematureText(instant.toISOString())).toBe(premature)
     expect(arbitrationRefusal(approved(`${MARKERS.PROOF_PAYABLE_V13} sans instant`), 'approve', NOW)?.error).toBe(APPROVE_INSTANT_UNREADABLE)
     expect(arbitrationRefusal(v13, 'approve', instant)).toBeNull()
+    // NEGATIVE CONTROL: the v1 ending « approuvez-la à nouveau ensuite » is neither shipped nor admitted by the pin.
+    const v1 = premature.replace('le rail financier (« Payer les approuvées », session admin, remboursements ouverts) pourra la sélectionner ensuite.', 'approuvez-la à nouveau ensuite.')
+    expect(v1).not.toBe(premature)
+    expect(hits(v1)).toEqual(['approuvez-la à nouveau'])
+    expect(hits(premature)).toEqual([])
   })
 
   it('(1) LEGACY proof', () => {
@@ -48,10 +58,18 @@ describe('J-M31 — D14 (0)-(3) exact, selected in order', () => {
       .toBe('Approbation suspendue : la preuve d’absence de cette réclamation a été écrite par une version antérieure de la réconciliation, qui ne vérifiait pas toutes les conditions du moteur. Relancez « Réconcilier d’après la preuve » (section « Vérification financière requise ») avant toute approbation.')
   })
 
-  it('(2) REVISABLE when the reconcile gate admits the claim — with the declaration sentence when the close is accepted', () => {
+  it('(2) REVISABLE when the reconcile gate admits the claim — with the declaration sentence when the close is accepted (text v1.1 — D′ L2)', () => {
     const rail = approved('no_refund_proven_rail_locked: …')
     expect(reconcileRefusal(rail, NOW.getTime())).toBeNull()
-    expect(arbitrationRefusal(rail, 'approve', NOW)?.error).toBe('Approbation impossible dans l’état enregistré : une nouvelle approbation ne paierait pas cette réclamation, ou n’est pas établie comme sûre (la cause est dans le détail de la réclamation). Rien n’est payé tant que cet état est enregistré. « Réconcilier d’après la preuve » (section « Vérification financière requise ») relit Stripe et nos lignes et réévalue toutes les conditions. « Clôturer ce dossier… » enregistre votre déclaration.')
+    const revisable = 'Approbation impossible dans l’état enregistré : le rail financier ne paierait pas cette réclamation, ou son paiement n’est pas établi comme sûr (la cause est dans le détail de la réclamation). Rien n’est payé tant que cet état est enregistré. « Réconcilier d’après la preuve » (section « Vérification financière requise ») relit Stripe et nos lignes et réévalue toutes les conditions. « Clôturer ce dossier… » enregistre votre déclaration.'
+    expect(arbitrationRefusal(rail, 'approve', NOW)?.error).toBe(revisable)
+    expect(approveRevisableText(true)).toBe(revisable)
+    // NEGATIVE CONTROL: the v1 subject « une nouvelle approbation ne paierait pas … n’est pas établie comme sûre » is gone,
+    // and the pin now catches it.
+    const v1 = revisable.replace('le rail financier ne paierait pas cette réclamation, ou son paiement n’est pas établi comme sûr', 'une nouvelle approbation ne paierait pas cette réclamation, ou n’est pas établie comme sûre')
+    expect(v1).not.toBe(revisable)
+    expect(hits(v1)).toEqual(['nouvelle approbation'])
+    expect(hits(revisable)).toEqual([])
   })
 
   it('selection pin (ER-M09): a legacy approved claim with a marker IN GRACE gets (2) WITHOUT the « Clôturer » sentence', () => {
@@ -110,10 +128,16 @@ describe('J-M31 — D14 (0)-(3) exact, selected in order', () => {
     expect(arbitrationRefusal(inGrace, 'approve', NOW)?.error).toBe(approveRevisableText(false))
   })
 
-  it('(3) PERMANENT otherwise — naming the close only when it is accepted', () => {
-    expect(arbitrationRefusal(approved('stripe_failed: …', { refundAttempted: true, refundId: 'rf1' }), 'approve', NOW)?.error)
-      .toBe('Approbation impossible : une nouvelle approbation ne paierait pas cette réclamation (la cause est dans le détail de la réclamation). Rien ne sera payé par le rail pour elle. Clôturez le dossier (« Clôturer ce dossier… »).')
-    expect(approvePermanentText(false)).toBe('Approbation impossible : une nouvelle approbation ne paierait pas cette réclamation (la cause est dans le détail de la réclamation). Rien ne sera payé par le rail pour elle. Aucune action de l’application ne la clôt : vérifiez la commande dans Stripe.')
+  it('(3) PERMANENT otherwise — naming the close only when it is accepted (text v1.1 — D′ L2)', () => {
+    const withClose = 'Approbation impossible : le rail financier ne paierait pas cette réclamation (la cause est dans le détail de la réclamation). Rien ne sera payé par le rail pour elle. Clôturez le dossier (« Clôturer ce dossier… »).'
+    expect(arbitrationRefusal(approved('stripe_failed: …', { refundAttempted: true, refundId: 'rf1' }), 'approve', NOW)?.error).toBe(withClose)
+    expect(approvePermanentText(true)).toBe(withClose)
+    expect(approvePermanentText(false)).toBe('Approbation impossible : le rail financier ne paierait pas cette réclamation (la cause est dans le détail de la réclamation). Rien ne sera payé par le rail pour elle. Aucune action de l’application ne la clôt : vérifiez la commande dans Stripe.')
+    // NEGATIVE CONTROL: the v1 subject « une nouvelle approbation ne paierait pas » is gone and the pin catches it.
+    const v1 = withClose.replace('le rail financier ne paierait pas', 'une nouvelle approbation ne paierait pas')
+    expect(v1).not.toBe(withClose)
+    expect(hits(v1)).toEqual(['nouvelle approbation'])
+    expect(hits(withClose)).toEqual([])
   })
 
   it('a v13 proof never gets (1)-(3)', () => {
@@ -129,25 +153,62 @@ describe('J-M31 — D14 (0)-(3) exact, selected in order', () => {
     expect(hits('Cette réclamation a déjà été arbitrée — décision définitive.')).toEqual([])
   })
 
-  it('AM-B3: refuse_final on every approved claim, arbitrationDecision null included', () => {
-    for (const c of [approved(null), approved(null, { arbitrationDecision: null }), approved('stripe_failed: x', { refundAttempted: true })]) {
-      expect(arbitrationRefusal(c, 'refuse_final', NOW)?.error).toBe('Cette réclamation a été approuvée — elle ne peut plus être refusée. Selon son état : approuvez-la à nouveau (réclamations et remboursements ouverts), réconciliez-la, ou clôturez le dossier (« Clôturer ce dossier… ») si le détail le propose.')
+  it('AM-B3: refuse_final on every approved claim, arbitrationDecision null included (text v1.1 — D′ L2: the rail and the withdraw, never a re-approval)', () => {
+    const amB3 = 'Cette réclamation a été approuvée — elle ne peut plus être refusée. Selon son état : elle relève du rail financier (« Payer les approuvées »), retirez l’approbation (« Retirer l’approbation »), réconciliez-la, ou clôturez le dossier (« Clôturer ce dossier… ») si le détail le propose.'
+    for (const c of [approved(null), approved(null, { arbitrationDecision: null }), approved('stripe_failed: x', { refundAttempted: true }), approved(null, { approvedAmountCents: 500 })]) {
+      expect(arbitrationRefusal(c, 'refuse_final', NOW)?.error).toBe(amB3)
     }
+    expect(REFUSE_APPROVED_AM_B3).toBe(amB3)
+    // NEGATIVE CONTROL: the v1 text (« approuvez-la à nouveau (réclamations et remboursements ouverts) ») is not shipped,
+    // and the pin now catches it.
+    const v1 = 'Cette réclamation a été approuvée — elle ne peut plus être refusée. Selon son état : approuvez-la à nouveau (réclamations et remboursements ouverts), réconciliez-la, ou clôturez le dossier (« Clôturer ce dossier… ») si le détail le propose.'
+    expect(REFUSE_APPROVED_AM_B3).not.toBe(v1)
+    expect(hits(v1)).toContain('approuvez-la à nouveau')
+    expect(REFUSE_APPROVED_AM_B3).not.toMatch(/approuvez-la à nouveau|nouvelle approbation/)
+  })
+
+  it('D′ L2 (D1 v1.1): approve on an approved claim whose amount is fixed → APPROVE_ALREADY_SET, before every D14 check; ratification stays admitted', () => {
+    // a fixed amount refuses whatever the recorded money state says — the v13 premature shape included
+    const instant = new Date(NOW.getTime() + 60_000)
+    const v13 = approved(`${MARKERS.PROOF_PAYABLE_V13} … Elle est payable au plus tôt le ${instant.toISOString()} (UTC).`)
+    for (const c of [approved(null), approved(null, { arbitrationDecision: null }), v13, approved('no_refund_proven_rail_locked: …')]) {
+      expect(arbitrationRefusal({ ...c, approvedAmountCents: 500 }, 'approve', NOW)).toEqual({ status: 409, error: APPROVE_ALREADY_SET })
+    }
+    expect(arbitrationRefusal(approved(null), 'approve', NOW)).toBeNull()
+    expect(arbitrationRefusal(approved(null, { approvedAmountCents: null }), 'approve', NOW)).toBeNull()
+    expect(APPROVE_ALREADY_SET).toContain('Retirer l’approbation')
+    expect(APPROVE_ALREADY_SET).not.toMatch(/approuvez-la à nouveau|nouvelle approbation/)
   })
 })
 
-describe('J-M31 — F15 texts verbatim (ER-R27: « abouti ou en attente »)', () => {
+describe('J-M31 — F15 texts verbatim (ER-R27: « abouti ou en attente »; text v1.1 — D′ L2: the rail pays, never a re-approval)', () => {
+  const V1_GUIDANCE = {
+    absence_proven_payable: 'Rien à clôturer : approuvée et non payée ; à la preuve, Stripe ne rapportait aucun remboursement abouti ou en attente non expliqué. Elle ne se paie que par une nouvelle approbation admin, réclamations et remboursements ouverts, au plus tôt à l’instant écrit dans son détail, et seulement si la relecture avant moteur confirme encore la preuve.',
+    approved_not_driven: 'Approuvée, jamais payée. Elle ne se paie que par l’approbation admin (file d’arbitrage), réclamations et remboursements ouverts, et seulement si la vérification avant moteur le permet à ce moment. Aucune clôture manuelle sur cet état.',
+  }
   it('GUIDANCE absence_proven_payable and approved_not_driven', () => {
-    expect(moneyStateGuidance('absence_proven_payable')).toBe('Rien à clôturer : approuvée et non payée ; à la preuve, Stripe ne rapportait aucun remboursement abouti ou en attente non expliqué. Elle ne se paie que par une nouvelle approbation admin, réclamations et remboursements ouverts, au plus tôt à l’instant écrit dans son détail, et seulement si la relecture avant moteur confirme encore la preuve.')
-    expect(moneyStateGuidance('approved_not_driven')).toBe('Approuvée, jamais payée. Elle ne se paie que par l’approbation admin (file d’arbitrage), réclamations et remboursements ouverts, et seulement si la vérification avant moteur le permet à ce moment. Aucune clôture manuelle sur cet état.')
+    expect(moneyStateGuidance('absence_proven_payable')).toBe('Rien à clôturer : approuvée et non payée ; à la preuve, Stripe ne rapportait aucun remboursement abouti ou en attente non expliqué. Elle ne se paie que par le rail financier (« Payer les approuvées », session admin, remboursements ouverts), sélectionnée explicitement par un admin, au plus tôt à l’instant écrit dans son détail, et seulement si la relecture avant moteur confirme encore la preuve.')
+    expect(moneyStateGuidance('approved_not_driven')).toBe('Approuvée, en attente de paiement. Elle ne se paie que par le rail financier (« Payer les approuvées », session admin, remboursements ouverts), et seulement si la vérification avant moteur le permet à ce moment  ; une ré-approbation ne paie jamais. Aucune clôture manuelle sur cet état.')
+    // NEGATIVE CONTROL: the v1 lines named a (re-)approval as the way to be paid — neither is shipped, both are caught.
+    for (const [k, v1] of Object.entries(V1_GUIDANCE)) {
+      expect(moneyStateGuidance(k), k).not.toBe(v1)
+      expect(hits(v1), k).not.toEqual([])
+      expect(hits(moneyStateGuidance(k)), k).toEqual([])
+    }
   })
 
   it('MONEY label absence_proven_payable, with the instant or with the unreadable tail; the console renders it per claim', () => {
     const at = proofInstantFor(markerAt(NOW), NOW)
+    const HEAD = 'Aucun remboursement abouti ou en attente non expliqué rapporté par Stripe à la preuve (liste complète lue) — approuvée, non payée. Rien ne la paiera automatiquement : sélection explicite dans le rail financier (« Payer les approuvées », session admin, remboursements ouverts)'
     expect(absenceProvenPayableLabel(`${MARKERS.PROOF_PAYABLE_V13} … payable au plus tôt le ${at.toISOString()} (UTC).`))
-      .toBe(`Aucun remboursement abouti ou en attente non expliqué rapporté par Stripe à la preuve (liste complète lue) — approuvée, non payée. Rien ne la paiera automatiquement : nouvelle approbation admin, réclamations et remboursements ouverts, au plus tôt le ${at.toISOString()} (UTC), relue avant le moteur`)
+      .toBe(`${HEAD}, au plus tôt le ${at.toISOString()} (UTC), relue avant le moteur`)
     expect(absenceProvenPayableLabel(`${MARKERS.PROOF_PAYABLE_V13} sans instant`))
-      .toBe('Aucun remboursement abouti ou en attente non expliqué rapporté par Stripe à la preuve (liste complète lue) — approuvée, non payée. Rien ne la paiera automatiquement : nouvelle approbation admin, réclamations et remboursements ouverts — instant illisible : approbation refusée, relancez « Réconcilier d’après la preuve »')
+      .toBe(`${HEAD} — instant illisible : approbation refusée, relancez « Réconcilier d’après la preuve »`)
+    // NEGATIVE CONTROL: the v1 head (« nouvelle approbation admin, réclamations et remboursements ouverts ») is not shipped.
+    const V1_HEAD = 'Aucun remboursement abouti ou en attente non expliqué rapporté par Stripe à la preuve (liste complète lue) — approuvée, non payée. Rien ne la paiera automatiquement : nouvelle approbation admin, réclamations et remboursements ouverts'
+    expect(absenceProvenPayableLabel(null).startsWith(V1_HEAD)).toBe(false)
+    expect(hits(V1_HEAD)).toEqual(['nouvelle approbation'])
+    expect(hits(HEAD)).toEqual([])
     const arb = stripComments(read('components/claims/AdminClaimsArbitration.tsx'))
     expect(arb).toContain("r.moneyState === 'absence_proven_payable'\n                ? { text: absenceProvenPayableLabel(r.refundError), tone: 'warning' as const }")
   })
@@ -191,6 +252,8 @@ describe('J-M31 — the phrase pin over the enumerated W1 texts', () => {
     ['D14 (2) +close', approveRevisableText(true)], ['D14 (2)', approveRevisableText(false)],
     ['D14 (3) +close', approvePermanentText(true)], ['D14 (3)', approvePermanentText(false)],
     ['AM-B3', REFUSE_APPROVED_AM_B3],
+    // D′ L2 (D1 v1.1): the refusal of a re-approval on a fixed amount is an arbitration refusal text like D14's.
+    ['APPROVE_ALREADY_SET (D′ L2)', APPROVE_ALREADY_SET],
     ...GUIDED.map((s) => [`GUIDANCE ${s}`, moneyStateGuidance(s)] as [string, string]),
     ['MONEY absence_proven_payable', absenceProvenPayableLabel(`${MARKERS.PROOF_PAYABLE_V13} payable au plus tôt le ${NOW.toISOString()} (UTC)`)],
     ['MONEY absence_proven_payable unreadable', absenceProvenPayableLabel(null)],
@@ -239,6 +302,28 @@ describe('J-M31 — the phrase pin over the enumerated W1 texts', () => {
     expect(hits('Absence de remboursement PROUVÉE (lignes + Stripe) — approuvée, non payée. Rien ne la paiera automatiquement : nouvelle approbation admin requise, réclamations et remboursements ouverts')).not.toEqual([])
     expect(hits('… — elle sera remboursée')).not.toEqual([])
     expect(hits('Approbation impossible : le moteur refusera tout remboursement sur cette commande (la cause, et si elle est définitive, sont dans le détail de la réclamation).')).not.toEqual([])
+  })
+
+  it('NEGATIVE CONTROL (D′ L2, R13 v1.1) — every v1 sentence that named a re-approval as the way to be paid is caught by the four new phrases', () => {
+    const V1 = {
+      'AM-B3 v1':                 'Selon son état : approuvez-la à nouveau (réclamations et remboursements ouverts), réconciliez-la',
+      'C4 premature v1':          'Rien n’est payé avant cette heure ; approuvez-la à nouveau ensuite.',
+      'D14 (2) v1':               'Approbation impossible dans l’état enregistré : une nouvelle approbation ne paierait pas cette réclamation, ou n’est pas établie comme sûre',
+      'D14 (3) v1':               'Approbation impossible : une nouvelle approbation ne paierait pas cette réclamation',
+      'GUIDANCE approved v1':     'Elle ne se paie que par l’approbation admin (file d’arbitrage), réclamations et remboursements ouverts',
+      'GUIDANCE absence v1':      'Elle ne se paie que par une nouvelle approbation admin, réclamations et remboursements ouverts',
+      'MONEY label v1':           'Rien ne la paiera automatiquement : nouvelle approbation admin, réclamations et remboursements ouverts',
+      'G8 payableTail v1':        'elle devra être approuvée à nouveau par un admin, réclamations et remboursements ouverts',
+      'G8 LOCKED_OPEN v1':        'MAIS une nouvelle approbation ne paierait pas cette réclamation :',
+    }
+    for (const [name, text] of Object.entries(V1)) expect(hits(text), name).not.toEqual([])
+    // and the pin is not slack on the shipped v1.1 replacements of the same sentences
+    expect(hits('Rien n’est payé avant cette heure ; le rail financier (« Payer les approuvées », session admin, remboursements ouverts) pourra la sélectionner ensuite.')).toEqual([])
+    expect(hits('MAIS le rail financier ne paierait pas cette réclamation :')).toEqual([])
+    // the pre-D′ list (the first sixteen phrases) let every one of these through — the four additions are load-bearing
+    const preDPrime = FORBIDDEN_PHRASES.slice(0, 16)
+    const oldHits = (t: string) => preDPrime.filter((p) => t.toLowerCase().includes(p.toLowerCase()))
+    for (const [name, text] of Object.entries(V1)) expect(oldHits(text), name).toEqual([])
   })
 })
 

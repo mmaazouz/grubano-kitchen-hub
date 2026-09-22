@@ -227,10 +227,23 @@ describe('J-M50 / J-C45 — every E entry is in its bucket and count', () => {
       const c = { ...st.claims.find((x) => x.id === r.id)!, ...(boundRow !== undefined ? { boundRow } : {}) }
       expect(r.reconcilable, `${r.id} reconcilable`).toBe(reconcileRefusal(c) === null)
       if ('resolvable' in r) expect(r.resolvable, `${r.id} resolvable`).toBe(isStuckResolvable(c))
-      expect(r.approvable, `${r.id} approvable`).toBe(acceptedExits({ claim: c, now }).includes('approve') && arbitrationRefusal(c, 'approve', now) === null)
+      // D′ L2 (D1 v1.1): approvable = a decision ('approve') OR a ratification ('ratify', approved claim, amount not fixed).
+      const exits = acceptedExits({ claim: c, now })
+      expect(r.approvable, `${r.id} approvable`).toBe((exits.includes('approve') || exits.includes('ratify')) && arbitrationRefusal(c, 'approve', now) === null)
+      if (c.status === 'approved') expect(exits, `${r.id} never 'approve'`).not.toContain('approve')
     }
+    // E-10 (v1.1): approved-unpaid is E-10; its exits are 'ratify' (amount not fixed — every row today, the column is not
+    // migrated) or 'pay' / 'withdraw' (amount fixed). E-10-null is approvable THROUGH ratification; E-10-v13 before its
+    // instant is not (the C4 premature refusal), yet it keeps 'ratify' in its D1 row-2 set and 'reconcile'.
+    const nul = st.claims.find((x) => x.id === 'E-10-null')!
+    const v13 = st.claims.find((x) => x.id === 'E-10-v13')!
     expect(p.otherUnsettled.find((r: Row) => r.id === 'E-10-null').approvable).toBe(true)
+    expect(acceptedExits({ claim: nul, now })).toEqual(['ratify'])
     expect(p.otherUnsettled.find((r: Row) => r.id === 'E-10-v13').approvable).toBe(false) // before its instant
+    expect(acceptedExits({ claim: v13, now })).toEqual(['ratify', 'reconcile'])
+    expect(acceptedExits({ claim: { ...nul, approvedAmountCents: 500 }, now })).toEqual(['withdraw', 'pay'])
+    // NEGATIVE CONTROL: the pre-D′ flag (∋ 'approve' only) would read E-10-null as NOT approvable while the list says it is.
+    expect(acceptedExits({ claim: nul, now }).includes('approve') && arbitrationRefusal(nul, 'approve', now) === null).toBe(false)
   })
 
   it('the customer status of each fixture equals its E entry’s CUSTOMER field', () => {
@@ -408,7 +421,9 @@ describe('J-C46 (NM0) — the registry surfaces move no money; their audits say 
   })
 })
 
-describe('J-C46 (E-10) — an unpaid approval is payable only through a gated or time-bound approval', () => {
+// D′ L2 (R13 spec v1.1 E-10 / D2): « approved, unpaid » is the NORMAL state APPROVED_AWAITING_PAYMENT. It is paid by the
+// financial rail only (triggerClaimRefund, gated REFUNDS ∧ SURFACE, D′ L5) — never by a (re-)approval, which is a decision.
+describe('J-C46 (E-10, v1.1) — an unpaid approval is payable only through the gated rail (pay), never through an approval', () => {
   it('arbitrate with CLAIMS off → 403, nothing read', async () => {
     registryWorld()
     const res = await ARBITRATE(new Request('https://app.grubano.com/x', { method: 'POST', body: JSON.stringify({ decision: 'approve' }) }), { params: { id: 'E-10-null' } })
@@ -416,7 +431,7 @@ describe('J-C46 (E-10) — an unpaid approval is payable only through a gated or
     expect(db.claim.findUnique).not.toHaveBeenCalled()
   })
 
-  it('REFUNDS off → triggerClaimRefund answers refunds_disabled before its CAS (no claim write); the toast is approvedNotSent, success', async () => {
+  it('REFUNDS off → triggerClaimRefund (the rail’s path — approve no longer calls it, D′ L2) answers refunds_disabled before its CAS (no claim write); its F12 toast mapping is approvedNotSent, success', async () => {
     registryWorld()
     const r = await triggerClaimRefund('E-10-null')
     expect(r).toEqual({ state: 'pending', reason: 'refunds_disabled' })
@@ -456,28 +471,49 @@ describe('J-C46 (E-10) — an unpaid approval is payable only through a gated or
   })
 
   // W7 fixer (J-C46, E-10): A-S30e-3 before until — an older pending row of the order, unknown to Stripe, still in its window.
-  it('A-S30e-3 before until: approve → T2 (e′) unconfirmed_within_window, no engine call, the pre-image restored, toast approvedNotSentUntil carrying until', async () => {
+  // D′ L2 (spec v2 S-02 / S-03, R13 v1.1 D2): the approval is a DECISION ONLY — even with both leases open it reaches no
+  // engine and returns no refund field. The T2 (e′) outcome is now the rail's (triggerClaimRefund, called directly here as
+  // the rail does), on the claim the decision left approved.
+  it('A-S30e-3 before until: approve is decision-only (no refund field, 0 engine, both leases open); the rail then answers T2 (e′) unconfirmed_within_window, no engine call, the pre-image restored, toast approvedNotSentUntil carrying until', async () => {
     const world = (withPendingRow: boolean) => {
       st.claims = [claim('ase3', { status: 'arbitration', arbitrationDecision: null })]
       st.refunds = withPendingRow ? [row('rf_W', { status: 'pending', stripeRefundId: null, reason: 'claim:cl_OTHER', createdAt: new Date(Date.now() - 1 * H) })] : []
     }
     world(true)
     lib.refundsOn.mockReturnValue(true)
+    process.env.CLAIMS_ENABLED = 'true'
+    process.env.CLAIMS_WINDOW_UNTIL = iso(H)
     lib.executeRefund.mockResolvedValue({ ok: false, status: 409, error: 'Refus du moteur (test).' })
-    const out = await arbitrateClaim({ claimId: 'ase3', adminId: 'op1', decision: 'approve' })
-    expect(out.ok).toBe(true)
-    const refund = (out as { refund?: { state?: string; error?: string; until?: string } }).refund
-    expect(refund).toMatchObject({ state: 'failed', error: 'unconfirmed_within_window' })
-    expect(Date.parse(String(refund?.until))).toBeGreaterThan(Date.now())
-    expect(approvalToast(refund)).toEqual({ key: 'approvedNotSentUntil', tone: 'success', until: refund?.until })
-    expect(st.claims[0]).toMatchObject({ status: 'approved', refundAttempted: false, refundError: null })
-    noMoneyEngine()
-    for (const m of [stripeMock.refunds.update, stripeMock.transfers.createReversal, db.refund.create, db.refund.update, db.refund.updateMany]) expect(m).not.toHaveBeenCalled()
-    // NEGATIVE CONTROL: the same world without the pending row reaches the engine once (the spy sees a call when there is one)
-    world(false)
-    lib.executeRefund.mockClear()
-    await arbitrateClaim({ claimId: 'ase3', adminId: 'op1', decision: 'approve' })
-    expect(lib.executeRefund).toHaveBeenCalledTimes(1)
+    try {
+      // (1) the decision: approved, no money, no refund field, nothing written but the decision
+      const out = await arbitrateClaim({ claimId: 'ase3', adminId: 'op1', decision: 'approve' })
+      expect(out.ok).toBe(true)
+      expect(out).not.toHaveProperty('refund')
+      expect(st.claims[0]).toMatchObject({ status: 'approved', arbitrationDecision: 'approved', refundAttempted: false, refundId: null, refundError: null, decidedBy: 'admin' })
+      expect(st.writes).toHaveLength(1)
+      noMoneyEngine()
+      // (2) the rail's path on that claim (D′ L5 calls triggerClaimRefund): T2 (e′) unconfirmed_within_window
+      const refund = await triggerClaimRefund('ase3') as { state?: string; error?: string; until?: string }
+      expect(refund).toMatchObject({ state: 'failed', error: 'unconfirmed_within_window' })
+      expect(Date.parse(String(refund?.until))).toBeGreaterThan(Date.now())
+      expect(approvalToast(refund as never)).toEqual({ key: 'approvedNotSentUntil', tone: 'success', until: refund?.until })
+      expect(st.claims[0]).toMatchObject({ status: 'approved', refundAttempted: false, refundError: null })
+      noMoneyEngine()
+      for (const m of [stripeMock.refunds.update, stripeMock.transfers.createReversal, db.refund.create, db.refund.update, db.refund.updateMany]) expect(m).not.toHaveBeenCalled()
+      // NEGATIVE CONTROL: the same world without the pending row — the approval STILL reaches no engine (D′), and only the
+      // rail's call reaches it, exactly once (the spy sees a call when there is one).
+      world(false)
+      lib.executeRefund.mockClear()
+      const again = await arbitrateClaim({ claimId: 'ase3', adminId: 'op1', decision: 'approve' })
+      expect(again.ok).toBe(true)
+      expect(lib.executeRefund).not.toHaveBeenCalled()
+      await triggerClaimRefund('ase3')
+      expect(lib.executeRefund).toHaveBeenCalledTimes(1)
+      expect(lib.executeRefund).toHaveBeenCalledWith({ orderId: 'o1', amountCents: 500, reason: 'claim:ase3' })
+    } finally {
+      delete process.env.CLAIMS_ENABLED
+      delete process.env.CLAIMS_WINDOW_UNTIL
+    }
   })
 
   function noMoneyEngine() {

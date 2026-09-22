@@ -10,8 +10,11 @@ import { Prisma } from '@prisma/client'
 //    auth/DB access. NOTE — the audit brief mentioned a "404" gate; the actual code
 //    gate is 403 (POST) / { enabled:false } (GET). Encoded as-is.
 //  • Flag ON, at ROUTE level with leaf deps mocked (prisma/refund/dish-photo), the
-//    nominal POST flow WORKS: 201, claim created, C2 auto-resolution of small claims
-//    included. So the route logic itself does NOT crash on activation.
+//    nominal POST flow WORKS: 201, claim created. So the route logic itself does NOT
+//    crash on activation. D′ L2 (spec v2 S-13): the C2 auto-resolution the route still
+//    consults is INERT BY CONSTRUCTION — whatever CLAIM_AUTO_RESOLVE_ENABLED /
+//    CLAIM_AUTO_APPROVE_MAX_CENTS say, no small claim is ever machine-approved, nothing
+//    is read (not even the anti-abuse count) and no decision e-mail leaves this route.
 //  • The REAL crash surface: lib/claims re-throws every non-P2002 DB error
 //    (lib/claims.ts createClaim `throw err`) and app/api/claims/route.ts has NO
 //    try/catch — so flipping CLAIMS_ENABLED=true WITHOUT having pushed the Claim
@@ -60,6 +63,7 @@ const { tokenMock } = vi.hoisted(() => ({ tokenMock: vi.fn() }))
 vi.mock('next-auth/jwt', () => ({ getToken: tokenMock }))
 
 import { POST as CREATE, GET as LIST } from '@/app/api/claims/route'
+import { isConsumerAbuseFlagged } from '@/lib/claims'
 
 const req = (body?: unknown, url = 'https://app.grubano.com/api/claims') =>
   ({ url, json: async () => body ?? {} }) as never
@@ -139,11 +143,11 @@ describe('P10 — activation (CLAIMS_ENABLED=true) : la route tient, contraireme
     expect(db.claim.updateMany).not.toHaveBeenCalled()
   })
 
-  it("[PASS-ACTUEL P0-27] petite réclamation (5 €) SANS config auto-résolution → PLUS d'auto_small : la réclamation reste en revue restaurant (fail-safe, validation humaine)", async () => {
+  it("[PASS-ACTUEL D′ L2] petite réclamation (5 €) SANS config auto-résolution → PLUS d'auto_small : la réclamation reste en revue restaurant (inerte par construction — plus rien à tracer, plus rien n'est lu)", async () => {
     // Ré-photographié en vague 1 (P0-27) : l'ancien défaut permissif (plafond 1000
-    // implicite → auto-remboursement ACTIF sans config) est supprimé. Sans
-    // CLAIM_AUTO_RESOLVE_ENABLED + CLAIM_AUTO_APPROVE_MAX_CENTS explicites,
-    // une petite réclamation suit le flux C1 normal. Stub '' DÉTERMINISTE (revue) :
+    // implicite → auto-remboursement ACTIF sans config) était supprimé par un verrou de
+    // config TRACÉ. D′ L2 va plus loin : la config n'est plus consultée du tout —
+    // autoResolveSmallClaim rend not_eligible par construction. Stub '' DÉTERMINISTE (revue) :
     // le test ne doit pas dépendre de l'absence AMBIANTE des variables en CI.
     vi.stubEnv('CLAIM_AUTO_RESOLVE_ENABLED', '')
     vi.stubEnv('CLAIM_AUTO_APPROVE_MAX_CENTS', '')
@@ -151,29 +155,31 @@ describe('P10 — activation (CLAIMS_ENABLED=true) : la route tient, contraireme
     db.order.findUnique.mockResolvedValue(paidOrder({ total: 5 })) // 500 cents — sous l'ANCIEN plafond
     const res = await CREATE(req({ orderId: 'o1', reason: 'quality' })) // batch 2: ITEM_REQUIRED reasons need a selection; this case is about the ceiling
     expect(res.status).toBe(201)
-    // AUCUNE approbation machine : pas d'updateMany 'approved', moteur jamais appelé.
-    const approved = db.claim.updateMany.mock.calls.find((c) => c[0]?.data?.status === 'approved')
-    expect(approved).toBeUndefined()
+    // AUCUNE approbation machine : aucun updateMany du tout, moteur jamais appelé, anti-abus jamais lu.
+    expect(db.claim.updateMany).not.toHaveBeenCalled()
+    expect(db.claim.count).not.toHaveBeenCalled()
     expect(execMock).not.toHaveBeenCalled()
-    // Le non-déclenchement est TRACÉ (jamais silencieux) et la claim reste C1.
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('CLAIM_AUTO_RESOLVE_ENABLED'))
+    expect(refundsFlag).not.toHaveBeenCalled()
+    // Plus de verrou de config à tracer : le refus n'est plus une décision de config (inversion du pin P0-27).
+    expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining('CLAIM_AUTO_RESOLVE_ENABLED'))
     expect((await res.json()).claim).toMatchObject({ status: 'restaurant_review' })
     warnSpy.mockRestore()
   })
 
-  it("[PASS-ACTUEL P0-27] config post-pilote EXPLICITE (flag + plafond) → l'auto_small refonctionne ; REFUNDS off → remboursement PENDING, jamais le moteur", async () => {
+  it("[PASS-ACTUEL D′ L2] config post-pilote EXPLICITE (flag + plafond) → l'auto_small ne refonctionne PAS : aucune approbation machine, aucune écriture, jamais le moteur (S-13)", async () => {
     vi.stubEnv('CLAIM_AUTO_RESOLVE_ENABLED', 'true')
     vi.stubEnv('CLAIM_AUTO_APPROVE_MAX_CENTS', '1000')
-    db.order.findUnique.mockResolvedValue(paidOrder({ total: 8 })) // 800 cents ≤ 1000 ceiling
+    db.order.findUnique.mockResolvedValue(paidOrder({ total: 8 })) // 800 cents ≤ 1000 ceiling — the OLD trigger condition
     const res = await CREATE(req({ orderId: 'o1', reason: 'quality' })) // batch 2: ITEM_REQUIRED reasons need a selection; this case is about the ceiling
     expect(res.status).toBe(201)
-    // C2 kicked in post-create: restaurant_review → approved, decided by auto_small.
-    const approved = db.claim.updateMany.mock.calls.find((c) => c[0]?.data?.status === 'approved')
-    expect(approved?.[0].data).toMatchObject({ status: 'approved', restaurantResponse: 'accepted', decidedBy: 'auto_small' })
-    // REFUNDS_ENABLED off → refund rests PENDING; the money engine is never called.
+    expect(db.claim.create).toHaveBeenCalledTimes(1)
+    expect(db.claim.create.mock.calls[0][0].data).toMatchObject({ requestedAmountCents: 800, status: 'restaurant_review' })
+    // No C2 post-create: no restaurant_review → approved, no decidedBy 'auto_small', no read of anything.
+    expect(db.claim.updateMany).not.toHaveBeenCalled()
+    expect(db.claim.update).not.toHaveBeenCalled()
+    expect(db.claim.count).not.toHaveBeenCalled()
     expect(execMock).not.toHaveBeenCalled()
-    // The 201 body still carries the pre-approval snapshot (the client refetches
-    // eligibility right after — documented behaviour of the route).
+    expect(refundsFlag).not.toHaveBeenCalled()
     expect((await res.json()).claim).toMatchObject({ status: 'restaurant_review' })
   })
 
@@ -217,19 +223,26 @@ describe("P10 — activation : le crash (aucune frontière d'erreur dans la rout
     warnSpy.mockRestore()
   })
 
-  it("[FAIL-ATTENDU: crash APRÈS création via C2 — SUBSISTE en config post-pilote] flag+plafond explicites + erreur DB dans l'anti-abus → le handler rejette alors que la claim EST déjà persistée", async () => {
-    // AUDIT (toujours vrai une fois l'auto-résolution ACTIVÉE explicitement) :
-    // autoResolveSmallClaim runs AFTER prisma.claim.create with no error boundary —
-    // a DB failure in isConsumerAbuseFlagged (claim.count) makes the request 500
-    // although the claim row exists: the consumer sees a crash and may resubmit
-    // (blocked only by the activeOrderKey unique). After fix, INVERT: the 201 must
-    // survive a post-create C2 failure (best-effort auto-resolution).
+  it("[PASS-ACTUEL D′ L2 — INVERSÉ] flag+plafond explicites + erreur DB dans l'anti-abus → 201 propre : l'anti-abus n'est plus atteint QUELLE QUE SOIT la config (le vecteur « crash après création via C2 » est fermé par construction)", async () => {
+    // AUDIT (vrai tant que l'auto-résolution pouvait être ACTIVÉE explicitement) :
+    // autoResolveSmallClaim ran AFTER prisma.claim.create with no error boundary —
+    // a DB failure in isConsumerAbuseFlagged (claim.count) made the request 500
+    // although the claim row existed. D′ L2 INVERTS this pin: the function is inert by
+    // construction, so the anti-abuse read is never reached and the 201 survives.
     vi.stubEnv('CLAIM_AUTO_RESOLVE_ENABLED', 'true')
     vi.stubEnv('CLAIM_AUTO_APPROVE_MAX_CENTS', '1000')
-    db.order.findUnique.mockResolvedValue(paidOrder({ total: 8 })) // C2-eligible amount
+    db.order.findUnique.mockResolvedValue(paidOrder({ total: 8 })) // the OLD C2-eligible amount
     db.claim.count.mockRejectedValue(new Error('db_down'))
-    await expect(CREATE(req({ orderId: 'o1', reason: 'quality' }))).rejects.toThrow('db_down') // batch 2: order-level reason — this case is about the post-create crash, not item authority
-    expect(db.claim.create).toHaveBeenCalledTimes(1) // the claim WAS created before the crash
+    // NEGATIVE CONTROL — the failure IS armed: the real anti-abuse read would throw if anything reached it.
+    await expect(isConsumerAbuseFlagged('c1')).rejects.toThrow('db_down')
+    db.claim.count.mockClear()
+    const res = await CREATE(req({ orderId: 'o1', reason: 'quality' })) // batch 2: order-level reason — this case is about the post-create path, not item authority
+    expect(res.status).toBe(201)
+    expect(db.claim.create).toHaveBeenCalledTimes(1)
+    expect(db.claim.count).not.toHaveBeenCalled()      // the armed failure was never reached
+    expect(db.claim.updateMany).not.toHaveBeenCalled()
+    expect(execMock).not.toHaveBeenCalled()
+    expect((await res.json()).claim).toMatchObject({ id: 'cl1', status: 'restaurant_review' })
   })
 
   it('[FAIL-ATTENDU: GET aussi sans frontière] flag ON + session, table Claim absente → GET /api/claims rejette brut (listConsumerClaims sans catch)', async () => {

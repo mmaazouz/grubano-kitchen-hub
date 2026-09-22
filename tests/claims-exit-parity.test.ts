@@ -39,7 +39,7 @@ import {
 } from '@/lib/claims'
 import {
   reconcileRefusal, arbitrationRefusal, acceptedExits, isStuckResolvable as pureStuckResolvable, deriveNoRowOutcome,
-  moneyStateGuidance, absenceProvenPayableLabel, RECONCILE_MARKER_UNREADABLE_TEXT,
+  moneyStateGuidance, absenceProvenPayableLabel, RECONCILE_MARKER_UNREADABLE_TEXT, APPROVE_ALREADY_SET,
   type ClaimFacts, type ReapprovalFacts,
 } from '@/lib/claim-action-rules'
 import { amountLineKind, cardMoneyLine, identityUnreadText, IDENTITY_UNREAD_TEXT, IDENTITY_UNREAD_NO_EXIT_TEXT } from '@/lib/claim-money-line'
@@ -185,7 +185,14 @@ describe('J-M29 — resolvable: the list flag, the resolve-stuck server and the 
   })
 })
 
-describe('J-M29 — approvable (D0): acceptedExits ∋ approve && the server verdict is null', () => {
+// D′ L2 (D1 v1.1): « approvable » = the « Approuver » control is live — a DECISION ('approve' on arbitration / silence-
+// expired) or a RATIFICATION ('ratify' on an approved claim whose amount is not fixed). Never a money exit ('pay' is the rail).
+const approvableByD0 = (c: ClaimFacts, now: Date) => {
+  const exits = acceptedExits({ claim: c, now })
+  return (exits.includes('approve') || exits.includes('ratify')) && arbitrationRefusal(c, 'approve', now) === null
+}
+
+describe('J-M29 — approvable (D0, v1.1): acceptedExits ∋ approve | ratify && the server verdict is null', () => {
   it('the queue verdict is the server verdict, and approvable follows D0', async () => {
     vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-09-12T12:00:00.000Z'))
     try {
@@ -194,23 +201,36 @@ describe('J-M29 — approvable (D0): acceptedExits ∋ approve && the server ver
         ...GATE.map(([, s]) => s).filter((s) => s.status === 'approved'),
         shape('v13future', { status: 'approved', refundError: `no_refund_proven:v13: … payable au plus tôt le ${new Date(now.getTime() + 3_600_000).toISOString()} (UTC).` }),
         shape('arb', { status: 'arbitration', arbitrationDecision: null }),
+        // D′ L2: an approved claim whose amount is fixed is never re-approved (APPROVE_ALREADY_SET) — not approvable
+        shape('fixed', { status: 'approved', arbitrationDecision: 'approved', approvedAmountCents: 500 }),
       ]
       db.claim.findMany.mockImplementation(async (args?: { where?: { OR?: unknown } }) => (args?.where?.OR ? shapes : []))
       const queue = await listArbitrationQueue()
       fx.forcedCount = 0
       let approvableCount = 0
+      let ratifiableCount = 0
       for (const q of queue) {
         const s = shapes.find((x) => x.id === q.id)!
         expect(q.approveRefusal, s.id).toBe(arbitrationRefusal(s, 'approve', now)?.error ?? null)
-        const approvable = acceptedExits({ claim: s, now }).includes('approve') && q.approveRefusal === null
+        const approvable = approvableByD0(s, now)
         db.claim.findUnique.mockResolvedValue(s)
         const server = await arbitrateClaim({ claimId: s.id, adminId: 'op1', decision: 'approve' })
         // a CAS that loses is the only answer an approvable claim can get here
         expect((server as { error?: string }).error === 'Cette réclamation a déjà été arbitrée.', s.id).toBe(approvable)
         if (approvable) approvableCount++
+        if (approvable && acceptedExits({ claim: s, now }).includes('ratify')) ratifiableCount++
       }
       expect(approvableCount).toBeGreaterThan(0)
+      expect(ratifiableCount).toBeGreaterThan(0) // the approved-null shapes are approvable THROUGH ratification only
+      expect(queue.find((q) => q.id === 'fixed')!.approveRefusal).toBe(APPROVE_ALREADY_SET)
       expect(execMock).not.toHaveBeenCalled()
+      // NEGATIVE CONTROL: the pre-D′ predicate (∋ 'approve' only) would call every ratifiable row NOT approvable, while the
+      // server accepts its decision (the CAS is the only thing that refuses it here) — the two sides would disagree.
+      const oldPredicate = (c: ClaimFacts) => acceptedExits({ claim: c, now }).includes('approve') && arbitrationRefusal(c, 'approve', now) === null
+      const ratifiable = shapes.filter((s) => approvableByD0(s, now) && !oldPredicate(s))
+      expect(ratifiable.length).toBe(ratifiableCount)
+      expect(ratifiable.every((s) => s.status === 'approved' && s.approvedAmountCents == null)).toBe(true)
+      expect(oldPredicate(shapes.find((s) => s.id === 'arb')!)).toBe(true) // 'approve' stays the decision exit of arbitration
     } finally { vi.useRealTimers() }
   })
 
@@ -603,8 +623,15 @@ describe('J-M29 (W7) — the rendered card equals the server verdicts, one fixtu
       const exits = acceptedExits({ claim: { ...(l as unknown as ClaimFacts), status: String(l.status ?? FINANCIAL_VERIFICATION) }, boundRow: l.refundId ? (row ? { id: row.id, orderId: row.orderId, status: row.status, stripeRefundId: row.stripeRefundId, reason: row.reason } : null) : null, now })
       expect(l.reconcilable, `${l.id} reconcilable`).toBe(exits.includes('reconcile'))
       if ('resolvable' in l) expect(l.resolvable, `${l.id} resolvable`).toBe(exits.includes('stuck_close'))
-      expect(l.approvable, `${l.id} approvable`).toBe(exits.includes('approve') && arbitrationRefusal({ ...(l as unknown as ClaimFacts), status: String(l.status ?? FINANCIAL_VERIFICATION) }, 'approve', now) === null)
+      // D′ L2 (D1 v1.1): approvable through a decision OR a ratification; 'approve' never appears on an approved row.
+      expect(l.approvable, `${l.id} approvable`).toBe((exits.includes('approve') || exits.includes('ratify')) && arbitrationRefusal({ ...(l as unknown as ClaimFacts), status: String(l.status ?? FINANCIAL_VERIFICATION) }, 'approve', now) === null)
+      if (l.status === 'approved') expect(exits, `${l.id} never 'approve'`).not.toContain('approve')
     }
+    // NEGATIVE CONTROL: d1_null (approved, null error, amount not fixed) is approvable THROUGH 'ratify' — the pre-D′ flag
+    // (∋ 'approve' only) would read it as not approvable while the list says it is.
+    const d1 = listed.find((l) => l.id === 'd1_null')!
+    expect(d1.approvable).toBe(true)
+    expect(acceptedExits({ claim: d1 as unknown as ClaimFacts, now })).toEqual(['ratify'])
     const at = (id: string) => (p.reconcileRequired.some((c) => c.id === id) ? 'reconcileRequired' : p.financialVerification.some((c) => c.id === id) ? 'financialVerification' : p.otherUnsettled.some((c) => c.id === id) ? 'otherUnsettled' : p.unfinalizedRefundRows.some((u) => u.claimId === id) ? 'unfinalized' : 'nowhere')
     expect(Object.fromEntries(D1().map((c) => [c.id, at(c.id)]))).toEqual({
       d1_null: 'otherUnsettled', d2_v13: 'otherUnsettled', d3_legacy: 'otherUnsettled', d4_rail: 'otherUnsettled', d5_hold: 'otherUnsettled', d6_failed: 'otherUnsettled',

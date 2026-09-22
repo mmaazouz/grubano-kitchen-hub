@@ -67,6 +67,8 @@ export type ClaimFacts = {
   reason?: string | null
   /** B8/G1: the bound row. undefined = NOT READ (every rule that needs it refuses); null = read, absent. */
   boundRow?: BoundRowFacts | null
+  /** D′ (L3b/L4): the amount an admin fixed. undefined/null = not fixed (legacy, or column not migrated yet) → ratifiable only. */
+  approvedAmountCents?: number | null
 }
 
 export type Refusal = { status: 409; error: string }
@@ -215,14 +217,14 @@ export function isStuckResolvable(c: ClaimFacts): boolean {
 export const APPROVE_INSTANT_UNREADABLE =
   'Approbation impossible : l’heure à partir de laquelle cette preuve d’absence permet un paiement n’a pas pu être lue. Relancez « Réconcilier d’après la preuve » (section « Vérification financière requise »).'
 export const approvePrematureText = (iso: string) =>
-  `Approbation prématurée : la preuve d’absence de cette réclamation ne permet un paiement qu’à partir du ${iso} (UTC) ; ce délai sépare toute nouvelle tentative de remboursement d’une éventuelle tentative antérieure. Rien n’est payé avant cette heure ; approuvez-la à nouveau ensuite.`
+  `Approbation prématurée : la preuve d’absence de cette réclamation ne permet un paiement qu’à partir du ${iso} (UTC) ; ce délai sépare toute nouvelle tentative de remboursement d’une éventuelle tentative antérieure. Rien n’est payé avant cette heure ; le rail financier (« Payer les approuvées », session admin, remboursements ouverts) pourra la sélectionner ensuite.`
 export const APPROVE_LEGACY_PROOF =
   'Approbation suspendue : la preuve d’absence de cette réclamation a été écrite par une version antérieure de la réconciliation, qui ne vérifiait pas toutes les conditions du moteur. Relancez « Réconcilier d’après la preuve » (section « Vérification financière requise ») avant toute approbation.'
 export const approveRevisableText = (stuckResolvable: boolean) =>
-  'Approbation impossible dans l’état enregistré : une nouvelle approbation ne paierait pas cette réclamation, ou n’est pas établie comme sûre (la cause est dans le détail de la réclamation). Rien n’est payé tant que cet état est enregistré. « Réconcilier d’après la preuve » (section « Vérification financière requise ») relit Stripe et nos lignes et réévalue toutes les conditions.'
+  'Approbation impossible dans l’état enregistré : le rail financier ne paierait pas cette réclamation, ou son paiement n’est pas établi comme sûr (la cause est dans le détail de la réclamation). Rien n’est payé tant que cet état est enregistré. « Réconcilier d’après la preuve » (section « Vérification financière requise ») relit Stripe et nos lignes et réévalue toutes les conditions.'
   + (stuckResolvable ? ' « Clôturer ce dossier… » enregistre votre déclaration.' : '')
 export const approvePermanentText = (stuckResolvable: boolean) =>
-  'Approbation impossible : une nouvelle approbation ne paierait pas cette réclamation (la cause est dans le détail de la réclamation). Rien ne sera payé par le rail pour elle.'
+  'Approbation impossible : le rail financier ne paierait pas cette réclamation (la cause est dans le détail de la réclamation). Rien ne sera payé par le rail pour elle.'
   + (stuckResolvable ? ' Clôturez le dossier (« Clôturer ce dossier… »).' : ' Aucune action de l’application ne la clôt : vérifiez la commande dans Stripe.')
 /**
  * E-05 / D14 — IMPLEMENTATION NOTE (W7): an approved claim whose reconcile marker instant is READABLE but later than now.
@@ -231,9 +233,14 @@ export const approvePermanentText = (stuckResolvable: boolean) =>
  */
 export const approveMarkerFutureText = (markerIso: string, reconcileFromIso: string) =>
   `Approbation impossible : l’heure de début de la tentative de remboursement enregistrée sur cette réclamation (${markerIso} UTC) est postérieure à maintenant, et cette tentative n’est pas établie comme terminée. Rien n’est payé tant que cet état est enregistré. « Réconcilier d’après la preuve » (section « Vérification financière requise ») est refusée tant que cette heure n’est pas passée et que le délai de 5 minutes ne s’est pas écoulé ensuite, soit jusqu’au ${reconcileFromIso} (UTC).`
-/** D13 AM-B3: no refuse_final on any approved claim, arbitrationDecision null included. */
+/** D13 AM-B3 (text v1.1, D′ L2): no refuse_final on any approved claim, arbitrationDecision null included. Re-approval
+ *  is never the way to be paid: the rail pays, the audited withdraw (D′ L4) reverses. */
 export const REFUSE_APPROVED_AM_B3 =
-  'Cette réclamation a été approuvée — elle ne peut plus être refusée. Selon son état : approuvez-la à nouveau (réclamations et remboursements ouverts), réconciliez-la, ou clôturez le dossier (« Clôturer ce dossier… ») si le détail le propose.'
+  'Cette réclamation a été approuvée — elle ne peut plus être refusée. Selon son état : elle relève du rail financier (« Payer les approuvées »), retirez l’approbation (« Retirer l’approbation »), réconciliez-la, ou clôturez le dossier (« Clôturer ce dossier… ») si le détail le propose.'
+/** D′ L2 (D1 v1.1): an approved claim whose amount is already fixed is never re-approved — the rail pays it, the audited
+ *  withdraw reverses it. Ratification (amount still null) stays admitted. */
+export const APPROVE_ALREADY_SET =
+  'Cette réclamation est déjà approuvée et son montant est fixé — elle ne se ré-approuve pas : elle relève du rail financier (« Payer les approuvées », session admin, remboursements ouverts) ; pour changer la décision, retirez l’approbation (« Retirer l’approbation ») puis décidez à nouveau.'
 
 /**
  * `arbitrateClaim`'s pre-checks — same checks, same order, same messages. The arbitration queue
@@ -248,6 +255,9 @@ export const REFUSE_APPROVED_AM_B3 =
  */
 export function arbitrationRefusal(c: ClaimFacts, decision: 'approve' | 'refuse_final', now: Date): Refusal | null {
   if (decision === 'refuse_final' && c.status === 'approved') return { status: 409, error: REFUSE_APPROVED_AM_B3 }
+  // D′ L2 (D1 v1.1, S-29): once the amount is fixed, an approved claim is paid by the rail or reversed by withdraw — never
+  // re-approved. Checked first: a fixed amount refuses whatever the recorded money state says.
+  if (decision === 'approve' && c.status === 'approved' && c.approvedAmountCents != null) return { status: 409, error: APPROVE_ALREADY_SET }
   if (decision === 'approve' && c.status === 'approved') {
     if (isCanonicalV13(c)) {
       const instant = proofInstant(c.refundError)
@@ -291,8 +301,11 @@ export function arbitrationRefusal(c: ClaimFacts, decision: 'approve' | 'refuse_
 
 // ══ D1 — THE EXIT TABLE ══════════════════════════════════════════════════════════════════════════
 
-export type Exit = 'approve' | 'refuse_final' | 'reconcile' | 'attribute' | 'adopt' | 'stuck_close'
-const EXIT_ORDER: readonly Exit[] = ['approve', 'refuse_final', 'reconcile', 'attribute', 'adopt', 'stuck_close']
+// D′ L2 (D1 v1.1): 'ratify' = an approve on an approved claim whose amount is still null (a decision, no money);
+// 'pay' = the financial rail (gated RE ∧ SURFACE, D′ L5); 'withdraw' = the audited reversal (D′ L4). 'approve' stays
+// the decision exit of arbitration / silence-expired claims only.
+export type Exit = 'approve' | 'ratify' | 'refuse_final' | 'withdraw' | 'pay' | 'reconcile' | 'attribute' | 'adopt' | 'stuck_close'
+const EXIT_ORDER: readonly Exit[] = ['approve', 'ratify', 'refuse_final', 'withdraw', 'pay', 'reconcile', 'attribute', 'adopt', 'stuck_close']
 
 export type RegistryId =
   | 'E-01' | 'E-02' | 'E-03' | 'E-04' | 'E-05' | 'E-06' | 'E-07' | 'E-08' | 'E-09'
@@ -339,7 +352,12 @@ export function acceptedExits(input: ExitInput): Exit[] {
   const c = factsOf(input)
   const out = new Set<Exit>()
   const v13BeforeInstant = isCanonicalV13(c) && proofInstant(c.refundError) !== null
-  if (arbitrationRefusal(c, 'approve', input.now) === null || v13BeforeInstant) out.add('approve')
+  if (c.status === 'approved') {
+    // D1 v1.1: an approved claim is never re-approved as a money path. Amount fixed → the rail pays / withdraw
+    // reverses; amount still null → a ratification (decision only). The v13 pre-instant shape keeps its D3 row.
+    if (c.approvedAmountCents != null) { out.add('pay'); out.add('withdraw') }
+    else if (arbitrationRefusal(c, 'approve', input.now) === null || v13BeforeInstant) out.add('ratify')
+  } else if (arbitrationRefusal(c, 'approve', input.now) === null) out.add('approve')
   if (arbitrationRefusal(c, 'refuse_final', input.now) === null) out.add('refuse_final')
   if (reconcileRefusal(c, input.now.getTime()) === null) out.add('reconcile')
   if (c.status === MARKERS.FINANCIAL_VERIFICATION) {
@@ -885,10 +903,10 @@ const GUIDANCE: Record<string, string> = {
     'La réclamation est liée à une ligne de remboursement introuvable. « Réconcilier d’après la preuve » la place en vérification financière, où un remboursement existant peut être lié.',
   // F15.
   approved_not_driven:
-    'Approuvée, jamais payée. Elle ne se paie que par l’approbation admin (file d’arbitrage), réclamations et remboursements ouverts, et seulement si la vérification avant moteur le permet à ce moment. Aucune clôture manuelle sur cet état.',
+    'Approuvée, en attente de paiement. Elle ne se paie que par le rail financier (« Payer les approuvées », session admin, remboursements ouverts), et seulement si la vérification avant moteur le permet à ce moment  ; une ré-approbation ne paie jamais. Aucune clôture manuelle sur cet état.',
   // F15 + ER-R27: « abouti ou en attente » — an ownerless FAILED Dashboard refund can stand beside a v13 proof (A-S08b).
   absence_proven_payable:
-    'Rien à clôturer : approuvée et non payée ; à la preuve, Stripe ne rapportait aucun remboursement abouti ou en attente non expliqué. Elle ne se paie que par une nouvelle approbation admin, réclamations et remboursements ouverts, au plus tôt à l’instant écrit dans son détail, et seulement si la relecture avant moteur confirme encore la preuve.',
+    'Rien à clôturer : approuvée et non payée ; à la preuve, Stripe ne rapportait aucun remboursement abouti ou en attente non expliqué. Elle ne se paie que par le rail financier (« Payer les approuvées », session admin, remboursements ouverts), sélectionnée explicitement par un admin, au plus tôt à l’instant écrit dans son détail, et seulement si la relecture avant moteur confirme encore la preuve.',
   refund_error_recorded:
     'Erreur de remboursement enregistrée : lisez le détail. « Clôturer ce dossier… » enregistre votre déclaration ; aucune action ici ne déplace d’argent.',
 }
@@ -899,7 +917,7 @@ export function moneyStateGuidance(moneyState: string): string {
 
 /** F15 (+ ER-R27): AdminClaimsArbitration's MONEY label for absence_proven_payable, with the C4 instant. */
 export function absenceProvenPayableLabel(refundError: string | null | undefined): string {
-  const head = 'Aucun remboursement abouti ou en attente non expliqué rapporté par Stripe à la preuve (liste complète lue) — approuvée, non payée. Rien ne la paiera automatiquement : nouvelle approbation admin, réclamations et remboursements ouverts'
+  const head = 'Aucun remboursement abouti ou en attente non expliqué rapporté par Stripe à la preuve (liste complète lue) — approuvée, non payée. Rien ne la paiera automatiquement : sélection explicite dans le rail financier (« Payer les approuvées », session admin, remboursements ouverts)'
   const instant = proofInstant(refundError)
   return instant
     ? `${head}, au plus tôt le ${instant.toISOString()} (UTC), relue avant le moteur`
@@ -918,14 +936,14 @@ export function headB(amountRefundedCents: number, explained: ExplainedRefund[])
   return `Stripe rapporte ${amountRefundedCents} c remboursés sur ce paiement, et chacun de ses remboursements aboutis ou en attente est rattaché à une AUTRE réclamation, soldée sur sa ligne : ${items.join(' ; ')}. Aucun n’est rattaché à celle-ci.`
 }
 
-export const LOCKED_OPEN = 'MAIS une nouvelle approbation ne paierait pas cette réclamation :'
-export const LOCKED_CLOSE = 'Rien ne sera payé par le rail pour cette réclamation tant que cet état est enregistré : l’approbation est refusée et le balayage automatique l’ignore. « Réconcilier d’après la preuve » réévalue toutes les conditions ; une cause qui ne dépend d’aucune action ultérieure ne cessera pas. Si elle a été remboursée hors système (Dashboard Stripe), déclarez-le (« Clôturer ce dossier… ») ; sinon clôturez sans paiement. Décision humaine requise.'
-export const AWAITING_OPEN = 'MAIS une nouvelle approbation ne paierait pas cette réclamation tant que'
-export const AWAITING_CLOSE = 'Relancez « Réconcilier d’après la preuve » lorsque cette ligne ne sera plus « en attente » dans notre base : la réconciliation réévaluera alors toutes les conditions. En attendant, rien ne sera payé par le rail pour cette réclamation (approbation refusée, balayage automatique ignoré). Si elle a été remboursée hors système (Dashboard Stripe), déclarez-le (« Clôturer ce dossier… »).'
+export const LOCKED_OPEN = 'MAIS le rail financier ne paierait pas cette réclamation :'
+export const LOCKED_CLOSE = 'Rien ne sera payé par le rail pour cette réclamation tant que cet état est enregistré : le rail la refuse et aucun balayage ne la paie. « Réconcilier d’après la preuve » réévalue toutes les conditions ; une cause qui ne dépend d’aucune action ultérieure ne cessera pas. Si elle a été remboursée hors système (Dashboard Stripe), déclarez-le (« Clôturer ce dossier… ») ; sinon clôturez sans paiement. Décision humaine requise.'
+export const AWAITING_OPEN = 'MAIS le rail financier ne paierait pas cette réclamation tant que'
+export const AWAITING_CLOSE = 'Relancez « Réconcilier d’après la preuve » lorsque cette ligne ne sera plus « en attente » dans notre base : la réconciliation réévaluera alors toutes les conditions. En attendant, rien ne sera payé par le rail pour cette réclamation (le rail la refuse, aucun balayage ne la paie). Si elle a été remboursée hors système (Dashboard Stripe), déclarez-le (« Clôturer ce dossier… »).'
 
 /** G8 PAYABLE tail, with the C4 instant. */
 export function payableTail(requestedAmountCents: number, instant: Date): string {
-  return `Aucune ligne de remboursement de cette commande n’est en attente, et au moment de cette lecture aucune condition de refus du moteur ni aucun blocage de sûreté n’était rempli pour le montant de cette réclamation (${requestedAmountCents} c). La réclamation repasse en « approuvée, non payée ». Rien ne la paiera automatiquement : elle devra être approuvée à nouveau par un admin, réclamations et remboursements ouverts ; une vérification relira alors Stripe et nos lignes avant le moteur. Elle est payable au plus tôt le ${instant.toISOString()} (UTC).`
+  return `Aucune ligne de remboursement de cette commande n’est en attente, et au moment de cette lecture aucune condition de refus du moteur ni aucun blocage de sûreté n’était rempli pour le montant de cette réclamation (${requestedAmountCents} c). La réclamation repasse en « approuvée, non payée ». Rien ne la paiera automatiquement : elle devra être sélectionnée explicitement par un admin dans le rail financier (« Payer les approuvées »), remboursements ouverts ; une vérification relira alors Stripe et nos lignes avant le moteur. Elle est payable au plus tôt le ${instant.toISOString()} (UTC).`
 }
 
 /** G8 ROUTED: true → the routed sentence; null (unknown) → its conditional form; false → ''. */

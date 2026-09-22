@@ -3,12 +3,15 @@ import { updateManyMock } from './support/prisma-where'
 import { Prisma } from '@prisma/client'
 
 // ── P4.5-C1 — lib/claims (the claim cycle workflow) ──────────────────────────────
-// Owner-scoped create, restaurant accept / refuse, auto-approval, and the
+// Owner-scoped create, restaurant accept / refuse, the silence sweep, and the
 // refund-trigger idempotence (executeRefund at most once per claim). Prisma + the
 // P4.5-A engine are mocked.
 // P0-24 (vague 1, Q3 volet 2) : l'ACCEPT restaurateur ne déclenche PLUS de
-// remboursement — il route la réclamation en file admin ('arbitration'). Seul un
-// admin (arbitrateClaim) décide et déclenche.
+// remboursement — il route la réclamation en file admin ('arbitration').
+// D′ L2 (spec v2 S-02/S-13, T-07/T-08) : l'admin DÉCIDE (arbitrateClaim = décision métier seule,
+// jamais le moteur) ; le RAIL paie (triggerClaimRefund, inchangé T1..T4, appelé ici À LA MAIN pour
+// garder ces chemins testés et comme contrôle négatif). La balayeuse (runClaimAutoApproval)
+// n'approuve plus : elle ROUTE le silence échu vers 'arbitration' et ne pousse plus rien au moteur.
 
 const { db } = vi.hoisted(() => ({
   db: {
@@ -27,7 +30,7 @@ const { stripeMock } = vi.hoisted(() => ({ stripeMock: { paymentIntents: { retri
 vi.mock('@/lib/stripe', () => ({ getStripe: () => stripeMock }))
 vi.mock('@/lib/admin-alerts', () => ({ sendAdminMoneyReviewAlert: vi.fn(async () => ({ status: 'sent' })) }))
 
-import { createClaim, respondToClaim, runClaimAutoApproval, getClaimEligibility, arbitrateClaim, listArbitrationQueue } from '@/lib/claims'
+import { createClaim, respondToClaim, runClaimAutoApproval, getClaimEligibility, arbitrateClaim, listArbitrationQueue, triggerClaimRefund } from '@/lib/claims'
 import { payableWorld, wireWorld, refundRow, claimOf, engineOk, engine202 } from './support/claims-world'
 
 /** ROUND 13 (C3): T1 → T2 on fresh reads → the engine → T4, driven in an in-memory world. */
@@ -177,21 +180,39 @@ describe('respondToClaim — (b) accept → FILE ADMIN, jamais de remboursement 
   })
 })
 
-describe("(e) P0-24 — l'ADMIN décide et déclenche (les deux rôles couverts)", () => {
-  it("admin arbitrate approve sur une réclamation 'arbitration' (acceptée par le resto) → executeRefund UNE fois", async () => {
-    world({ status: 'arbitration', refundAttempted: false, arbitrationDecision: null, requestedAmountCents: 5000 })
+describe("(e) P0-24 → D′ L2 — l'ADMIN décide (décision seule) ; le RAIL paie (les deux rôles couverts)", () => {
+  it("admin arbitrate approve sur une réclamation 'arbitration' (acceptée par le resto) → décision écrite, executeRefund ZÉRO fois, bail REFUNDS jamais lu, pas de champ refund (D′ L2 S-02)", async () => {
+    const w = world({ status: 'arbitration', refundAttempted: false, arbitrationDecision: null, requestedAmountCents: 5000 })
     const res = await arbitrateClaim({ claimId: 'cl1', adminId: 'adm1', decision: 'approve' })
     expect(res.ok).toBe(true)
-    expect(execMock).toHaveBeenCalledTimes(1)
-    expect(execMock).toHaveBeenCalledWith({ orderId: 'o1', amountCents: 5000, reason: 'claim:cl1' })
+    expect(res).not.toHaveProperty('refund')
+    expect(execMock).not.toHaveBeenCalled()
+    expect(refundsFlag).not.toHaveBeenCalled()
+    expect(w.writes).toHaveLength(1)
+    expect(claimOf(w)).toMatchObject({ status: 'approved', arbitrationDecision: 'approved', arbitratedBy: 'adm1', decidedBy: 'admin', refundAttempted: false, refundId: null, refundError: null })
   })
 
-  it("[PHASE 2 §15 A7] moteur → variante PENDING (Stripe pas encore succeeded) : la réclamation reste 'refunding' avec refundId, AUCUN refundError, AUCUN retour à 'approved'", async () => {
+  it("CONTRÔLE NÉGATIF — le même monde, après cette décision, PAIE quand le rail (triggerClaimRefund) est appelé à la main : executeRefund UNE fois, sur le montant de la réclamation", async () => {
+    const w = world({ status: 'arbitration', refundAttempted: false, arbitrationDecision: null, requestedAmountCents: 5000 })
+    const res = await arbitrateClaim({ claimId: 'cl1', adminId: 'adm1', decision: 'approve' })
+    expect(res.ok).toBe(true)
+    expect(execMock).not.toHaveBeenCalled()
+    const t = await triggerClaimRefund('cl1')
+    expect(t).toMatchObject({ state: 'refunded', refundId: 'rf1' })
+    expect(execMock).toHaveBeenCalledTimes(1)
+    expect(execMock).toHaveBeenCalledWith({ orderId: 'o1', amountCents: 5000, reason: 'claim:cl1' })
+    expect(claimOf(w)).toMatchObject({ status: 'refunded', refundId: 'rf1' })
+  })
+
+  it("[PHASE 2 §15 A7] RAIL (après la décision) : moteur → variante PENDING (Stripe pas encore succeeded) : la réclamation reste 'refunding' avec refundId, AUCUN refundError, AUCUN retour à 'approved'", async () => {
     const w = world({ status: 'arbitration', refundAttempted: false, arbitrationDecision: null, requestedAmountCents: 5000 })
     execMock.mockImplementation(async () => { w.refunds.push(refundRow('rf1', { reason: 'claim:cl1', status: 'pending', stripeRefundId: 're_p' })); return engine202({ refundId: 'rf1', stripeRefundId: 're_p', amountCents: 5000, error: 'en attente' }) })
     const res = await arbitrateClaim({ claimId: 'cl1', adminId: 'adm1', decision: 'approve' })
     expect(res.ok).toBe(true)
-    if (res.ok) expect(res.refund).toEqual({ state: 'pending', reason: 'stripe_pending', refundId: 'rf1' })
+    expect(execMock).not.toHaveBeenCalled()                 // the decision reached no engine
+    expect(w.writes).toHaveLength(1)                        // write 0 = the decision CAS
+    const t = await triggerClaimRefund('cl1')               // write 1 = T1 token, then the T4 writes
+    expect(t).toEqual({ state: 'pending', reason: 'stripe_pending', refundId: 'rf1' })
     // ROUND 13 (C5): the post-engine write is a CAS on the attempt token; the claim state is what it wrote.
     const updates = w.writes.slice(2).map((x) => x.data)
     expect(updates).toContainEqual({ refundId: 'rf1', refundError: null })
@@ -200,15 +221,22 @@ describe("(e) P0-24 — l'ADMIN décide et déclenche (les deux rôles couverts)
     expect(claimOf(w)).toMatchObject({ status: 'refunding', refundId: 'rf1', refundError: null })
   })
 
-  it('HÉRITAGE pré-P0-24 : approved + refundAttempted=false → arbitrable (approve → refund idempotent)', async () => {
-    world({ id: 'cl9', orderId: 'o1', status: 'approved', refundAttempted: false, arbitrationDecision: null, requestedAmountCents: 1200 })
+  it('HÉRITAGE pré-P0-24 : approved + refundAttempted=false → RATIFIABLE (approve = décision complétée, ZÉRO moteur) ; le rail, lui, paie ensuite (contrôle négatif)', async () => {
+    const w = world({ id: 'cl9', orderId: 'o1', status: 'approved', refundAttempted: false, arbitrationDecision: null, arbitratedBy: null, arbitratedAt: null, decidedBy: null, decidedAt: null, requestedAmountCents: 1200 })
     execMock.mockResolvedValue(engineOk({ refundId: 'rf9' }))
     const res = await arbitrateClaim({ claimId: 'cl9', adminId: 'adm1', decision: 'approve' })
     expect(res.ok).toBe(true)
-    // le CAS héritage exige refundAttempted:false dans le WHERE (race-safe)
+    // le CAS de ratification exige refundAttempted:false ET refundId:null dans le WHERE (race-safe) et épingle les instants lus
     const meta = db.claim.updateMany.mock.calls.find((c) => c[0]?.data?.arbitrationDecision === 'approved')
-    expect(meta?.[0].where).toMatchObject({ id: 'cl9', status: 'approved', refundAttempted: false })
+    expect(meta?.[0].where).toMatchObject({ id: 'cl9', status: 'approved', refundAttempted: false, refundId: null, arbitratedAt: null, decidedAt: null })
+    expect(meta?.[0].data).toMatchObject({ status: 'approved', arbitrationDecision: 'approved', arbitratedBy: 'adm1', decidedBy: 'admin' })
+    expect(execMock).not.toHaveBeenCalled()
+    expect(claimOf(w, 'cl9')).toMatchObject({ status: 'approved', arbitrationDecision: 'approved', refundAttempted: false, refundId: null })
+    // contrôle négatif : le rail sur cette réclamation ratifiée → moteur UNE fois, sur 1200 c
+    const t = await triggerClaimRefund('cl9')
+    expect(t).toMatchObject({ state: 'refunded', refundId: 'rf9' })
     expect(execMock).toHaveBeenCalledTimes(1)
+    expect(execMock).toHaveBeenCalledWith({ orderId: 'o1', amountCents: 1200, reason: 'claim:cl9' })
   })
 
   it('HÉRITAGE : refundAttempted=true (argent peut-être parti) → 409, JAMAIS re-déclenché', async () => {
@@ -235,30 +263,44 @@ describe("(e) P0-24 — l'ADMIN décide et déclenche (les deux rôles couverts)
   })
 })
 
-describe('(d) auto-approval cron', () => {
-  it('expired restaurant_review → auto-approved + refund triggered once', async () => {
-    world({ status: 'restaurant_review', responseDeadlineAt: new Date(Date.now() - 3_600_000), arbitrationDecision: null, reason: 'quality' })
+describe('(d) silence sweep (runClaimAutoApproval) — D′ L2 S-13: routes to arbitration, approves nothing, pays nothing', () => {
+  it('expired restaurant_review → ROUTED to arbitration (no auto_timeout approval, restaurantResponse untouched, 0 engine)', async () => {
+    const w = world({ status: 'restaurant_review', responseDeadlineAt: new Date(Date.now() - 3_600_000), arbitrationDecision: null, reason: 'quality', restaurantResponse: null })
     const summary = await runClaimAutoApproval()
-    expect(summary.autoApproved).toBe(1)
-    expect(summary.refundsTriggered).toBe(1)
-    expect(execMock).toHaveBeenCalledTimes(1)
-    const approved = db.claim.updateMany.mock.calls.find((c) => c[0]?.data?.decidedBy === 'auto_timeout')
-    expect(approved).toBeTruthy()
+    expect(summary).toEqual({ scannedExpired: 1, routedToArbitration: 1, skippedSafety: 0, skippedAlreadyHandled: 0 })
+    expect(summary).not.toHaveProperty('autoApproved')
+    expect(summary).not.toHaveProperty('refundsTriggered')
+    expect(execMock).not.toHaveBeenCalled()
+    expect(db.claim.updateMany.mock.calls.find((c) => c[0]?.data?.decidedBy === 'auto_timeout')).toBeUndefined()
+    expect(db.claim.updateMany.mock.calls.find((c) => c[0]?.data?.status === 'approved')).toBeUndefined()
+    expect(w.writes).toHaveLength(1)
+    expect(w.writes[0]).toMatchObject({ where: { id: 'cl1', status: 'restaurant_review' }, data: { status: 'arbitration' }, count: 1 })
+    expect(claimOf(w)).toMatchObject({ status: 'arbitration', restaurantResponse: null, arbitrationDecision: null })
+    expect(claimOf(w).decidedBy).toBeUndefined()               // the sweep decides nothing — a human will
+    expect(claimOf(w).decidedAt).toBeUndefined()
   })
 
-  it('approved-but-unrefunded → refund driven once when REFUNDS now on', async () => {
-    world({ status: 'approved', refundAttempted: false, arbitrationDecision: null })
+  it('approved-but-unrefunded is NEVER driven by the sweep, REFUNDS on or not (step 2 is deleted); the rail run by hand still pays it (negative control)', async () => {
+    const w = world({ status: 'approved', refundAttempted: false, arbitrationDecision: 'approved' })
     const summary = await runClaimAutoApproval()
-    expect(summary.refundsTriggered).toBe(1)
+    expect(summary).toEqual({ scannedExpired: 0, routedToArbitration: 0, skippedSafety: 0, skippedAlreadyHandled: 0 })
+    expect(execMock).not.toHaveBeenCalled()
+    expect(refundsFlag).not.toHaveBeenCalled()                  // the sweep does not even read the REFUNDS lease
+    expect(w.writes).toEqual([])
+    expect(claimOf(w)).toMatchObject({ status: 'approved', refundAttempted: false, refundId: null })
+    // negative control: the SAME approved-unpaid claim is payable by the rail — the sweep simply no longer drives it
+    const t = await triggerClaimRefund('cl1')
+    expect(t).toMatchObject({ state: 'refunded', refundId: 'rf1' })
     expect(execMock).toHaveBeenCalledTimes(1)
   })
 
-  it('REFUNDS off → no pending-refund sweep, no executeRefund', async () => {
+  it('REFUNDS off → the same empty summary, no executeRefund (nothing expired, nothing driven)', async () => {
     refundsFlag.mockReturnValue(false)
     db.claim.findMany.mockResolvedValue([]) // no expired
     const summary = await runClaimAutoApproval()
-    expect(summary.refundsTriggered).toBe(0)
+    expect(summary).toEqual({ scannedExpired: 0, routedToArbitration: 0, skippedSafety: 0, skippedAlreadyHandled: 0 })
     expect(execMock).not.toHaveBeenCalled()
+    expect(db.claim.updateMany).not.toHaveBeenCalled()
   })
 })
 

@@ -1,4 +1,10 @@
-// ── CLAIMS — WHAT AN APPROVAL ACTUALLY DID (batch 2 re-audit fix) ─────────────────
+// ── CLAIMS — WHAT A RAIL ATTEMPT ACTUALLY DID (batch 2 re-audit fix · D′ L2 re-scoped) ─────
+//
+// D′ L2 (spec v2 S-02, F13 v1.1): an ADMIN APPROVAL no longer reaches the engine, so the arbitration
+// console never calls this mapping any more (it shows the nominal approvedNotSent toast). This pure
+// mapping now describes the outcome of ONE rail attempt (triggerClaimRefund, D′ L5 pay-approved) — the
+// keys keep their names until the L5 batch report renames them. It is still the tested rendering of
+// every RefundTriggerResult shape, which is why the trigger tests keep using it.
 //
 // The admin console used to assert "remboursement déclenché" on every approval. It was wrong
 // in the ordinary case (refund rail closed ⇒ nothing moves) and dangerously wrong in one

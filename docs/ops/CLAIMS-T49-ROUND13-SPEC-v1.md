@@ -32,16 +32,27 @@
   `ratify | withdraw | pay`. Rows 3-14 unchanged.
 - **D13 / AM-B3 (text superseded, L2)** — no refuse_final on an approved claim (unchanged), but the
   text no longer names re-approval as the way to be paid: « Cette réclamation a été approuvée — elle
-  ne peut plus être refusée. Selon son état : elle sera payée par le rail financier (« Payer les
+  ne peut plus être refusée. Selon son état : elle relève du rail financier (« Payer les
   approuvées »), retirez l'approbation (« Retirer l'approbation »), réconciliez-la, ou clôturez le
   dossier si le détail le propose. » Same rewrite for the F15 guidance `approved_not_driven`,
-  `absence_proven_payable`, `absenceProvenPayableLabel`, LOCKED_CLOSE, AWAITING_CLOSE and
-  `payableTail`: « approuvez-la à nouveau » / « nouvelle approbation » never appear in copy.
+  `absence_proven_payable`, `absenceProvenPayableLabel`, LOCKED_CLOSE, AWAITING_CLOSE,
+  `payableTail`, the reconcile toasts `said.no_refund_proven` / `said.no_refund_proven_rail_locked`
+  and the T-56 dead-row text: « approuvez-la à nouveau » / « nouvelle approbation » never appear in copy.
+  *Correction tracked at L2 (2026-09-22): the first draft of this amendment read « elle sera payée par
+  le rail financier », a promise the frozen J-M31 pin forbids (« sera payée »); the shipped text says
+  « elle relève du rail financier ». J-M31 is unchanged.*
+- **F14 (two values superseded, L2)** — `said.no_refund_proven` and `said.no_refund_proven_rail_locked`
+  name the rail financier instead of « une nouvelle approbation admin » / « une nouvelle approbation »
+  (v1 phrases: « Rien ne la paiera automatiquement : une nouvelle approbation admin, réclamations et
+  remboursements ouverts, est acceptée au plus tôt le … » and « MAIS une nouvelle approbation ne
+  paierait pas cette réclamation : refus du moteur … »). The other F14 values are unchanged.
 - **F13 (superseded, L2)** — the engine toasts `approvedRefunded`, `approvedPending`,
   `approvedFailed`, `approvedResumeMismatch`, `approvedIdentityUnverified`, `approvedSuperseded`,
   `approvedNotSentUntil` are removed with the inline engine call; `approvedNotSent` becomes the
-  nominal toast: fr « Réclamation approuvée — le remboursement sera traité par le rail financier lors
-  d'une fenêtre autorisée. » (en/es/it/ar equivalents, no bank delay, no « déclenché »).
+  nominal toast: fr « Réclamation approuvée — décision enregistrée, aucun remboursement n'a été lancé
+  par cette action : le paiement sera traité séparément par le rail financier lors d'une fenêtre
+  autorisée. » (en/es/it/ar equivalents, no bank delay, no « déclenché », no amount; spec v2 §7 only
+  requires the toast « réécrit » — this is the shipped wording, recorded at L2).
 - **H02 (superseded, L1)** — the senders keep `claimsOpen: boolean`; every call under app/ passes
   `claimsOpen: claimNoticeGate('pre_money' | 'post_money' | 'closure')` from `lib/claim-flags.ts`,
   evaluated immediately before the call, class chosen by the CALLER FILE (v2 §6.2). `pre_money` =
@@ -2181,14 +2192,16 @@ IMPLEMENTATION NOTE (W2): approvedNotSent is reworded as specified above, in all
 IMPLEMENTATION NOTE (W7): approvedFailed loses its last sentence (the « Remboursements à traiter » pointer) in all five locales. approvedResumeMismatch loses only the section-naming clause of its last sentence: « Ne relancez aucun remboursement — ouvrez « Remboursements à traiter ». » becomes « Ne relancez aucun remboursement. » (en « Do not issue another refund. », es « No emita otro reembolso. », it « Non emetta un altro rimborso. », ar « لا تُصدر ردًا آخر. ») — deleting the whole sentence would drop the never-retry instruction (pinned since round 7). ER-C15 resolved: the ar values of both keys replace « المحرك » with « نظام الاسترداد » (the approvedIdentityUnverified wording). ER-R30: the W2 approvedSuperseded strings are confirmed (T2 returns attempt_superseded before any engine call). Pinned by tests/claims-copy-contract.test.ts (J-C16), tests/claim-approval-toast.test.ts (J-C15) and tests/claims-t49-round9.test.ts.
 
 ### F14 [CORE] Financial-verification console toasts (AdminFinancialVerification.tsx, fr literals)
+> **v1.1 (D′, 2026-09-22, L2): the two `no_refund_proven*` values no longer name a re-approval as the way to be paid — the rail financier does; the v1 values are kept in « v1.1 AMENDMENTS ».**
+
 The reconcile `said` map is keyed by outcome. Values:
 
 - refunded, evidence 'stripe_read': « Preuve trouvée : Stripe rapporte ce remboursement abouti. Réclamation réconciliée sur son identité exacte. »
 - refunded, otherwise: « Réclamation réconciliée sur son identité exacte d’après notre ligne liée (Stripe n’a pas été relu pour cette conclusion ; aucun avis client ne peut partir sans relecture Stripe). »
-- no_refund_proven (v13 only): « Preuve d’absence : Stripe ne rapporte aujourd’hui aucun remboursement abouti ou en attente qui ne soit expliqué (liste complète lue), et aucune ligne de la commande n’arrête le moteur. La réclamation repasse en « approuvée, non payée ». Rien ne la paiera automatiquement : une nouvelle approbation admin, réclamations et remboursements ouverts, est acceptée au plus tôt le ${payableFrom} (UTC) ; juste avant le moteur, Stripe et nos lignes sont relus, et le paiement n’est lancé que si cette relecture confirme encore la preuve. »
+- no_refund_proven (v13 only): « Preuve d’absence : Stripe ne rapporte aujourd’hui aucun remboursement abouti ou en attente qui ne soit expliqué (liste complète lue), et aucune ligne de la commande n’arrête le moteur. La réclamation repasse en « approuvée, non payée ». Rien ne la paiera automatiquement : le rail financier (« Payer les approuvées », session admin, remboursements ouverts) peut la sélectionner au plus tôt le ${payableFrom} (UTC) ; juste avant le moteur, Stripe et nos lignes sont relus, et le paiement n’est lancé que si cette relecture confirme encore la preuve. »
   - payableFrom is the reconcile result's Q-INSTANT.
   - If it is absent, render « instant illisible — relancez la réconciliation » instead of the date.
-- no_refund_proven_rail_locked: « Stripe ne rapporte aucun remboursement non expliqué sur ce paiement, MAIS une nouvelle approbation ne paierait pas cette réclamation : refus du moteur ou blocage de sûreté, la cause est dans le détail de la réclamation. Rien n’a été payé par cette action. « Clôturer ce dossier… » enregistre votre déclaration ; « Réconcilier d’après la preuve » relit la preuve si la cause peut cesser. »
+- no_refund_proven_rail_locked: « Stripe ne rapporte aucun remboursement non expliqué sur ce paiement, MAIS le rail financier ne paierait pas cette réclamation : refus du moteur ou blocage de sûreté, la cause est dans le détail de la réclamation. Rien n’a été payé par cette action. « Clôturer ce dossier… » enregistre votre déclaration ; « Réconcilier d’après la preuve » relit la preuve si la cause peut cesser. »
   - The old « le moteur refusera tout remboursement » was false for the H1/H2/H5 holds (A-S04, A-S08a, A-S39: the engine accepts).
 - awaiting_finalization: « Stripe rapporte ABOUTI le remboursement d’une ligne d’une AUTRE réclamation, encore en attente dans notre base ; tant qu’elle le reste, le moteur finaliserait cette ligne au lieu de payer cette réclamation. Rien n’a été payé par cette action. Relancez « Réconcilier d’après la preuve » lorsque cette ligne ne sera plus en attente ; « Clôturer ce dossier… » reste possible. »
 - refund_failed: « Preuve trouvée : Stripe rapporte cette ligne de remboursement ÉCHOUÉE ; elle n’a rien versé au titre de cette ligne (cela ne dit rien des autres remboursements de la commande). Le détail enregistré dit si le moteur refuse désormais tout remboursement sur cette commande ; « Clôturer ce dossier… » enregistre votre déclaration. »

@@ -327,7 +327,9 @@ const WRITERS: Record<string, Case[]> = {
   'triggerClaimRefund|refunded|null': [{ c: { status: 'refunded', refundId: 'rf1', refundError: null }, refundedRow: true, line: 8 }],
   'triggerClaimRefund|-|null': [{ c: { status: 'refunding', refundAttempted: true, refundId: 'rf1', refundError: null }, inProgress: true, line: 2 }],
   'triggerClaimRefund|approved|engine_failed': [{ c: ap('engine_failed: x', { refundAttempted: true }), line: 4 }],
-  'approveClaim|approved|-': [{ c: ap(null), line: 6 }],
+  // D′ L2 (spec v2 S-02 / S-13, R13 v1.1 D2): `approveClaim` (machine writer of status 'approved') is deleted; the
+  // machine paths only ROUTE restaurant_review → arbitration, where a human decides. No machine writer of 'approved' exists.
+  'routeClaimToArbitration|arbitration|-': [{ c: { status: 'arbitration' }, line: 15 }],
   'respondToClaim|refused|-': [{ c: { status: 'refused' }, line: 15 }],
   'respondToClaim|arbitration|-': [{ c: { status: 'arbitration' }, line: 15 }],
   'contestClaim|arbitration|-': [{ c: { status: 'arbitration' }, line: 15 }],
@@ -398,6 +400,20 @@ describe('J-C02 — status grid over every writer of lib/claims.ts', () => {
     expect(unmappedOrStale(scanClaimWrites(synthetic), WRITERS).unmapped).toEqual(['newWriter|refunded|new_marker'])
     const { ['resolveStuckClaim|(variable)|MARKERS.DECLARED_AFTER_REVERT']: _deleted, ...broken } = WRITERS
     expect(unmappedOrStale(writers, broken).unmapped).toEqual(['resolveStuckClaim|(variable)|MARKERS.DECLARED_AFTER_REVERT'])
+  })
+
+  it('D′ L2 (S-13) — the only writers of status \'approved\' are arbitrateClaim (decision / ratification) and the money paths; the deleted machine writer approveClaim is reported STALE if it is put back in the grid, and a resurrected approveClaim is reported UNMAPPED', () => {
+    const approvedWriters = new Set(writers.filter((w) => w.status === 'approved').map((w) => w.fn))
+    expect(approvedWriters.has('arbitrateClaim')).toBe(true)
+    for (const machine of ['approveClaim', 'routeClaimToArbitration', 'runClaimAutoApproval', 'autoResolveSmallClaim', 'respondToClaim']) {
+      expect(approvedWriters.has(machine), machine).toBe(false)
+    }
+    expect(writers.some((w) => keyOf(w) === 'routeClaimToArbitration|arbitration|-')).toBe(true)
+    // NEGATIVE CONTROL 1: the pre-D′ grid entry is stale against the shipped source
+    expect(unmappedOrStale(writers, { ...WRITERS, 'approveClaim|approved|-': [{ c: ap(null), line: 6 }] }).stale).toEqual(['approveClaim|approved|-'])
+    // NEGATIVE CONTROL 2: the dab754d machine writer, appended to the source, is reported unmapped by the grid
+    const resurrected = `${read('lib/claims.ts')}\nasync function approveClaim(id: string) {\n  await prisma.claim.updateMany({ where: { id, status: 'restaurant_review' }, data: { status: 'approved', decidedBy: 'auto_timeout' } })\n}\n`
+    expect(unmappedOrStale(scanClaimWrites(resurrected), WRITERS).unmapped).toEqual(['approveClaim|approved|-'])
   })
 })
 
@@ -556,17 +572,48 @@ describe('J-C16 — admin approval toast copy (F13) and its drafting constraints
   const ES = [new RegExp(String.raw`\b(webhook|motor|barrido)\b[^.]{0,60}\p{L}+ará(?!\p{L})`, 'iu')]
   const IT = [new RegExp(String.raw`\b(webhook|motore|scansione)\b[^.]{0,60}\p{L}+rà(?!\p{L})`, 'iu')]
 
-  it('new or reworded values equal F13 (approvedSuperseded per the W2 ER-R30 note)', () => {
+  /**
+   * D′ L2 (R13 spec v1.1 « F13 (superseded, L2) »): approvedNotSent is the NOMINAL toast of a decision-only approval —
+   * it states that the decision is recorded, that this action started no refund, and that the rail pays separately in an
+   * authorised window; no bank delay, no « déclenché ». The five shipped values are the contract; the v1 F13 « REWORD »
+   * lines are superseded and kept below only as the negative control's witness.
+   */
+  const NOT_SENT_V11: Record<string, string> = {
+    fr: 'Réclamation approuvée — décision enregistrée, aucun remboursement n’a été lancé par cette action : le paiement sera traité séparément par le rail financier lors d’une fenêtre autorisée.',
+    en: 'Claim approved — decision recorded, no refund was started by this action: payment is handled separately by the financial rail during an authorised window.',
+    es: 'Reclamación aprobada — decisión registrada, esta acción no inició ningún reembolso: el pago se tramita por separado en el raíl financiero durante una ventana autorizada.',
+    it: 'Reclamo approvato — decisione registrata, nessun rimborso è stato avviato da questa azione: il pagamento viene gestito separatamente dal binario finanziario durante una finestra autorizzata.',
+    ar: 'تمت الموافقة على الشكوى — تم تسجيل القرار، ولم يُطلَق أي استرداد بهذا الإجراء: تتم معالجة الدفع بشكل منفصل عبر المسار المالي خلال نافذة مصرّح بها.',
+  }
+  it('new or reworded values equal F13 (approvedSuperseded per the W2 ER-R30 note); approvedNotSent equals its v1.1 (D′ L2) value ×5 and claims.admin.approved is deleted ×5', () => {
     const table = specCopyTable('F13', 'claims.admin.')
-    const notSent = afterLine('REWORD approvedNotSent.')
     const superseded = supersededShipped()
     for (const loc of LOCALES) {
       const a = M[loc].claims.admin
-      expect(a.approvedNotSent, loc).toBe(notSent[loc])
+      expect(a.approvedNotSent, loc).toBe(NOT_SENT_V11[loc])
+      expect(a.approvedNotSent, loc).not.toMatch(/déclench|triggered|desencaden|innescat|أُطلق الاسترداد/i)
+      expect(a.approvedNotSent, loc).not.toMatch(/\b(\d+|deux|trois|cinq|dix|two|three|five|ten)\s*(jours|days|días|giorni|أيام)/i) // no bank delay
+      expect(a.approved, `${loc} claims.admin.approved (dead key) removed`).toBeUndefined()
       for (const k of ['approvedPending', 'approvedIdentityUnverified', 'approvedNotSentUntil']) expect(a[k], `${loc} ${k}`).toBe(table[`claims.admin.${k}`][loc as 'fr'])
       expect(a.approvedSuperseded, loc).toBe(superseded[loc])
       expect(a.approvedSuperseded, loc).not.toContain('obtenu du moteur')
     }
+  })
+
+  it('NEGATIVE CONTROL (D′ L2) — the v1 F13 « REWORD approvedNotSent » values (« aucun remboursement n’a été lancé par cette action. » alone) are no longer the shipped ones in any locale, and a resurrected claims.admin.approved is caught', () => {
+    const notSentV1 = afterLine('REWORD approvedNotSent.')
+    for (const loc of LOCALES) {
+      expect(notSentV1[loc], loc).toBeTruthy()
+      expect(M[loc].claims.admin.approvedNotSent, loc).not.toBe(notSentV1[loc])
+      // the v1.1 value keeps the v1 fact (nothing started by this action) and adds the rail — it is not a mere rewording of tone
+      expect(M[loc].claims.admin.approvedNotSent.length, loc).toBeGreaterThan(notSentV1[loc].length)
+    }
+    expect(M.fr.claims.admin.approvedNotSent).toContain('aucun remboursement n’a été lancé par cette action')
+    expect(M.fr.claims.admin.approvedNotSent).toContain('rail financier')
+    const resurrected = JSON.parse(JSON.stringify(M.fr))
+    resurrected.claims.admin.approved = 'Réclamation approuvée — remboursement déclenché.'
+    expect(resurrected.claims.admin.approved).toBeDefined()
+    expect(M.fr.claims.admin.approved).toBeUndefined()
   })
 
   it('approvedFailed / approvedResumeMismatch name no section; no approval toast names a console section; ar never « المحرك »; es/it no future tense after motor/motore; {date} kept', () => {
