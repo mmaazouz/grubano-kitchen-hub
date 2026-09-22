@@ -43,6 +43,7 @@ import {
 import * as claimsModule from '@/lib/claims'
 import { POST as postClaim, GET as getClaims } from '@/app/api/claims/route'
 import { GET as getAdminClaims } from '@/app/api/admin/claims/route'
+import { POST as autoApprove } from '@/app/api/admin/claims/auto-approve/route'
 import { checkFlagCoupling, checkFlagWarnings, COUPLING_RULES } from '../scripts/check-flags.mjs'
 
 const FLAG_KEYS = ['CLAIMS_SURFACE_ENABLED', 'CLAIMS_INTAKE_ENABLED', 'CLAIMS_ENABLED', 'CLAIMS_WINDOW_UNTIL'] as const
@@ -314,8 +315,7 @@ describe('S-13 — the product flags open neither auto-approve, nor auto-resolve
 
   it('the auto-approve route keeps the LEGACY lease + its own flag: SURFACE+INTAKE alone → 403 gated', async () => {
     product('true', 'true')
-    const { POST } = await import('@/app/api/admin/claims/auto-approve/route')
-    const res = await POST(new Request('https://app.grubano.com/api/admin/claims/auto-approve', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }))
+    const res = await autoApprove(new Request('https://app.grubano.com/api/admin/claims/auto-approve', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }))
     expect(res.status).toBe(403)
     expect(await res.json()).toMatchObject({ gated: true })
   })
