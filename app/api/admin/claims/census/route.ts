@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { isInternalCronRequest } from '@/lib/safe-compare'
-import { isClaimsEnabled, claimsGateState, FINANCIAL_VERIFICATION, RECONCILE_REQUIRED, TERMINAL_STATUSES } from '@/lib/claims'
+import { FINANCIAL_VERIFICATION, RECONCILE_REQUIRED, TERMINAL_STATUSES } from '@/lib/claims'
+import { claimsFlagsSnapshot } from '@/lib/claim-flags'
 import { isRefundsEnabled } from '@/lib/refund'
 import { claimsLegacyCensus, claimsClosureCensus } from '@/lib/claims-census'
 
@@ -77,11 +78,19 @@ export async function GET(req: NextRequest) {
         legacy,
         closure,
       },
-      gates: {
-        claimsEnabled:  isClaimsEnabled(),
-        claimsGate:     claimsGateState().open ? 'OPEN' : `CLOSED (${(claimsGateState() as { reason?: string }).reason ?? 'closed'})`,
-        refundsEnabled: isRefundsEnabled(),
-      },
+      // D′ L1: every claims gate at once (product flags + legacy lease), read-only, no secret.
+      gates: (() => {
+        const f = claimsFlagsSnapshot()
+        return {
+          claimsEnabled:  f.legacy.open,
+          claimsGate:     f.legacy.open ? 'OPEN' : `CLOSED (${f.legacy.reason})`,
+          claimsSurfaceEnabled: f.surfaceFlag,
+          claimsIntakeEnabled:  f.intakeFlag,
+          claimsSurfaceOpen:    f.surfaceOpen,
+          claimsIntakeOpen:     f.intakeOpen,
+          refundsEnabled: isRefundsEnabled(),
+        }
+      })(),
     })
   } catch (e) {
     console.error('[claims census] failed —', e instanceof Error ? e.message : e)

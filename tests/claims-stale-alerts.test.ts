@@ -1,6 +1,7 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { openClaimsWindow, closeClaimsWindow } from './support/claims-window'
 
 // ── P0-39 (vague 3) — visibilité admin des réclamations en attente + alerte ────
 // L'auto-approbation 24 h (la soupape) a été retirée (P0-07/P0-25, Q3) sans
@@ -10,6 +11,9 @@ import { join } from 'node:path'
 // PAR réclamation) ; (2) le sender admin_stale_claim (patron admin_ghost_order) ;
 // (3) la file `pending` ADDITIVE de GET /api/admin/claims ; (4) Q3 : AUCUNE
 // action automatique — aucune écriture claim, aucun moteur, aucun argent.
+//
+// D′ L1 (spec v2 §3) : la porte est lib/claim-flags (process.env seul), plus une fonction de lib/claims qu'un mock
+// pourrait répondre. La SURFACE est ouverte ici à la manière legacy (le bail, S-12) et fermée en le retirant.
 
 const { db } = vi.hoisted(() => ({
   db: {
@@ -30,15 +34,14 @@ vi.mock('@/lib/admin-guard', () => ({ resolveAdmin: adminMock }))
 const { alertMock } = vi.hoisted(() => ({ alertMock: vi.fn() }))
 vi.mock('@/lib/admin-alerts', () => ({ sendAdminStaleClaimAlert: alertMock }))
 
-const { claimsFlag, arbQueueMock, pendingMock } = vi.hoisted(() => ({
-  claimsFlag: vi.fn(() => true), arbQueueMock: vi.fn(), pendingMock: vi.fn(),
+const { arbQueueMock, pendingMock, moneyMock } = vi.hoisted(() => ({
+  arbQueueMock: vi.fn(), pendingMock: vi.fn(), moneyMock: vi.fn(async (): Promise<Array<Record<string, unknown>>> => []),
 }))
 vi.mock('@/lib/claims', () => ({
-  isClaimsEnabled:             claimsFlag,
   listArbitrationQueue:        arbQueueMock,
   listPendingRestaurantClaims: pendingMock,
   // Claims batch 1: the admin route now also reads the money list and the silence list.
-  listActionableRefundClaims: vi.fn(async () => []),
+  listActionableRefundClaims: moneyMock,
   listSilenceExpiredClaims: vi.fn(async () => []),
 }))
 
@@ -56,11 +59,14 @@ const OVERDUE = [
 beforeEach(() => {
   vi.clearAllMocks()
   vi.unstubAllEnvs()
-  claimsFlag.mockReturnValue(true)
+  delete process.env.CLAIMS_SURFACE_ENABLED; delete process.env.CLAIMS_INTAKE_ENABLED
+  openClaimsWindow() // D′ L1 : la vraie porte, ouverte comme Mode A/B l'ouvrait
   db.claim.findMany.mockResolvedValue(OVERDUE)
   alertMock.mockResolvedValue({ status: 'sent' })
+  moneyMock.mockResolvedValue([])
   sessionMock.mockResolvedValue(null)
 })
+afterEach(() => { closeClaimsWindow(); delete process.env.CLAIMS_SURFACE_ENABLED; delete process.env.CLAIMS_INTAKE_ENABLED })
 
 describe('GET /api/admin/claims/stale-alerts — auth (calque reconcile-ghost-orders)', () => {
   it('⭐ token cron valide → 200 + UNE alerte PAR réclamation en retard', async () => {
@@ -88,11 +94,23 @@ describe('GET /api/admin/claims/stale-alerts — auth (calque reconcile-ghost-or
     expect((await staleCall()).status).toBe(200)
   })
 
-  it('CLAIMS_ENABLED off → { enabled:false }, aucun accès DB', async () => {
-    claimsFlag.mockReturnValue(false)
-    const res = await staleCall()
+  it('surface FERMÉE (bail retiré) → { enabled:false }, aucun accès DB, même avec un token cron valide', async () => {
+    closeClaimsWindow()
+    vi.stubEnv('INTERNAL_CRON_TOKEN', 'tok-1')
+    const res = await staleCall({ 'x-internal-token': 'tok-1' })
     expect(await res.json()).toEqual({ enabled: false })
     expect(db.claim.findMany).not.toHaveBeenCalled()
+    expect(alertMock).not.toHaveBeenCalled()
+  })
+
+  it('D′ L1 — la SURFACE produit seule (CLAIMS_SURFACE_ENABLED=true, sans bail, INTAKE fermé) ouvre la sonde ; INTAKE seul n’ouvre rien', async () => {
+    closeClaimsWindow()
+    vi.stubEnv('INTERNAL_CRON_TOKEN', 'tok-1')
+    process.env.CLAIMS_SURFACE_ENABLED = 'true'; process.env.CLAIMS_INTAKE_ENABLED = 'false'
+    expect(await (await staleCall({ 'x-internal-token': 'tok-1' })).json()).toMatchObject({ ok: true, overdue: 2, alerted: 2 })
+    delete process.env.CLAIMS_SURFACE_ENABLED; process.env.CLAIMS_INTAKE_ENABLED = 'true'
+    expect(await (await staleCall({ 'x-internal-token': 'tok-1' })).json()).toEqual({ enabled: false })
+    expect(db.claim.findMany).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -138,6 +156,23 @@ describe('GET /api/admin/claims — la file `pending` est ADDITIVE (P0-39)', () 
     expect(body.enabled).toBe(true)
     expect(body.claims).toHaveLength(1)
     expect(body.pending).toHaveLength(1)
+  })
+
+  it('D′ L1 (spec v2 §3.2) — surface FERMÉE · admin : la file `pending` est VIDE et non lue, enabled:false ; la liste ARGENT reste servie (CONTRÔLE NÉGATIF de la scission)', async () => {
+    closeClaimsWindow()
+    adminMock.mockResolvedValue({ id: 'op1', role: 'admin', name: 'Admin', email: 'admin@grubano.com' })
+    arbQueueMock.mockResolvedValue([{ id: 'arb1' }])
+    pendingMock.mockResolvedValue([{ id: 'pen1' }])
+    moneyMock.mockResolvedValue([{ id: 'm1', moneyState: 'approved_not_driven' }])
+    const res = await ADMIN_LIST()
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({
+      enabled: false, claims: [], pending: [], silenceExpired: [],
+      actionableRefunds: [{ id: 'm1', moneyState: 'approved_not_driven' }],
+      counts: { arbitration: 0, silenceExpired: 0, legacyPendingMoney: 0, actionableRefunds: 1, actionableTotal: 1 },
+    })
+    expect(pendingMock).not.toHaveBeenCalled()
+    expect(arbQueueMock).not.toHaveBeenCalled()
   })
 })
 

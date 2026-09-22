@@ -3,9 +3,10 @@ import type { NextRequest } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { z } from 'zod'
 import {
-  isClaimsEnabled, createClaim, listConsumerClaims, getClaimEligibility, ACCEPTED_REASONS,
+  createClaim, listConsumerClaims, getClaimEligibility, ACCEPTED_REASONS,
   autoResolveSmallClaim,
 } from '@/lib/claims'
+import { claimsSurfaceOpen, claimsIntakeOpen, claimNoticeGate } from '@/lib/claim-flags'
 import { ALLOWED_IMAGE_TYPES } from '@/lib/dish-photo'
 import { rateLimit } from '@/lib/rate-limit'
 import { sendClaimAckEmail } from '@/lib/claim-emails'
@@ -14,8 +15,14 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 // ── /api/claims (P4.5-C1) ─────────────────────────────────────────────────────────
-// Consumer-facing. Gated by CLAIMS_ENABLED (OFF → 403 on POST; GET reports
-// enabled:false so the UI renders nothing → byte-identical, no UI exposed).
+// D′ L1 — see lib/claim-flags.ts (spec v2 §3).
+// Consumer-facing. Gated by the claims SURFACE (spec v2 §3: CLAIMS_SURFACE_ENABLED, or the
+// legacy lease when no product flag is set — OFF → 403 {gated:true} on POST; GET reports
+// enabled:false so the UI renders nothing → byte-identical, no UI exposed). Filing a NEW claim
+// additionally needs the INTAKE (CLAIMS_INTAKE_ENABLED under the product surface): surface open
+// and intake closed → POST 403 {gated:false, enabled:true, intakeOpen:false, reason:'intake_closed'}
+// (a probe reads it as UNKNOWN, never as CLOSED), and GET ?orderId overlays the eligibility with
+// canClaim:false / reason:'intake_closed' — existing claims, history and contest are untouched.
 // POST = file a claim on MY paid order (owner-scoped, window validated, one active claim
 // per order). The AMOUNT is derived server-side from the order's own line values — the
 // client sends at most a line SELECTION, never money. Beta accepts NO evidence photo:
@@ -40,8 +47,14 @@ const createSchema = z.object({
 })
 
 export async function POST(req: NextRequest) {
-  if (!isClaimsEnabled()) {
+  if (!claimsSurfaceOpen()) {
     return NextResponse.json({ error: 'Réclamations indisponibles', gated: true }, { status: 403 })
+  }
+  // D′ L1 (S-23): the surface is open but new claims are not taken right now. Not a kill-switch
+  // answer (gated:false): the feature exists, the intake is paused. Read BEFORE auth so a probe
+  // sees the shape without a session — it carries no data.
+  if (!claimsIntakeOpen()) {
+    return NextResponse.json({ error: 'Dépôt de réclamation suspendu', gated: false, enabled: true, intakeOpen: false, reason: 'intake_closed' }, { status: 403 })
   }
   const token = await getToken({ req })
   if (!token?.sub) return NextResponse.json({ error: 'Authentification requise' }, { status: 401 })
@@ -98,8 +111,9 @@ export async function POST(req: NextRequest) {
       consumerId:           c.consumerId,
       orderId:              c.orderId,
       requestedAmountCents: c.requestedAmountCents,
-      // ROUND 13 (H02, R-D7): the lease read at send time — one that closed since the entry gate skips the e-mail.
-      claimsOpen:           isClaimsEnabled(),
+      // ROUND 13 (H02, R-D7) + D′ L1 (FIN-EMAIL-01): the PRE-MONEY gate read at send time — a surface that
+      // closed since the entry gate skips the e-mail.
+      claimsOpen:           claimNoticeGate('pre_money'),
     })
     // D′ L2: the former auto_small decision e-mail branch is gone with the machine approval path (S-02).
   }
@@ -110,14 +124,21 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
-  if (!isClaimsEnabled()) return NextResponse.json({ enabled: false })
+  if (!claimsSurfaceOpen()) return NextResponse.json({ enabled: false })
   const token = await getToken({ req })
   if (!token?.sub) return NextResponse.json({ error: 'Authentification requise' }, { status: 401 })
 
   const orderId = new URL(req.url).searchParams.get('orderId')
   if (orderId) {
     const eligibility = await getClaimEligibility({ consumerId: token.sub, orderId })
-    return NextResponse.json({ enabled: true, eligibility })
+    const intakeOpen = claimsIntakeOpen()
+    // D′ L1 (spec v2 §7.1, S-23): the intake overlay is a ROUTE concern — the eligibility engine is unchanged.
+    // not_owner stays as is (nothing about this order is disclosed); every other verdict keeps its
+    // existingClaim / scope and loses only the right to file.
+    const overlaid = intakeOpen || eligibility.reason === 'not_owner'
+      ? eligibility
+      : { ...eligibility, canClaim: false, reason: 'intake_closed' as const }
+    return NextResponse.json({ enabled: true, intakeOpen, eligibility: overlaid })
   }
   const claims = await listConsumerClaims(token.sub)
   return NextResponse.json({ enabled: true, claims })

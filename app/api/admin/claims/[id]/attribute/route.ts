@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { resolveAdmin } from '@/lib/admin-guard'
-import { attributeClaimRefund, adoptStripeRefundForClaim, STRIPE_REFUND_ID_RE, isClaimsEnabled } from '@/lib/claims'
+import { attributeClaimRefund, adoptStripeRefundForClaim, STRIPE_REFUND_ID_RE } from '@/lib/claims'
+import { claimNoticeGate } from '@/lib/claim-flags'
 import { sendClaimClosureEmail, type ClosureEmailResult, type ClosureEvidence } from '@/lib/claim-emails'
 
 export const runtime = 'nodejs'
@@ -58,7 +59,8 @@ const schema = z.union([
 /** H07: the closure-notice attempt; the lease is read at send time. It never throws and never changes the HTTP result. */
 async function closureNotice(claimId: string, evidence: ClosureEvidence | undefined): Promise<ClosureEmailResult> {
   try {
-    return await sendClaimClosureEmail({ claimId, evidence, claimsOpen: isClaimsEnabled() })
+    // D′ L1 (FIN-EMAIL-01, S-25): an explicit closure is always sendable, whatever the feature flags say.
+    return await sendClaimClosureEmail({ claimId, evidence, claimsOpen: claimNoticeGate('closure') })
   } catch {
     return { status: 'failed', kind: null, why: 'sender_error' }
   }

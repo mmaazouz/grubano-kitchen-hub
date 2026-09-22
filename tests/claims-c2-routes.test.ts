@@ -1,24 +1,32 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { openClaimsWindow, closeClaimsWindow } from './support/claims-window'
 
 // ── P4.5-C2 — routes: client contest + admin queue + admin arbitrate ─────────────
 // Flag gating, client owner-scoping (session token), admin-only (session role). lib +
 // auth mocked.
+//
+// D′ L1 (spec v2 §3): the gate is lib/claim-flags (process.env only) — no longer a function of lib/claims a mock
+// could answer. The SURFACE is opened here the legacy way (the lease, S-12: every gate ≡ isClaimsEnabled() when no
+// product flag is set) and closed by removing it. GET /api/admin/claims is SPLIT by the surface (§3.2): closed ⇒
+// workflow lists EMPTY, enabled:false, the MONEY list still returned for an admin.
 
-const { flag, contestMock, arbitrateMock, queueMock, pendingMock } = vi.hoisted(() => ({
-  flag: vi.fn(), contestMock: vi.fn(), arbitrateMock: vi.fn(), queueMock: vi.fn(),
+const { contestMock, arbitrateMock, queueMock, pendingMock, moneyMock } = vi.hoisted(() => ({
+  contestMock: vi.fn(), arbitrateMock: vi.fn(), queueMock: vi.fn(),
   // P0-39 — la route admin liste AUSSI les réclamations en attente du resto.
   pendingMock: vi.fn(async () => []),
+  // Claims batch 1 / D′ L1: the money list, returned even when the surface is closed.
+  moneyMock: vi.fn(async (): Promise<Array<Record<string, unknown>>> => []),
 }))
 vi.mock('@/lib/claims', () => ({
-  isClaimsEnabled: flag,
   contestClaim: contestMock,
   arbitrateClaim: arbitrateMock,
   listArbitrationQueue: queueMock,
   listPendingRestaurantClaims: pendingMock,
   // Claims batch 1: the admin route now also reads the money list and the silence list.
-  listActionableRefundClaims: vi.fn(async () => []),
+  listActionableRefundClaims: moneyMock,
   listSilenceExpiredClaims: vi.fn(async () => []),
 }))
+const PRODUCT_FLAGS = ['CLAIMS_SURFACE_ENABLED', 'CLAIMS_INTAKE_ENABLED'] as const
 
 const { tokenMock } = vi.hoisted(() => ({ tokenMock: vi.fn() }))
 vi.mock('next-auth/jwt', () => ({ getToken: tokenMock }))
@@ -38,20 +46,33 @@ const reqJson = (body?: unknown) => ({ json: async () => body ?? {} }) as never
 
 beforeEach(() => {
   vi.clearAllMocks()
-  flag.mockReturnValue(true)
+  for (const k of PRODUCT_FLAGS) delete process.env[k]
+  openClaimsWindow() // D′ L1: the real gate, opened as Mode A/B opened it
   tokenMock.mockResolvedValue({ sub: 'c1' })
   sessionMock.mockResolvedValue({ user: { id: 'admin1', role: 'admin' } })
   adminMock.mockResolvedValue({ id: 'admin1', role: 'admin', name: 'Admin', email: 'admin1@grubano.test' })
   contestMock.mockResolvedValue({ ok: true, claim: { id: 'cl1', status: 'arbitration' } })
   arbitrateMock.mockResolvedValue({ ok: true, claim: { id: 'cl1', status: 'approved' }, refund: { state: 'refunded', refundId: 'rf1' } })
   queueMock.mockResolvedValue([])
+  moneyMock.mockResolvedValue([])
 })
+afterEach(() => { closeClaimsWindow(); for (const k of PRODUCT_FLAGS) delete process.env[k] })
 
 describe('POST /api/claims/[id]/contest (client)', () => {
-  it('flag OFF → 403', async () => {
-    flag.mockReturnValue(false)
-    expect((await CONTEST(reqJson({ reason: 'x' }), { params: { id: 'cl1' } })).status).toBe(403)
+  it('surface CLOSED (no lease) → 403 gated', async () => {
+    closeClaimsWindow()
+    const res = await CONTEST(reqJson({ reason: 'x' }), { params: { id: 'cl1' } })
+    expect(res.status).toBe(403)
+    expect(await res.json()).toMatchObject({ gated: true })
     expect(contestMock).not.toHaveBeenCalled()
+  })
+  it('D′ L1 — the product SURFACE alone (no lease) opens contest; INTAKE alone opens nothing (fail-closed)', async () => {
+    closeClaimsWindow()
+    process.env.CLAIMS_SURFACE_ENABLED = 'true' // no INTAKE: contesting an existing claim needs no intake
+    expect((await CONTEST(reqJson({ reason: 'x' }), { params: { id: 'cl1' } })).status).toBe(200)
+    delete process.env.CLAIMS_SURFACE_ENABLED; process.env.CLAIMS_INTAKE_ENABLED = 'true'
+    expect((await CONTEST(reqJson({ reason: 'x' }), { params: { id: 'cl1' } })).status).toBe(403)
+    expect(contestMock).toHaveBeenCalledTimes(1)
   })
   it('no session → 401', async () => {
     tokenMock.mockResolvedValue(null)
@@ -69,9 +90,28 @@ describe('POST /api/claims/[id]/contest (client)', () => {
 })
 
 describe('GET /api/admin/claims', () => {
-  it('flag OFF → enabled:false', async () => {
-    flag.mockReturnValue(false)
-    expect(await (await ADMIN_LIST()).json()).toEqual({ enabled: false })
+  it('D′ L1 (spec v2 §3.2) — surface CLOSED · admin → enabled:false, workflow lists EMPTY and NOT read, the MONEY list still returned and counted', async () => {
+    closeClaimsWindow()
+    moneyMock.mockResolvedValue([{ id: 'm1', moneyState: 'approved_not_driven' }])
+    const res = await ADMIN_LIST()
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({
+      enabled: false, claims: [], pending: [], silenceExpired: [],
+      actionableRefunds: [{ id: 'm1', moneyState: 'approved_not_driven' }],
+      counts: { arbitration: 0, silenceExpired: 0, legacyPendingMoney: 0, actionableRefunds: 1, actionableTotal: 1 },
+    })
+    expect(queueMock).not.toHaveBeenCalled()
+    expect(pendingMock).not.toHaveBeenCalled()
+    expect(moneyMock).toHaveBeenCalledTimes(1)
+  })
+  it('surface CLOSED · NOT an admin → {enabled:false} 200 only (the pre-L1 shape; no money list for a non-admin) — NEGATIVE CONTROL of the split', async () => {
+    closeClaimsWindow()
+    adminMock.mockResolvedValue(null)
+    moneyMock.mockResolvedValue([{ id: 'm1' }])
+    const res = await ADMIN_LIST()
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ enabled: false })
+    expect(moneyMock).not.toHaveBeenCalled()
   })
   // ROUND-13 (round-12 audit, P3): the admin list authorises through resolveAdmin (role set re-read), like
   // every other admin claims route — no session and a non-admin both resolve to null → 403.
@@ -94,10 +134,19 @@ describe('GET /api/admin/claims', () => {
 })
 
 describe('POST /api/admin/claims/[id]/arbitrate', () => {
-  it('flag OFF → 403', async () => {
-    flag.mockReturnValue(false)
+  it('surface CLOSED (no lease) → 403 gated', async () => {
+    closeClaimsWindow()
     expect((await ARBITRATE(reqJson({ decision: 'approve' }), { params: { id: 'cl1' } })).status).toBe(403)
     expect(arbitrateMock).not.toHaveBeenCalled()
+  })
+  it('D′ L1 — an EXPIRED lease is closed too; the product SURFACE alone (INTAKE false) still lets an admin decide', async () => {
+    openClaimsWindow(-1000)
+    expect((await ARBITRATE(reqJson({ decision: 'approve' }), { params: { id: 'cl1' } })).status).toBe(403)
+    expect(arbitrateMock).not.toHaveBeenCalled()
+    closeClaimsWindow()
+    process.env.CLAIMS_SURFACE_ENABLED = 'true'; process.env.CLAIMS_INTAKE_ENABLED = 'false'
+    expect((await ARBITRATE(reqJson({ decision: 'approve' }), { params: { id: 'cl1' } })).status).toBe(200)
+    expect(arbitrateMock).toHaveBeenCalledTimes(1)
   })
   it('non-admin → 403, no arbitration', async () => {
     sessionMock.mockResolvedValue({ user: { id: 'u1', role: 'consumer' } })

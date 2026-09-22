@@ -70,7 +70,9 @@ type ActionableRefundClaim = {
  * `initial` (ROUND 13, slice W7): the GET /api/admin/claims payload a test renders the console with (J-M29 control parity).
  * The page mounts the console without it; the load below then reads the route.
  */
-export default function AdminClaimsArbitration({ initial }: { initial?: { claims?: Claim[]; pending?: PendingClaim[]; actionableRefunds?: ActionableRefundClaim[] } } = {}) {
+// D′ L1: `surfaceOpen` (the claims SURFACE as the server page read it) only chooses the empty-state copy — the
+// lists themselves come from GET /api/admin/claims, split server-side; the money list is returned either way.
+export default function AdminClaimsArbitration({ initial, surfaceOpen = true }: { initial?: { claims?: Claim[]; pending?: PendingClaim[]; actionableRefunds?: ActionableRefundClaim[] }; surfaceOpen?: boolean } = {}) {
   const t = useTranslations('claims')
   const locale = useLocale()
   const toast = useToast()
@@ -172,7 +174,7 @@ export default function AdminClaimsArbitration({ initial }: { initial?: { claims
   // CLAIMS BATCH 2 — a stuck refund is never "nothing to do": it must count here too, or the
   // console shows an empty state while money is waiting on a human.
   if (loaded && claims.length === 0 && pending.length === 0 && actionableRefunds.length === 0) {
-    return <EmptyState emoji="⚖️" title={t('admin.empty')} />
+    return <EmptyState emoji="⚖️" title={t(surfaceOpen ? 'admin.empty' : 'admin.surfaceClosedEmpty')} />
   }
 
   // Truthful, distinct wording per money state. Pending is NEVER shown as succeeded, and a

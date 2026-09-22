@@ -3,6 +3,12 @@
 > Référence : `docs/ops/CLAIMS-T49-ROUND13-SPEC-v1.md` — FREEZE NOTES AMF-1, H16, I-06, I-07.
 > Lecture seule. Aucune de ces étapes ne déplace d'argent, n'écrit chez Stripe, n'écrit une ligne `Refund`
 > ni n'envoie d'e-mail client.
+>
+> **D′ L1 (2026-09-22) — VALIDE UNIQUEMENT AVEC `CLAIMS_SURFACE_ENABLED` / `CLAIMS_INTAKE_ENABLED` ABSENTS.** Sous les
+> flags produit (spec v2 §3), le bail legacy `CLAIMS_ENABLED`+`CLAIMS_WINDOW_UNTIL` est inerte et `phase2-claims-gate.js`
+> refuse (precheck : anomalie nommant le flag ; window : refus). Historique figé : Mode A exécuté 2026-09-15→18,
+> Mode B exécuté 2026-09-22 sur `dab754d` — CLOS, à ne jamais rejouer. Mode B n'est pas reproductible sur D′ par
+> construction (approuver ≠ rembourser depuis L2).
 
 ## Quand
 

@@ -7,11 +7,18 @@
 // settlement's single [EMAIL MISS] line, a record-write failure's console line — are pinned in tests/claim-closure-record.test.ts
 // and tests/claims-closure-webhook.test.ts. The missing-notice list (« Avis client non envoyés », H10) is the console slice's:
 // « listed in closureNotices » is asserted there; here, the census count closure.terminalWithoutRecord is.
+//
+// D′ L1 (FIN-EMAIL-01, S-25 — spec v2 §6.2): the four closure routes pass `claimsOpen: claimNoticeGate('closure')` (≡ true),
+// so an explicit closure is SENT whatever the claims flags say — the « claims closed → claims_disabled » pin of 05152b6 is
+// INVERTED below, with the negative control that the sender rail's claims_disabled path is still alive for a PRE-MONEY
+// notice. The gates are real (lib/claim-flags reads process.env); lib/claims is mocked at its route boundary without any
+// gate, so a route still reading isClaimsEnabled through it would throw on the missing export.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
+import { openClaimsWindow, closeClaimsWindow } from './support/claims-window'
 
 type Row = Record<string, unknown>
-const { db, st, mail, flag, lib, adminMock, auditMock, execMock } = vi.hoisted(() => ({
+const { db, st, mail, lib, adminMock, auditMock, execMock } = vi.hoisted(() => ({
   st: {
     claim: null as Record<string, unknown> | null,
     row: null as Record<string, unknown> | null,
@@ -26,7 +33,6 @@ const { db, st, mail, flag, lib, adminMock, auditMock, execMock } = vi.hoisted((
     adminAuditLog: { findFirst: vi.fn(), findMany: vi.fn() },
   },
   mail: { sendMail: vi.fn() },
-  flag: vi.fn(),
   lib: { resolveStuckClaim: vi.fn(), reconcileClaimEvidence: vi.fn(), attributeClaimRefund: vi.fn(), adoptStripeRefundForClaim: vi.fn() },
   adminMock: vi.fn(),
   auditMock: vi.fn(),
@@ -36,7 +42,7 @@ vi.mock('@/lib/prisma', () => ({ prisma: db }))
 vi.mock('nodemailer', () => ({ default: { createTransport: () => ({ sendMail: mail.sendMail }) } }))
 vi.mock('next-intl/server', () => ({ getTranslations: async () => (k: string, v?: Record<string, unknown>) => `${k}${v ? JSON.stringify(v) : ''}` }))
 vi.mock('@/lib/onboarding-nudge', () => ({ resolveNudgeLocale: () => 'fr' }))
-vi.mock('@/lib/claims', () => ({ ...lib, isClaimsEnabled: flag, STRIPE_REFUND_ID_RE: /^re_[A-Za-z0-9]{8,}$/ }))
+vi.mock('@/lib/claims', () => ({ ...lib, STRIPE_REFUND_ID_RE: /^re_[A-Za-z0-9]{8,}$/ }))
 vi.mock('@/lib/admin-guard', () => ({ resolveAdmin: adminMock }))
 vi.mock('@/lib/admin-audit', () => ({ recordAdminAudit: auditMock }))
 vi.mock('@/lib/rate-limit', () => ({ rateLimit: () => null }))
@@ -48,6 +54,11 @@ import { POST as ATTRIBUTE } from '@/app/api/admin/claims/[id]/attribute/route'
 import { POST as CLOSURE_NOTICE } from '@/app/api/admin/claims/[id]/closure-notice/route'
 import { customerEmailLine } from '@/lib/claim-email-toast'
 import { MARKERS } from '@/lib/claim-action-rules'
+import { claimsSurfaceOpen, claimNoticeGate } from '@/lib/claim-flags'
+import { sendClaimDecisionEmail } from '@/lib/claim-emails'
+
+/** The kill-switch: no product flag, no lease — every surface gate reads CLOSED. */
+const killSwitch = () => { closeClaimsWindow(); delete process.env.CLAIMS_SURFACE_ENABLED; delete process.env.CLAIMS_INTAKE_ENABLED }
 
 const REC = { trigger: 'claim_closure_record', dedupeKey: 'claim:cl1' }
 const REFUNDED: Row = { id: 'cl1', status: 'refunded', consumerId: 'c1', orderId: 'o1', refundId: 'rf1', refundError: null, arbitrationDecision: 'approved', restaurantResponse: null, arbitrationReason: null }
@@ -67,12 +78,13 @@ const rows = () => (db.emailLog.create.mock.calls as Array<[{ data: Row }]>).map
 let errSpy: ReturnType<typeof vi.spyOn>
 beforeEach(() => {
   for (const group of Object.values(db)) for (const fn of Object.values(group)) (fn as ReturnType<typeof vi.fn>).mockReset()
-  for (const fn of [...Object.values(lib), mail.sendMail, flag, adminMock, auditMock, execMock]) fn.mockReset()
+  for (const fn of [...Object.values(lib), mail.sendMail, adminMock, auditMock, execMock]) fn.mockReset()
   st.claim = { ...REFUNDED }
   st.row = { ...ROW }
   st.dispatch = [{ ...REC }]
   process.env.SMTP_PASS = 'x'
-  flag.mockReturnValue(true)
+  // the default shape of the suite: the legacy lease OPEN (the pre-L1 « claims open »); the inversion test closes everything
+  killSwitch(); openClaimsWindow()
   adminMock.mockResolvedValue({ id: 'op1', email: 'a@x.test', role: 'admin', name: 'A' })
   auditMock.mockResolvedValue(true)
   mail.sendMail.mockResolvedValue({ messageId: 'm1' })
@@ -92,7 +104,7 @@ beforeEach(() => {
   db.adminAuditLog.findFirst.mockResolvedValue({ id: 'audit1', action: 'claim.arbitrate', targetId: 'cl1' })
   errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 })
-afterEach(() => { errSpy.mockRestore(); delete process.env.SMTP_PASS })
+afterEach(() => { errSpy.mockRestore(); delete process.env.SMTP_PASS; killSwitch() })
 
 describe('J-M38 — no money path', () => {
   it('lib/claim-emails.ts imports none of lib/refund, lib/stripe, lib/claims; the closure-notice route calls only reconcileClaimEvidence, sendClaimClosureEmail and recordAdminAudit beyond its guards and its claim read', () => {
@@ -101,8 +113,12 @@ describe('J-M38 — no money path', () => {
     const code = readFileSync('app/api/admin/claims/[id]/closure-notice/route.ts', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '')
       .replace(/'(?:[^'\\\n]|\\.)*'/g, "''")
     const called = new Set(Array.from(code.matchAll(/\b([A-Za-z_$][\w$]*)\s*\(/g)).map((m) => m[1]))
-    const effects = Array.from(called).filter((n) => !['POST', 'resolveAdmin', 'rateLimit', 'isClaimsEnabled', 'claimClosureKind', 'safeParse', 'text', 'trim', 'parse', 'json', 'findUnique', 'isInteger', 'object', 'strict', 'if', 'catch'].includes(n))
+    // D′ L1: the gate read is claimNoticeGate (lib/claim-flags, process.env only) — the legacy isClaimsEnabled is no longer
+    // an accepted guard here, so a route reading it again would surface as an effect.
+    const effects = Array.from(called).filter((n) => !['POST', 'resolveAdmin', 'rateLimit', 'claimNoticeGate', 'claimClosureKind', 'safeParse', 'text', 'trim', 'parse', 'json', 'findUnique', 'isInteger', 'object', 'strict', 'if', 'catch'].includes(n))
     expect(effects.sort()).toEqual(['reconcileClaimEvidence', 'recordAdminAudit', 'sendClaimClosureEmail'])
+    expect(code).not.toMatch(/\bisClaimsEnabled\b/)
+    expect(code).toMatch(/import \{ claimNoticeGate \} from ''/) // the string literals are blanked above: the named import survives
   })
 })
 
@@ -176,17 +192,53 @@ describe('J-M38 — eligibility is the H05 record only', () => {
   })
 })
 
-describe('J-M38 — CLAIMS off, and never over a Stripe reversal', () => {
-  it('claims closed → the EmailLog row « (non envoyé : claims_disabled) », the [EMAIL MISS] line, and the claimsDisabled toast', async () => {
+describe('J-M38 — CLAIMS off (D′ L1 INVERSION, S-25), and never over a Stripe reversal', () => {
+  it('kill-switch (no product flag, no lease) → the closure notice is SENT: one EmailLog « sent » row, no claims_disabled trace, the « sent » toast (05152b6 skipped it)', async () => {
     st.claim = { ...DECLARED }
-    flag.mockReturnValue(false)
+    killSwitch()
+    expect(claimsSurfaceOpen()).toBe(false)
     lib.resolveStuckClaim.mockResolvedValue({ ok: true, claim: st.claim })
     const r = await call(RESOLVE_STUCK, { resolution: 'closed_no_payment' })
     expect(r.status).toBe(200)
-    expect(rows()).toEqual([{ recipient: '(non envoyé : claims_disabled)', subject: 'claim cl1', trigger: 'claim_closed_by_support', status: 'skipped' }])
-    expect(errSpy.mock.calls.some((c) => String(c[0]).startsWith('[EMAIL MISS] [claim_closed_by_support] not sent (claims_disabled)'))).toBe(true)
-    expect(customerEmailLine(r.body.customerEmail as never)).toEqual({ tone: 'error', key: 'claimsDisabled' })
+    expect(r.body.customerEmail).toEqual({ status: 'sent', kind: 'closed_by_declaration' })
+    expect(rows()).toHaveLength(1)
+    expect(rows()[0]).toMatchObject({ recipient: 'lea@x.fr', trigger: 'claim_closed_by_support', status: 'sent' })
+    expect(rows().some((row) => String(row.recipient).includes('claims_disabled'))).toBe(false)
+    expect(errSpy.mock.calls.some((c) => /claims_disabled/.test(String(c[0])))).toBe(false)
+    expect(customerEmailLine(r.body.customerEmail as never)).toEqual({ tone: 'success', key: 'sent' })
+    expect(sends()).toBe(1)
+  })
+
+  it('…the same for the three other closure routes (closure-notice, reconcile, attribute) under the kill-switch', async () => {
+    killSwitch()
+    expect((await call(CLOSURE_NOTICE)).body.customerEmail).toEqual({ status: 'skipped', kind: 'refunded', why: 'stripe_not_confirmed' }) // no Stripe read arranged: the R0 rule, not the gate
+    lib.reconcileClaimEvidence.mockResolvedValue({ ok: true, outcome: 'refund_still_standing', refundId: 'rf1', stripeStatus: 'succeeded', amountCents: 300 })
+    expect((await call(CLOSURE_NOTICE)).body.customerEmail).toEqual({ status: 'sent', kind: 'refunded' })
+    st.dispatch = [{ ...REC }]
+    lib.reconcileClaimEvidence.mockResolvedValue({ ok: true, outcome: 'refunded', refundId: 'rf1', amountCents: 300, evidence: 'stripe_read' })
+    expect((await call(RECONCILE)).body.customerEmail).toEqual({ status: 'sent', kind: 'refunded' })
+    st.dispatch = [{ ...REC }]
+    lib.attributeClaimRefund.mockResolvedValue({ ok: true, outcome: 'refunded', refundId: 'rf1', rowStatusBefore: 'succeeded', evidence: 'stripe_read', amountCents: 300 })
+    expect((await call(ATTRIBUTE, { refundRowId: 'rf1' })).body.customerEmail).toEqual({ status: 'sent', kind: 'refunded' })
+    expect(sends()).toBe(3)
+    expect(rows().some((row) => String(row.recipient).includes('claims_disabled'))).toBe(false)
+  })
+
+  it('NEGATIVE CONTROL — a PRE-MONEY notice under the same kill-switch still skips claims_disabled through the REAL sender: the « (non envoyé : claims_disabled) » row, the [EMAIL MISS] line, the claimsDisabled toast, nothing sent', async () => {
+    killSwitch()
+    expect(claimNoticeGate('pre_money')).toBe(false)
+    expect(claimNoticeGate('closure')).toBe(true)
+    const r = await sendClaimDecisionEmail({ claimId: 'cl1', consumerId: 'c1', orderId: 'o1', decision: 'accepted', claimsOpen: claimNoticeGate('pre_money') })
+    expect(r).toEqual({ status: 'skipped', why: 'claims_disabled' })
+    expect(rows()).toEqual([{ recipient: '(non envoyé : claims_disabled)', subject: 'claim cl1', trigger: 'claim_decision_accepted', status: 'skipped' }])
+    expect(errSpy.mock.calls.some((c) => String(c[0]).startsWith('[EMAIL MISS] [claim_decision_accepted] not sent (claims_disabled)'))).toBe(true)
+    expect(customerEmailLine(r as never)).toEqual({ tone: 'error', key: 'claimsDisabled' })
     expect(sends()).toBe(0)
+    // …and opening the lease turns the same pre-money call into a send: the sender's contract is unchanged, only the class the closure routes pass is
+    openClaimsWindow()
+    expect(claimNoticeGate('pre_money')).toBe(true)
+    expect((await sendClaimDecisionEmail({ claimId: 'cl1', consumerId: 'c1', orderId: 'o1', decision: 'accepted', claimsOpen: claimNoticeGate('pre_money') })).status).toBe('sent')
+    expect(sends()).toBe(1)
   })
 
   it('refunded kind: sent only on refund_still_standing succeeded read in the request; reverted_after_refund → 409, the R0 read happened first, nothing sent', async () => {

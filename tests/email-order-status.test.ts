@@ -163,7 +163,11 @@ describe('status route wiring + invariants (source-scan)', () => {
   })
 
   it('ROUND 13 (J-C33, H13, ER-C20) — the paid-cancellation variant is chosen at send time (the route-driven fixture: tests/email-order-status-variant.test.ts)', () => {
-    expect(route).toMatch(/const claimsOpenNow = isClaimsEnabled\(\)/)
+    // D′ L1 (FIN-EMAIL-01): the send-time read is the PRE-MONEY notice gate of lib/claim-flags (≡ isClaimsEnabled()
+    // when no product flag is set — S-12); the entry read is the SURFACE.
+    expect(route).toMatch(/const claimsOpenNow = claimNoticeGate\('pre_money'\)/)
+    expect(route).toMatch(/const claimsOn = claimsSurfaceOpen\(\)/)
+    expect(route).not.toMatch(/const claimsOpenNow = isClaimsEnabled\(\)/)
     expect(route).toMatch(/if \(paidCancellation && claimsOpenNow\) \{/)
     expect(route).toMatch(/\} else if \(paidCancelled\) \{\s*(\/\/[^\n]*\s*)*await sendOrderCancelledPaidOffEmail\(/)
     // the entry value never chooses the claim-mentioning variant on its own

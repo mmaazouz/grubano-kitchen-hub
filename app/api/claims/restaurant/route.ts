@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { resolveEstablishmentScope } from '@/lib/establishment-scope'
-import { isClaimsEnabled, listRestaurantClaims } from '@/lib/claims'
+import { listRestaurantClaims } from '@/lib/claims'
+import { claimsSurfaceOpen } from '@/lib/claim-flags'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -10,7 +11,7 @@ export const dynamic = 'force-dynamic'
 // panel renders nothing). Owner-scoped: ONLY claims on the session operator's own
 // restaurants (no IDOR). Default returns the ones awaiting a response.
 export async function GET(req: Request) {
-  if (!isClaimsEnabled()) return NextResponse.json({ enabled: false })
+  if (!claimsSurfaceOpen()) return NextResponse.json({ enabled: false }) // D′ L1: SURFACE
   const scope = await resolveEstablishmentScope(null)
   if (!scope.ok) return NextResponse.json({ error: scope.error }, { status: scope.status })
 

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { resolveAdmin } from '@/lib/admin-guard'
-import { reconcileClaimEvidence, isClaimsEnabled } from '@/lib/claims'
+import { reconcileClaimEvidence } from '@/lib/claims'
+import { claimNoticeGate } from '@/lib/claim-flags'
 import { recordAdminAudit } from '@/lib/admin-audit'
 import { sendClaimClosureEmail, type ClosureEmailResult } from '@/lib/claim-emails'
 
@@ -61,7 +62,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       customerEmail = await sendClaimClosureEmail({
         claimId:    params.id,
         evidence:   result.evidence === 'stripe_read' ? { basis: 'stripe_read', amountCents: result.amountCents } : undefined,
-        claimsOpen: isClaimsEnabled(),
+        claimsOpen: claimNoticeGate('closure'), // D′ L1 (FIN-EMAIL-01, S-25): a closure notice is always sendable
       })
     } catch {
       customerEmail = { status: 'failed', kind: null, why: 'sender_error' }

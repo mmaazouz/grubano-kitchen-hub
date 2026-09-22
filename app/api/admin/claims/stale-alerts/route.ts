@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
 import { rateLimit } from '@/lib/rate-limit'
 import { safeEqual } from '@/lib/safe-compare'
-import { isClaimsEnabled } from '@/lib/claims'
+import { claimsSurfaceOpen } from '@/lib/claim-flags'
 import { sendAdminStaleClaimAlert } from '@/lib/admin-alerts'
 
 // ── GET /api/admin/claims/stale-alerts — P0-39 (vague 3) ───────────────────────
@@ -21,7 +21,7 @@ export async function GET(req: Request) {
   const limited = rateLimit(req, 'admin_claims_stale', { limitDefault: 30, windowDefault: 60 })
   if (limited) return limited
 
-  if (!isClaimsEnabled()) return NextResponse.json({ enabled: false })
+  if (!claimsSurfaceOpen()) return NextResponse.json({ enabled: false }) // D′ L1: SURFACE
 
   try {
     const internalToken    = req.headers.get('x-internal-token')

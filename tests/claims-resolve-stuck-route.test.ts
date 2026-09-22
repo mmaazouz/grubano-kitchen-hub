@@ -12,13 +12,18 @@
 // J-M39 lib halves (the CAS on the exact pre-image, DECLARED_AFTER_REVERT keeping the original text, count 0 → the D11 409
 // and no record, count 1 → one record with P2002 silent, no engine and no Stripe call) run on the real resolveStuckClaim in
 // tests/claims-r13-declaration-after-revert.test.ts and tests/claim-closure-record.test.ts.
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+//
+// D′ L1 (FIN-EMAIL-01, S-25): the closure notice after a declaration is an explicit terminal CLOSURE — always sendable.
+// The route passes claimsOpen: claimNoticeGate('closure') (= true whatever the flags say) instead of the lease; the gate
+// is lib/claim-flags on the REAL env (no mock of lib/claims can answer it). The lease is CLOSED throughout this file.
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { closeClaimsWindow } from './support/claims-window'
 
 const { resolveAdminMock } = vi.hoisted(() => ({ resolveAdminMock: vi.fn() }))
 vi.mock('@/lib/admin-guard', () => ({ resolveAdmin: resolveAdminMock }))
 
-const { resolveStuckMock, claimsFlag } = vi.hoisted(() => ({ resolveStuckMock: vi.fn(), claimsFlag: vi.fn() }))
-vi.mock('@/lib/claims', () => ({ resolveStuckClaim: resolveStuckMock, isClaimsEnabled: claimsFlag }))
+const { resolveStuckMock } = vi.hoisted(() => ({ resolveStuckMock: vi.fn() }))
+vi.mock('@/lib/claims', () => ({ resolveStuckClaim: resolveStuckMock }))
 
 const { auditMock } = vi.hoisted(() => ({ auditMock: vi.fn() }))
 vi.mock('@/lib/admin-audit', () => ({ recordAdminAudit: auditMock }))
@@ -28,6 +33,9 @@ vi.mock('@/lib/claim-emails', () => ({ sendClaimClosureEmail: closureMock }))
 
 import { POST } from '@/app/api/admin/claims/[id]/resolve-stuck/route'
 import { isStuckResolvable, claimClosureKind, customerClaimStatus, MARKERS, type ClaimFacts } from '@/lib/claim-action-rules'
+import { claimNoticeGate, claimsSurfaceOpen } from '@/lib/claim-flags'
+
+const PRODUCT_FLAGS = ['CLAIMS_SURFACE_ENABLED', 'CLAIMS_INTAKE_ENABLED'] as const
 
 /** Exactly what provision-admin.js produces: primary role untouched, admin granted by row. */
 const PROMOTED_ADMIN = { id: 'op1', role: 'restaurant', name: 'Founder', email: 'founder@example.test' }
@@ -42,13 +50,16 @@ const post = (body: unknown) =>
 
 beforeEach(() => {
   vi.clearAllMocks()
-  for (const m of [closureMock, auditMock, resolveStuckMock, claimsFlag]) m.mockReset()
+  for (const m of [closureMock, auditMock, resolveStuckMock]) m.mockReset()
+  // D′ L1: every claims gate CLOSED — the hatch and its closure notice do not depend on any of them.
+  closeClaimsWindow()
+  for (const k of PRODUCT_FLAGS) delete process.env[k]
   resolveAdminMock.mockResolvedValue(PROMOTED_ADMIN)
   resolveStuckMock.mockResolvedValue({ ok: true, claim: { id: 'cl1', status: 'refused_final' } })
   auditMock.mockResolvedValue(undefined)
-  claimsFlag.mockReturnValue(true)
   closureMock.mockResolvedValue({ status: 'sent', kind: 'closed_by_declaration' })
 })
+afterEach(() => { closeClaimsWindow(); for (const k of PRODUCT_FLAGS) delete process.env[k] })
 
 describe('RE-AUDIT FIX — the admin the project actually provisions can reach the hatch', () => {
   it('an operator whose PRIMARY role is restaurant but who holds the admin GRANT is accepted', async () => {
@@ -110,8 +121,9 @@ describe('the hatch records the decision and never claims to have moved money', 
 
 // ══ ROUND 13 — J-C26 (H07 site (i)) ══════════════════════════════════════════════════════════════
 describe('J-C26 — the closure-notice attempt after a declaration', () => {
-  it('both resolutions with a note → sendClaimClosureEmail once with exactly {claimId, claimsOpen}: no note, no amount; the body carries customerEmail', async () => {
+  it('both resolutions with a note → sendClaimClosureEmail once with exactly {claimId, claimsOpen:true} (the lease is CLOSED here): no note, no amount; the body carries customerEmail', async () => {
     auditMock.mockResolvedValue(false)
+    expect(claimsSurfaceOpen()).toBe(false)
     for (const resolution of ['settled_out_of_band', 'closed_no_payment']) {
       closureMock.mockClear()
       const res = await post({ resolution, reason: 'virement manuel de 12,50 € le 10/09' })
@@ -123,13 +135,22 @@ describe('J-C26 — the closure-notice attempt after a declaration', () => {
     }
   })
 
-  it('the lease is read at send time: closed → the sender receives claimsOpen false (the route itself is not gated)', async () => {
-    claimsFlag.mockReturnValue(false)
-    closureMock.mockResolvedValue({ status: 'skipped', kind: 'closed_by_declaration', why: 'claims_disabled' })
+  it('D′ L1 INVERTED (FIN-EMAIL-01, S-25) — every gate closed, explicitly (CLAIMS_ENABLED=false, product flags false): the sender STILL receives claimsOpen true; the route itself is not gated', async () => {
+    process.env.CLAIMS_ENABLED = 'false'; process.env.CLAIMS_SURFACE_ENABLED = 'false'; process.env.CLAIMS_INTAKE_ENABLED = 'false'
     const res = await post({ resolution: 'closed_no_payment' })
     expect(res.status).toBe(200)
-    expect(closureMock).toHaveBeenCalledWith({ claimId: 'cl1', claimsOpen: false })
-    expect((await res.json()).customerEmail).toEqual({ status: 'skipped', kind: 'closed_by_declaration', why: 'claims_disabled' })
+    expect(closureMock).toHaveBeenCalledTimes(1)
+    expect(closureMock).toHaveBeenCalledWith({ claimId: 'cl1', claimsOpen: true }) // ← was { claimsOpen: false } → skipped claims_disabled before D′ L1
+    expect(closureMock).not.toHaveBeenCalledWith(expect.objectContaining({ claimsOpen: false }))
+    expect((await res.json()).customerEmail).toEqual({ status: 'sent', kind: 'closed_by_declaration' })
+  })
+
+  it('NEGATIVE CONTROL (D′ L1) — in that same closed state the SURFACE and the PRE-MONEY gate read false: the old expectation (claimsOpen false) is exactly what a pre-money notice would receive, never a closure', () => {
+    process.env.CLAIMS_ENABLED = 'false'; process.env.CLAIMS_SURFACE_ENABLED = 'false'
+    expect(claimsSurfaceOpen()).toBe(false)              // the pre-L1 route read isClaimsEnabled() → false → skipped
+    expect(claimNoticeGate('pre_money')).toBe(false)     // an ack / decision sender is skipped claims_disabled here
+    expect(claimNoticeGate('closure')).toBe(true)        // the declaration's closure notice is not
+    expect(claimNoticeGate('post_money')).toBe(true)
   })
 
   it('a sender rejection → the same status and body, plus customerEmail sender_error', async () => {

@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma'
-import { isClaimsEnabled } from '@/lib/claims'
+import { claimsSurfaceOpen } from '@/lib/claim-flags'
 
 // ── Admin overview aggregate — read-only, cross-operator (CD ADM1) ────────────────
 // Pure computation (the CALLER gates admin — the /admin page and GET /api/admin/overview
@@ -75,7 +75,7 @@ export async function computeAdminOverview(now: Date = new Date()): Promise<Admi
     prisma.claim.count({
       where: {
         OR: [
-          ...(isClaimsEnabled()
+          ...(claimsSurfaceOpen() // D′ L1: the workflow states follow the SURFACE
             ? [
                 { status: 'arbitration' },
                 { status: 'restaurant_review', responseDeadlineAt: { lte: new Date() } },

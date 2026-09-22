@@ -5,7 +5,8 @@ import { prisma } from '@/lib/prisma'
 import { applyEarnWithOffsetRepay } from '@/lib/loyalty-refund'
 import { resolveEstablishmentScope } from '@/lib/establishment-scope'
 import { sendOrderStatusEmail } from '@/lib/transactional-emails'
-import { createSystemClaim, isClaimsEnabled } from '@/lib/claims'
+import { createSystemClaim } from '@/lib/claims'
+import { claimsSurfaceOpen, claimNoticeGate } from '@/lib/claim-flags'
 import { sendOrderCancelledPaidEmail, sendOrderCancelledPaidOffEmail } from '@/lib/claim-emails'
 import { sendAdminPaidCancellationAlert } from '@/lib/admin-alerts'
 import { z } from 'zod'
@@ -121,7 +122,9 @@ export async function PATCH(
     // LOT C — le fait « une commande PAYÉE est annulée » est découplé du flag
     // claims : il gouverne l'alerte admin et le CHOIX d'email ci-dessous, que la
     // branche demande-système (gatée isClaimsEnabled, inchangée) tourne ou non.
-    const claimsOn = isClaimsEnabled()
+    // D′ L1 (spec v2 §3.2): a SYSTEM claim is gated by the SURFACE, not by the intake — a paid cancellation is a
+    // question Grubano must answer whether or not customers may file claims right now.
+    const claimsOn = claimsSurfaceOpen()
     const paidCancelled = newStatus === 'cancelled' && order.paymentStatus === 'paid'
     const paidCancellation = paidCancelled && claimsOn && claimAmountCents > 0
     let systemClaim: Awaited<ReturnType<typeof createSystemClaim>> | null = null
@@ -244,7 +247,7 @@ export async function PATCH(
       // branch at entry (paidCancellation) AND the lease still open now. Every other paid cancellation — lease closed at
       // entry, closed since, or open only now, or no amount to claim — gets the Off variant, which names no claim and stays
       // true whether or not a hidden system claim was created. Same trigger order_cancelled, dedupe order:<id>: one is sent.
-      const claimsOpenNow = isClaimsEnabled()
+      const claimsOpenNow = claimNoticeGate('pre_money') // D′ L1 (FIN-EMAIL-01): the « demande transmise » variant is pre-money
       if (paidCancellation && claimsOpenNow) {
         // P0-08 — contenu VÉRIDIQUE pour une annulation PAYÉE : la demande de
         // remboursement vient d'être créée dans la même transaction ; l'ancien

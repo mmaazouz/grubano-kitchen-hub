@@ -3,9 +3,16 @@
 //
 // POST /api/admin/claims/[id]/closure-notice is the only resend of a closure notice. Empty body; the content comes from the
 // database and, for a refunded claim, from Stripe's refund object read in the same request (R0, read-only). It is not
-// gated by CLAIMS_ENABLED (the sender skips as claims_disabled) and it never reaches a money function.
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+// gated by the claims flags and it never reaches a money function.
+//
+// D′ L1 (FIN-EMAIL-01, S-25 — spec v2 §6.2): an explicit terminal CLOSURE is always sendable. The route passes
+// `claimsOpen: claimNoticeGate('closure')` (≡ true), so the notice goes out even under the kill-switch (no product flag, no
+// lease). Before L1 (05152b6) it passed the lease and the sender skipped as claims_disabled — INVERTED below, with the
+// negative control that the sender's claims_disabled path is still alive for a PRE-MONEY gate. The gate is real
+// (lib/claim-flags reads process.env); only lib/claims' reconcileClaimEvidence is mocked.
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
+import { openClaimsWindow, closeClaimsWindow } from './support/claims-window'
 
 const { adminMock, limitMock, db, claimsMock, senderMock, auditMock, mail } = vi.hoisted(() => ({
   adminMock: vi.fn(),
@@ -16,7 +23,8 @@ const { adminMock, limitMock, db, claimsMock, senderMock, auditMock, mail } = vi
     operator:      { findUnique: vi.fn() },
     emailDispatch: { findFirst: vi.fn() },
   },
-  claimsMock: { isClaimsEnabled: vi.fn(), reconcileClaimEvidence: vi.fn() },
+  // D′ L1: no gate on this mock — a route reading isClaimsEnabled through lib/claims would throw on the missing export.
+  claimsMock: { reconcileClaimEvidence: vi.fn() },
   senderMock: vi.fn(),
   auditMock: vi.fn(),
   mail: { sendTransactional: vi.fn(), logEmailSkipped: vi.fn() },
@@ -33,6 +41,10 @@ vi.mock('@/lib/onboarding-nudge', () => ({ resolveNudgeLocale: () => 'fr' }))
 
 import { POST } from '@/app/api/admin/claims/[id]/closure-notice/route'
 import { MARKERS } from '@/lib/claim-action-rules'
+import { claimsSurfaceOpen, claimNoticeGate } from '@/lib/claim-flags'
+
+/** The kill-switch: no product flag, no lease — every surface gate reads CLOSED. */
+const killSwitch = () => { closeClaimsWindow(); delete process.env.CLAIMS_SURFACE_ENABLED; delete process.env.CLAIMS_INTAKE_ENABLED }
 
 type Row = Record<string, unknown>
 const BASE: Row = { id: 'cl1', status: 'refunded', consumerId: 'c1', orderId: 'o1', refundId: 'rf1', refundError: null, arbitrationDecision: 'approved', restaurantResponse: null, arbitrationReason: null }
@@ -55,12 +67,13 @@ const post = async (body?: unknown) => {
 const standing = (o: Row = {}) => ({ ok: true, outcome: 'refund_still_standing', refundId: 'rf1', stripeStatus: 'succeeded', amountCents: 1250, ...o })
 
 beforeEach(() => {
-  for (const m of [adminMock, limitMock, senderMock, auditMock, claimsMock.isClaimsEnabled, claimsMock.reconcileClaimEvidence, mail.sendTransactional, mail.logEmailSkipped]) m.mockReset()
+  for (const m of [adminMock, limitMock, senderMock, auditMock, claimsMock.reconcileClaimEvidence, mail.sendTransactional, mail.logEmailSkipped]) m.mockReset()
   for (const group of Object.values(db)) for (const fn of Object.values(group)) (fn as ReturnType<typeof vi.fn>).mockReset()
   claim = { ...BASE }
+  // D′ L1: the suite runs under the KILL-SWITCH by default — a closure notice does not depend on any claims gate.
+  killSwitch()
   adminMock.mockResolvedValue({ id: 'op1', email: 'a@x.test', role: 'admin', name: 'A' })
   limitMock.mockReturnValue(null)
-  claimsMock.isClaimsEnabled.mockReturnValue(true)
   claimsMock.reconcileClaimEvidence.mockResolvedValue(standing())
   db.claim.findUnique.mockImplementation(async ({ select }: { select?: Record<string, boolean> }) => (claim ? pick(claim, select) : null))
   senderMock.mockImplementation(async (p: { claimsOpen: boolean }) => (p.claimsOpen
@@ -68,6 +81,7 @@ beforeEach(() => {
     : { status: 'skipped', kind: 'refunded', why: 'claims_disabled' }))
   auditMock.mockResolvedValue(true)
 })
+afterEach(killSwitch)
 
 describe('J-C27 — refusals before any read', () => {
   it('a non-admin → 403, nothing read, sent or audited', async () => {
@@ -106,7 +120,7 @@ describe('J-C27 — refusals before any read', () => {
 })
 
 describe('J-C27 — the evidence passed to the sender', () => {
-  it('declaration and refusal kinds: no Stripe read, evidence undefined, the gate read at send time', async () => {
+  it('declaration and refusal kinds: no Stripe read, evidence undefined, the closure gate (claimsOpen: true) at send time', async () => {
     for (const [kind, c] of Object.entries(KINDS)) {
       claim = { ...BASE, ...c }
       senderMock.mockClear()
@@ -163,11 +177,36 @@ describe('J-C27 — the evidence passed to the sender', () => {
     }))
   })
 
-  it('claims closed → 200 (the route is not gated) with customerEmail.why claims_disabled', async () => {
-    claimsMock.isClaimsEnabled.mockReturnValue(false)
+  it('D′ L1 INVERSION (S-25) — kill-switch (no product flag, no lease) → 200 and the notice is SENT with claimsOpen: true; the surface itself reads closed', async () => {
+    killSwitch()
+    expect(claimsSurfaceOpen()).toBe(false)
+    expect(claimNoticeGate('pre_money')).toBe(false) // the pre-money gate IS closed here — the closure is sent anyway
     const r = await post()
     expect(r.status).toBe(200)
-    expect(r.body.customerEmail).toEqual({ status: 'skipped', kind: 'refunded', why: 'claims_disabled' })
+    expect(senderMock).toHaveBeenCalledWith({ claimId: 'cl1', evidence: { basis: 'stripe_read', amountCents: 1250 }, claimsOpen: true })
+    expect(r.body.customerEmail).toEqual({ status: 'sent', kind: 'refunded' })
+    expect(auditMock).toHaveBeenCalledWith(expect.objectContaining({ action: 'claim.closure_notice', metadata: { status: 'sent', why: null, kind: 'refunded', moneyMoved: false } }))
+  })
+
+  it('…and the same under an open legacy lease or the product surface: the closure gate never varies', async () => {
+    openClaimsWindow()
+    expect((await post()).body.customerEmail).toEqual({ status: 'sent', kind: 'refunded' })
+    killSwitch(); process.env.CLAIMS_SURFACE_ENABLED = 'true'
+    expect((await post()).body.customerEmail).toEqual({ status: 'sent', kind: 'refunded' })
+    expect(senderMock).toHaveBeenCalledTimes(2)
+    for (const c of senderMock.mock.calls) expect(c[0]).toMatchObject({ claimsOpen: true })
+  })
+
+  it('NEGATIVE CONTROL — the 05152b6 shape (claimsOpen from the lease / the pre-money gate) would skip claims_disabled under the kill-switch: the sender contract is unchanged', async () => {
+    killSwitch()
+    // the same sender double, handed the PRE-MONEY gate the old route read, answers what the old test expected
+    await expect(senderMock({ claimId: 'cl1', evidence: undefined, claimsOpen: claimNoticeGate('pre_money') }))
+      .resolves.toEqual({ status: 'skipped', kind: 'refunded', why: 'claims_disabled' })
+    senderMock.mockClear()
+    // …while the route, in the same environment, sends
+    expect((await post()).body.customerEmail).toEqual({ status: 'sent', kind: 'refunded' })
+    expect(senderMock).toHaveBeenCalledTimes(1)
+    expect(senderMock.mock.calls[0][0]).toMatchObject({ claimsOpen: true })
   })
 
   it('a sender that throws → 200 with customerEmail failed / sender_error', async () => {
@@ -180,10 +219,23 @@ describe('J-C27 — the evidence passed to the sender', () => {
 describe('J-C27 — no money path, pinned in the source', () => {
   const src = readFileSync('app/api/admin/claims/[id]/closure-notice/route.ts', 'utf8').replace(/\r\n/g, '\n')
   const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '')
-  it('imports from @/lib/claims are exactly {isClaimsEnabled, reconcileClaimEvidence}; no executeRefund, getStripe, lib/refund, lib/stripe or adminAuditLog', () => {
-    const fromClaims = Array.from(code.matchAll(/import\s*\{([^}]*)\}\s*from\s*'@\/lib\/claims'/g)).flatMap((m) => m[1].split(',').map((s) => s.trim()).filter(Boolean))
-    expect(fromClaims.sort()).toEqual(['isClaimsEnabled', 'reconcileClaimEvidence'])
+  const named = (from: string) => Array.from(code.matchAll(new RegExp(`import\\s*\\{([^}]*)\\}\\s*from\\s*'${from.replace(/\//g, '\\/')}'`, 'g'))).flatMap((m) => m[1].split(',').map((s) => s.trim()).filter(Boolean))
+  it('imports from @/lib/claims are exactly {reconcileClaimEvidence} and from @/lib/claim-flags exactly {claimNoticeGate} (D′ L1); no executeRefund, getStripe, lib/refund, lib/stripe or adminAuditLog', () => {
+    expect(named('@/lib/claims')).toEqual(['reconcileClaimEvidence'])
+    expect(named('@/lib/claim-flags')).toEqual(['claimNoticeGate'])
+    expect(code).not.toMatch(/\bisClaimsEnabled\b|\bclaimsSurfaceOpen\b|\bclaimsIntakeOpen\b/)
     expect(code).not.toMatch(/executeRefund|getStripe|@\/lib\/refund['"]|@\/lib\/stripe['"]|adminAuditLog/)
+  })
+
+  it("the sender call carries claimsOpen: claimNoticeGate('closure') — never true, the lease, the surface or the pre-money class (spec v2 §6.2)", () => {
+    expect(code).toMatch(/sendClaimClosureEmail\(\{ claimId: params\.id, evidence, claimsOpen: claimNoticeGate\('closure'\) \}\)/)
+    expect(code).not.toMatch(/claimsOpen:\s*(true|isClaimsEnabled\(\)|claimsSurfaceOpen\(\)|claimNoticeGate\('pre_money'\))/)
+    // NEGATIVE CONTROL — each 05152b6 / wrong-class shape written into a copy of the call trips the pin
+    for (const bad of ['true', 'isClaimsEnabled()', 'claimsSurfaceOpen()', "claimNoticeGate('pre_money')"]) {
+      const broken = code.replace("claimsOpen: claimNoticeGate('closure')", `claimsOpen: ${bad}`)
+      expect(broken).not.toBe(code)
+      expect(broken).toMatch(/claimsOpen:\s*(true|isClaimsEnabled\(\)|claimsSurfaceOpen\(\)|claimNoticeGate\('pre_money'\))/)
+    }
   })
 })
 
@@ -206,10 +258,22 @@ describe('J-C27 NEGATIVE CONTROL — through the REAL sender (record present, su
     expect(mail.sendTransactional).not.toHaveBeenCalled()
   })
 
-  it('…and Stripe succeeded reaches it exactly once (the spy works)', async () => {
+  it('…and Stripe succeeded reaches it exactly once (the spy works) — under the kill-switch (D′ L1: the closure is always sendable)', async () => {
+    killSwitch()
+    expect(claimsSurfaceOpen()).toBe(false)
     const r = await post()
     expect(r.body.customerEmail).toEqual({ status: 'sent', kind: 'refunded' })
     expect(mail.sendTransactional).toHaveBeenCalledTimes(1)
     expect(mail.sendTransactional).toHaveBeenCalledWith(expect.objectContaining({ trigger: 'claim_decision_refunded', dedupeKey: 'claim:cl1' }))
+    expect(mail.logEmailSkipped).not.toHaveBeenCalled()
+  })
+
+  it('NEGATIVE CONTROL — the REAL sender handed the PRE-MONEY gate under the kill-switch still skips claims_disabled (one traced miss, the mail rail never reached): the inversion is the route’s class, not a sender change', async () => {
+    killSwitch()
+    const actual = await vi.importActual<typeof import('@/lib/claim-emails')>('@/lib/claim-emails')
+    const r = await actual.sendClaimClosureEmail({ claimId: 'cl1', evidence: { basis: 'stripe_read', amountCents: 1250 }, claimsOpen: claimNoticeGate('pre_money') })
+    expect(r).toEqual({ status: 'skipped', kind: 'refunded', why: 'claims_disabled' })
+    expect(mail.logEmailSkipped).toHaveBeenCalledWith('claim_decision_refunded', 'claim cl1', expect.objectContaining({ claimId: 'cl1', reason: 'claims_disabled' }), 'claims_disabled')
+    expect(mail.sendTransactional).not.toHaveBeenCalled()
   })
 })

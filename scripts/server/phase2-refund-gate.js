@@ -83,6 +83,16 @@ async function probeGate(base) {
     return 'UNKNOWN(' + r.status + ')'
   } catch { return 'UNREACHABLE' }
 }
+/** D′ L1: the claims-surface probe (same shape as the Mode A operator's). */
+async function probeClaimsGate(base) {
+  try {
+    const r = await fetch(base + '/api/claims', { method: 'POST', headers: { 'Content-Type': 'application/json', 'User-Agent': 'grubano-phase2-refund-gate/1' }, body: '{}', redirect: 'manual' })
+    const b = await r.json().catch(() => null)
+    if (r.status === 403 && b && (b.gated === true || b.enabled === false)) return 'CLOSED'
+    if (r.status === 401) return 'OPEN'
+    return 'UNKNOWN(' + r.status + ')'
+  } catch { return 'UNREACHABLE' }
+}
 async function waitGate(base, want, deadlineMs, intervalMs) {
   const t0 = Date.now(); let last = 'n/a', n = 0
   while (Date.now() - t0 < deadlineMs) { n++; last = await probeGate(base); if (last === want) return { ok: true, elapsedMs: Date.now() - t0, probes: n, last }; await sleep(intervalMs) }
@@ -171,6 +181,14 @@ async function main() {
   F('ALLOW_PLATFORM_FALLBACK (file, Next view)', merged.ALLOW_PLATFORM_FALLBACK === 'true' ? 'true — REFUSING (routine treasury advance forbidden)' : (merged.ALLOW_PLATFORM_FALLBACK === undefined ? 'ABSENT → effective false' : JSON.stringify(merged.ALLOW_PLATFORM_FALLBACK)))
   if (merged.ALLOW_PLATFORM_FALLBACK === 'true') return fail('1 env: ALLOW_PLATFORM_FALLBACK=true')
   F('ADMIN_AUDIT_ENABLED (file, Next view)', merged.ADMIN_AUDIT_ENABLED === 'true' ? 'true' : (merged.ADMIN_AUDIT_ENABLED === undefined ? 'ABSENT → false (audit rows would be SKIPPED)' : JSON.stringify(merged.ADMIN_AUDIT_ENABLED)))
+  // D′ L1 (spec v2 §3.4, S-14): a refund rehearsal window never opens beside the claims PRODUCT flags — under them
+  // the claims surface is live for real customers, and the legacy lease this family of operators reasons about is
+  // inert. Refused BY NAME, in precheck and in window.
+  for (const k of ['CLAIMS_SURFACE_ENABLED', 'CLAIMS_INTAKE_ENABLED']) {
+    const v = merged[k]
+    F(k + ' (file, Next view)', v === undefined ? 'ABSENT → effective false' : JSON.stringify(v) + (v === 'true' ? ' — effective TRUE' : ' — effective false'))
+    if (v === 'true') A('1 env: ' + k + ' is true — the claims PRODUCT flags (D′) are active; a refund rehearsal window is refused beside a live claims surface')
+  }
   for (const k of ['CLAIMS_ENABLED', 'CLAIMS_AUTO_APPROVE_ENABLED', 'CLAIM_AUTO_RESOLVE_ENABLED', 'GHOST_ORDER_AUTO_REFUND_ENABLED', 'TIPS_ENABLED', 'LOGISTICS_COURIER_ACTIVATION_ENABLED']) {
     const v = merged[k]
     F(k + ' (file, Next view)', v === undefined ? 'ABSENT → effective false' : JSON.stringify(v) + (v === 'true' ? ' — effective TRUE' : ' — effective false'))
@@ -178,6 +196,12 @@ async function main() {
   }
   const gate0 = await probeGate(base)
   F('REFUND GATE (live process, unauthenticated probe)', gate0 + ' (CLOSED = 403 gated = REFUNDS_ENABLED false in the process)')
+  // D′ L1: the live CLAIMS surface is probed too (POST /api/claims {} unauthenticated): CLOSED = 403 {gated:true};
+  // OPEN = 401; UNKNOWN(403) = intake_closed (product surface open, intake paused). Anything but CLOSED beside a
+  // refund window is an anomaly — printed, and refused in window mode with the rest.
+  const claimsGate0 = await probeClaimsGate(base)
+  F('CLAIMS GATE (live process, POST /api/claims unauthenticated)', claimsGate0 + ' (CLOSED = 403 gated ; OPEN = 401 ; UNKNOWN(403) = intake_closed = product surface open)')
+  if (claimsGate0 !== 'CLOSED') A('1 gate: the live claims surface is ' + claimsGate0 + ' — a refund rehearsal window never runs beside an open claims surface (D′ L1, S-14)')
   if (MODE === 'precheck' && gate0 !== 'CLOSED') A('1 gate: the live refund gate is not CLOSED — the technical freeze is not observed right now')
 
   // ── Stripe (READ-ONLY REST) ─────────────────────────────────────────────────

@@ -35,6 +35,8 @@ const prov = require(path.join(__dirname, 'env-provenance.js'))
 const H = require(path.join(__dirname, 'reconcile-helpers.js'))
 
 const MODE = process.argv[2] === 'window' ? 'window' : 'precheck'
+/** D′ L1: the claims PRODUCT flags (spec v2 §3). Either one 'true' ⇒ this operator refuses, by name. */
+const PRODUCT_CLAIMS_FLAGS = ['CLAIMS_SURFACE_ENABLED', 'CLAIMS_INTAKE_ENABLED']
 const APP_ROOT = process.env.PHASE2_APP_ROOT || path.join(__dirname, '..', '..')
 const CONFIRM_SENTENCE = 'I AUTHORIZE THE STAGING CLAIMS REHEARSAL'
 const TARGET_ORDER_ID = process.env.PHASE2_CLAIMS_ORDER_ID || ''
@@ -365,9 +367,15 @@ async function main() {
   F('MODE', MODE + (MODE === 'window' ? ' (TTL-BOUNDED CLAIMS WINDOW — auto-close)' : ' (READ-ONLY)'))
   F('DATABASE', dbName + ' (staging-named) · DATABASE_URL available ' + (rt.databaseUrl ? 'YES' : 'NO'))
   F('STRIPE MODE', rt.stripeMode)
-  for (const k of ['CLAIMS_ENABLED', 'CLAIMS_AUTO_APPROVE_ENABLED', 'CLAIM_AUTO_RESOLVE_ENABLED', 'CLAIM_AUTO_APPROVE_MAX_CENTS', 'REFUNDS_ENABLED', 'ALLOW_PLATFORM_FALLBACK']) {
+  for (const k of ['CLAIMS_ENABLED', 'CLAIMS_SURFACE_ENABLED', 'CLAIMS_INTAKE_ENABLED', 'CLAIMS_AUTO_APPROVE_ENABLED', 'CLAIM_AUTO_RESOLVE_ENABLED', 'CLAIM_AUTO_APPROVE_MAX_CENTS', 'REFUNDS_ENABLED', 'ALLOW_PLATFORM_FALLBACK']) {
     const v = merged[k]
     F(k + ' (file, Next view)', v === undefined ? 'ABSENT → effective false/0' : JSON.stringify(v))
+  }
+  // D′ L1 (spec v2 §3.4, S-14): under the PRODUCT flags the legacy lease this operator writes is INERT, and the
+  // claims surface is open 24/7 by the product — a Mode A rehearsal is impossible by construction. The precheck
+  // says so BY NAME (it used to read READY with an OPEN gate it could not explain), and the window refuses.
+  for (const k of PRODUCT_CLAIMS_FLAGS) {
+    if (merged[k] === 'true') A('1 env: ' + k + ' is true — the claims PRODUCT flags (D′) are active: the legacy lease is inert and the surface is open by the product, not by a rehearsal window. MODE A IS IMPOSSIBLE under the product flags; nothing to rehearse here')
   }
   // Any automation with a financial effect must stay structurally closed for a rehearsal.
   for (const k of ['CLAIMS_AUTO_APPROVE_ENABLED', 'CLAIM_AUTO_RESOLVE_ENABLED', 'ALLOW_PLATFORM_FALLBACK']) {
@@ -381,7 +389,8 @@ async function main() {
   // POST /api/claims is governed by CLAIMS_ENABLED alone: 403 {gated:true} closed, 401 open.
   const claimsGate0 = await probeGate(base, '/api/claims')
   const refundGate0 = await probeGate(base, '/api/admin/refunds/run')
-  F('CLAIMS GATE (live process, POST /api/claims unauthenticated)', claimsGate0 + ' (CLOSED = 403 gated = CLAIMS_ENABLED false in the process ; OPEN = 401 = auth required, so the flag is ON)')
+  F('CLAIMS GATE (live process, POST /api/claims unauthenticated)', claimsGate0 + ' (CLOSED = 403 gated = surface closed in the process ; OPEN = 401 = auth required, so the surface AND the intake are open ; UNKNOWN(403) = intake_closed = the product surface is open with the intake paused — never CLOSED)')
+  if (claimsGate0 !== 'CLOSED' && claimsGate0 !== 'OPEN') A('1 gate: the live claims gate answers ' + claimsGate0 + ' — an intake_closed answer means the PRODUCT surface (CLAIMS_SURFACE_ENABLED) is open in the process; MODE A is impossible under the product flags')
   // Separate probe: the auto-approve route names the flag that refused it, which is the only
   // way to see CLAIMS_AUTO_APPROVE_ENABLED from outside once CLAIMS itself is on.
   try {
@@ -472,7 +481,10 @@ async function main() {
   if (process.env.PHASE2_CLAIMS_WINDOW_CONFIRM !== CONFIRM_SENTENCE) return fail('3 window: confirm sentence missing — nothing changed')
   if (anomalies.length) return fail('3 window: precheck anomalies — window REFUSED, nothing changed')
   if (!TARGET_ORDER_ID || !targetOk) return fail('3 window: no usable target fixture (PHASE2_CLAIMS_ORDER_ID) — window REFUSED, nothing changed')
-  if (claimsGate0 !== 'CLOSED') return fail('3 window: CLAIMS gate is not CLOSED before opening — refusing')
+  for (const k of PRODUCT_CLAIMS_FLAGS) {
+    if (merged[k] === 'true') return fail('3 window: ' + k + ' is true — MODE A is impossible under the claims PRODUCT flags (D′ L1, S-14): the lease this operator would write is inert. Nothing changed')
+  }
+  if (claimsGate0 !== 'CLOSED') return fail('3 window: CLAIMS gate is not CLOSED before opening (' + claimsGate0 + ') — refusing')
   if (refundGate0 !== 'CLOSED') return fail('3 window: REFUND gate is not CLOSED — refusing to open claims beside a money window')
   if (!Number.isFinite(TTL_MS) || TTL_MS <= 0 || TTL_MS > 60 * 60 * 1000) return fail('3 window: TTL must be a finite duration ≤ 60 min')
   // The operator must not outlive its own authorization: the lease is capped by the compiled

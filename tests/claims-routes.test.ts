@@ -1,14 +1,18 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { openClaimsWindow, closeClaimsWindow } from './support/claims-window'
 
 // ── P4.5-C1 — claim routes: client create/GET + restaurant respond ───────────────
 // Flag gating, auth, owner-scoping, optional-photo pass-through. lib/claims, the photo
 // chain, the establishment scope and auth are mocked.
+//
+// D′ L1 (spec v2 §3, S-23): the gate is lib/claim-flags (process.env only), not a function of lib/claims a mock could
+// answer. Opened here the legacy way (the lease — S-12: surface AND intake together) and closed by removing it. Under
+// the PRODUCT surface, filing a NEW claim additionally needs CLAIMS_INTAKE_ENABLED (intake_closed shape).
 
-const { flag, createMock, listMock, eligMock, respondMock, autoMock } = vi.hoisted(() => ({
-  flag: vi.fn(), createMock: vi.fn(), listMock: vi.fn(), eligMock: vi.fn(), respondMock: vi.fn(), autoMock: vi.fn(),
+const { createMock, listMock, eligMock, respondMock, autoMock } = vi.hoisted(() => ({
+  createMock: vi.fn(), listMock: vi.fn(), eligMock: vi.fn(), respondMock: vi.fn(), autoMock: vi.fn(),
 }))
 vi.mock('@/lib/claims', () => ({
-  isClaimsEnabled: flag,
   createClaim: createMock,
   listConsumerClaims: listMock,
   getClaimEligibility: eligMock,
@@ -35,9 +39,12 @@ import { POST as RESPOND } from '@/app/api/claims/[id]/respond/route'
 const req = (body?: unknown, url = 'https://app.grubano.com/api/claims') =>
   ({ url, json: async () => body ?? {} }) as never
 
+const PRODUCT_FLAGS = ['CLAIMS_SURFACE_ENABLED', 'CLAIMS_INTAKE_ENABLED'] as const
+
 beforeEach(() => {
   vi.clearAllMocks()
-  flag.mockReturnValue(true)
+  for (const k of PRODUCT_FLAGS) delete process.env[k]
+  openClaimsWindow() // D′ L1: the real gate, opened as Mode A/B opened it
   tokenMock.mockResolvedValue({ sub: 'c1' })
   createMock.mockResolvedValue({ ok: true, claim: { id: 'cl1', consumerId: 'c1', requestedAmountCents: 2500, status: 'restaurant_review' } })
   autoMock.mockResolvedValue({ state: 'not_eligible' })
@@ -47,13 +54,28 @@ beforeEach(() => {
   scopeMock.mockResolvedValue({ ok: true, ownedIds: ['r1'], operatorId: 'op1' })
   photoMock.mockResolvedValue({ ok: true, url: 'https://cdn/x.jpg', warnings: [] })
 })
+afterEach(() => { closeClaimsWindow(); for (const k of PRODUCT_FLAGS) delete process.env[k] })
 
 describe('POST /api/claims (client create)', () => {
-  it('(f) flag OFF → 403 gated, no create', async () => {
-    flag.mockReturnValue(false)
+  it('(f) surface CLOSED (no lease) → 403 gated, no create', async () => {
+    closeClaimsWindow()
     const res = await CREATE(req({ orderId: 'o1', reason: 'quality' }))
     expect(res.status).toBe(403)
+    expect(await res.json()).toMatchObject({ gated: true })
     expect(createMock).not.toHaveBeenCalled()
+  })
+
+  it('(f) D′ L1 (S-23) — product SURFACE open, INTAKE closed → 403 intake_closed (gated:false), no token read, no create; INTAKE open → 201', async () => {
+    closeClaimsWindow()
+    process.env.CLAIMS_SURFACE_ENABLED = 'true'; process.env.CLAIMS_INTAKE_ENABLED = 'false'
+    const res = await CREATE(req({ orderId: 'o1', reason: 'quality' }))
+    expect(res.status).toBe(403)
+    expect(await res.json()).toEqual({ error: 'Dépôt de réclamation suspendu', gated: false, enabled: true, intakeOpen: false, reason: 'intake_closed' })
+    expect(tokenMock).not.toHaveBeenCalled()
+    expect(createMock).not.toHaveBeenCalled()
+    process.env.CLAIMS_INTAKE_ENABLED = 'true'
+    expect((await CREATE(req({ orderId: 'o1', reason: 'quality' }))).status).toBe(201)
+    expect(createMock).toHaveBeenCalledTimes(1)
   })
 
   it('no session → 401', async () => {
@@ -92,23 +114,39 @@ describe('POST /api/claims (client create)', () => {
 })
 
 describe('GET /api/claims', () => {
-  it('flag OFF → enabled:false (UI renders nothing)', async () => {
-    flag.mockReturnValue(false)
+  it('surface CLOSED (no lease) → enabled:false (UI renders nothing), no token read', async () => {
+    closeClaimsWindow()
     const res = await LIST(req(undefined))
     expect(await res.json()).toEqual({ enabled: false })
+    expect(tokenMock).not.toHaveBeenCalled()
   })
-  it('?orderId → eligibility', async () => {
+  it('?orderId → eligibility (D′ L1: intakeOpen:true under the lease, the engine verdict as is)', async () => {
     const res = await LIST(req(undefined, 'https://app.grubano.com/api/claims?orderId=o1'))
     expect(eligMock).toHaveBeenCalledWith({ consumerId: 'c1', orderId: 'o1' })
-    expect(await res.json()).toMatchObject({ enabled: true, eligibility: { canClaim: true } })
+    expect(await res.json()).toMatchObject({ enabled: true, intakeOpen: true, eligibility: { canClaim: true } })
+  })
+  it('D′ L1 (S-23) — ?orderId with the product SURFACE open and INTAKE closed → the route OVERLAYS canClaim:false / intake_closed on the engine verdict (existingClaim kept); history unchanged', async () => {
+    closeClaimsWindow()
+    process.env.CLAIMS_SURFACE_ENABLED = 'true'; process.env.CLAIMS_INTAKE_ENABLED = 'false'
+    const res = await LIST(req(undefined, 'https://app.grubano.com/api/claims?orderId=o1'))
+    expect(await res.json()).toEqual({ enabled: true, intakeOpen: false, eligibility: { canClaim: false, reason: 'intake_closed', maxRefundableCents: 5000, windowHours: 48, existingClaim: null } })
+    // NEGATIVE CONTROL — the engine itself answered canClaim:true: the overlay is the route's, never the engine's.
+    expect(await eligMock.mock.results[0].value).toMatchObject({ canClaim: true })
+    expect(await (await LIST(req(undefined))).json()).toEqual({ enabled: true, claims: [] })
   })
 })
 
 describe('POST /api/claims/[id]/respond (restaurant)', () => {
-  it('(f) flag OFF → 403', async () => {
-    flag.mockReturnValue(false)
+  it('(f) surface CLOSED (no lease) → 403', async () => {
+    closeClaimsWindow()
     expect((await RESPOND(req({ action: 'accept' }), { params: { id: 'cl1' } })).status).toBe(403)
     expect(respondMock).not.toHaveBeenCalled()
+  })
+  it('D′ L1 — a restaurant decision needs the SURFACE only: product SURFACE open, INTAKE closed → 200', async () => {
+    closeClaimsWindow()
+    process.env.CLAIMS_SURFACE_ENABLED = 'true'; process.env.CLAIMS_INTAKE_ENABLED = 'false'
+    expect((await RESPOND(req({ action: 'accept' }), { params: { id: 'cl1' } })).status).toBe(200)
+    expect(respondMock).toHaveBeenCalledTimes(1)
   })
 
   it('accept → respondToClaim with owned ids from session scope', async () => {

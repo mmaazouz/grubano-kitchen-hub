@@ -31,6 +31,10 @@ export const COUPLING_RULES = [
   // ghost-order du webhook a son propre flag (défaut OFF, peut rester OFF toute la bêta).
   // S'il est allumé, il réutilise le moteur admin → exiger la cohérence du couple.
   { flag: 'GHOST_ORDER_AUTO_REFUND_ENABLED', requires: 'REFUNDS_ENABLED',         why: 'l\'auto-refund ghost-order réutilise le moteur admin (lib/refund) — l\'activer avec le moteur déclaré OFF est incohérent' },
+  // D′ L1 (spec v2 §3.1, S-13) : l'INTAKE (dépôt de nouvelles réclamations) n'a aucun sens sans la SURFACE
+  // (la fonctionnalité). INTAKE='true' sans SURFACE='true' n'ouvre RIEN dans l'application (fail-closed),
+  // mais c'est une configuration incohérente : ERREUR. Aucun couplage à REFUNDS_ENABLED.
+  { flag: 'CLAIMS_INTAKE_ENABLED',           requires: 'CLAIMS_SURFACE_ENABLED',   why: 'le dépôt de réclamations (intake) sans la surface réclamations (listes, décisions) n’ouvre rien — configuration incohérente' },
   // P0-25 (vague 1) : la route d'auto-approbation des réclamations (sweep auto_timeout,
   // rembourse SANS humain) a son propre kill-switch, défaut OFF toute la bêta.
   { flag: 'CLAIMS_AUTO_APPROVE_ENABLED',     requires: 'CLAIMS_ENABLED',           why: 'l\'auto-approbation balaye des réclamations — sans le cycle réclamations actif elle n\'a aucun sens' },
@@ -82,6 +86,14 @@ export function checkFlagCoupling(env) {
 // Contrairement aux COUPLING_RULES (exit 1), un WARNING laisse le check passer
 // (exit 0) : il signale un réglage risqué que le go-live doit voir en face.
 export const WARNING_RULES = [
+  // D′ L1 (spec v2 §3.1) : sous CLAIMS_SURFACE_ENABLED='true', le bail legacy (CLAIMS_ENABLED + CLAIMS_WINDOW_UNTIL,
+  // répétitions Mode A/B uniquement) est INERTE. Le laisser à true à côté des flags produit est un résidu de
+  // répétition : à signaler, jamais bloquant.
+  { when: (env) => on(env, 'CLAIMS_SURFACE_ENABLED') && on(env, 'CLAIMS_ENABLED'),
+    msg:  'CLAIMS_SURFACE_ENABLED=true avec CLAIMS_ENABLED=true : le bail legacy (répétitions Mode A/B) est INERTE sous les flags produit — résidu de répétition à nettoyer' },
+  // D′ L1 : seul le string exact 'true' active un flag — 'TRUE', '1' ou '' sont OFF (fail-closed). Le dire.
+  { when: (env) => ['CLAIMS_SURFACE_ENABLED', 'CLAIMS_INTAKE_ENABLED'].some((k) => env[k] !== undefined && env[k] !== 'true' && env[k] !== 'false' && env[k] !== ''),
+    msg:  'CLAIMS_SURFACE_ENABLED / CLAIMS_INTAKE_ENABLED : seule la chaîne exacte « true » active un flag — toute autre valeur (« TRUE », « 1 », …) est OFF' },
   // AUDIT FIX (T-49 audit): a lease BEYOND the compiled ceiling is REFUSED, not clamped — the one
   // fail-closed reason an operator is most likely to misread as "open for longer". Say it.
   { when: (env) => { const raw = String(env.CLAIMS_WINDOW_UNTIL || '').trim(); if (!on(env, 'CLAIMS_ENABLED') || !raw) return false; const t = Date.parse(raw); return Number.isFinite(t) && t - Date.now() > 60 * 60 * 1000 },

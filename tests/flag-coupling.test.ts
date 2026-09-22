@@ -139,10 +139,18 @@ describe('checkFlagCoupling', () => {
     expect(r2.errors).toHaveLength(2)
   })
 
-  it('COUPLING_RULES documents the 20 known couplings (CLAIMS⇒REFUNDS narrowed to a warning, gate §19 2026-09-10)', () => {
-    expect(COUPLING_RULES).toHaveLength(20)
+  it('COUPLING_RULES documents the 21 known couplings (CLAIMS⇒REFUNDS narrowed to a warning, gate §19 2026-09-10; D′ L1 adds INTAKE⇒SURFACE)', () => {
+    expect(COUPLING_RULES).toHaveLength(21)
     expect(COUPLING_RULES.some((r: { flag: string; requires: string }) =>
       r.flag === 'CLAIMS_ENABLED' && r.requires === 'REFUNDS_ENABLED')).toBe(false)
+    // D′ L1 (spec v2 §3.1, S-13): the ONE new coupling — and no claims product flag is coupled to REFUNDS_ENABLED.
+    expect(COUPLING_RULES.filter((r: { flag: string; requires: string }) => r.flag === 'CLAIMS_INTAKE_ENABLED')).toEqual([
+      expect.objectContaining({ flag: 'CLAIMS_INTAKE_ENABLED', requires: 'CLAIMS_SURFACE_ENABLED' }),
+    ])
+    expect(COUPLING_RULES.some((r: { flag: string; requires: string }) =>
+      /^CLAIMS_(SURFACE|INTAKE)_ENABLED$/.test(r.flag) && r.requires === 'REFUNDS_ENABLED')).toBe(false)
+    expect(checkFlagCoupling({ CLAIMS_INTAKE_ENABLED: 'true' }).ok).toBe(false)
+    expect(checkFlagCoupling({ CLAIMS_INTAKE_ENABLED: 'true', CLAIMS_SURFACE_ENABLED: 'true' }).ok).toBe(true)
   })
 })
 

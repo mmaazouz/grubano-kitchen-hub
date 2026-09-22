@@ -6,9 +6,12 @@
 // response → AUTO-APPROVED by the internal cron. C1 is WORKFLOW + UI only — it CALLS
 // the royalty-aware refund engine, it never reconstructs any split.
 //
-// GATING: isClaimsEnabled() gates the whole feature (routes/UI). The REAL refund only
-// happens when isRefundsEnabled() is ON; with CLAIMS on + REFUNDS off, an approved
-// claim rests at 'approved' (refund PENDING activation, refundId=null) — never silent.
+// GATING (D′ L1, lib/claim-flags.ts): claimsSurfaceOpen() gates the feature (routes/UI) and
+// claimsIntakeOpen() the filing of NEW claims — product flags CLAIMS_SURFACE_ENABLED /
+// CLAIMS_INTAKE_ENABLED, or the legacy lease isClaimsEnabled() when no product flag is set.
+// Money is a separate matter (D′ L2): an approval writes a DECISION only; the refund is paid
+// by the financial rail under the REFUNDS lease, never here — an approved claim rests at
+// 'approved' (APPROVED_AWAITING_PAYMENT, refundId=null), visible, never silent.
 //
 // IDEMPOTENCE: executeRefund runs AT MOST ONCE per claim — `refundAttempted` flips
 // false→true via an atomic updateMany (count===1 winner) BEFORE the engine call; a
@@ -150,29 +153,13 @@ export async function buildClaimScopeForOrder(input: {
  * a year-long "window" is a configuration error or tampering, never a longer window.
  *
  * This lease grants NO refund authority whatsoever. The refund gate is separate and stays shut.
+ *
+ * D′ L1 (spec v2 §3): the lease is now the REHEARSAL-ONLY gate. The beta runs on the product flags
+ * CLAIMS_SURFACE_ENABLED / CLAIMS_INTAKE_ENABLED, and every gate lives in lib/claim-flags.ts (reads
+ * process.env only). This module re-exports the legacy readers so existing importers keep working;
+ * the product sites read claimsSurfaceOpen() / claimsIntakeOpen() / claimNoticeGate() there.
  */
-export const CLAIMS_WINDOW_MAX_MS = 60 * 60 * 1000
-
-export type ClaimsGateState =
-  | { open: false; reason: 'flag_off' | 'no_lease' | 'lease_unreadable' | 'lease_expired' | 'lease_too_long' }
-  | { open: true; expiresAt: Date; remainingMs: number }
-
-/** The single place that decides whether the claims surface is open right now. */
-export function claimsGateState(nowMs: number = Date.now()): ClaimsGateState {
-  if (process.env.CLAIMS_ENABLED !== 'true') return { open: false, reason: 'flag_off' }
-  const raw = (process.env.CLAIMS_WINDOW_UNTIL ?? '').trim()
-  if (!raw) return { open: false, reason: 'no_lease' }
-  const t = Date.parse(raw)
-  if (!Number.isFinite(t)) return { open: false, reason: 'lease_unreadable' }
-  if (t <= nowMs) return { open: false, reason: 'lease_expired' }
-  if (t - nowMs > CLAIMS_WINDOW_MAX_MS) return { open: false, reason: 'lease_too_long' }
-  return { open: true, expiresAt: new Date(t), remainingMs: t - nowMs }
-}
-
-/** Kill-switch — default OFF, and lease-bound since T-53. */
-export function isClaimsEnabled(): boolean {
-  return claimsGateState().open
-}
+export { CLAIMS_WINDOW_MAX_MS, claimsGateState, isClaimsEnabled, type ClaimsGateState } from '@/lib/claim-flags'
 
 /** P0-25 (vague 1, principe fondateur) : « aucune automatisation à effet financier
  *  sans validation humaine ». La route /api/admin/claims/auto-approve (sweep
@@ -453,7 +440,8 @@ const CONSUMER_HIDDEN_CLAIM_FIELDS = ['refundError', 'refundId', 'refundAttempte
 
 export type ClaimEligibility = {
   canClaim: boolean
-  reason?: 'not_owner' | 'not_paid' | 'window_expired' | 'active_claim'
+  /** 'intake_closed' is a ROUTE overlay (D′ L1, GET /api/claims?orderId): getClaimEligibility never returns it. */
+  reason?: 'not_owner' | 'not_paid' | 'window_expired' | 'active_claim' | 'intake_closed'
   maxRefundableCents: number
   /**
    * T-59 — is `maxRefundableCents` PROVEN against live Stripe cash truth?

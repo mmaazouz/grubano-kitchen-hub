@@ -477,6 +477,13 @@ async function main() {
     F('FLAG ' + k, v === undefined ? 'absent' : String(v))
     if (String(v) === 'true') A('1 flag: ' + k + ' est ACTIF — aucun automatisme d’argent ne doit être armé pendant la fenêtre Mode B')
   }
+  // D′ L1 (spec v2 §3.4, S-14) : sous les flags PRODUIT réclamations, le bail legacy que cet opérateur écrit est
+  // INERTE et « approuver » ne rembourse plus (D′ L2) — MODE B n'est PAS reproductible sur D′. Refus PAR NOM.
+  for (const k of ['CLAIMS_SURFACE_ENABLED', 'CLAIMS_INTAKE_ENABLED']) {
+    const v = merged[k] ?? process.env[k]
+    F('FLAG ' + k, v === undefined ? 'absent' : String(v))
+    if (String(v) === 'true') return fail('1 flag: ' + k + ' est ACTIF — les flags PRODUIT réclamations (D′) sont en place : le bail legacy est inerte et une approbation ne rembourse plus ; MODE B est impossible sous ces flags. Rien changé')
+  }
 
   // [2] SHA déployé = SHA certifié
   let version = null

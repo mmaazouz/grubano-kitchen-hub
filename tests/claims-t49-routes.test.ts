@@ -32,11 +32,11 @@ vi.mock('@/lib/claims', () => ({
   listUnfinalizedClaimRefundRows:    unfinalizedMock,
   // ROUND 13 (H10, slice W7): the E-13 section list, read after the money lists in its own catch.
   listRefundedClaimsWithUnprovenRow: unprovenMock,
-  // ROUND 13 (W6, H07): the closure-notice attempt reads the lease at send time.
-  isClaimsEnabled:                   closureFlag,
+  // D′ L1: no gate is read from lib/claims any more — the closure-notice sites read lib/claim-flags (real, on the real
+  // env), and a CLOSURE notice is always sendable (claimNoticeGate('closure') = true, FIN-EMAIL-01 / S-25).
 }))
 // ROUND 13 (W6, J-C26): the closure sender at the reconcile and attribute send sites.
-const { closureMock, closureFlag } = vi.hoisted(() => ({ closureMock: vi.fn(), closureFlag: vi.fn(() => true) }))
+const { closureMock } = vi.hoisted(() => ({ closureMock: vi.fn() }))
 vi.mock('@/lib/claim-emails', () => ({ sendClaimClosureEmail: closureMock }))
 
 const { auditMock } = vi.hoisted(() => ({ auditMock: vi.fn() }))
@@ -45,6 +45,7 @@ vi.mock('@/lib/admin-audit', () => ({ recordAdminAudit: auditMock }))
 import { POST as RECONCILE } from '@/app/api/admin/claims/[id]/reconcile/route'
 import { POST as ATTRIBUTE } from '@/app/api/admin/claims/[id]/attribute/route'
 import { GET as QUEUE } from '@/app/api/admin/claims/financial-verification/route'
+import { claimNoticeGate, claimsSurfaceOpen } from '@/lib/claim-flags'
 
 /** Exactly what provision-admin.js produces: primary role untouched, admin granted by row. */
 const PROMOTED_ADMIN = { id: 'op1', role: 'restaurant', name: 'Founder', email: 'f@x.test' }
@@ -66,8 +67,11 @@ beforeEach(() => {
   fvMock.mockResolvedValue([]); rrMock.mockResolvedValue([]); actionableMock.mockResolvedValue([]); unfinalizedMock.mockResolvedValue([])
   // ROUND 13 (H10, slice W7): both section lists read and empty by default.
   unprovenMock.mockResolvedValue({ items: [], total: 0, scanTruncated: false }); noticesMock.mockResolvedValue({ items: [], total: 0, scanTruncated: false })
+  // The claims SURFACE is CLOSED throughout this file: no lease, no product flag (D′ L1) — the money handles outlive it.
   delete process.env.CLAIMS_ENABLED
   delete process.env.CLAIMS_WINDOW_UNTIL
+  delete process.env.CLAIMS_SURFACE_ENABLED
+  delete process.env.CLAIMS_INTAKE_ENABLED
 })
 
 describe('POST /reconcile — the evidence exit', () => {
@@ -153,7 +157,22 @@ describe('POST /attribute — the escalation exit out of a permanent park', () =
 describe('J-C26 — reconcile and attribute attempt a closure notice only for refunded, with the evidence their result carries', () => {
   beforeEach(() => {
     closureMock.mockReset().mockResolvedValue({ status: 'sent', kind: 'refunded' })
-    closureFlag.mockReset().mockReturnValue(true)
+  })
+
+  it('D′ L1 INVERTED (FIN-EMAIL-01, S-25) — the surface is CLOSED here (no lease; and explicitly CLAIMS_ENABLED=false + CLAIMS_SURFACE_ENABLED=false): both closure sites still pass claimsOpen TRUE; NEGATIVE CONTROL: the same state reads the surface and the pre_money gate CLOSED', async () => {
+    process.env.CLAIMS_ENABLED = 'false'; process.env.CLAIMS_SURFACE_ENABLED = 'false'; process.env.CLAIMS_INTAKE_ENABLED = 'false'
+    expect(claimsSurfaceOpen()).toBe(false)              // ← the pre-L1 closure sites read THIS (isClaimsEnabled()) → skipped claims_disabled
+    expect(claimNoticeGate('pre_money')).toBe(false)     // ← what an ack / decision sender receives in this state
+    expect(claimNoticeGate('closure')).toBe(true)
+    reconcileMock.mockResolvedValue({ ok: true, outcome: 'refunded', refundId: 'rf1', amountCents: 1300, evidence: 'stripe_read' })
+    let res = await post(RECONCILE)
+    expect(closureMock).toHaveBeenLastCalledWith({ claimId: 'cl1', evidence: { basis: 'stripe_read', amountCents: 1300 }, claimsOpen: true })
+    expect((await res.json()).customerEmail).toEqual({ status: 'sent', kind: 'refunded' })
+    attributeMock.mockResolvedValue({ ok: true, outcome: 'refunded', refundId: 'rf9', rowStatusBefore: 'pending', evidence: 'stripe_read', amountCents: 460 })
+    res = await post(ATTRIBUTE, { refundRowId: 'rf9' })
+    expect(closureMock).toHaveBeenLastCalledWith({ claimId: 'cl1', evidence: { basis: 'stripe_read', amountCents: 460 }, claimsOpen: true })
+    expect((await res.json()).customerEmail).toEqual({ status: 'sent', kind: 'refunded' })
+    expect(closureMock).toHaveBeenCalledTimes(2)
   })
 
   it('reconcile refunded / stripe_read 1300 → evidence {stripe_read, 1300}; refunded from our row only (ledger) → evidence undefined', async () => {
@@ -317,29 +336,49 @@ describe('the page keeps the money queue mounted when the feature flag is off', 
     let p = at[0] - 1
     while (p >= 0 && (lines[p].trim() === '' || /^\{\/\*.*\*\/\}$/.test(lines[p].trim()))) p--
     if (p < 0 || lines[p].trim() !== '<ToastProvider>') v.push(`the line above the mount is not <ToastProvider>: ${p >= 0 ? lines[p].trim() : '(none)'}`)
-    if (/if\s*\(\s*!\s*(claimsOpen|isClaimsEnabled\(\))\s*\)/.test(src)) v.push('an early exit on the claims flag')
+    // D′ L1: the page reads the SURFACE (claimsSurfaceOpen()) — an early exit on any spelling of the gate is caught.
+    if (/if\s*\(\s*!\s*(claimsOpen|isClaimsEnabled\(\)|claimsSurfaceOpen\(\))\s*\)/.test(src)) v.push('an early exit on the claims flag')
     return v
   }
 
   it('the page no longer redirects away when claims are disabled', () => {
     expect(page).not.toMatch(/if \(!isClaimsEnabled\(\)\) redirect/)
+    expect(page).not.toMatch(/if \(!claimsSurfaceOpen\(\)\) redirect/)
   })
 
-  it('the money queue is unconditional; only the arbitration console is gated', () => {
+  it('D′ L1 (spec v2 §3.2) — the money queue is unconditional AND the console is mounted whatever the surface says (the money cards it carries are served by the SPLIT admin GET); the surface only chooses its copy', () => {
     expect(page).toContain('<AdminFinancialVerification />')
-    expect(page).toContain('{claimsOpen && <AdminClaimsArbitration />}')
+    expect(page).toContain('  const claimsOpen = claimsSurfaceOpen()')
+    expect(page).toContain('<AdminClaimsArbitration surfaceOpen={claimsOpen} />')
+    // The 05152b6 shape gated the WHOLE console — including « Remboursements à traiter » — behind the lease.
+    expect(page).not.toMatch(/\{claimsOpen && <AdminClaimsArbitration/)
+    expect(page).not.toMatch(/\{claimsOpen \? <AdminClaimsArbitration/)
+    expect(page).not.toMatch(/isClaimsEnabled/)
     // Certification audit of c32d8d3 (P1): present is not enough — the mount must be UNCONDITIONAL.
     expect(fvMountViolations(page)).toEqual([])
   })
 
+  it('NEGATIVE CONTROL (D′ L1) — the 05152b6 console gate `{claimsOpen && <AdminClaimsArbitration />}` is caught by the pin above', () => {
+    const shipped = '<AdminClaimsArbitration surfaceOpen={claimsOpen} />'
+    expect(page).toContain(shipped)
+    const old = page.replace(shipped, '{claimsOpen && <AdminClaimsArbitration />}')
+    expect(old).not.toBe(page)
+    expect(old).toMatch(/\{claimsOpen && <AdminClaimsArbitration/)
+    expect(old).not.toContain(shipped)
+  })
+
   it('NEGATIVE CONTROL (certification audit c32d8d3) — every gating shape of the financial-verification card is caught', () => {
     const shipped = '<AdminFinancialVerification />'
+    const gateLine = '  const claimsOpen = claimsSurfaceOpen()'
+    expect(page).toContain(gateLine)
     const shapes: Array<[string, string]> = [
       ['&& inline', page.replace(shipped, '{claimsOpen && <AdminFinancialVerification />}')],
       ['ternary', page.replace(shipped, '{claimsOpen ? <AdminFinancialVerification /> : null}')],
       ['flag call', page.replace(shipped, '{isClaimsEnabled() && <AdminFinancialVerification />}')],
+      ['surface call (D′ L1)', page.replace(shipped, '{claimsSurfaceOpen() && <AdminFinancialVerification />}')],
       ['multi-line &&', page.replace(shipped, '{claimsOpen && (\n            <AdminFinancialVerification />\n          )}')],
-      ['early return', page.replace('  const claimsOpen = isClaimsEnabled()', '  const claimsOpen = isClaimsEnabled()\n  if (!claimsOpen) return null')],
+      ['early return', page.replace(gateLine, `${gateLine}\n  if (!claimsOpen) return null`)],
+      ['early return on the surface call (D′ L1)', page.replace(gateLine, `${gateLine}\n  if (!claimsSurfaceOpen()) return null`)],
       ['removed', page.replace(shipped, '')],
     ]
     for (const [name, mutated] of shapes) {

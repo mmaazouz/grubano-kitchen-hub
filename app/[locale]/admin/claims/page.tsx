@@ -5,7 +5,7 @@ import { buildAdminIdentity } from '@/lib/admin-identity'
 import { isInfluencerEnabled } from '@/lib/influencer-verification'
 import { isPrestataireEnabled } from '@/lib/prestataire-account'
 import { isCourierActivationEnabled } from '@/lib/logistics-account'
-import { isClaimsEnabled } from '@/lib/claims'
+import { claimsSurfaceOpen } from '@/lib/claim-flags'
 import AdminShell from '@/components/admin/AdminShell'
 import AdminClaimsArbitration from '@/components/claims/AdminClaimsArbitration'
 import AdminFinancialVerification from '@/components/claims/AdminFinancialVerification'
@@ -37,7 +37,8 @@ export default async function AdminClaimsPage(props: { params: { locale: string 
   //
   // So with the flag off the page still renders, showing ONLY the financial-verification queue.
   // No claim can be created, reviewed or arbitrated — those routes stay gated server-side.
-  const claimsOpen = isClaimsEnabled()
+  // D′ L1: the SURFACE (product flag, or the legacy lease when no product flag is set). Money cards stay outside it.
+  const claimsOpen = claimsSurfaceOpen()
 
   const identity = buildAdminIdentity(admin)
   const flags = {
@@ -65,7 +66,11 @@ export default async function AdminClaimsPage(props: { params: { locale: string 
         <ToastProvider>
           {/* Ungated: an unresolved MONEY case must be reachable whatever the feature flag says. */}
           <AdminFinancialVerification />
-          {claimsOpen && <AdminClaimsArbitration />}
+          {/* D′ L1 (spec v2 §3.2): the console is mounted whatever the surface says — GET /api/admin/claims is
+              SPLIT server-side (surface closed ⇒ workflow lists empty, MONEY list still returned), so the money
+              cards (« Remboursements à traiter ») stay outside `claimsOpen &&`. `claimsOpen` keeps naming the
+              surface for the page's own copy. */}
+          <AdminClaimsArbitration surfaceOpen={claimsOpen} />
         </ToastProvider>
       </section>
     </AdminShell>

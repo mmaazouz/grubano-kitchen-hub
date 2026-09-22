@@ -13,7 +13,7 @@ import OrdersClient, {
   type RestaurantView,
 } from '@/components/orders/OrdersClient'
 import { buildOrderViews } from '@/lib/orders-feed'
-import { isClaimsEnabled } from '@/lib/claims'
+import { claimsSurfaceOpen } from '@/lib/claim-flags'
 import RestaurantClaimsPanel from '@/components/claims/RestaurantClaimsPanel'
 import './orders.css'
 
@@ -162,7 +162,7 @@ export default async function OrdersPage(props: {
           page whenever CLAIMS_ENABLED was on. It gets its own provider here —
           the same pattern every other operator client island uses (OrdersClient,
           LiveOrders, FulfillmentForm…): operator pages have no global one. */}
-      {isClaimsEnabled() && (
+      {claimsSurfaceOpen() && ( // D′ L1: SURFACE (the restaurant answers existing claims; no intake needed)
         <ToastProvider>
           <RestaurantClaimsPanel />
         </ToastProvider>

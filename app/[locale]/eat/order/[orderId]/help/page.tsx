@@ -29,13 +29,16 @@ import '@/app/gb-foundation/gb-components.css'
 // REFUND SUBMIT (B) — now wired to the REAL /api/claims (P2-CLAIMS), but ONLY when the
 // feature is live. On entering the refund view (when authenticated) we GET
 // /api/claims?orderId= which returns { enabled, eligibility }:
-//  • enabled === false  → CLAIMS_ENABLED is OFF (FINAL for the beta — founder D4).
+//  • enabled === false  → the claims SURFACE is closed (D′ L1: CLAIMS_SURFACE_ENABLED, or the legacy lease
+//    when no product flag is set; the original « CLAIMS_ENABLED is OFF » of founder D4).
 //    LOT D (P-2): the inert refund form is MASKED entirely — the view renders ONLY the
 //    human-support panel (mailto:contact@grubano.com with the order number in the
 //    subject). No inert items/textarea/photo/« bientôt » banner/dead submit is shown.
 //  • enabled === true   → real flow. Eligibility (owner + paid + within window + no active
 //    claim) drives the submit. If not eligible we surface the reason and disable submit;
 //    if an existing claim exists we show its status. On submit we POST a real claim.
+//    D′ L1: with the intake paused (CLAIMS_INTAKE_ENABLED off) the route overlays
+//    { canClaim:false, reason:'intake_closed' } — the reason is shown, submit stays disabled.
 //
 // LOT 4 (closed beta — support honnête, plus de mise en scène) :
 //  • The scripted chat (fake agent bubbles, « ● En ligne » badge, disabled composer)
@@ -69,7 +72,7 @@ type View = 'help' | 'refund' | 'chat'
 // Mirror of lib/claims.getClaimEligibility's return shape (the only fields the UI reads).
 interface ClaimEligibility {
   canClaim: boolean
-  reason?: 'not_owner' | 'not_paid' | 'window_expired' | 'active_claim'
+  reason?: 'not_owner' | 'not_paid' | 'window_expired' | 'active_claim' | 'intake_closed'
   maxRefundableCents: number
   /** T-59: true only when the ceiling was proven against live Stripe cash truth. */
   ceilingVerified?: boolean
@@ -261,6 +264,8 @@ export default function OrderHelpScreen() {
     switch (eligibility?.reason) {
       case 'window_expired': return t('claimWindowExpired')
       case 'not_paid':       return t('claimNotPaid')
+      // D′ L1 (S-23): the surface is open, the intake is paused — an existing claim above still shows its status.
+      case 'intake_closed':  return t('claimIntakeClosed')
       case 'not_owner':      return t('claimNotEligible')
       case 'active_claim':   return t('claimAlreadyFiled')
       default:               return t('claimNotEligible')

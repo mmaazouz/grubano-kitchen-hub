@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { resolveEstablishmentScope } from '@/lib/establishment-scope'
-import { isClaimsEnabled, respondToClaim } from '@/lib/claims'
+import { respondToClaim } from '@/lib/claims'
+import { claimsSurfaceOpen, claimNoticeGate } from '@/lib/claim-flags'
 import { prisma } from '@/lib/prisma'
 import { sendClaimDecisionEmail } from '@/lib/claim-emails'
 
@@ -22,7 +23,7 @@ const bodySchema = z.object({
 })
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
-  if (!isClaimsEnabled()) {
+  if (!claimsSurfaceOpen()) { // D′ L1: SURFACE
     return NextResponse.json({ error: 'Réclamations indisponibles', gated: true }, { status: 403 })
   }
   const scope = await resolveEstablishmentScope(null)
@@ -59,7 +60,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       reason:         parsed.data.reason ?? null,
       restaurantName,
       // ROUND 13 (H02, R-D7): the lease read at send time — one that closed since the entry gate skips the e-mail.
-      claimsOpen:     isClaimsEnabled(),
+      claimsOpen:     claimNoticeGate('pre_money'), // D′ L1 (FIN-EMAIL-01): a restaurant decision is a pre-money notice
     })
   }
 

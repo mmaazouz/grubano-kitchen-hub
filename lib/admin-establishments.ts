@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma'
-import { isClaimsEnabled } from '@/lib/claims'
+import { claimsSurfaceOpen } from '@/lib/claim-flags'
 import { resolveCommissionRate, type CommissionChannel } from '@/lib/commission'
 
 // ── Admin establishments — read-only, cross-operator (CD ADM2) ────────────────────
@@ -12,7 +12,10 @@ import { resolveCommissionRate, type CommissionChannel } from '@/lib/commission'
 const LIST_CAP = 200 // young platform; if total > cap, the list surfaces the first N (SIGNAL)
 const GMV_TYPES = ['payment', 'deposit_capture', 'refund'] // refunds negative → SUM nets
 // A claim is "open" while non-terminal (schema: refunded|refused|refused_final are terminal).
-const OPEN_CLAIM_STATUSES = ['restaurant_review', 'approved', 'refunding', 'arbitration']
+// D′ L1 (spec v2 §3.2, S-12 (b)): the WORKFLOW states follow the claims surface; the MONEY states are counted
+// whatever the flags say — an approved-unpaid or in-flight refund never hides behind a feature flag.
+const WORKFLOW_CLAIM_STATUSES = ['restaurant_review', 'arbitration']
+const MONEY_CLAIM_STATUSES = ['approved', 'refunding', 'financial_verification']
 
 export type EstablishmentStatus = 'active' | 'pending' | 'paused'
 
@@ -108,9 +111,12 @@ export async function getAdminRestaurantDetail(id: string): Promise<AdminRestaur
       _sum: { grossAmount: true },
     }),
     prisma.order.count({ where: { restaurantId: id, createdAt: { gte: since } } }),
-    isClaimsEnabled()
-      ? prisma.claim.count({ where: { restaurantId: id, status: { in: OPEN_CLAIM_STATUSES } } })
-      : Promise.resolve(0),
+    prisma.claim.count({
+      where: {
+        restaurantId: id,
+        status: { in: claimsSurfaceOpen() ? [...WORKFLOW_CLAIM_STATUSES, ...MONEY_CLAIM_STATUSES] : MONEY_CLAIM_STATUSES },
+      },
+    }),
   ])
 
   const rate = (channel: CommissionChannel) =>

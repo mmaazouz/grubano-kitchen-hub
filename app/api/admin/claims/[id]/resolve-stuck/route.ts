@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { resolveAdmin } from '@/lib/admin-guard'
-import { resolveStuckClaim, isClaimsEnabled } from '@/lib/claims'
+import { resolveStuckClaim } from '@/lib/claims'
+import { claimNoticeGate } from '@/lib/claim-flags'
 import { recordAdminAudit } from '@/lib/admin-audit'
 import { sendClaimClosureEmail, type ClosureEmailResult } from '@/lib/claim-emails'
 
@@ -77,7 +78,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   // HTTP result; the lease is read at send time (R-D7).
   let customerEmail: ClosureEmailResult
   try {
-    customerEmail = await sendClaimClosureEmail({ claimId: params.id, claimsOpen: isClaimsEnabled() })
+    // D′ L1 (FIN-EMAIL-01, S-25): an explicit closure is always sendable, whatever the feature flags say.
+    customerEmail = await sendClaimClosureEmail({ claimId: params.id, claimsOpen: claimNoticeGate('closure') })
   } catch {
     customerEmail = { status: 'failed', kind: null, why: 'sender_error' }
   }

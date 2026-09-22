@@ -204,10 +204,14 @@ describe('P0-37 — le fix /admin/claims (jumeau P0-14)', () => {
     const page = read('app/[locale]/admin/claims/page.tsx')
     expect(/import \{ ToastProvider \} from '@\/components\/design-system'/.test(page)).toBe(true)
     // T-49: the provider wraps BOTH islands. The money queue is UNGATED (it must survive the
-    // feature flag being turned off); the arbitration console is gated behind it.
+    // feature flag being turned off). D′ L1 (spec v2 §3.2): the arbitration console is mounted unconditionally
+    // too — GET /api/admin/claims is split server-side, so its money cards stay reachable when the surface is
+    // closed; the page passes the surface it read as `surfaceOpen`.
     const block = page.slice(page.indexOf('<ToastProvider>'), page.lastIndexOf('</ToastProvider>'))
     expect(block).toContain('<AdminFinancialVerification />')
-    expect(block).toContain('{claimsOpen && <AdminClaimsArbitration />}')
+    expect(block).toContain('<AdminClaimsArbitration surfaceOpen={claimsOpen} />')
+    // NEGATIVE CONTROL: the pre-L1 gating (console hidden behind the flag) is gone.
+    expect(block).not.toContain('{claimsOpen && <AdminClaimsArbitration')
   })
 
   it('non-régression P0-14 : le fix /orders tient toujours', () => {

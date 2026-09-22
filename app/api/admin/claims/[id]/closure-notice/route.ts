@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { resolveAdmin } from '@/lib/admin-guard'
 import { rateLimit } from '@/lib/rate-limit'
-import { isClaimsEnabled, reconcileClaimEvidence } from '@/lib/claims'
+import { reconcileClaimEvidence } from '@/lib/claims'
+import { claimNoticeGate } from '@/lib/claim-flags'
 import { sendClaimClosureEmail, type ClosureEmailResult, type ClosureEvidence } from '@/lib/claim-emails'
 import { claimClosureKind, type ClaimFacts } from '@/lib/claim-action-rules'
 import { recordAdminAudit } from '@/lib/admin-audit'
@@ -95,7 +96,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   // (5) the sender decides the rest (record, gate, row, evidence, recipient). It never throws; the catch is a belt.
   let customerEmail: ClosureEmailResult
   try {
-    customerEmail = await sendClaimClosureEmail({ claimId: params.id, evidence, claimsOpen: isClaimsEnabled() })
+    // D′ L1 (FIN-EMAIL-01, S-25): an explicit closure is always sendable, whatever the feature flags say.
+    customerEmail = await sendClaimClosureEmail({ claimId: params.id, evidence, claimsOpen: claimNoticeGate('closure') })
   } catch {
     customerEmail = { status: 'failed', kind, why: 'sender_error' }
   }

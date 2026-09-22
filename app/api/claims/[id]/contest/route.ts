@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { z } from 'zod'
-import { isClaimsEnabled, contestClaim } from '@/lib/claims'
+import { contestClaim } from '@/lib/claims'
+import { claimsSurfaceOpen } from '@/lib/claim-flags'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -14,7 +15,7 @@ export const dynamic = 'force-dynamic'
 const bodySchema = z.object({ reason: z.string().max(1000).optional() })
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
-  if (!isClaimsEnabled()) {
+  if (!claimsSurfaceOpen()) { // D′ L1: SURFACE (contesting an existing claim needs no intake)
     return NextResponse.json({ error: 'Réclamations indisponibles', gated: true }, { status: 403 })
   }
   const token = await getToken({ req })

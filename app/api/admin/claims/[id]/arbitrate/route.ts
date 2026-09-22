@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { resolveAdmin } from '@/lib/admin-guard'
-import { isClaimsEnabled, arbitrateClaim } from '@/lib/claims'
+import { arbitrateClaim } from '@/lib/claims'
+import { claimsSurfaceOpen, claimNoticeGate } from '@/lib/claim-flags'
 import { rateLimit } from '@/lib/rate-limit'
 import { recordAdminAudit } from '@/lib/admin-audit'
 import { sendClaimDecisionEmail, type ClaimEmailResult } from '@/lib/claim-emails'
@@ -26,7 +27,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const limited = rateLimit(req, 'admin_claims_arbitrate', { limitDefault: 30, windowDefault: 60 })
   if (limited) return limited
 
-  if (!isClaimsEnabled()) {
+  if (!claimsSurfaceOpen()) { // D′ L1: SURFACE (a decision never needs the intake)
     return NextResponse.json({ error: 'Réclamations indisponibles', gated: true }, { status: 403 })
   }
   // ROUND-8 AUDIT FIX (P2): approve can move money, and it was authorised from sign-in JWT claims
@@ -74,7 +75,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       decision:      parsed.data.decision === 'refuse_final' ? refusalEmailKind(result.claim as ClaimFacts | null) : 'approved',
       reason:        parsed.data.reason ?? null,
       refundedCents: null,
-      claimsOpen:    isClaimsEnabled(),
+      claimsOpen:    claimNoticeGate('pre_money'), // D′ L1 (FIN-EMAIL-01): the decision notice is pre-money
     })
   } catch {
     customerEmail = { status: 'failed', why: 'sender_error' }

@@ -18,7 +18,9 @@ export const dynamic = 'force-dynamic'
 // in lib/claims). Triggered by the internal cron OR an admin. The route name is historical.
 //
 // GATE ORDER (all BEFORE any work):
-//   1. CLAIMS_ENABLED kill-switch (default OFF) → 403 gated.
+//   1. CLAIMS_ENABLED kill-switch (default OFF) → 403 gated. D′ L1 (spec v2 §3.3): this route is the ONE site that
+//      keeps reading the LEGACY lease (isClaimsEnabled) beside its own flag — the product flags
+//      CLAIMS_SURFACE_ENABLED / CLAIMS_INTAKE_ENABLED never open it (S-13).
 //   1-bis. P0-25 : CLAIMS_AUTO_APPROVE_ENABLED (défaut OFF, TOUTE la bêta) → 403 gated
 //          explicite + trace. P0-07 a retiré le scheduler ; ce flag rend la route
 //          elle-même inopérante — ce sweep rembourse SANS validation humaine

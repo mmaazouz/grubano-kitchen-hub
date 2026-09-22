@@ -21,7 +21,9 @@ const { db } = vi.hoisted(() => ({
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
 vi.mock('@/lib/claim-emails', () => ({ sendClaimAckEmail: vi.fn(), sendClaimDecisionEmail: vi.fn() }))
 vi.mock('next-auth/jwt', () => ({ getToken: vi.fn(async () => ({ sub: 'u1' })) }))
+// D′ L1: the lease readers live in lib/claim-flags.ts and are re-exported by lib/claims (same functions).
 import { isClaimsEnabled, claimsGateState, CLAIMS_WINDOW_MAX_MS } from '@/lib/claims'
+import * as flags from '@/lib/claim-flags'
 import { GET as CLAIMS_GET } from '@/app/api/claims/route'
 
 const iso = (msFromNow: number) => new Date(Date.now() + msFromNow).toISOString()
@@ -219,9 +221,15 @@ describe('J-C10 — CLAIMS_ENABLED off: GET /api/claims answers { enabled: false
   it('BREAK/RESTORE pin — the early { enabled: false } return is the first statement of GET', () => {
     const src = strip(read('app/api/claims/route.ts'))
     const handler = src.slice(src.indexOf('export async function GET('))
-    expect(handler).toMatch(/^export async function GET\(req: NextRequest\) \{\s*if \(!isClaimsEnabled\(\)\) return NextResponse\.json\(\{ enabled: false \}\)/)
+    // D′ L1: the first statement reads the SURFACE — claimsSurfaceOpen() ≡ isClaimsEnabled() when no product flag is set
+    // (S-12), and the lease readers of lib/claims are the very functions of lib/claim-flags.
+    expect(handler).toMatch(/^export async function GET\(req: NextRequest\) \{\s*if \(!claimsSurfaceOpen\(\)\) return NextResponse\.json\(\{ enabled: false \}\)/)
+    expect(flags.isClaimsEnabled).toBe(isClaimsEnabled)
+    expect(flags.claimsGateState).toBe(claimsGateState)
     // the break (the early return removed) no longer satisfies the pin
-    const broken = handler.replace('if (!isClaimsEnabled()) return NextResponse.json({ enabled: false })', '')
-    expect(broken).not.toMatch(/^export async function GET\(req: NextRequest\) \{\s*if \(!isClaimsEnabled\(\)\) return/)
+    const broken = handler.replace('if (!claimsSurfaceOpen()) return NextResponse.json({ enabled: false })', '')
+    expect(broken).not.toMatch(/^export async function GET\(req: NextRequest\) \{\s*if \(!claimsSurfaceOpen\(\)\) return/)
+    // NEGATIVE CONTROL: the pre-L1 shape (the legacy reader inline) is not the shipped shape any more
+    expect(handler).not.toMatch(/if \(!isClaimsEnabled\(\)\) return NextResponse\.json\(\{ enabled: false \}\)/)
   })
 })

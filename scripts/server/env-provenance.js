@@ -141,6 +141,8 @@ const WATCHED_SECRET_KEYS = [
   'INTERNAL_CRON_TOKEN', 'CRON_SECRET', 'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET',
   'NEXTAUTH_SECRET', 'SMTP_USER', 'SMTP_PASS', 'DATABASE_URL', 'ANTHROPIC_API_KEY',
   'REFUNDS_ENABLED', 'LOGISTICS_SIGNUP_ENABLED', 'TIPS_ENABLED', 'ALERT_EMAIL',
+  // D′ L1 (spec v2 §3.4): the claims PRODUCT flags — a change of either is a provenance event.
+  'CLAIMS_SURFACE_ENABLED', 'CLAIMS_INTAKE_ENABLED',
 ]
 
 /** Read the env files present in `dir` (raw text, in-process only). */

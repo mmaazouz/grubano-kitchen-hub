@@ -1,5 +1,10 @@
 # REFUND REHEARSAL RUNBOOK — Stripe TEST — préparé le 2026-09-05, **LES DEUX RÉPÉTITIONS EXÉCUTÉES le 2026-09-09** (GR-N5TSM0 partiel 500 c · GR-GBZE1X complet 1450 c)
 
+> **D′ L1 (2026-09-22) — VALIDE UNIQUEMENT AVEC `CLAIMS_SURFACE_ENABLED` / `CLAIMS_INTAKE_ENABLED` ABSENTS.** `phase2-refund-gate.js`
+> (precheck et window) refuse en nommant le flag si l'un des deux vaut `true`, et sonde désormais aussi `POST /api/claims`
+> (surface réclamations vivante ⇒ anomalie). Le bail legacy `CLAIMS_ENABLED` n'ouvre jamais le rail financier D′ (S-14).
+> Historique figé : Mode A 2026-09-15→18, Mode B 2026-09-22 `dab754d` — CLOS.
+
 > ⚠️ **LIRE §9 À §12 D'ABORD.** Les sections **§1 à §8 sont l'ÉTAT DE PRÉPARATION du 2026-09-05/07** et sont conservées comme archive du raisonnement. Plusieurs de leurs valeurs ont été **SUPERSÉDÉES** par les mesures du 2026-09-09 (porte de financement BRUT vs NET → T-42 ; solde disponible ; copie e-mail corrigée par `ca0e19a`). Chaque section concernée porte un encadré SUPERSÉDÉ. La vérité de clôture est en **§12**.
 
 > Préflight financier Phase 2 = **PASS** (réconciliation directe DB ↔ Stripe TEST, opérateur v5, fondateur). Ce document prépare la **première répétition intégrée** : UN remboursement partiel de **500 c de cash Stripe** sur GR-N5TSM0. **Rien n'est exécuté** sans la phrase fondateur exacte « I AUTHORIZE THE STAGING REFUND REHEARSAL ». Règle d'évidence : chaque fait porte sa source ; NOT MEASURED sinon.

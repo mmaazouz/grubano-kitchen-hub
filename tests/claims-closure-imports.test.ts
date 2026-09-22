@@ -166,10 +166,28 @@ describe('J-C29 — import topology (H15)', () => {
   })
 })
 
-// ══ ROUND 13 (slice W6) — J-C21 (H02, H13): every claim sender call reads the lease at send time ════════════════════
-// IMPLEMENTATION NOTE (W6) on ER-C17: the files CALLING sendClaimAckEmail / sendClaimDecisionEmail / sendClaimClosureEmail are
-// the 8 H15 routes minus app/api/orders/[id]/status/route.ts, which imports only the order-cancellation senders (H13).
-function senderCalls(files: Record<string, string>): { callers: string[]; violations: string[] } {
+// ══ ROUND 13 (slice W6) — J-C21 (H02, H13), amended by D′ L1 (spec v2 §6.2, FIN-EMAIL-01, S-25) ═══════════════════
+// Every claim sender call reads its gate at send time. Since D′ L1 the value is no longer the lease itself but the notice
+// CLASS of the calling file: `claimsOpen: claimNoticeGate('pre_money')` in the files sending a pre-money notice (ack, the
+// restaurant decision, the arbitration decision), `claimNoticeGate('closure')` in the files sending an explicit terminal
+// closure (attribute, closure-notice, reconcile, resolve-stuck). The class is fixed PER FILE: a literal `true`, the lease
+// (`isClaimsEnabled()`), the surface (`claimsSurfaceOpen()`) or the WRONG class are violations. The gate is imported from
+// lib/claim-flags (never through lib/claims). IMPLEMENTATION NOTE (W6) on ER-C17: the files CALLING sendClaimAckEmail /
+// sendClaimDecisionEmail / sendClaimClosureEmail are the 8 H15 routes minus app/api/orders/[id]/status/route.ts, which
+// imports only the order-cancellation senders (H13) and reads `claimsOpenNow = claimNoticeGate('pre_money')` at send time.
+type NoticeClass = 'pre_money' | 'post_money' | 'closure'
+/** spec v2 §6.2 — the notice class of each sender-calling file (D′ L1). */
+const NOTICE_CLASS: Record<string, NoticeClass> = {
+  'app/api/claims/route.ts':                            'pre_money',
+  'app/api/claims/[id]/respond/route.ts':               'pre_money',
+  'app/api/admin/claims/[id]/arbitrate/route.ts':       'pre_money',
+  'app/api/admin/claims/[id]/attribute/route.ts':       'closure',
+  'app/api/admin/claims/[id]/closure-notice/route.ts':  'closure',
+  'app/api/admin/claims/[id]/reconcile/route.ts':       'closure',
+  'app/api/admin/claims/[id]/resolve-stuck/route.ts':   'closure',
+}
+const CLAIM_FLAGS_IMPORT = /import\s*\{[^}]*\bclaimNoticeGate\b[^}]*\}\s*from\s*'@\/lib\/claim-flags'/
+function senderCalls(files: Record<string, string>, classes: Record<string, NoticeClass> = NOTICE_CLASS): { callers: string[]; violations: string[] } {
   const callers = new Set<string>()
   const out: string[] = []
   for (const [f, src] of Object.entries(files)) {
@@ -185,40 +203,93 @@ function senderCalls(files: Record<string, string>): { callers: string[]; violat
         if (code[j] === '{') depth++
         else if (code[j] === '}' && --depth === 0) break
       }
-      if (!/\bclaimsOpen:\s*isClaimsEnabled\(\)/.test(code.slice(i, j + 1))) out.push(`${f}: ${m[1]} without claimsOpen: isClaimsEnabled()`)
+      const literal = code.slice(i, j + 1)
+      const cls = classes[f]
+      if (!cls) { out.push(`${f}: ${m[1]} in a file with no notice class (spec v2 §6.2)`); continue }
+      const value = /\bclaimsOpen:\s*([^,\n}]+)/.exec(literal)?.[1].trim()
+      const found = value ? /^claimNoticeGate\('(pre_money|post_money|closure)'\)$/.exec(value)?.[1] : undefined
+      if (found === undefined) out.push(`${f}: ${m[1]} without claimsOpen: claimNoticeGate('${cls}') (got ${value === undefined ? 'no claimsOpen' : JSON.stringify(value)})`)
+      else if (found !== cls) out.push(`${f}: ${m[1]} carries the wrong notice class '${found}' (this file sends '${cls}')`)
     }
   }
   return { callers: Array.from(callers).sort(), violations: out.sort() }
 }
 const appTree = () => Object.fromEntries(walk('app').filter((f) => /\.(ts|tsx)$/.test(f)).map((f) => [f, read(f)]))
 
-describe('J-C21 — the sender call sites', () => {
-  it('each call passes claimsOpen: isClaimsEnabled(); the calling files are the 7 claim routes', () => {
+describe('J-C21 (D′ L1) — the sender call sites', () => {
+  it("each call passes claimsOpen: claimNoticeGate(<class>) with the calling file's class; the calling files are the 7 claim routes; the gate comes from lib/claim-flags", () => {
     const { callers, violations: v } = senderCalls(appTree())
     expect(v).toEqual([])
+    expect(callers).toEqual(Object.keys(NOTICE_CLASS).sort())
     expect(callers).toEqual(H15_IMPORTERS.filter((f) => f !== 'app/api/orders/[id]/status/route.ts').sort())
+    for (const f of callers) {
+      const code = stripComments(read(f))
+      expect(code, f).toMatch(CLAIM_FLAGS_IMPORT)
+      // the legacy reader is never named in a sender-calling file (the lease no longer decides a notice)
+      expect(code, f).not.toMatch(/\bisClaimsEnabled\b/)
+    }
   })
 
-  it('orders status: the lease is read in the send branch (claimsOpenNow) and the claim-mentioning variant requires it', () => {
+  it("orders status: the pre-money gate is read in the send branch (claimsOpenNow = claimNoticeGate('pre_money')), after the SURFACE read at entry (claimsOn = claimsSurfaceOpen()), and the claim-mentioning variant requires it", () => {
     const code = stripComments(read('app/api/orders/[id]/status/route.ts'))
-    const def = code.indexOf('const claimsOpenNow = isClaimsEnabled()')
-    expect(def).toBeGreaterThan(code.indexOf('const claimsOn = isClaimsEnabled()'))
-    expect(def).toBeGreaterThan(code.indexOf("prisma.operator.findUnique({ where: { id: order.consumerId }, select: { email: true, name: true } })"))
+    expect(code).toMatch(CLAIM_FLAGS_IMPORT)
+    const entry = code.indexOf('const claimsOn = claimsSurfaceOpen()')
+    const def = code.indexOf("const claimsOpenNow = claimNoticeGate('pre_money')")
+    const recipientRead = code.indexOf("prisma.operator.findUnique({ where: { id: order.consumerId }, select: { email: true, name: true } })")
+    expect(entry).toBeGreaterThan(-1)
+    expect(recipientRead).toBeGreaterThan(-1)
+    expect(def).toBeGreaterThan(entry)
+    expect(def).toBeGreaterThan(recipientRead)
     expect(code).toMatch(/if \(paidCancellation && claimsOpenNow\) \{\s*await sendOrderCancelledPaidEmail\(/)
     expect(code).toMatch(/\} else if \(paidCancelled\) \{\s*await sendOrderCancelledPaidOffEmail\(/)
+    // the 05152b6 shapes are gone: neither read goes through the lease, and the send-time value is never the entry value
+    expect(code).not.toMatch(/\bisClaimsEnabled\b/)
+    expect(code).not.toMatch(/const claimsOpenNow = (claimsOn|true|claimsSurfaceOpen\(\)|claimsIntakeOpen\(\))/)
+    expect(code).not.toMatch(/claimsOpenNow = claimNoticeGate\('(closure|post_money)'\)/)
   })
 
-  it('NEGATIVE CONTROL — `claimsOpen: true` and the entry value `claimsOpen: claimsOn` are both flagged; so is respond/route.ts with isClaimsEnabled() replaced by true', () => {
+  it('NEGATIVE CONTROL — `claimsOpen: true`, the entry value, the lease (05152b6), the surface and a file with no class are all flagged', () => {
     const synthetic = {
       'app/a/route.ts': 'await sendClaimDecisionEmail({ claimId, claimsOpen: true })',
-      'app/b/route.ts': 'const claimsOn = isClaimsEnabled()\nawait sendClaimAckEmail({ claimId, claimsOn, claimsOpen: claimsOn })',
+      'app/b/route.ts': 'const claimsOn = claimsSurfaceOpen()\nawait sendClaimAckEmail({ claimId, claimsOn, claimsOpen: claimsOn })',
+      'app/c/route.ts': 'await sendClaimClosureEmail({ claimId, claimsOpen: isClaimsEnabled() })',
+      'app/d/route.ts': 'await sendClaimClosureEmail({ claimId, claimsOpen: claimsSurfaceOpen() })',
+      'app/e/route.ts': "await sendClaimAckEmail({ claimId })",
+      'app/f/route.ts': "await sendClaimAckEmail({ claimId, claimsOpen: claimNoticeGate('pre_money') })",
     }
-    expect(senderCalls(synthetic).violations).toEqual([
-      'app/a/route.ts: sendClaimDecisionEmail without claimsOpen: isClaimsEnabled()',
-      'app/b/route.ts: sendClaimAckEmail without claimsOpen: isClaimsEnabled()',
+    const classes: Record<string, NoticeClass> = { 'app/a/route.ts': 'pre_money', 'app/b/route.ts': 'pre_money', 'app/c/route.ts': 'closure', 'app/d/route.ts': 'closure', 'app/e/route.ts': 'pre_money' }
+    expect(senderCalls(synthetic, classes).violations).toEqual([
+      "app/a/route.ts: sendClaimDecisionEmail without claimsOpen: claimNoticeGate('pre_money') (got \"true\")",
+      "app/b/route.ts: sendClaimAckEmail without claimsOpen: claimNoticeGate('pre_money') (got \"claimsOn\")",
+      "app/c/route.ts: sendClaimClosureEmail without claimsOpen: claimNoticeGate('closure') (got \"isClaimsEnabled()\")",
+      "app/d/route.ts: sendClaimClosureEmail without claimsOpen: claimNoticeGate('closure') (got \"claimsSurfaceOpen()\")",
+      "app/e/route.ts: sendClaimAckEmail without claimsOpen: claimNoticeGate('pre_money') (got no claimsOpen)",
+      'app/f/route.ts: sendClaimAckEmail in a file with no notice class (spec v2 §6.2)',
     ])
+  })
+
+  it('NEGATIVE CONTROL — the REAL routes broken: respond with the gate replaced by true, or by the lease; closure-notice and respond with the WRONG class', () => {
     const respond = 'app/api/claims/[id]/respond/route.ts'
-    const broken = { [respond]: read(respond).replace('claimsOpen:     isClaimsEnabled()', 'claimsOpen:     true') }
-    expect(senderCalls(broken).violations).toEqual([`${respond}: sendClaimDecisionEmail without claimsOpen: isClaimsEnabled()`])
+    const notice = 'app/api/admin/claims/[id]/closure-notice/route.ts'
+    const swap = (f: string, from: string, to: string) => {
+      const src = read(f)
+      expect(src, `${f} must contain ${from}`).toContain(from)
+      return src.replace(from, to)
+    }
+    expect(senderCalls({ [respond]: swap(respond, "claimsOpen:     claimNoticeGate('pre_money')", 'claimsOpen:     true') }).violations)
+      .toEqual([`${respond}: sendClaimDecisionEmail without claimsOpen: claimNoticeGate('pre_money') (got "true")`])
+    expect(senderCalls({ [respond]: swap(respond, "claimsOpen:     claimNoticeGate('pre_money')", 'claimsOpen:     isClaimsEnabled()') }).violations)
+      .toEqual([`${respond}: sendClaimDecisionEmail without claimsOpen: claimNoticeGate('pre_money') (got "isClaimsEnabled()")`])
+    expect(senderCalls({ [respond]: swap(respond, "claimNoticeGate('pre_money')", "claimNoticeGate('closure')") }).violations)
+      .toEqual([`${respond}: sendClaimDecisionEmail carries the wrong notice class 'closure' (this file sends 'pre_money')`])
+    expect(senderCalls({ [notice]: swap(notice, "claimNoticeGate('closure')", "claimNoticeGate('pre_money')") }).violations)
+      .toEqual([`${notice}: sendClaimClosureEmail carries the wrong notice class 'pre_money' (this file sends 'closure')`])
+    // the status route pin: the send-time read replaced by the entry value, or by the lease, no longer matches
+    const status = stripComments(read('app/api/orders/[id]/status/route.ts'))
+    for (const bad of ['const claimsOpenNow = claimsOn', 'const claimsOpenNow = isClaimsEnabled()']) {
+      const broken = status.replace("const claimsOpenNow = claimNoticeGate('pre_money')", bad)
+      expect(broken).not.toBe(status)
+      expect(broken.indexOf("const claimsOpenNow = claimNoticeGate('pre_money')")).toBe(-1)
+    }
   })
 })
