@@ -134,5 +134,17 @@ Commit `b5ff49c4d924c79cd3a3c2d629960a52e464c663` ; CI staging run 35760935576 =
 2. *Files D′ lues sans garde.* `GET /api/admin/claims` appelait les deux nouveaux lecteurs sans consulter la sonde : sur un process au client périmé, toute la route admin — y compris l'argent legacy — serait tombée en 500. Corrigé (garde + `schemaReady` dans les deux payloads), avec contrôle négatif.
 Plus 7 P2 actionnables corrigés : parité de contrôles D0 (`acceptedExits` n'offrait « payer » / « retirer » que les serveurs auraient refusés — `railWouldAttempt` / `withdrawWouldAccept` miroitent désormais les refus réels), `ratifyRefusal` porté par chaque ligne « À ratifier » (la console désactive exactement ce que le serveur déclinerait, avec son message), avertissement « au-dessus du reste » rendu bloquant quand un plafond a été lu, garde `ceiling.claimId === approveTarget.id` (un plafond d'une AUTRE réclamation ne peut plus valider un montant), formatage monétaire français (`5,00 €`), et le gate `refuse_final` ci-dessus.
 
+### L4 — déploiement staging vérifié (2026-09-23)
+Commit `fc5a9a0b4cddc7d76aa211ae451a303dfdbf5926`, poussé sur `develop`. CI « Deploy to Staging » run 35854888120 : job `test` **success**, job `deploy` **success**. `public/version.json` servi par staging = `fc5a9a0…` (build 11:36:25Z, ciRunId 35854888120) — le SHA déployé est EXACTEMENT celui de L4. Santé : `/fr/eat` 200, `/api/restaurants` 200 (lignes réelles).
+
+Recensement read-only `claims-census.yml` run 35858074959, HTTP 200, mesuré 2026-09-23T12:03:00Z :
+- `schema` = `{ready:true, clientReady:true, dbReady:true, missingClient:[], missingDb:[], why:null}` — la sonde reste verte après le déploiement L4 (aucun regen supplémentaire n'a été nécessaire, aucune migration n'a été exécutée).
+- `gates` = `{claimsEnabled:false, claimsGate:"CLOSED (flag_off)", claimsSurfaceEnabled:false, claimsIntakeEnabled:false, claimsSurfaceOpen:false, claimsIntakeOpen:false, refundsEnabled:false}` — toutes les portes fermées, les deux flags PRODUIT toujours OFF.
+- **Population réclamations INCHANGÉE** depuis le recensement L0 mesuré à `dab754d` : total 9, `{refunded:4, refused:3, refused_final:2}`, `active:0`, `nonTerminal:3`, `approvedUnpaid:0`, `closure.terminalWithoutRecord:4`, **tous les compteurs d'anomalie héritée à 0**. Aucune ligne n'a bougé.
+
+Sondes externes des trois routes d'écriture/lecture D′ (non authentifiées, surface fermée) : `POST /api/admin/claims/<id>/arbitrate` 403 `{"error":"Réclamations indisponibles","gated":true}` · `POST /api/admin/claims/<id>/withdraw-approval` 403 idem (la nouvelle route est bien déployée et refuse à la porte de surface, AVANT toute lecture) · `GET /api/admin/claims/<id>/ceiling` 403 idem · `POST /api/claims` 403 `{gated:true}` · `POST /api/admin/refunds/run` 403 `{"error":"Remboursements indisponibles","gated":true}`.
+
+**Aucune migration, aucun regen Prisma, aucun accès cPanel, aucun flag modifié, aucune opération Stripe, aucun e-mail envoyé pendant ce lot.**
+
 ## Lots suivants
 (complété lot par lot : SHA, preuves, CI, SHA déployé)
