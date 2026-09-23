@@ -40,7 +40,7 @@ vi.mock('@/lib/stripe', () => ({ getStripe: () => stripeMock }))
 import { attributeClaimRefund, adoptStripeRefundForClaim, resolveStuckClaim, recoverStrandedClaimReconciliations, arbitrateClaim, triggerClaimRefund, markClaimsForRevertedRefundRow, reverifySettledClaimRefunds } from '@/lib/claims'
 import { POST as RECONCILE } from '@/app/api/admin/claims/[id]/reconcile/route'
 import { POST as CLOSURE_NOTICE } from '@/app/api/admin/claims/[id]/closure-notice/route'
-import { MARKERS } from '@/lib/claim-action-rules'
+import { MARKERS, APPROVE_CONFIRM_WORD, APPROVE_CONFIRM_REQUIRED, approvePrematureText } from '@/lib/claim-action-rules'
 
 const CLASSES = ['A-S01', 'A-S01b', 'A-S02', 'A-S03', 'A-S06a', 'A-S07', 'A-S10b', 'A-S10c', 'A-S11', 'A-S14b', 'A-S19', 'A-S21', 'A-S22', 'A-S31b', 'A-S31d', 'A-S33-1', 'A-S42', 'A-S43']
 const OLD_MARKER = 'reconcile_required: tentative de remboursement démarrée à 2026-09-10T00:00:00.000Z (tentative 0) — identité pas encore liée.'
@@ -234,22 +234,29 @@ describe('J-M49 — the call graph of reconcileClaimEvidence reaches none of the
     // decision CAS stay part of the proof, but the engine is reached only by the direct triggerClaimRefund that follows (the
     // T1 C4 instant check and the REFUNDS lease live there).
     setWorld('A-S01', 'lock')
-    claimOf(w).refundError = `${MARKERS.PROOF_PAYABLE_V13} … Elle est payable au plus tôt le ${new Date(Date.now() + 3_600_000).toISOString()} (UTC).`
+    // D′ L4: the amount is not ratified yet, so it is the C4 INSTANT that refuses below — not S-29.
+    const future = new Date(Date.now() + 3_600_000).toISOString()
+    Object.assign(claimOf(w), { approvedAmountCents: null, refundError: `${MARKERS.PROOF_PAYABLE_V13} … Elle est payable au plus tôt le ${future} (UTC).` })
     // before its instant the same approval is refused (C4) and reaches nothing — and so does the direct rail step (T1 C4)
-    expect(await arbitrateClaim({ claimId: 'cl1', adminId: 'op1', decision: 'approve' })).toMatchObject({ ok: false, status: 409 })
+    expect(await arbitrateClaim({ claimId: 'cl1', adminId: 'op1', decision: 'approve', approvedAmountCents: 500, confirm: APPROVE_CONFIRM_WORD }))
+      .toMatchObject({ ok: false, status: 409, error: approvePrematureText(future) })
     expect(engine.executeRefund).not.toHaveBeenCalled()
     expect(await triggerClaimRefund('cl1')).toEqual({ state: 'already_handled' })
     expect(engine.executeRefund).not.toHaveBeenCalled()
     setWorld('A-S01', 'lock')
-    claimOf(w).refundError = `${MARKERS.PROOF_PAYABLE_V13} … Elle est payable au plus tôt le ${new Date(Date.now() - 60_000).toISOString()} (UTC).`
+    Object.assign(claimOf(w), { approvedAmountCents: null, refundError: `${MARKERS.PROOF_PAYABLE_V13} … Elle est payable au plus tôt le ${new Date(Date.now() - 60_000).toISOString()} (UTC).` })
     const leaseReadsBefore = engine.isRefundsEnabled.mock.calls.length // the direct rail step above read it once (T1), the decision never does
-    const r = await arbitrateClaim({ claimId: 'cl1', adminId: 'op1', decision: 'approve' })
+    // D′ L4 NEGATIVE CONTROL — the pre-L4 call shape ratified this claim; it now writes nothing at all.
+    expect(await arbitrateClaim({ claimId: 'cl1', adminId: 'op1', decision: 'approve' }))
+      .toMatchObject({ ok: false, status: 400, error: APPROVE_CONFIRM_REQUIRED })
+    expect(claimOf(w).approvedAmountCents ?? null).toBeNull()
+    const r = await arbitrateClaim({ claimId: 'cl1', adminId: 'op1', decision: 'approve', approvedAmountCents: 500, confirm: APPROVE_CONFIRM_WORD })
     expect(r.ok).toBe(true)
     // D′ L2 DIFFERENTIAL: the won decision (a ratification) reaches nothing, carries no refund field, starts no attempt
     expect(r).not.toHaveProperty('refund')
     expect(engine.executeRefund).not.toHaveBeenCalled()
     expect(engine.isRefundsEnabled).toHaveBeenCalledTimes(leaseReadsBefore)
-    expect(claimOf(w)).toMatchObject({ status: 'approved', refundAttempted: false, refundId: null })
+    expect(claimOf(w)).toMatchObject({ status: 'approved', approvedAmountCents: 500, refundAttempted: false, refundId: null })
     expect(String(claimOf(w).refundError).startsWith(MARKERS.PROOF_PAYABLE_V13)).toBe(true)
     // the ONE path: the direct rail step → T1 admits the v13 past its instant → T2 re-derives payable → the engine, once
     expect(await triggerClaimRefund('cl1')).toMatchObject({ state: 'refunded', refundId: 'rf_new' })

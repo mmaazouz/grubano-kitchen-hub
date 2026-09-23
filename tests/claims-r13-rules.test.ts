@@ -35,7 +35,7 @@ import {
 } from '@/lib/claim-action-rules'
 import {
   deriveNoRowOutcome, proofInstantFor, arbitrationRefusal, approveRevisableText, approvePermanentText, acceptedExits,
-  ATTEMPT_QUIESCENCE_MS, MARKERS,
+  ATTEMPT_QUIESCENCE_MS, MARKERS, APPROVE_ALREADY_SET,
   type ReapprovalFacts, type MoneyRow, type NoRowOutcome,
 } from '@/lib/claim-action-rules'
 
@@ -262,7 +262,13 @@ describe('J-M34 — reconcile a refunding claim: the marker after its grace (D5,
     A_S35(22)
     expect(await reconcileClaimEvidence({ claimId: 'cl1' })).toEqual({ ok: true, outcome: 'engine_row_dead', refundId: 'rf_n' })
     expect(blocked()).toEqual(['claim_blocked:cl1:engine_row_dead'])
-    expect(acceptedExits({ claim: claimOf(w) as never, boundRow: { id: 'rf_n', orderId: 'o1', status: 'pending', reason: 'claim:cl1' }, now: new Date() })).toEqual(['stuck_close'])
+    // D′ L4 (D1 v1.1): the amount is FIXED on this row, so the declared set also carries the audited reversal and the rail…
+    const bound = { id: 'rf_n', orderId: 'o1', status: 'pending', reason: 'claim:cl1' }
+    // D′ L4 control parity: engine_row_dead is a recorded money state — neither the rail nor the reversal
+    // accepts it, so « the declaration close is its only exit » (this test's own title) is now literally true.
+    expect(acceptedExits({ claim: claimOf(w) as never, boundRow: bound, now: new Date() })).toEqual(['stuck_close'])
+    // …and the declaration close is still the ONLY exit of the very same facts when no amount was ever ratified.
+    expect(acceptedExits({ claim: { ...claimOf(w), approvedAmountCents: null } as never, boundRow: bound, now: new Date() })).toEqual(['stuck_close'])
   })
 
   it('A-S30d — executeRefund rejects after T1: the claim stays on its token, attempt_crashed is alerted, the throw propagates; reconcile after the grace → the v13 proof, instant = marker + Q', async () => {
@@ -328,7 +334,9 @@ describe('J-M47 — the writer: AWAITING and LOCKED tails, the new instant after
     const v13 = String(claimOf(w).refundError)
     const instant = proofInstant(v13)!
     expect(instant.getTime()).toBeGreaterThan(firstWriteAt + ATTEMPT_QUIESCENCE_MS)
-    expect(arbitrationRefusal({ ...claimOf(w), arbitrationDecision: 'approved' } as never, 'approve', new Date(instant.getTime() - 1))?.error).toMatch(/^Approbation prématurée/)
+    // D′ L4 (S-29): with the amount fixed the re-approval is refused first; with none, the C4 instant still refuses.
+    expect(arbitrationRefusal({ ...claimOf(w), arbitrationDecision: 'approved' } as never, 'approve', new Date(instant.getTime() - 1))?.error).toBe(APPROVE_ALREADY_SET)
+    expect(arbitrationRefusal({ ...claimOf(w), arbitrationDecision: 'approved', approvedAmountCents: null } as never, 'approve', new Date(instant.getTime() - 1))?.error).toMatch(/^Approbation prématurée/)
     expect(await triggerClaimRefund('cl1')).toEqual({ state: 'already_handled' })
     expect(execMock).not.toHaveBeenCalled()
   })

@@ -83,17 +83,32 @@ const { adminMock } = vi.hoisted(() => ({ adminMock: vi.fn() }))
 vi.mock('@/lib/admin-guard', () => ({ resolveAdmin: adminMock }))
 const { execMock } = vi.hoisted(() => ({ execMock: vi.fn() }))
 vi.mock('@/lib/refund', () => ({ executeRefund: execMock, isRefundsEnabled: vi.fn(() => true) }))
+// D′ L4 (S-27): the arbitrate route's APPROVE branch answers 503 schema_not_ready when the D′ columns are
+// not usable. This file is about the E-MAIL WIRING, so the probe is stated READY and the one test that is
+// about readiness drives this same double to « not ready » itself — nothing here hides a real not-ready state.
+const { schemaMock } = vi.hoisted(() => ({ schemaMock: { fn: vi.fn() } }))
+vi.mock('@/lib/schema-ready', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/lib/schema-ready')>()
+  return { ...real, schemaReady: (...a: unknown[]) => schemaMock.fn(...a) }
+})
+const SCHEMA_READY = { ready: true, clientReady: true, dbReady: true, missingClient: [], missingDb: [], probedAt: '', why: null }
 
 import { POST as CREATE } from '@/app/api/claims/route'
 import { POST as RESPOND } from '@/app/api/claims/[id]/respond/route'
 import { POST as ARBITRATE } from '@/app/api/admin/claims/[id]/arbitrate/route'
 import { POST as CLOSURE_NOTICE } from '@/app/api/admin/claims/[id]/closure-notice/route'
 import { DECISION_TRIGGER } from '../lib/claim-emails'
+import { APPROVE_CONFIRM_WORD } from '@/lib/claim-action-rules'
 
 const CLAIM = {
   id: 'cl1', consumerId: 'c1', orderId: 'ord123abc', restaurantId: 'r1',
   requestedAmountCents: 1250, status: 'restaurant_review',
 }
+/** D′ L4 (T-07): the shape an approve must now carry — a validated amount and the typed confirmation. */
+const APPROVE_BODY = { decision: 'approve', approvedAmountCents: 1250, confirm: APPROVE_CONFIRM_WORD }
+/** The decided row the engine hands back: the amount the e-mail must name is RE-READ from it (D-11). */
+const DECIDED_AT = new Date('2026-09-23T10:00:00.000Z')
+const APPROVED_CLAIM = { ...CLAIM, status: 'approved', arbitrationDecision: 'approved', approvedAmountCents: 1250, arbitratedAt: DECIDED_AT }
 
 const jsonReq = (url: string, body: Record<string, unknown>) =>
   new NextRequest(url, { method: 'POST', body: JSON.stringify(body), headers: { 'content-type': 'application/json' } })
@@ -122,6 +137,7 @@ beforeEach(() => {
   sessionMock.mockResolvedValue({ user: { id: 'adm1', email: 'admin@grubano.com', role: 'admin' } })
   adminMock.mockResolvedValue({ id: 'adm1', email: 'admin@grubano.com', role: 'admin', name: 'Admin' })
   auditMock.mockResolvedValue(undefined)
+  schemaMock.fn.mockReset(); schemaMock.fn.mockResolvedValue(SCHEMA_READY)
   db.restaurant.findUnique.mockResolvedValue({ name: 'Gnocchi Bar' })
   ackMock.mockImplementation(byLease)
   decisionMock.mockImplementation(byLease)
@@ -229,34 +245,90 @@ describe('POST /api/claims/[id]/respond — décision du RESTAURANT', () => {
 })
 
 describe('POST /api/admin/claims/[id]/arbitrate — décision de GRUBANO (D′ L2 : approuver ≠ rembourser)', () => {
-  it("⭐ D′ L2 — approve → email 'approved' SANS montant, audit { decision:'approve', moneyMoved:false } appelé AVANT, pas de champ refund ; CONTRÔLE NÉGATIF : même le vieux shape { refund: refunded 1000 } (qui produisait 'refunded') est ignoré", async () => {
+  it("⭐ D′ L2/L4 — approve → email 'approved' avec le montant APPROUVÉ (jamais un montant remboursé), audit { decision:'approve', moneyMoved:false, approvedAmountCents } appelé AVANT, pas de champ refund ; CONTRÔLE NÉGATIF : même le vieux shape { refund: refunded 1000 } (qui produisait 'refunded') est ignoré", async () => {
     claims.arbitrateClaim.mockResolvedValue({
-      ok: true, claim: CLAIM, refund: { state: 'refunded', refundId: 'rf1', amountCents: 1000 }, // legacy dab754d shape — the route must not read it
+      ok: true, claim: APPROVED_CLAIM, refund: { state: 'refunded', refundId: 'rf1', amountCents: 1000 }, // legacy dab754d shape — the route must not read it
     })
-    const res = await ARBITRATE(jsonReq('http://x/api/admin/claims/cl1/arbitrate', { decision: 'approve' }), { params: { id: 'cl1' } })
+    const res = await ARBITRATE(jsonReq('http://x/api/admin/claims/cl1/arbitrate', APPROVE_BODY), { params: { id: 'cl1' } })
     expect(res.status).toBe(200)
     expect(auditMock).toHaveBeenCalledTimes(1)
-    expect(auditMock).toHaveBeenCalledWith(expect.objectContaining({ action: 'claim.arbitrate', targetId: 'cl1', metadata: { decision: 'approve', moneyMoved: false } }))
+    // D′ L4: the audit names WHAT was decided — the amount RE-READ from the row, and the motive of a reduction.
+    expect(auditMock).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'claim.arbitrate', targetId: 'cl1',
+      metadata: { decision: 'approve', moneyMoved: false, approvedAmountCents: 1250, reduceReason: null },
+    }))
     expect(auditMock.mock.invocationCallOrder[0]).toBeLessThan(decisionMock.mock.invocationCallOrder[0]) // l'audit AVANT l'email
     expect(decisionMock).toHaveBeenCalledTimes(1)
+    // D-11: approvedCents comes from the DECIDED row, refundedCents stays null (nothing was paid), and the
+    // notice is stamped with THIS decision's instant so a later re-decision is not deduped against it.
     expect(decisionMock).toHaveBeenCalledWith(expect.objectContaining({
-      claimId: 'cl1', consumerId: 'c1', orderId: 'ord123abc', decision: 'approved', refundedCents: null, claimsOpen: true,
+      claimId: 'cl1', consumerId: 'c1', orderId: 'ord123abc', decision: 'approved',
+      refundedCents: null, approvedCents: 1250, decisionStamp: DECIDED_AT, claimsOpen: true,
     }))
     expect(decisionMock.mock.calls[0][0].decision).not.toBe('refunded')
+    // NEGATIVE CONTROL — 1000 is the legacy refund shape's amount: it must appear NOWHERE in the notice.
+    expect(JSON.stringify(decisionMock.mock.calls[0][0])).not.toContain('1000')
     const body = await res.json() as Record<string, unknown>
-    expect(body).toEqual({ claim: CLAIM, customerEmail: { status: 'sent' } })
+    expect(body).toEqual({ claim: { ...APPROVED_CLAIM, arbitratedAt: DECIDED_AT.toISOString() }, customerEmail: { status: 'sent' } })
     expect(body).not.toHaveProperty('refund')
     expect(execMock).not.toHaveBeenCalled()
   })
 
-  it("approve sur le shape RÉEL de D′ (ok + claim, sans refund) → email 'approved', aucun montant promis", async () => {
-    claims.arbitrateClaim.mockResolvedValue({ ok: true, claim: { ...CLAIM, status: 'approved', arbitrationDecision: 'approved' } })
-    const res = await ARBITRATE(jsonReq('http://x/api/admin/claims/cl1/arbitrate', { decision: 'approve' }), { params: { id: 'cl1' } })
+  it("approve sur le shape RÉEL de D′ (ok + claim, sans refund) → email 'approved', le montant APPROUVÉ nommé, aucun montant remboursé promis", async () => {
+    claims.arbitrateClaim.mockResolvedValue({ ok: true, claim: APPROVED_CLAIM })
+    const res = await ARBITRATE(jsonReq('http://x/api/admin/claims/cl1/arbitrate', APPROVE_BODY), { params: { id: 'cl1' } })
     expect(res.status).toBe(200)
     expect(decisionMock).toHaveBeenCalledWith(expect.objectContaining({
-      decision: 'approved', refundedCents: null,
+      decision: 'approved', refundedCents: null, approvedCents: 1250,
     }))
     expect(await res.json()).not.toHaveProperty('refund')
+  })
+
+  it("D′ L4 — un approve RÉDUIT : le montant transmis au moteur et celui nommé dans l'avis sont le montant APPROUVÉ, jamais le montant DEMANDÉ ; le motif de réduction est audité", async () => {
+    claims.arbitrateClaim.mockResolvedValue({ ok: true, claim: { ...APPROVED_CLAIM, approvedAmountCents: 800 } })
+    await ARBITRATE(jsonReq('http://x/api/admin/claims/cl1/arbitrate', {
+      ...APPROVE_BODY, approvedAmountCents: 800, reduceReason: 'deux articles reçus sur trois',
+    }), { params: { id: 'cl1' } })
+    expect(claims.arbitrateClaim).toHaveBeenCalledWith(expect.objectContaining({
+      decision: 'approve', approvedAmountCents: 800, confirm: APPROVE_CONFIRM_WORD, reduceReason: 'deux articles reçus sur trois',
+    }))
+    expect(decisionMock).toHaveBeenCalledWith(expect.objectContaining({ approvedCents: 800 }))
+    // 1250 is the REQUESTED amount: it is never what the customer is told was approved.
+    expect(decisionMock.mock.calls[0][0].approvedCents).not.toBe(CLAIM.requestedAmountCents)
+    expect(auditMock).toHaveBeenCalledWith(expect.objectContaining({
+      metadata: { decision: 'approve', moneyMoved: false, approvedAmountCents: 800, reduceReason: 'deux articles reçus sur trois' },
+    }))
+  })
+
+  it('D′ L4 (S-27) — schéma D′ pas prêt → 503 schema_not_ready sur un approve : AUCUN arbitrage, AUCUN audit, AUCUN email ; CONTRÔLE NÉGATIF : un refus est gaté PAREIL (arbitrateClaim LIT la colonne), et passe dès que la sonde est prête', async () => {
+    schemaMock.fn.mockResolvedValue({ ready: false, clientReady: false, dbReady: null, missingClient: ['Claim.approvedAmountCents'], missingDb: [], probedAt: '', why: 'stale client' })
+    claims.arbitrateClaim.mockResolvedValue({ ok: true, claim: APPROVED_CLAIM })
+    const res = await ARBITRATE(jsonReq('http://x/api/admin/claims/cl1/arbitrate', APPROVE_BODY), { params: { id: 'cl1' } })
+    expect(res.status).toBe(503)
+    expect(await res.json()).toMatchObject({ reason: 'schema_not_ready', schemaReady: false })
+    expect(claims.arbitrateClaim).not.toHaveBeenCalled()
+    expect(auditMock).not.toHaveBeenCalled()
+    expect(decisionMock).not.toHaveBeenCalled()
+    // A REFUSAL IS NOT EXEMPT (corrected by the D′ L4 adversarial review). It writes none of the new
+    // columns, but arbitrateClaim READS them: its single findUnique selects approvedAmountCents before
+    // either branch, and a client that does not know the column rejects that query. Gating only the
+    // approval would have left a refusal to crash with a 500 instead of answering « not right now ».
+    claims.arbitrateClaim.mockResolvedValue({ ok: true, claim: { ...CLAIM, status: 'refused_final', arbitrationDecision: 'refused_final', restaurantResponse: null } })
+    const refusedWhileNotReady = await ARBITRATE(jsonReq('http://x/api/admin/claims/cl1/arbitrate', { decision: 'refuse_final', reason: 'hors périmètre' }), { params: { id: 'cl1' } })
+    expect(refusedWhileNotReady.status).toBe(503)
+    expect(await refusedWhileNotReady.json()).toMatchObject({ reason: 'schema_not_ready' })
+    expect(claims.arbitrateClaim).not.toHaveBeenCalled()
+    expect(decisionMock).not.toHaveBeenCalled()
+    // NEGATIVE CONTROL (a) — the SAME refusal on a ready probe goes through and notifies.
+    schemaMock.fn.mockResolvedValue(SCHEMA_READY)
+    expect((await ARBITRATE(jsonReq('http://x/api/admin/claims/cl1/arbitrate', { decision: 'refuse_final', reason: 'hors périmètre' }), { params: { id: 'cl1' } })).status).toBe(200)
+    expect(decisionMock).toHaveBeenCalledTimes(1)
+    decisionMock.mockClear(); claims.arbitrateClaim.mockClear()
+    schemaMock.fn.mockResolvedValue({ ready: false, clientReady: false, dbReady: null, missingClient: ['Claim.approvedAmountCents'], missingDb: [], probedAt: '', why: 'stale client' })
+    // NEGATIVE CONTROL (b) — the SAME approve on a ready probe goes through: the 503 is the probe, not the fixture.
+    schemaMock.fn.mockResolvedValue(SCHEMA_READY)
+    claims.arbitrateClaim.mockResolvedValue({ ok: true, claim: APPROVED_CLAIM })
+    expect((await ARBITRATE(jsonReq('http://x/api/admin/claims/cl1/arbitrate', APPROVE_BODY), { params: { id: 'cl1' } })).status).toBe(200)
   })
 
   it("refuse_final sans refus du restaurant au dossier → email 'refused_by_grubano' (ROUND 13, H03: « Refus confirmé » exige le refus du restaurant) avec le motif admin", async () => {
@@ -269,7 +341,7 @@ describe('POST /api/admin/claims/[id]/arbitrate — décision de GRUBANO (D′ L
 
   it('échec d’arbitrage (409) → AUCUN email, AUCUN audit', async () => {
     claims.arbitrateClaim.mockResolvedValue({ ok: false, status: 409, error: 'Déjà traitée.' })
-    const res = await ARBITRATE(jsonReq('http://x/api/admin/claims/cl1/arbitrate', { decision: 'approve' }), { params: { id: 'cl1' } })
+    const res = await ARBITRATE(jsonReq('http://x/api/admin/claims/cl1/arbitrate', APPROVE_BODY), { params: { id: 'cl1' } })
     expect(res.status).toBe(409)
     expect(decisionMock).not.toHaveBeenCalled()
     expect(auditMock).not.toHaveBeenCalled()
@@ -280,7 +352,9 @@ describe('POST /api/admin/claims/[id]/arbitrate — décision de GRUBANO (D′ L
 describe('J-C22 (D′ L2) — arbitrate decision e-mail: refusal kind by provenance; every approve is \'approved\' with no amount, never \'refunded\'', () => {
   const arbitrate = async (decision: string, result: Record<string, unknown>, reason?: string) => {
     claims.arbitrateClaim.mockResolvedValue({ ok: true, ...result })
-    const res = await ARBITRATE(jsonReq('http://x/api/admin/claims/cl1/arbitrate', { decision, ...(reason ? { reason } : {}) }), { params: { id: 'cl1' } })
+    // D′ L4 (T-07): an approve carries its validated amount and the typed confirmation word.
+    const body = { decision, ...(reason ? { reason } : {}), ...(decision === 'approve' ? APPROVE_BODY : {}) }
+    const res = await ARBITRATE(jsonReq('http://x/api/admin/claims/cl1/arbitrate', body), { params: { id: 'cl1' } })
     return { status: res.status, body: await res.json() as Record<string, unknown>, arg: decisionMock.mock.calls.at(-1)?.[0] as Record<string, unknown> }
   }
   const refusedClaim = (restaurantResponse: string | null) => ({ ...CLAIM, status: 'refused_final', arbitrationDecision: 'refused_final', restaurantResponse })
@@ -320,7 +394,7 @@ describe('J-C22 (D′ L2) — arbitrate decision e-mail: refusal kind by provena
 
   it('(f) the lease open at the gate, closed at send (D′ L1: closed inside the CAS) → claimsOpen false passed; the response carries customerEmail.why claims_disabled', async () => {
     closingDuring(claims.arbitrateClaim, { ok: true, claim: CLAIM, refund: { state: 'pending', reason: 'refunds_disabled' } })
-    const res = await ARBITRATE(jsonReq('http://x/api/admin/claims/cl1/arbitrate', { decision: 'approve' }), { params: { id: 'cl1' } })
+    const res = await ARBITRATE(jsonReq('http://x/api/admin/claims/cl1/arbitrate', APPROVE_BODY), { params: { id: 'cl1' } })
     expect(res.status).toBe(200) // the entry gate was open: the decision was played
     expect(claims.arbitrateClaim).toHaveBeenCalledTimes(1)
     expect(decisionMock.mock.calls.at(-1)?.[0]).toMatchObject({ decision: 'approved', claimsOpen: false })
@@ -331,14 +405,14 @@ describe('J-C22 (D′ L2) — arbitrate decision e-mail: refusal kind by provena
     closeClaimsWindow()
     process.env.CLAIMS_SURFACE_ENABLED = 'true'; process.env.CLAIMS_INTAKE_ENABLED = 'true'
     claims.arbitrateClaim.mockImplementation(async () => { process.env.CLAIMS_SURFACE_ENABLED = 'false'; return { ok: true, claim: CLAIM } })
-    let res = await ARBITRATE(jsonReq('http://x/api/admin/claims/cl1/arbitrate', { decision: 'approve' }), { params: { id: 'cl1' } })
+    let res = await ARBITRATE(jsonReq('http://x/api/admin/claims/cl1/arbitrate', APPROVE_BODY), { params: { id: 'cl1' } })
     expect(res.status).toBe(200)
     expect(decisionMock.mock.calls.at(-1)?.[0]).toMatchObject({ claimsOpen: false })
     expect((await res.json() as Record<string, unknown>).customerEmail).toEqual({ status: 'skipped', why: 'claims_disabled' })
     // NEGATIVE CONTROL — surface stays true, only the intake closes: sent.
     process.env.CLAIMS_SURFACE_ENABLED = 'true'
     claims.arbitrateClaim.mockImplementation(async () => { process.env.CLAIMS_INTAKE_ENABLED = 'false'; return { ok: true, claim: CLAIM } })
-    res = await ARBITRATE(jsonReq('http://x/api/admin/claims/cl1/arbitrate', { decision: 'approve' }), { params: { id: 'cl1' } })
+    res = await ARBITRATE(jsonReq('http://x/api/admin/claims/cl1/arbitrate', APPROVE_BODY), { params: { id: 'cl1' } })
     expect(decisionMock.mock.calls.at(-1)?.[0]).toMatchObject({ claimsOpen: true })
     expect((await res.json() as Record<string, unknown>).customerEmail).toEqual({ status: 'sent' })
   })
@@ -439,7 +513,7 @@ describe('J-C47 — a non-terminal e-mail skipped as claims_disabled when the le
     claims.respondToClaim.mockResolvedValue({ ok: true, claim: { ...CLAIM, status: 'refused' } })
     expect((await RESPOND(jsonReq('http://x/api/claims/cl1/respond', { action: 'refuse' }), { params: { id: 'cl1' } })).status).toBe(403)
     claims.arbitrateClaim.mockResolvedValue({ ok: true, claim: CLAIM })
-    expect((await ARBITRATE(jsonReq('http://x/api/admin/claims/cl1/arbitrate', { decision: 'approve' }), { params: { id: 'cl1' } })).status).toBe(403)
+    expect((await ARBITRATE(jsonReq('http://x/api/admin/claims/cl1/arbitrate', APPROVE_BODY), { params: { id: 'cl1' } })).status).toBe(403)
     expect(decisionMock).not.toHaveBeenCalled()
     expect(mail.sendTransactional).not.toHaveBeenCalled()
   })

@@ -18,6 +18,9 @@
 
 import { ownersOf, stampedClaimId } from '@/lib/claim-attribution-rules'
 
+// D′ L4: French copy formats money the French way — the repo's one formatter, never toFixed.
+import { formatAmount } from '@/lib/format-money'
+
 export const MARKERS = {
   FINANCIAL_VERIFICATION: 'financial_verification',
   RECONCILE_REQUIRED:     'reconcile_required',
@@ -242,6 +245,21 @@ export const REFUSE_APPROVED_AM_B3 =
 export const APPROVE_ALREADY_SET =
   'Cette réclamation est déjà approuvée et son montant est fixé — elle ne se ré-approuve pas : elle relève du rail financier (« Payer les approuvées », session admin, remboursements ouverts) ; pour changer la décision, retirez l’approbation (« Retirer l’approbation ») puis décidez à nouveau.'
 
+// ── D′ L4 (spec v2 T-07) — the approval CONTRACT: an amount, a confirmation, a motive if reduced ──
+/** The admin types this word to confirm an approval. An approval is never a side effect of a click. */
+export const APPROVE_CONFIRM_WORD = 'APPROUVER'
+/** Minimum length of the motive required when the approved amount is BELOW the requested one. */
+export const REDUCE_REASON_MIN = 10
+export const APPROVE_CONFIRM_REQUIRED =
+  'Confirmation manquante : saisissez « APPROUVER » pour valider cette décision. Rien n’a été écrit.'
+export const APPROVE_AMOUNT_REQUIRED =
+  'Montant approuvé manquant ou invalide : indiquez un montant en centimes, entier et strictement positif. Rien n’a été écrit.'
+export const APPROVE_REDUCE_REASON_REQUIRED =
+  'Montant approuvé inférieur au montant demandé : un motif de réduction d’au moins 10 caractères est obligatoire. Rien n’a été écrit.'
+/** The server bound is the REQUESTED amount (S-10) — never the Stripe ceiling, which is only displayed. */
+export const approveAmountAboveRequestedText = (requestedCents: number): string =>
+  `Montant approuvé supérieur au montant demandé (${formatAmount(requestedCents / 100, 'fr')} €) : Grubano n’approuve jamais plus que ce que le client a demandé. Rien n’a été écrit.`
+
 /**
  * `arbitrateClaim`'s pre-checks — same checks, same order, same messages. The arbitration queue
  * emits both verdicts so the console disables exactly the decisions this refuses.
@@ -305,6 +323,32 @@ export function arbitrationRefusal(c: ClaimFacts, decision: 'approve' | 'refuse_
 // 'pay' = the financial rail (gated RE ∧ SURFACE, D′ L5); 'withdraw' = the audited reversal (D′ L4). 'approve' stays
 // the decision exit of arbitration / silence-expired claims only.
 export type Exit = 'approve' | 'ratify' | 'refuse_final' | 'withdraw' | 'pay' | 'reconcile' | 'attribute' | 'adopt' | 'stuck_close'
+
+// ── D′ L4 (spec v2 §4) — the WITHDRAW contract, in one place the route and the console share ──
+/** The admin types this word to confirm a withdrawal. */
+export const WITHDRAW_CONFIRM_WORD = 'RETIRER'
+/** Minimum length of the motive recorded in the audit row. */
+export const WITHDRAW_REASON_MIN = 10
+export const WITHDRAW_CONFIRM_REQUIRED =
+  'Confirmation manquante : saisissez « RETIRER » pour retirer cette approbation. Rien n’a été écrit.'
+export const WITHDRAW_REASON_REQUIRED =
+  'Motif de retrait manquant : au moins 10 caractères, ils sont conservés dans la trace d’audit. Rien n’a été écrit.'
+/** S-30: no audit row, no withdrawal — the reversal of a money decision is never untraced. */
+export const WITHDRAW_AUDIT_DISABLED =
+  'Retrait impossible : la trace d’audit administrateur est désactivée (ADMIN_AUDIT_ENABLED). Un retrait d’approbation ne se fait jamais sans trace. Rien n’a été écrit.'
+export const WITHDRAW_NOT_APPROVED =
+  'Retrait impossible : cette réclamation n’est pas une approbation en attente de paiement. Rien n’a été écrit.'
+/** A recorded money state (a real attempt, a hold) is past the financial frontier — reconcile instead. */
+export const WITHDRAW_MONEY_RECORDED =
+  'Retrait impossible : un état argent est enregistré sur cette réclamation — réconciliez-la d’abord (« Réconcilier d’après la preuve »). Rien n’a été écrit.'
+/** §4 precondition 2: a Refund row carrying this claim's stamp means a payment was attempted for real. */
+export const WITHDRAW_ROW_STAMPED =
+  'Retrait impossible : une ligne de remboursement porte déjà l’identité de cette réclamation. La frontière financière est franchie ; réconciliez-la. Rien n’a été écrit.'
+/** §4 precondition 2 read failure: not knowing is not permission. */
+export const WITHDRAW_ROW_UNREADABLE =
+  'Retrait impossible : les lignes de remboursement de cette commande n’ont pas pu être lues, donc l’absence de paiement n’est pas établie. Réessayez. Rien n’a été écrit.'
+export const WITHDRAW_LOST_RACE =
+  'Retrait impossible : l’état de la réclamation a changé pendant l’opération (un paiement a pu démarrer). Rien n’a été écrit.'
 const EXIT_ORDER: readonly Exit[] = ['approve', 'ratify', 'refuse_final', 'withdraw', 'pay', 'reconcile', 'attribute', 'adopt', 'stuck_close']
 
 export type RegistryId =
@@ -348,6 +392,34 @@ const factsOf = (input: ExitInput): ClaimFacts => ({
  * but only when that instant can be READ: an unreadable instant refuses approval until reconcile re-derives
  * it (C4/D3), so it is not a revisable approval (D1 row 2).
  */
+/**
+ * Would the financial rail's T1 actually attempt this claim? (lib/claims triggerClaimRefund, §8.3.)
+ * T1 refuses — `already_handled`, no write — a taken attempt, a bound row, or ANY recorded state that is
+ * not a v13 proof past its quiescence instant. This mirrors those refusals so the console never offers
+ * « Payer » on a claim the rail would decline.
+ */
+function railWouldAttempt(c: ClaimFacts, now: Date): boolean {
+  if (c.status !== 'approved' || c.refundAttempted === true || c.refundId != null) return false
+  if (c.refundError == null) return true
+  if (!isCanonicalV13(c)) return false
+  const instant = proofInstant(c.refundError)
+  return instant !== null && now.getTime() >= instant.getTime()
+}
+
+/**
+ * Would withdraw-approval accept this claim? (spec v2 §4 precondition 1.) A recorded money state blocks it,
+ * EXCEPT the two texts written by paths that reached no engine and own no row — those stay reversible.
+ * The stamped-row check (§4 precondition 2) is a DB read the exit table cannot make: this is the necessary
+ * condition, the route re-reads the rest before writing.
+ */
+function withdrawWouldAccept(c: ClaimFacts): boolean {
+  if (c.status !== 'approved' || c.arbitrationDecision !== 'approved') return false
+  if (c.refundAttempted === true || c.refundId != null) return false
+  return c.refundError == null
+    || starts(c.refundError, MARKERS.PROOF_PAYABLE_V13)
+    || starts(c.refundError, MARKERS.RAIL_LOCKED)
+}
+
 export function acceptedExits(input: ExitInput): Exit[] {
   const c = factsOf(input)
   const out = new Set<Exit>()
@@ -355,7 +427,15 @@ export function acceptedExits(input: ExitInput): Exit[] {
   if (c.status === 'approved') {
     // D1 v1.1: an approved claim is never re-approved as a money path. Amount fixed → the rail pays / withdraw
     // reverses; amount still null → a ratification (decision only). The v13 pre-instant shape keeps its D3 row.
-    if (c.approvedAmountCents != null) { out.add('pay'); out.add('withdraw') }
+    // D′ L4 control-parity fix (D0, J-M28): BEFORE this lot the branch was unreachable — nothing wrote
+    // approvedAmountCents — so offering both exits unconditionally cost nothing. L4 made it live, and the
+    // two exits do NOT share a precondition: the rail (T1) refuses ANY recorded money state, while a
+    // withdrawal accepts the two proof texts written by paths that reached no engine. Offering a control
+    // the server would refuse is exactly the Class-3 divergence this module exists to prevent.
+    if (c.approvedAmountCents != null) {
+      if (railWouldAttempt(c, input.now)) out.add('pay')
+      if (withdrawWouldAccept(c)) out.add('withdraw')
+    }
     else if (arbitrationRefusal(c, 'approve', input.now) === null || v13BeforeInstant) out.add('ratify')
   } else if (arbitrationRefusal(c, 'approve', input.now) === null) out.add('approve')
   if (arbitrationRefusal(c, 'refuse_final', input.now) === null) out.add('refuse_final')

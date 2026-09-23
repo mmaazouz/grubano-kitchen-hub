@@ -68,12 +68,36 @@ describe('J-M18 — the attempt token M and T1 (C2, D2 (3))', () => {
     for (const pre of [null, v13(new Date(Date.now() - 1000))]) {
       setWorld(payableWorld({ refundError: pre }))
       await triggerClaimRefund('cl1')
-      expect(w.writes[0].where, String(pre)).toEqual({ id: 'cl1', status: 'approved', refundAttempted: false, refundId: null, refundError: pre })
+      // D′ L4 (S-11): the attempt CAS also pins the DECISION and the RATIFIED amount it read.
+      expect(w.writes[0].where, String(pre)).toEqual({ id: 'cl1', status: 'approved', refundAttempted: false, refundId: null, refundError: pre, arbitrationDecision: 'approved', approvedAmountCents: 500 })
       expect(w.writes[0].data).toMatchObject({ status: 'refunding', refundAttempted: true })
       expect(M()).toMatch(new RegExp(`^${RECONCILE_REQUIRED}: tentative de remboursement démarrée à \\d{4}-\\d{2}-\\d{2}T[\\d:.]+Z \\(tentative [0-9a-f-]{36}\\) `))
       expect(execMock).toHaveBeenCalledTimes(1)
       execMock.mockClear()
     }
+  })
+
+  // D′ L4 (§8.3, S-27) NEGATIVE CONTROL — before L4 the rail paid `requestedAmountCents`, so every
+  // shape below was PAID. The amount is now the RATIFIED one: without a usable one the rail refuses
+  // BEFORE its attempt CAS, with zero writes — and the very same world pays once an amount is fixed.
+  it('D′ L4 — an unratified amount → amount_not_ratified, 0 writes, 0 engine (and the same world pays when it is ratified)', async () => {
+    for (const claim of [
+      { arbitrationDecision: 'approved', approvedAmountCents: null },
+      { arbitrationDecision: null, approvedAmountCents: 500 },
+      { arbitrationDecision: 'approved', approvedAmountCents: 0 },
+      { arbitrationDecision: 'approved', approvedAmountCents: -500 },
+      { arbitrationDecision: 'approved', approvedAmountCents: 12.5 },
+      { arbitrationDecision: 'approved', approvedAmountCents: 501 },
+    ]) {
+      setWorld(payableWorld({ requestedAmountCents: 500, ...claim }))
+      expect(await triggerClaimRefund('cl1'), JSON.stringify(claim)).toEqual({ state: 'failed', error: 'amount_not_ratified' })
+      expect(w.writes, JSON.stringify(claim)).toHaveLength(0)
+      expect(execMock, JSON.stringify(claim)).not.toHaveBeenCalled()
+      expect(claimOf(w), JSON.stringify(claim)).toMatchObject({ status: 'approved', refundAttempted: false })
+    }
+    setWorld(payableWorld({ requestedAmountCents: 500, approvedAmountCents: 400 }))
+    expect(await triggerClaimRefund('cl1')).toMatchObject({ state: 'refunded' })
+    expect(execMock).toHaveBeenCalledWith({ orderId: 'o1', amountCents: 400, reason: 'claim:cl1' })
   })
 
   it('J-M47 / J-M21 — every other pre-image → already_handled, 0 writes, the engine never called (every lock prefix, before or without an instant)', async () => {
@@ -317,7 +341,8 @@ describe('J-M19 — T2: every branch writes by CAS on M and never calls the engi
   })
 
   it('(c) G5/G8 IMPLEMENTATION NOTE (W2) — H5 captured only where the engine would insert its row: a fully captured charge with requested > refundable is the E5 lock, never an H5 hold', async () => {
-    setWorld(payableWorld({ requestedAmountCents: 2500 }))
+    // D′ L4: what the rail weighs is the RATIFIED amount — here the full 2500 c the admin approved.
+    setWorld(payableWorld({ requestedAmountCents: 2500, approvedAmountCents: 2500 }))
     const r = await triggerClaimRefund('cl1')
     expect(r).toEqual({ state: 'failed', error: 'proof_stale' })
     const text = String(claimOf(w).refundError)
@@ -472,7 +497,7 @@ describe('J-M19 — T2: every branch writes by CAS on M and never calls the engi
     expect(execMock).toHaveBeenCalledTimes(1)
     expect(execMock).toHaveBeenCalledWith({ orderId: 'o1', amountCents: 500, reason: 'claim:cl1' })
     expect(w.writes.map((x) => x.where)).toEqual([
-      { id: 'cl1', status: 'approved', refundAttempted: false, refundId: null, refundError: null },
+      { id: 'cl1', status: 'approved', refundAttempted: false, refundId: null, refundError: null, arbitrationDecision: 'approved', approvedAmountCents: 500 },
       { id: 'cl1', status: 'refunding', refundError: M() },
     ])
   })

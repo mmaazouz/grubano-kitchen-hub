@@ -37,6 +37,7 @@ const world = (claim: Record<string, unknown>) => {
   return w
 }
 
+import { APPROVE_CONFIRM_WORD, APPROVE_CONFIRM_REQUIRED } from '@/lib/claim-action-rules'
 import {
   autoResolveSmallClaim, contestClaim, arbitrateClaim, isConsumerAbuseFlagged,
   consumerClaimStats, restaurantRefusalStats, triggerClaimRefund,
@@ -110,7 +111,8 @@ describe('(a) auto-resolution of small claims — INERT BY CONSTRUCTION even und
     const r = await autoResolveSmallClaim({ id: 'cl1', consumerId: 'c1', requestedAmountCents: 500, status: 'restaurant_review' })
     expectInert(r)
     // what the pre-D′ autoResolveSmallClaim did: a machine approval, then the engine
-    Object.assign(claimOf(w), { status: 'approved', decidedBy: 'auto_small', decidedAt: new Date() })
+    // D′ L4: the rail only pays a RATIFIED decision, so the hand-written machine approval carries one.
+    Object.assign(claimOf(w), { status: 'approved', arbitrationDecision: 'approved', approvedAmountCents: 500, decidedBy: 'auto_small', decidedAt: new Date() })
     const t = await triggerClaimRefund('cl1')
     expect(t).toMatchObject({ state: 'refunded', refundId: 'rf1' })
     expect(execMock).toHaveBeenCalledTimes(1)
@@ -256,21 +258,33 @@ describe('(b) contest a refusal', () => {
 
 describe('(c) admin arbitration — approve is a DECISION only (D′ L2 S-02/T-07)', () => {
   it('approve → CAS to approved + NO refund (0 engine, 0 lease read, no refund field): APPROVED_AWAITING_PAYMENT', async () => {
-    const w = world({ status: 'arbitration', arbitrationDecision: null })
-    const r = await arbitrateClaim({ claimId: 'cl1', adminId: 'admin1', decision: 'approve' })
+    // D′ L4 (T-07): the decision names the amount it approves, confirmed by hand.
+    const w = world({ status: 'arbitration', arbitrationDecision: null, approvedAmountCents: null })
+    const r = await arbitrateClaim({ claimId: 'cl1', adminId: 'admin1', decision: 'approve', approvedAmountCents: 500, confirm: APPROVE_CONFIRM_WORD })
     expect(r.ok).toBe(true)
     expect(r).not.toHaveProperty('refund')
     expect(execMock).not.toHaveBeenCalled()
     expect(refundsFlag).not.toHaveBeenCalled()
     const approved = db.claim.updateMany.mock.calls.find((c) => c[0]?.data?.arbitrationDecision === 'approved')
-    expect(approved?.[0].data).toMatchObject({ status: 'approved', arbitratedBy: 'admin1', decidedBy: 'admin' })
+    expect(approved?.[0].data).toMatchObject({ status: 'approved', approvedAmountCents: 500, arbitratedBy: 'admin1', decidedBy: 'admin' })
+    expect(approved?.[0].where).toMatchObject({ approvedAmountCents: null })  // S-29: never a rewrite
     expect(db.claim.updateMany).toHaveBeenCalledTimes(1)   // the decision CAS and nothing else (no T1 token)
-    expect(claimOf(w)).toMatchObject({ status: 'approved', arbitrationDecision: 'approved', refundAttempted: false, refundId: null, refundError: null })
+    expect(claimOf(w)).toMatchObject({ status: 'approved', arbitrationDecision: 'approved', approvedAmountCents: 500, refundAttempted: false, refundId: null, refundError: null })
+  })
+
+  // D′ L4 NEGATIVE CONTROL — the pre-L4 shape (decision alone) used to write this very CAS; it now writes nothing.
+  it('D′ L4 — the same approve WITHOUT its confirmation writes nothing at all (400)', async () => {
+    const w = world({ status: 'arbitration', arbitrationDecision: null, approvedAmountCents: null })
+    expect(await arbitrateClaim({ claimId: 'cl1', adminId: 'admin1', decision: 'approve' }))
+      .toMatchObject({ ok: false, status: 400, error: APPROVE_CONFIRM_REQUIRED })
+    expect(db.claim.updateMany).not.toHaveBeenCalled()
+    expect(execMock).not.toHaveBeenCalled()
+    expect(claimOf(w)).toMatchObject({ status: 'arbitration', arbitrationDecision: null, approvedAmountCents: null })
   })
 
   it('NEGATIVE CONTROL — after that approve, the rail run by hand (triggerClaimRefund) DOES reach the engine once: the approve stopped short of it, the world did not', async () => {
-    const w = world({ status: 'arbitration', arbitrationDecision: null })
-    const r = await arbitrateClaim({ claimId: 'cl1', adminId: 'admin1', decision: 'approve' })
+    const w = world({ status: 'arbitration', arbitrationDecision: null, approvedAmountCents: null })
+    const r = await arbitrateClaim({ claimId: 'cl1', adminId: 'admin1', decision: 'approve', approvedAmountCents: 500, confirm: APPROVE_CONFIRM_WORD })
     expect(r.ok).toBe(true)
     expect(execMock).not.toHaveBeenCalled()
     const t = await triggerClaimRefund('cl1')
@@ -296,9 +310,9 @@ describe('(c) admin arbitration — approve is a DECISION only (D′ L2 S-02/T-0
   })
 
   it('re-arbitrate (lost the atomic guard) → 409, no double refund', async () => {
-    db.claim.findUnique.mockResolvedValue({ id: 'cl1', status: 'arbitration', orderId: 'o1', requestedAmountCents: 500 })
+    db.claim.findUnique.mockResolvedValue({ id: 'cl1', status: 'arbitration', orderId: 'o1', requestedAmountCents: 500, approvedAmountCents: null })
     fx.updateManyCount = 0
-    expect(await arbitrateClaim({ claimId: 'cl1', adminId: 'a', decision: 'approve' })).toMatchObject({ ok: false, status: 409 })
+    expect(await arbitrateClaim({ claimId: 'cl1', adminId: 'a', decision: 'approve', approvedAmountCents: 500, confirm: APPROVE_CONFIRM_WORD })).toMatchObject({ ok: false, status: 409 })
     expect(execMock).not.toHaveBeenCalled()
   })
 })

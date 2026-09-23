@@ -37,7 +37,7 @@ vi.mock('@/lib/onboarding-nudge', () => ({
 
 import {
   sendClaimAckEmail, sendClaimDecisionEmail, sendClaimClosureEmail, sendOrderCancelledPaidEmail, sendOrderCancelledPaidOffEmail,
-  DECISION_TRIGGER, type ClaimDecisionKind,
+  DECISION_TRIGGER, decisionDedupeKey, type ClaimDecisionKind,
 } from '@/lib/claim-emails'
 
 beforeEach(() => {
@@ -187,6 +187,54 @@ describe('sendClaimDecisionEmail — un trigger DÉDIÉ par décision, dedupeKey
     expect(call.html).toContain('approved.body')
   })
 
+  it("⭐ D′ L4 (D-11) — 'approved' NOMME le montant APPROUVÉ (approvedCents), jamais refundedCents ; la clé de dédup porte l'instant de CETTE décision", async () => {
+    const stamp = new Date('2026-09-23T10:00:00.000Z')
+    // refundedCents est délibérément un AUTRE montant : si le sender le lisait, l'avis annoncerait 5,00 €.
+    await sendClaimDecisionEmail({ ...base, decision: 'approved', approvedCents: 1250, refundedCents: 500, decisionStamp: stamp })
+    const call = sendMock.mock.calls[0][0]
+    expect(call.html).toContain('12,50')
+    expect(call.html).not.toContain('5,00')
+    expect(call.dedupeKey).toBe(`claim:cl1:approved:${stamp.toISOString()}`)
+    // CONTRÔLE NÉGATIF — deux approbations successives avec des instants DIFFÉRENTS ⇒ deux clés distinctes,
+    // donc deux avis. Sous l'ancienne clé par réclamation elles auraient collisionné et le client aurait
+    // lu le mauvais montant : la preuve est que la clé ci-dessous n'est PAS `claim:cl1`.
+    const later = new Date('2026-09-23T11:00:00.000Z')
+    sendMock.mockClear()
+    await sendClaimDecisionEmail({ ...base, decision: 'approved', approvedCents: 800, decisionStamp: later })
+    expect(sendMock.mock.calls[0][0].dedupeKey).toBe(`claim:cl1:approved:${later.toISOString()}`)
+    expect(sendMock.mock.calls[0][0].dedupeKey).not.toBe('claim:cl1')
+    expect(sendMock.mock.calls[0][0].html).toContain('8,00')
+  })
+
+  it("⭐ D′ L4 (T-09) — 'approval_withdrawn' : trigger claim_approval_withdrawn, gabarit withdrawn.*, AUCUN montant, clé estampillée de la décision retirée", async () => {
+    const stamp = new Date('2026-09-23T10:00:00.000Z')
+    await sendClaimDecisionEmail({ ...base, decision: 'approval_withdrawn', decisionStamp: stamp })
+    const call = sendMock.mock.calls[0][0]
+    expect(call.trigger).toBe('claim_approval_withdrawn')
+    expect(call.subject).toContain('withdrawn.subject')
+    expect(call.html).toContain('withdrawn.title')
+    expect(call.html).toContain('withdrawn.body')
+    // un retrait ne parle d'aucun remboursement émis : ni le gabarit 'approved' ni 'refunded'
+    expect(call.html).not.toContain('approved.body')
+    expect(call.html).not.toContain('refunded.body')
+    expect(call.dedupeKey).toBe(`claim:cl1:withdrawn:${stamp.toISOString()}`)
+  })
+
+  it("D′ L4 (§6.4) — decisionDedupeKey : par DÉCISION pour approved / approval_withdrawn, par RÉCLAMATION pour tout le reste ; sans instant, repli sur la clé historique", () => {
+    const iso = '2026-09-23T10:00:00.000Z'
+    expect(decisionDedupeKey('cl1', 'approved', new Date(iso))).toBe(`claim:cl1:approved:${iso}`)
+    expect(decisionDedupeKey('cl1', 'approval_withdrawn', iso)).toBe(`claim:cl1:withdrawn:${iso}`)
+    // pas d'instant ⇒ un avis de trop peu plutôt qu'une tempête de doublons
+    for (const stamp of [undefined, null, '']) {
+      expect(decisionDedupeKey('cl1', 'approved', stamp), String(stamp)).toBe('claim:cl1')
+      expect(decisionDedupeKey('cl1', 'approval_withdrawn', stamp), String(stamp)).toBe('claim:cl1')
+    }
+    // CONTRÔLE NÉGATIF — les autres décisions gardent la clé historique MÊME estampillées
+    for (const d of ['accepted', 'refused', 'refunded', 'refused_final', 'refused_by_grubano'] as ClaimDecisionKind[]) {
+      expect(decisionDedupeKey('cl1', d, new Date(iso)), d).toBe('claim:cl1')
+    }
+  })
+
   it("'refused_final' (Grubano, refus du restaurant confirmé) : trigger claim_decision_refused_final", async () => {
     await sendClaimDecisionEmail({ ...base, decision: 'refused_final', reason: 'Preuves insuffisantes' })
     const call = sendMock.mock.calls[0][0]
@@ -205,10 +253,15 @@ describe('sendClaimDecisionEmail — un trigger DÉDIÉ par décision, dedupeKey
     expect(call.html).not.toContain('refusedFinal.body')
     expect(call.html).toContain('reasonLabel')
     expect(call.html).toContain('Hors délai')
+    // D′ L4 (T-09): the withdrawal is a decision kind of its own, with its OWN trigger — never reusing
+    // an approval or a refusal trigger, so the rail can tell the three apart in EmailDispatch.
     expect(DECISION_TRIGGER).toEqual({
       accepted: 'claim_decision_accepted', refused: 'claim_decision_refused', refunded: 'claim_decision_refunded',
       approved: 'claim_decision_approved', refused_final: 'claim_decision_refused_final', refused_by_grubano: 'claim_decision_refused_final',
+      approval_withdrawn: 'claim_approval_withdrawn',
     })
+    expect(DECISION_TRIGGER.approval_withdrawn).not.toBe(DECISION_TRIGGER.approved)
+    expect(DECISION_TRIGGER.approval_withdrawn).not.toBe(DECISION_TRIGGER.refused_final)
   })
 
   it('⭐ rejouer la même décision : la dedupe est DÉLÉGUÉE au rail (dedupeKey transmis → @@unique tranche)', async () => {
@@ -243,7 +296,8 @@ describe('J-C20 — while claims are closed, no claim sender reaches the rail; t
   })
   afterEach(() => { errSpy.mockRestore() })
 
-  const KINDS: ClaimDecisionKind[] = ['accepted', 'refused', 'refunded', 'approved', 'refused_final', 'refused_by_grubano']
+  // D′ L4: the withdrawal notice is gated exactly like every other claim notice.
+  const KINDS: ClaimDecisionKind[] = ['accepted', 'refused', 'refunded', 'approved', 'refused_final', 'refused_by_grubano', 'approval_withdrawn']
   const senders = (claimsOpen: boolean): Array<[string, string, () => Promise<Record<string, unknown>>]> => [
     ['ack', 'claim_ack', () => sendClaimAckEmail({ claimId: 'cl1', consumerId: 'c1', orderId: 'ord123abc', requestedAmountCents: 1250, claimsOpen })],
     ...KINDS.map((decision): [string, string, () => Promise<Record<string, unknown>>] =>

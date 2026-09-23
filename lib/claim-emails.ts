@@ -270,6 +270,7 @@ export type ClaimDecisionKind =
   | 'approved'           // GRUBANO tranche en faveur du client, remboursement pas encore émis
   | 'refused_final'      // GRUBANO confirme le refus DU RESTAURANT — définitif (kind refused_confirmed only)
   | 'refused_by_grubano' // GRUBANO refuse, sans refus du restaurant au dossier — définitif (H03, F02)
+  | 'approval_withdrawn' // D′ L4 (T-09) : GRUBANO RETIRE une approbation avant tout paiement — le dossier repart en arbitrage
 
 /** H03: the trigger of each decision kind — also the tag of every traceMiss. */
 export const DECISION_TRIGGER: Record<ClaimDecisionKind, string> = {
@@ -279,6 +280,7 @@ export const DECISION_TRIGGER: Record<ClaimDecisionKind, string> = {
   approved:           'claim_decision_approved',
   refused_final:      'claim_decision_refused_final',
   refused_by_grubano: 'claim_decision_refused_final',
+  approval_withdrawn: 'claim_approval_withdrawn',
 }
 
 /** The template keys of each decision kind. refused_by_grubano reuses the final-decision subject (H03). */
@@ -289,6 +291,20 @@ const DECISION_TEMPLATE: Record<ClaimDecisionKind, { subject: string; title: str
   approved:           { subject: 'approved.subject',     title: 'approved.title',         body: 'approved.body' },
   refused_final:      { subject: 'refusedFinal.subject', title: 'refusedFinal.title',     body: 'refusedFinal.body' },
   refused_by_grubano: { subject: 'refusedFinal.subject', title: 'refusedByGrubano.title', body: 'refusedByGrubano.body' },
+  approval_withdrawn: { subject: 'withdrawn.subject',    title: 'withdrawn.title',         body: 'withdrawn.body' },
+}
+
+/**
+ * D′ L4 (§6.4) — the dedupe key of a DECISION notice. An approval and a withdrawal are stamped with the
+ * instant of the decision they announce, so a re-decided claim sends a new notice instead of being
+ * silently swallowed by the key of the previous one. Every other kind keeps the historical claim key.
+ */
+export function decisionDedupeKey(claimId: string, decision: ClaimDecisionKind, stamp?: Date | string | null): string {
+  if (decision !== 'approved' && decision !== 'approval_withdrawn') return `claim:${claimId}`
+  const iso = stamp instanceof Date ? stamp.toISOString() : (typeof stamp === 'string' && stamp ? stamp : null)
+  // No instant to stamp with ⇒ the historical key: better one notice too few than a duplicate storm.
+  if (!iso) return `claim:${claimId}`
+  return `claim:${claimId}:${decision === 'approved' ? 'approved' : 'withdrawn'}:${iso}`
 }
 
 export async function sendClaimDecisionEmail(p: {
@@ -302,6 +318,19 @@ export async function sendClaimDecisionEmail(p: {
   restaurantName?: string | null
   /** Montant remboursé (décision 'refunded'), en centimes — celui du moteur, jamais le montant demandé. */
   refundedCents?:  number | null
+  /**
+   * D′ L4 (D-11, spec v2 §6.4) — le montant APPROUVÉ, en centimes, RELU EN BASE après le CAS.
+   * C'est la décision de Grubano, pas la demande du client : jamais `requestedAmountCents`.
+   * L'e-mail « approved » le nomme ; il ne promet aucune émission ni aucun délai bancaire.
+   */
+  approvedCents?:  number | null
+  /**
+   * D′ L4 (§6.4) — la dédup est PAR DÉCISION, pas par réclamation : `claim:<id>:approved:<arbitratedAt ISO>`.
+   * Un cycle approuver 20 € → retirer → approuver 12 € doit envoyer DEUX avis d'approbation distincts et
+   * un avis de retrait ; une clé par réclamation en aurait avalé un et le client aurait lu le mauvais montant.
+   * Absent ⇒ la clé historique `claim:<id>` (les autres décisions gardent leur comportement).
+   */
+  decisionStamp?:  Date | string | null
   /** H02: isClaimsEnabled() read by the caller immediately before this call. */
   claimsOpen:      boolean
 }): Promise<ClaimEmailResult> {
@@ -320,7 +349,8 @@ export async function sendClaimDecisionEmail(p: {
     const body =
       // Revue : pas de « Bonjour , » orphelin quand Operator.name est vide.
       (consumer.name ? `<p>${esc(t('greeting', { name: consumer.name }))}</p>` : '')
-      + `<p>${esc(t(tpl.body, { ref, resto, euros: euros(consumer.locale, p.refundedCents ?? 0) }))}</p>`
+      // D′ L4: an 'approved' notice names the APPROVED amount; 'refunded' keeps the ENGINE's amount.
+      + `<p>${esc(t(tpl.body, { ref, resto, euros: euros(consumer.locale, (p.decision === 'approved' ? p.approvedCents : p.refundedCents) ?? 0) }))}</p>`
       + (p.reason ? `<p style="font-size:13px;color:#6b7280">${esc(t('reasonLabel'))} ${esc(p.reason)}</p>` : '')
       // H12: the contest sentence is conditional (the 48 h window or a closed lease can withhold it) and carries the reference.
       + (p.decision === 'refused' ? `<p style="font-size:13px;color:#6b7280">${esc(t('refused.contest', { ref }))}</p>` : '')
@@ -328,7 +358,7 @@ export async function sendClaimDecisionEmail(p: {
       to:        consumer.to,
       subject:   t(tpl.subject, { ref }),
       trigger,
-      dedupeKey: `claim:${p.claimId}`,
+      dedupeKey: decisionDedupeKey(p.claimId, p.decision, p.decisionStamp),
       html: claimShell({
         rtl:      consumer.locale === 'ar',
         title:    t(tpl.title),

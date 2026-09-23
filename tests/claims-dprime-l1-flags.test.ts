@@ -11,7 +11,9 @@ import { readFileSync } from 'node:fs'
 
 const { db, tokenMock, listMocks, adminMock, ackMock } = vi.hoisted(() => ({
   db: {
-    order:  { findUnique: vi.fn() },
+    // D′ L4: the schema probe reads one row per model through the model API — a double that cannot
+    // answer it would make the route report the D′ queues as unusable rather than empty.
+    order:  { findUnique: vi.fn(), findFirst: vi.fn() },
     claim:  { create: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), update: vi.fn(), updateMany: vi.fn(), count: vi.fn(), groupBy: vi.fn() },
     refund: { aggregate: vi.fn(), findMany: vi.fn() },
   },
@@ -69,6 +71,8 @@ beforeEach(() => {
   db.claim.create.mockImplementation(({ data }: { data: Record<string, unknown> }) => Promise.resolve({ id: 'cl1', ...data }))
   db.claim.findFirst.mockResolvedValue(null)
   db.claim.findMany.mockResolvedValue([])
+  db.claim.findFirst.mockResolvedValue(null)
+  db.order.findFirst.mockResolvedValue(null)
   db.claim.count.mockResolvedValue(0)
   ackMock.mockResolvedValue({ status: 'sent' })
   adminMock.mockResolvedValue({ id: 'admin1', email: 'admin@grubano.test' })
@@ -277,10 +281,18 @@ describe('GET /api/admin/claims — split by the surface (spec v2 §3.2)', () =>
 
   it('kill-switch → enabled:false, workflow lists EMPTY, actionableRefunds STILL RETURNED, counts.actionableTotal = money', async () => {
     const body = await (await getAdminClaims()).json()
+    // D′ L4 (§8.5): `awaitingPayment` joins `actionableRefunds` on the MONEY side of the split — a decided,
+    // unpaid claim never hides behind a feature flag — while `awaitingRatification` is workflow and stays empty.
+    // D′ L4: `schemaReady` says WHY the two D′ queues are empty — unusable column, or nothing waiting.
+    // Here the real probe answers ready (the doubles satisfy it), so the empty lists mean « nothing waiting ».
     expect(body).toEqual({
-      enabled: false, claims: [], pending: [], silenceExpired: [],
+      enabled: false, schemaReady: true, claims: [], pending: [], silenceExpired: [],
       actionableRefunds: [{ id: 'm1', moneyState: 'approved_not_driven' }],
-      counts: { arbitration: 0, silenceExpired: 0, legacyPendingMoney: 0, actionableRefunds: 1, actionableTotal: 1 },
+      awaitingPayment: [], awaitingRatification: [],
+      counts: {
+        arbitration: 0, silenceExpired: 0, legacyPendingMoney: 0, actionableRefunds: 1,
+        awaitingPayment: 0, awaitingRatification: 0, actionableTotal: 1,
+      },
     })
     expect(listMocks.queue).not.toHaveBeenCalled()
     expect(listMocks.money).toHaveBeenCalledTimes(1)

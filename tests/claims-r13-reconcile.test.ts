@@ -30,7 +30,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { loadOrderMoneyFacts, triggerClaimRefund, reconcileClaimEvidence } from '@/lib/claims'
 import {
-  deriveNoRowOutcome, absenceProofText, reapprovalSafetyHolds, proofInstant, MARKERS, holdSentence, arbitrationRefusal, isStuckResolvable, acceptedExits,
+  deriveNoRowOutcome, absenceProofText, reapprovalSafetyHolds, proofInstant, MARKERS, holdSentence, arbitrationRefusal, isStuckResolvable, acceptedExits, APPROVE_ALREADY_SET,
   type OrderMoneyRead,
 } from '@/lib/claim-action-rules'
 import { sendAdminMoneyReviewAlert } from '@/lib/admin-alerts'
@@ -219,7 +219,10 @@ describe('D4 / G8 — RELEASE GATE: T2 writes lock and hold texts only while rec
     const noDispatch = src.replace('return reconcileNoRowByDerivation(claim, stripeCache)', '')
     expect(noDispatch).not.toBe(src)
     expect(g8InterimViolations(noDispatch)).toEqual(['reconcileClaimEvidence does not dispatch the (i)/(i-b) pre-images to the derivation'])
-    const noLoader = src.replace('const read = await loadOrderMoneyFacts(claim.orderId, claim.id, claim.requestedAmountCents, cache)', 'const read = null as never')
+    // D' L4 (S-11): the third argument is no longer the REQUESTED amount but `judged` — the amount Grubano
+    // decided, falling back on the requested one while none is fixed. The gate is about the CALL, so the
+    // anchor is the call itself; the amount it judges is pinned by the S-11 tests, not here.
+    const noLoader = src.replace('const read = await loadOrderMoneyFacts(claim.orderId, claim.id, judged, cache)', 'const read = null as never')
     expect(noLoader).not.toBe(src)
     expect(g8InterimViolations(noLoader)).toEqual(['reconcileNoRowByDerivation does not call loadOrderMoneyFacts('])
   })
@@ -649,7 +652,12 @@ describe('J-M35 — reconcile a financial_verification claim: evidence and time 
       if (run.second.startsWith('no_refund_proven')) {
         // a proof written from FV is approved-unpaid with refundAttempted false, and grants nothing until D2
         expect(claimOf(w)).toMatchObject({ status: 'approved', refundAttempted: false, refundId: null })
-        if (run.second === 'no_refund_proven') expect(arbitrationRefusal({ ...claimOf(w), arbitrationDecision: 'approved' } as never, 'approve', new Date())?.error).toMatch(/^Approbation prématurée/)
+        if (run.second === 'no_refund_proven') {
+          // D′ L4 (S-29): a decision whose amount is FIXED refuses first — the rail pays it or the withdrawal reverses it.
+          expect(arbitrationRefusal({ ...claimOf(w), arbitrationDecision: 'approved' } as never, 'approve', new Date())?.error).toBe(APPROVE_ALREADY_SET)
+          // and with no amount fixed, the v13 proof written here still grants only the C4 PREMATURE refusal — never an approval.
+          expect(arbitrationRefusal({ ...claimOf(w), arbitrationDecision: 'approved', approvedAmountCents: null } as never, 'approve', new Date())?.error).toMatch(/^Approbation prématurée/)
+        }
       }
       if (run.secondReason && run.secondReason !== run.reason) expect(fvAlerts().map((a) => a.dedupeKey)).toEqual([`claim_fv:cl1:${run.secondReason}`])
       expect(execMock).not.toHaveBeenCalled()

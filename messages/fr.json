@@ -7268,7 +7268,52 @@
         "notSent": "E-mail client NON envoyé (trace dans le journal e-mail) : informez le client par un autre moyen.",
         "failed": "E-mail client NON envoyé (erreur lors de la préparation ou de l’envoi — trace dans le journal e-mail ou les journaux du serveur) : informez le client par un autre moyen."
       },
-      "restaurantNote": "Note du restaurant (en acceptant)"
+      "restaurantNote": "Note du restaurant (en acceptant)",
+      "awaitingPayment": {
+        "title": "À rembourser",
+        "hint": "Décisions prises et non encore payées, dans l’ordre où elles ont été prises. Cette liste ne paie rien : aucune action de cette console ne déplace d’argent.",
+        "requested": "Montant demandé",
+        "approved": "Approuvé",
+        "decidedAt": "Décision prise le",
+        "decidedAtUnknown": "instant non enregistré",
+        "decisionReason": "Motivation de la décision",
+        "payBatch": "Payer le lot ({count})",
+        "payBatchUnavailable": "Le rail financier n’est pas encore disponible : aucun paiement ne peut être lancé depuis cette console."
+      },
+      "awaitingRatification": {
+        "title": "À ratifier",
+        "hint": "Ces réclamations ont été approuvées avant que le montant à rembourser n’existe : aucun montant n’y est fixé, elles ne sont donc pas payables. Ratifiez le montant pour qu’elles rejoignent la file « À rembourser ».",
+        "ratify": "Ratifier le montant"
+      },
+      "approveDialog": {
+        "title": "Approuver cette réclamation",
+        "titleRatify": "Ratifier le montant de cette réclamation",
+        "requested": "Montant demandé par le client",
+        "alreadyRefunded": "Déjà remboursé sur cette commande",
+        "remaining": "Reste remboursable sur cette commande",
+        "remainingUnverified": "Ce reste n’a pas pu être confirmé auprès du prestataire de paiement : il est calculé à partir de nos seules écritures et peut être supérieur à la réalité. Ne le lisez pas comme une somme disponible confirmée.",
+        "aboveRemaining": "Le montant approuvé dépasse le reste remboursable affiché ci-dessus : le rail financier ne pourrait pas le payer. Réduisez-le pour pouvoir décider.",
+        "ceilingLoading": "Lecture du plafond de la commande…",
+        "ceilingError": "Plafond indisponible : le reste remboursable de cette commande n’a pas pu être lu.",
+        "reduceCheckbox": "Approuver un montant inférieur au montant demandé",
+        "amountLabel": "Montant approuvé (en euros)",
+        "amountHelp": "Au minimum 0,01 € et au maximum {max}.",
+        "reduceReasonLabel": "Motif de la réduction ({min} caractères minimum, obligatoire)",
+        "reduceReasonPlaceholder": "Expliquez pourquoi le montant approuvé est inférieur au montant demandé…",
+        "confirmLabel": "Pour confirmer, saisissez « {word} »",
+        "noRefundNotice": "Cette approbation ne déclenche pas encore le remboursement.",
+        "submit": "Approuver ce montant",
+        "submitRatify": "Ratifier ce montant"
+      },
+      "withdraw": {
+        "open": "Retirer l’approbation",
+        "hint": "Le retrait ramène la réclamation en arbitrage et efface le montant approuvé. Il est refusé dès qu’un paiement a été tenté, et refusé aussi si la trace d’audit est désactivée. Cette action ne déplace aucun argent.",
+        "reasonLabel": "Motif du retrait ({min} caractères minimum) — conservé dans la trace d’audit",
+        "reasonPlaceholder": "Pourquoi cette décision est-elle retirée ?…",
+        "confirmLabel": "Pour confirmer, saisissez « {word} »",
+        "submit": "Retirer l’approbation",
+        "done": "Approbation retirée : la réclamation repart en arbitrage et son montant approuvé est effacé. Cette action n’a déplacé aucun argent."
+      }
     }
   },
   "fiscal": {
@@ -8626,7 +8671,12 @@
     "approved": {
       "subject": "Réclamation {ref} : acceptée par Grubano",
       "title": "Réclamation acceptée",
-      "body": "Grubano a tranché en votre faveur sur la commande {ref}."
+      "body": "Un remboursement de {euros} a été approuvé par Grubano pour la commande {ref}. Il sera exécuté séparément par notre équipe. Une fois émis, le délai d’apparition sur votre compte dépend de votre banque."
+    },
+    "withdrawn": {
+      "subject": "Réclamation {ref} : décision en cours de réexamen",
+      "title": "Décision réexaminée",
+      "body": "La décision prise sur votre réclamation pour la commande {ref} a été retirée par Grubano avant tout paiement : aucun remboursement n’a été émis. Votre réclamation est de nouveau à l’étude et vous recevrez une nouvelle décision."
     },
     "refusedFinal": {
       "subject": "Réclamation {ref} : décision finale de Grubano",

@@ -7268,7 +7268,52 @@
         "notSent": "Customer email NOT sent (trace in the email log): inform the customer another way.",
         "failed": "Customer email NOT sent (error while preparing or sending — trace in the email log or the server logs): inform the customer another way."
       },
-      "restaurantNote": "Restaurant’s note (when accepting)"
+      "restaurantNote": "Restaurant’s note (when accepting)",
+      "awaitingPayment": {
+        "title": "To refund",
+        "hint": "Decisions already taken and not yet paid, in the order they were taken. This list pays nothing: no action in this console moves money.",
+        "requested": "Requested amount",
+        "approved": "Approved",
+        "decidedAt": "Decision taken on",
+        "decidedAtUnknown": "instant not recorded",
+        "decisionReason": "Decision rationale",
+        "payBatch": "Pay the batch ({count})",
+        "payBatchUnavailable": "The financial rail is not available yet: no payment can be started from this console."
+      },
+      "awaitingRatification": {
+        "title": "To ratify",
+        "hint": "These claims were approved before the refund amount existed: no amount is set on them, so they cannot be paid. Ratify the amount to move them into the “To refund” queue.",
+        "ratify": "Ratify the amount"
+      },
+      "approveDialog": {
+        "title": "Approve this claim",
+        "titleRatify": "Ratify the amount of this claim",
+        "requested": "Amount requested by the customer",
+        "alreadyRefunded": "Already refunded on this order",
+        "remaining": "Still refundable on this order",
+        "remainingUnverified": "This remaining amount could not be confirmed with the payment provider: it is derived from our own records alone and may be higher than reality. Do not read it as confirmed available funds.",
+        "aboveRemaining": "The approved amount exceeds the remaining refundable amount shown above: the financial rail could not pay it. Lower it to be able to decide.",
+        "ceilingLoading": "Reading the order’s cap…",
+        "ceilingError": "Cap unavailable: the remaining refundable amount of this order could not be read.",
+        "reduceCheckbox": "Approve an amount lower than the one requested",
+        "amountLabel": "Approved amount (in euros)",
+        "amountHelp": "At least €0.01 and at most {max}.",
+        "reduceReasonLabel": "Reason for the reduction ({min} characters minimum, required)",
+        "reduceReasonPlaceholder": "Explain why the approved amount is lower than the requested one…",
+        "confirmLabel": "To confirm, type “{word}”",
+        "noRefundNotice": "This approval does not start the refund yet.",
+        "submit": "Approve this amount",
+        "submitRatify": "Ratify this amount"
+      },
+      "withdraw": {
+        "open": "Withdraw the approval",
+        "hint": "Withdrawing sends the claim back to arbitration and clears the approved amount. It is refused as soon as a payment has been attempted, and refused too when the audit trail is disabled. This action moves no money.",
+        "reasonLabel": "Reason for the withdrawal ({min} characters minimum) — kept in the audit trail",
+        "reasonPlaceholder": "Why is this decision being withdrawn?…",
+        "confirmLabel": "To confirm, type “{word}”",
+        "submit": "Withdraw the approval",
+        "done": "Approval withdrawn: the claim goes back to arbitration and its approved amount is cleared. This action moved no money."
+      }
     }
   },
   "fiscal": {
@@ -8626,7 +8671,12 @@
     "approved": {
       "subject": "Claim {ref}: accepted by Grubano",
       "title": "Claim accepted",
-      "body": "Grubano ruled in your favour on order {ref}."
+      "body": "A refund of {euros} has been approved by Grubano for order {ref}. It will be carried out separately by our team. Once issued, how long it takes to appear on your account depends on your bank."
+    },
+    "withdrawn": {
+      "subject": "Claim {ref}: decision under review again",
+      "title": "Decision reviewed again",
+      "body": "The decision taken on your claim for order {ref} has been withdrawn by Grubano before any payment: no refund was issued. Your claim is being looked at again and you will receive a new decision."
     },
     "refusedFinal": {
       "subject": "Claim {ref}: Grubano’s final decision",

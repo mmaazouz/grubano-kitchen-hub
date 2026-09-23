@@ -52,7 +52,7 @@ vi.mock('@/lib/stripe', () => ({ getStripe: () => stripeMock }))
 import {
   acceptedExits, arbitrationRefusal, exitRegistry, deriveNoRowOutcome, engineRefusalOnReapproval,
   APPROVE_LEGACY_PROOF, approveRevisableText, approvePermanentText, MARKERS, moneyStateGuidance, absenceProvenPayableLabel,
-  HEAD_A, customerClaimStatus, boundRowShowsInProgress, refundedRowTruth,
+  HEAD_A, customerClaimStatus, boundRowShowsInProgress, refundedRowTruth, APPROVE_CONFIRM_WORD, APPROVE_ALREADY_SET,
   type ClaimFacts, type ReapprovalFacts, type MoneyRow, type ExitInput, type Refusal, type BoundRowFacts,
 } from '@/lib/claim-action-rules'
 import { reconcileClaimEvidence, resolveStuckClaim, listActionableRefundClaims, arbitrateClaim, triggerClaimRefund } from '@/lib/claims'
@@ -166,15 +166,32 @@ describe('J-M28 — HARD INVARIANT: no exit offered that the engine would refuse
     })
   }
 
-  it('D1 v1.1 — every approved fixture: approve never offered; pay (and withdraw) offered exactly when the amount is fixed, whatever the recorded money state (the rail\'s T1/T2 decide, not the table)', () => {
+  it('D1 v1.1 + D′ L4 control parity — approve never offered on an approved claim; with the amount fixed, pay is offered ONLY when T1 would attempt and withdraw ONLY when the reversal would be accepted', () => {
     for (const s of PURE_STATES) {
       expect(acceptedExits({ claim: s.claim, now: NOW }), s.id).not.toContain('approve')
       expect(acceptedExits({ claim: s.claim, now: NOW }), s.id).not.toContain('pay')
       const fixed = acceptedExits({ claim: withAmount(s.claim), now: NOW })
-      expect(fixed, s.id).toContain('pay')
-      expect(fixed, s.id).toContain('withdraw')
       expect(fixed, s.id).not.toContain('ratify')
       expect(fixed, s.id).not.toContain('approve')
+      // THE PARITY RULE (D0, the reason this file exists): an offered exit is one a server ACCEPTS.
+      // 'pay' ⇔ T1 would attempt this pre-image; 'withdraw' ⇔ §4 precondition 1 holds. A recorded money
+      // state (a taken attempt, a bound row, a lock, a failure) removes BOTH — the console must never
+      // render a control the rail and the reversal would both refuse. Before the D′ L4 parity fix this
+      // branch offered them unconditionally, which is the Class-3 divergence this file exists to catch.
+      const c = withAmount(s.claim) as { refundError?: string | null; refundAttempted?: boolean; refundId?: string | null; approvedAmountCents?: number | null }
+      const noMoneyState = c.refundAttempted !== true && (c.refundId ?? null) === null
+      const v13OrLocked = c.refundError != null
+        && (String(c.refundError).startsWith('no_refund_proven:v13:') || String(c.refundError).startsWith('no_refund_proven_rail_locked'))
+      const payable = noMoneyState && (c.refundError == null || t1Admits(withAmount(s.claim)))
+      const reversible = noMoneyState && (c.refundError == null || v13OrLocked)
+      expect(fixed.includes('pay'), s.id + ': pay offered iff T1 would attempt').toBe(payable)
+      expect(fixed.includes('withdraw'), s.id + ': withdraw offered iff the reversal would be accepted').toBe(reversible)
+      // NEGATIVE CONTROL — the pre-fix table said « withdraw, pay » for every fixed amount; on a state
+      // carrying a recorded money state that set disagrees with both servers, and is no longer produced.
+      if (!noMoneyState || (c.refundError != null && !v13OrLocked)) {
+        expect(fixed, s.id).not.toContain('pay')
+        expect(fixed, s.id).not.toContain('withdraw')
+      }
     }
   })
 
@@ -419,9 +436,11 @@ describe('J-M28 (D′ L2) — every J-M01 state × every D1 pre-image: arbitrate
   const v13At = (ms: number) => `${MARKERS.PROOF_PAYABLE_V13} preuve écrite avant. Elle est payable au plus tôt le ${new Date(ms).toISOString()} (UTC).`
   /** Every pre-image D1 knows (refundId = the world's first row where the shape is bound). */
   const PRE: Record<string, (firstRow: string | null) => Row> = {
-    approved_null: () => ({ status: 'approved', refundAttempted: false, refundId: null, refundError: null, arbitrationDecision: 'approved' }),
-    v13_past:      () => ({ status: 'approved', refundAttempted: false, refundId: null, refundError: v13At(Date.now() - 60_000), arbitrationDecision: 'approved' }),
-    arbitration:   () => ({ status: 'arbitration', refundAttempted: false, refundId: null, refundError: null, arbitrationDecision: null }),
+    // D′ L4: the three DECIDABLE pre-images carry no ratified amount — the decision is what fixes it (T-07/T-08).
+    // Every other pre-image below keeps the amount the payable world fixed (500 c), which is what makes it a RAIL state.
+    approved_null: () => ({ status: 'approved', refundAttempted: false, refundId: null, refundError: null, arbitrationDecision: 'approved', approvedAmountCents: null }),
+    v13_past:      () => ({ status: 'approved', refundAttempted: false, refundId: null, refundError: v13At(Date.now() - 60_000), arbitrationDecision: 'approved', approvedAmountCents: null }),
+    arbitration:   () => ({ status: 'arbitration', refundAttempted: false, refundId: null, refundError: null, arbitrationDecision: null, approvedAmountCents: null }),
     v13_before:    () => ({ status: 'approved', refundAttempted: false, refundId: null, refundError: v13At(Date.now() + 3_600_000), arbitrationDecision: 'approved' }),
     rail_locked:   () => ({ status: 'approved', refundAttempted: false, refundId: null, refundError: 'no_refund_proven_rail_locked: écrit avant' }),
     awaiting:      () => ({ status: 'approved', refundAttempted: false, refundId: null, refundError: `${MARKERS.AWAITING_FINALIZATION} écrit avant` }),
@@ -509,7 +528,7 @@ describe('J-M28 (D′ L2) — every J-M01 state × every D1 pre-image: arbitrate
     const now = new Date()
     const boundRow = boundRowOf(before)
     const exits = acceptedExits({ claim: before as ClaimFacts, boundRow, now })
-    const server = await arbitrateClaim({ claimId: 'cl1', adminId: 'op1', decision: 'approve' })
+    const server = await arbitrateClaim({ claimId: 'cl1', adminId: 'op1', decision: 'approve', approvedAmountCents: 500, confirm: APPROVE_CONFIRM_WORD })
     const decision = { engine: engineSpy.fn.mock.calls.length, creates: stripeMock.refunds.create.mock.calls.length, token: tokenWritten() }
     const afterDecision = { ...claimOf(w) }
     // D1 v1.1: the rail's exit is 'pay', offered on the claim the decision left once its amount is fixed
@@ -570,10 +589,11 @@ describe('J-M28 (D′ L2) — every J-M01 state × every D1 pre-image: arbitrate
   it('D′ L2 DIFFERENTIAL — on the payable world (A-S01, both leases open) the decision alone leaves APPROVED_AWAITING_PAYMENT with zero money, and only the direct rail step moves it; the arbitration pre-image too', async () => {
     for (const pre of ['approved_null', 'arbitration', 'v13_past']) {
       setWorld(stateOf('A-S01'), pre)
-      const r = await arbitrateClaim({ claimId: 'cl1', adminId: 'op1', decision: 'approve' })
+      const r = await arbitrateClaim({ claimId: 'cl1', adminId: 'op1', decision: 'approve', approvedAmountCents: 500, confirm: APPROVE_CONFIRM_WORD })
       expect(r.ok, pre).toBe(true)
       expect(r, pre).not.toHaveProperty('refund')
-      expect(claimOf(w), pre).toMatchObject({ status: 'approved', arbitrationDecision: 'approved', refundAttempted: false, refundId: null })
+      // D′ L4 (T-07/T-08): the decision RATIFIES 500 c and still moves nothing
+      expect(claimOf(w), pre).toMatchObject({ status: 'approved', arbitrationDecision: 'approved', approvedAmountCents: 500, refundAttempted: false, refundId: null })
       expect(engineSpy.fn, pre).not.toHaveBeenCalled()
       expect(stripeMock.refunds.create, pre).not.toHaveBeenCalled()
       expect(w.refunds, pre).toEqual([])
@@ -584,6 +604,17 @@ describe('J-M28 (D′ L2) — every J-M01 state × every D1 pre-image: arbitrate
       expect(stripeMock.refunds.create, pre).toHaveBeenCalledTimes(1)
       expect(claimOf(w), pre).toMatchObject({ status: 'refunded', refundId: 'rf_new' })
     }
+  })
+
+  it('D′ L4 NEGATIVE CONTROL (S-29) — the same payable world with the amount ALREADY fixed refuses the decision (409, 0 writes) while the rail pays that very amount: decision and payment are disjoint exits', async () => {
+    setWorld(stateOf('A-S01'), 'approved_null')
+    Object.assign(claimOf(w), { approvedAmountCents: 500 })
+    const r = await arbitrateClaim({ claimId: 'cl1', adminId: 'op1', decision: 'approve', approvedAmountCents: 500, confirm: APPROVE_CONFIRM_WORD })
+    expect(r).toMatchObject({ ok: false, status: 409, error: APPROVE_ALREADY_SET })
+    expect(w.writes).toEqual([])
+    expect(engineSpy.fn).not.toHaveBeenCalled()
+    expect(await triggerClaimRefund('cl1')).toMatchObject({ state: 'refunded' })
+    expect(engineSpy.fn).toHaveBeenCalledWith(expect.objectContaining({ amountCents: 500, reason: 'claim:cl1' }))
   })
 
   it('(3) on every J-M01 world: reconcile and stuck_close are accepted by their server function exactly when the set holds them', async () => {

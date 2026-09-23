@@ -674,11 +674,12 @@ describe('the marker the code WRITES is the marker the code can READ', () => {
     // nothing, so the ONE shipped writer of the marker — T1's attempt CAS inside triggerClaimRefund — is reached by
     // calling it directly (the L5 rail's entry point). The sweep, run first on the same fixtures, writes no marker.
     refundsFlag.mockReturnValue(true)
-    fx.row = { status: 'approved', refundAttempted: false, refundId: null, refundError: null }
+    // D′ L4 (§8.3): T1 pays the RATIFIED amount and pins it in its CAS, so the simulated row carries the decision.
+    fx.row = { status: 'approved', refundAttempted: false, refundId: null, refundError: null, arbitrationDecision: 'approved', approvedAmountCents: 500 }
     db.claim.findMany.mockImplementation(({ where }: { where: Record<string, unknown> }) =>
       Promise.resolve(where.status === 'restaurant_review' ? [] : where.status === 'approved' ? [{ id: 'cl1', refundError: null }] : []))
     // ROUND 13 (C2): T1 reads the full pre-image before its CAS.
-    db.claim.findUnique.mockResolvedValue({ id: 'cl1', orderId: 'o1', status: 'approved', refundAttempted: false, refundId: null, refundError: null, requestedAmountCents: 500 })
+    db.claim.findUnique.mockResolvedValue({ id: 'cl1', orderId: 'o1', status: 'approved', refundAttempted: false, refundId: null, refundError: null, requestedAmountCents: 500, arbitrationDecision: 'approved', approvedAmountCents: 500 })
     execMock.mockResolvedValue({ ok: false, status: 502, error: 'boom' })
     const markersWritten = () => db.claim.updateMany.mock.calls
       .map((c) => (c[0].data as { refundError?: unknown }).refundError)
@@ -751,15 +752,15 @@ describe('J-M53 — A-S32-* (D′ L2): runClaimAutoApproval never reads, writes 
     refundsFlag.mockReturnValue(true)
     execMock.mockResolvedValue({ ok: false, status: 502, error: 'boom' })
     // legacy proof: T1 reads the pre-image, refuses before its CAS (A-S32-* lives in T1 now)
-    fx.row = { status: 'approved', refundAttempted: false, refundId: null, refundError: 'no_refund_proven: preuve héritée' }
-    db.claim.findUnique.mockResolvedValue({ id: 'cl_legacy', orderId: 'o1', status: 'approved', refundAttempted: false, refundId: null, refundError: 'no_refund_proven: preuve héritée', requestedAmountCents: 500 })
+    fx.row = { status: 'approved', refundAttempted: false, refundId: null, refundError: 'no_refund_proven: preuve héritée', arbitrationDecision: 'approved', approvedAmountCents: 500 }
+    db.claim.findUnique.mockResolvedValue({ id: 'cl_legacy', orderId: 'o1', status: 'approved', refundAttempted: false, refundId: null, refundError: 'no_refund_proven: preuve héritée', requestedAmountCents: 500, arbitrationDecision: 'approved', approvedAmountCents: 500 })
     expect(await triggerClaimRefund('cl_legacy')).toEqual({ state: 'already_handled' })
     expect(db.claim.findUnique).toHaveBeenCalledTimes(1)
     expect(db.claim.updateMany).not.toHaveBeenCalled()
     expect(execMock).not.toHaveBeenCalled()
     // no recorded error: T1 reads it, wins its CAS, T2 finds the world payable, the engine is reached
     vi.clearAllMocks()
-    fx.row = { status: 'approved', refundAttempted: false, refundId: null, refundError: null }
+    fx.row = { status: 'approved', refundAttempted: false, refundId: null, refundError: null, arbitrationDecision: 'approved', approvedAmountCents: 500 }
     // T1 and T2 (f) read the claim as the CAS chain left it (the simulated row carries each write)
     db.claim.findUnique.mockImplementation(async () => ({ id: 'cl_legacy', orderId: 'o1', requestedAmountCents: 500, ...fx.row }))
     const r = await triggerClaimRefund('cl_legacy')
@@ -768,5 +769,14 @@ describe('J-M53 — A-S32-* (D′ L2): runClaimAutoApproval never reads, writes 
     expect(execMock).toHaveBeenCalledTimes(1)
     expect(execMock.mock.calls[0][0]).toMatchObject({ reason: 'claim:cl_legacy', amountCents: 500 })
     expect(r).toMatchObject({ state: 'failed', error: 'boom' })
+
+    // D′ L4 NEGATIVE CONTROL (S-27) — the SAME claim without a ratified amount: the pre-L4 rail paid
+    // requestedAmountCents here; it now refuses before its CAS, with no write and no engine call.
+    vi.clearAllMocks()
+    fx.row = { status: 'approved', refundAttempted: false, refundId: null, refundError: null, arbitrationDecision: 'approved', approvedAmountCents: null }
+    db.claim.findUnique.mockImplementation(async () => ({ id: 'cl_legacy', orderId: 'o1', requestedAmountCents: 500, ...fx.row }))
+    expect(await triggerClaimRefund('cl_legacy')).toEqual({ state: 'failed', error: 'amount_not_ratified' })
+    expect(db.claim.updateMany).not.toHaveBeenCalled()
+    expect(execMock).not.toHaveBeenCalled()
   })
 })

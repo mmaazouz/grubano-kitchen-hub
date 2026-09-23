@@ -39,7 +39,7 @@ import {
 } from '@/lib/claims'
 import {
   reconcileRefusal, arbitrationRefusal, acceptedExits, isStuckResolvable as pureStuckResolvable, deriveNoRowOutcome,
-  moneyStateGuidance, absenceProvenPayableLabel, RECONCILE_MARKER_UNREADABLE_TEXT, APPROVE_ALREADY_SET,
+  moneyStateGuidance, absenceProvenPayableLabel, RECONCILE_MARKER_UNREADABLE_TEXT, APPROVE_ALREADY_SET, APPROVE_CONFIRM_WORD,
   type ClaimFacts, type ReapprovalFacts,
 } from '@/lib/claim-action-rules'
 import { amountLineKind, cardMoneyLine, identityUnreadText, IDENTITY_UNREAD_TEXT, IDENTITY_UNREAD_NO_EXIT_TEXT } from '@/lib/claim-money-line'
@@ -214,7 +214,9 @@ describe('J-M29 — approvable (D0, v1.1): acceptedExits ∋ approve | ratify &&
         expect(q.approveRefusal, s.id).toBe(arbitrationRefusal(s, 'approve', now)?.error ?? null)
         const approvable = approvableByD0(s, now)
         db.claim.findUnique.mockResolvedValue(s)
-        const server = await arbitrateClaim({ claimId: s.id, adminId: 'op1', decision: 'approve' })
+        // D′ L4 (T-07): a decision carries its confirmed amount, so the only refusal left for an
+        // approvable claim is the CAS that loses — exactly what this parity check reads.
+        const server = await arbitrateClaim({ claimId: s.id, adminId: 'op1', decision: 'approve', approvedAmountCents: s.requestedAmountCents, confirm: APPROVE_CONFIRM_WORD })
         // a CAS that loses is the only answer an approvable claim can get here
         expect((server as { error?: string }).error === 'Cette réclamation a déjà été arbitrée.', s.id).toBe(approvable)
         if (approvable) approvableCount++
@@ -399,10 +401,15 @@ describe('D2 (1)(b) — approved, not attempted, refundId SET, null error: appro
     const s = shape('b3', { status: 'approved' })
     db.claim.findUnique.mockResolvedValue(s)
     fx.forcedCount = 0
-    const r = await arbitrateClaim({ claimId: s.id, adminId: 'op1', decision: 'approve' })
+    const r = await arbitrateClaim({ claimId: s.id, adminId: 'op1', decision: 'approve', approvedAmountCents: 500, confirm: APPROVE_CONFIRM_WORD })
     expect((r as { error?: string }).error).toBe('Cette réclamation a déjà été arbitrée.')
     // ROUND 13 (D2 (1)(b)/(c), slice W2): the legacy CAS also carries the refundError the refusal read.
-    expect(db.claim.updateMany.mock.calls[0][0].where).toEqual({ id: 'b3', status: 'approved', refundAttempted: false, refundId: null, refundError: null })
+    // D′ L4 (S-29): and the absence of an amount — a ratification never rewrites one that is already fixed.
+    expect(db.claim.updateMany.mock.calls[0][0].where).toEqual({ id: 'b3', status: 'approved', refundAttempted: false, refundId: null, refundError: null, approvedAmountCents: null })
+    // NEGATIVE CONTROL — the pre-L4 call (no confirmation, no amount) never reaches that CAS at all.
+    db.claim.updateMany.mockClear()
+    expect(await arbitrateClaim({ claimId: s.id, adminId: 'op1', decision: 'approve' })).toMatchObject({ ok: false, status: 400 })
+    expect(db.claim.updateMany).not.toHaveBeenCalled()
   })
 })
 

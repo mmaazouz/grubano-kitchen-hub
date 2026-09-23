@@ -338,6 +338,9 @@ const WRITERS: Record<string, Case[]> = {
     { c: { status: 'refused_final', arbitrationDecision: 'refused_final', restaurantResponse: 'accepted' }, line: 14 },
   ],
   'arbitrateClaim|approved|-': [{ c: ap(null, { arbitrationDecision: 'approved' }), line: 6 }],
+  // D′ L4 (T-09): the audited withdrawal is a DECISION write — the claim goes back to 'arbitration' with its
+  // decision and its amount cleared, and it is refused outright whenever any money state is recorded (§4).
+  'withdrawClaimApproval|arbitration|-': [{ c: { status: 'arbitration' }, line: 15 }],
   'reconcileClaimForRefund|refunded|null': [{ c: { status: 'refunded', refundId: 'rf1', refundError: null }, refundedRow: true, line: 8 }],
   // MODE B commit B — ce writer écrit DEUX marqueurs selon la preuve : `stripe_failed` (Stripe a
   // vraiment échoué) ou `row_voided` (ligne LIBÉRÉE : il est prouvé que rien n'a jamais existé chez

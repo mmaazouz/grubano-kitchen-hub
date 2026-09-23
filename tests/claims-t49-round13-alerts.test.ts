@@ -40,7 +40,7 @@ vi.mock('@/lib/stripe', () => ({ getStripe: () => stripeMock }))
 
 import { sendAdminMoneyReviewAlert, type MoneyReviewKind } from '@/lib/admin-alerts'
 import { triggerClaimRefund, arbitrateClaim, runClaimAutoApproval, alertClaimPaymentBlocked, reconcileClaimEvidence, enterFinancialVerification, CLAIM_BLOCKED_TITLE, CLAIM_BLOCKED_OUTCOME_UNKNOWN_TITLE, claimBlockedTitle, CLAIM_ATTEMPT_SUPERSEDED_TITLE, attributeClaimRefund, adoptStripeRefundForClaim } from '@/lib/claims'
-import { MARKERS, HEAD_A, reconcileMarkerAge } from '@/lib/claim-action-rules'
+import { MARKERS, HEAD_A, reconcileMarkerAge, APPROVE_CONFIRM_WORD, APPROVE_CONFIRM_REQUIRED } from '@/lib/claim-action-rules'
 import { approvalToast } from '@/lib/claim-approval-toast'
 
 const read = (p: string) => readFileSync(p, 'utf8').replace(/\r\n/g, '\n')
@@ -430,11 +430,12 @@ describe('J-M52 / J-C39 — claim_payment_blocked after a won CAS only (I-01)', 
   for (const rail of [false, true]) {
     it(`D′ L2: arbitrateClaim approve with the rail ${rail ? 'OPEN' : 'CLOSED'} → the decision CAS only; no refund field, no REFUNDS read, no engine, no alert; a lost decision CAS → 409, no trigger, no alert`, async () => {
       refundsFlag.mockReturnValue(rail)
-      Object.assign(claimOf(w), { status: 'arbitration', arbitrationDecision: null })
-      const out = await arbitrateClaim({ claimId: 'cl1', adminId: 'admin1', decision: 'approve' })
+      // D′ L4 (T-07): the decision under test ratifies 500 c on a claim that carries no amount yet.
+      Object.assign(claimOf(w), { status: 'arbitration', arbitrationDecision: null, approvedAmountCents: null })
+      const out = await arbitrateClaim({ claimId: 'cl1', adminId: 'admin1', decision: 'approve', approvedAmountCents: 500, confirm: APPROVE_CONFIRM_WORD })
       expect(out).toMatchObject({ ok: true })
       expect(out).not.toHaveProperty('refund')
-      expect(claimOf(w)).toMatchObject({ status: 'approved', arbitrationDecision: 'approved', arbitratedBy: 'admin1', refundAttempted: false, refundId: null, refundError: null })
+      expect(claimOf(w)).toMatchObject({ status: 'approved', arbitrationDecision: 'approved', approvedAmountCents: 500, arbitratedBy: 'admin1', refundAttempted: false, refundId: null, refundError: null })
       expect(refundsFlag).not.toHaveBeenCalled()      // the lease is never read by an approval
       expect(execMock).not.toHaveBeenCalled()
       expect(calls('claim_payment_blocked')).toEqual([])
@@ -443,10 +444,19 @@ describe('J-M52 / J-C39 — claim_payment_blocked after a won CAS only (I-01)', 
       expect(w.writes).toHaveLength(1)                 // exactly the decision CAS
 
       spy.mockClear()
-      w = payableWorld({ status: 'arbitration', arbitrationDecision: null })
+      w = payableWorld({ status: 'arbitration', arbitrationDecision: null, approvedAmountCents: null })
       wireWorld(w, db, stripeMock)
       w.beforeClaimWrite = (n) => { if (n === 1) claimOf(w).arbitrationDecision = 'approved' }
-      expect(await arbitrateClaim({ claimId: 'cl1', adminId: 'admin1', decision: 'approve' })).toEqual({ ok: false, status: 409, error: 'Cette réclamation a déjà été arbitrée.' })
+      expect(await arbitrateClaim({ claimId: 'cl1', adminId: 'admin1', decision: 'approve', approvedAmountCents: 500, confirm: APPROVE_CONFIRM_WORD })).toEqual({ ok: false, status: 409, error: 'Cette réclamation a déjà été arbitrée.' })
+      expect(refundsFlag).not.toHaveBeenCalled()
+      expect(execMock).not.toHaveBeenCalled()
+      expect(calls('claim_payment_blocked')).toEqual([])
+
+      // D′ L4 NEGATIVE CONTROL — the pre-L4 call shape reached that CAS; it is now refused before any write.
+      w = payableWorld({ status: 'arbitration', arbitrationDecision: null, approvedAmountCents: null })
+      wireWorld(w, db, stripeMock)
+      expect(await arbitrateClaim({ claimId: 'cl1', adminId: 'admin1', decision: 'approve' })).toEqual({ ok: false, status: 400, error: APPROVE_CONFIRM_REQUIRED })
+      expect(w.writes).toEqual([])
       expect(refundsFlag).not.toHaveBeenCalled()
       expect(execMock).not.toHaveBeenCalled()
       expect(calls('claim_payment_blocked')).toEqual([])
@@ -454,8 +464,8 @@ describe('J-M52 / J-C39 — claim_payment_blocked after a won CAS only (I-01)', 
   }
 
   it('NEGATIVE CONTROL (D′ L2) — the same approved claim IS driven when triggerClaimRefund is called directly: rail closed → {pending, refunds_disabled} with NO alert (E-10 is not an incident); rail open → the engine once', async () => {
-    Object.assign(claimOf(w), { status: 'arbitration', arbitrationDecision: null })
-    expect((await arbitrateClaim({ claimId: 'cl1', adminId: 'admin1', decision: 'approve' })).ok).toBe(true)
+    Object.assign(claimOf(w), { status: 'arbitration', arbitrationDecision: null, approvedAmountCents: null })
+    expect((await arbitrateClaim({ claimId: 'cl1', adminId: 'admin1', decision: 'approve', approvedAmountCents: 500, confirm: APPROVE_CONFIRM_WORD })).ok).toBe(true)
     refundsFlag.mockReturnValue(false)
     expect(await triggerClaimRefund('cl1')).toEqual({ state: 'pending', reason: 'refunds_disabled' })
     expect(refundsFlag).toHaveBeenCalledTimes(1)      // the direct call reads the lease; the approval above did not
@@ -479,11 +489,11 @@ describe('J-M52 / J-C39 — claim_payment_blocked after a won CAS only (I-01)', 
     expect(execMock).not.toHaveBeenCalled()
     // D′ L2: the approval path has no sender to reject — a rejecting sender cannot touch it because it is never invoked.
     spy.mockClear()
-    w = payableWorld({ status: 'arbitration', arbitrationDecision: null })
+    w = payableWorld({ status: 'arbitration', arbitrationDecision: null, approvedAmountCents: null })
     wireWorld(w, db, stripeMock)
     spy.mockRejectedValueOnce(new Error('smtp down'))
-    expect((await arbitrateClaim({ claimId: 'cl1', adminId: 'admin1', decision: 'approve' })).ok).toBe(true)
-    expect(claimOf(w)).toMatchObject({ status: 'approved', arbitrationDecision: 'approved' })
+    expect((await arbitrateClaim({ claimId: 'cl1', adminId: 'admin1', decision: 'approve', approvedAmountCents: 500, confirm: APPROVE_CONFIRM_WORD })).ok).toBe(true)
+    expect(claimOf(w)).toMatchObject({ status: 'approved', arbitrationDecision: 'approved', approvedAmountCents: 500 })
     expect(spy).not.toHaveBeenCalled()
   })
 
@@ -641,9 +651,12 @@ describe('J-M52 / J-C39 — claim_payment_blocked after a won CAS only (I-01)', 
     expect(a.facts.registry).toBe('E-10')
     expect(Object.keys(a.facts).sort()).toEqual([...BLOCKED_KEYS, 'quiescenceInstant'].sort())
     expect(JSON.stringify(a.facts)).not.toMatch(/@|consumer|email|adresse/i)
-    // amount fixed: the rail pays (W7 fixer carry-over: the v13 pay exit states its time bound too), withdraw reverses
+    // amount fixed: the rail pays (W7 fixer carry-over: the v13 pay exit states its time bound too), withdraw reverses.
+    // D′ L4: the fixture carries arbitrationDecision because the decision CAS writes it WITH the amount (S-29) —
+    // and the withdraw exit mirrors §4 precondition 1, which requires it. A fixed amount without a decision is a
+    // state production cannot produce, and the exit table is right to name no reversal for it.
     spy.mockClear(); sent.clear()
-    await alertClaimPaymentBlocked('cl1', 'no_refund_proven:v13:', { orderId: 'o1', engineCalled: false, claimAfter: { status: 'approved', refundAttempted: false, refundId: null, refundError: v13, approvedAmountCents: 500 } })
+    await alertClaimPaymentBlocked('cl1', 'no_refund_proven:v13:', { orderId: 'o1', engineCalled: false, claimAfter: { status: 'approved', arbitrationDecision: 'approved', refundAttempted: false, refundId: null, refundError: v13, approvedAmountCents: 500 } })
     const b = calls('claim_payment_blocked')[0]
     expect(b.facts.quiescenceInstant).toBe(instant.toISOString())
     expect(b.facts.exits).toBe(`withdraw, pay (rail « Payer les approuvées », remboursements ouverts, au plus tôt le ${instant.toISOString()} UTC), reconcile`)
@@ -749,7 +762,9 @@ describe('I-01 — applyRowTruth: ALERT-B after the stripe_failed and engine_row
 
 // ══ J-C40 — claim_financial_verification on entry and on relabel with a NEW reason only (I-02) ═══════════════
 describe('J-C40 — claim_financial_verification on entry, and on relabel only with a new reason (I-02)', () => {
-  const FV_KEYS = ['claimId', 'orderId', 'claimState', 'ambiguity', 'detail', 'refundRowId', 'stripeRefundId', 'requestedCents', 'moneyMoved', 'nextAction']
+  // D′ L4 (§8.3): the FV alert also names the amount Grubano DECIDED, when one is fixed — an operator
+// reading it must see the number the rail would pay, not only the number the customer asked for.
+const FV_KEYS = ['claimId', 'orderId', 'claimState', 'ambiguity', 'detail', 'refundRowId', 'stripeRefundId', 'requestedCents', 'approvedCents', 'moneyMoved', 'nextAction']
   const fvAlerts = () => calls('claim_financial_verification')
   const checkFacts = (a: Alert, reason: string) => {
     expect(a.dedupeKey).toBe(`claim_fv:cl1:${reason}`)

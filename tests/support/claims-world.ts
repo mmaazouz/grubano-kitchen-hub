@@ -60,7 +60,11 @@ export function payableWorld(claim: Row = {}): World {
   return {
     claims: [{
       id: 'cl1', orderId: 'o1', consumerId: 'c1', restaurantId: 'r1', status: 'approved', refundAttempted: false, refundId: null,
-      refundError: null, requestedAmountCents: 500, arbitrationDecision: 'approved', responseDeadlineAt: null, activeOrderKey: 'o1', ...claim,
+      refundError: null, requestedAmountCents: 500, arbitrationDecision: 'approved', responseDeadlineAt: null, activeOrderKey: 'o1',
+      // D′ L4 (spec v2 §8.3): the engine pays the RATIFIED amount, so the canonical payable claim carries one.
+      // A world that omits it is the amount_not_ratified fixture, and states that explicitly by passing null.
+      approvedAmountCents: 500,
+      ...claim,
     }],
     refunds: [],
     orders: [{ id: 'o1', restaurantId: 'r1', paymentStatus: 'paid', stripePaymentIntentId: 'pi_1' }],

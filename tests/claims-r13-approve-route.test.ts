@@ -32,23 +32,32 @@ const { stripeMock } = vi.hoisted(() => ({
   stripeMock: { paymentIntents: { retrieve: vi.fn() }, refunds: { list: vi.fn(), retrieve: vi.fn(), create: vi.fn() } },
 }))
 vi.mock('@/lib/stripe', () => ({ getStripe: () => stripeMock }))
+// D′ L4 (S-27): the approve branch of the route refuses 503 unless the D′ columns are usable. The probe
+// itself is pinned by tests/claims-dprime-l3b-schema-ready.test.ts; here it answers READY.
+const { schemaMock } = vi.hoisted(() => ({ schemaMock: { fn: vi.fn() } }))
+vi.mock('@/lib/schema-ready', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/lib/schema-ready')>()
+  return { ...real, schemaReady: (...a: unknown[]) => schemaMock.fn(...a) }
+})
 
 import { POST } from '@/app/api/admin/claims/[id]/arbitrate/route'
 import { triggerClaimRefund } from '@/lib/claims'
-import { MARKERS, HEAD_A, acceptedExits, arbitrationRefusal, approvePrematureText, approveRevisableText, approvePermanentText } from '@/lib/claim-action-rules'
+import { MARKERS, HEAD_A, acceptedExits, arbitrationRefusal, approvePrematureText, approveRevisableText, approvePermanentText, APPROVE_CONFIRM_WORD, APPROVE_ALREADY_SET, APPROVE_CONFIRM_REQUIRED } from '@/lib/claim-action-rules'
 import { approvalToast } from '@/lib/claim-approval-toast'
 
 let w: World
-const approve = async () => {
+/** D′ L4 (T-07): an approval carries the amount it ratifies and the admin's typed confirmation. */
+const approve = async (body: Record<string, unknown> = {}) => {
   const res = await POST(new Request('https://app.grubano.com/api/admin/claims/cl1/arbitrate', {
-    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ decision: 'approve' }),
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ decision: 'approve', approvedAmountCents: 500, confirm: APPROVE_CONFIRM_WORD, ...body }),
   }), { params: { id: 'cl1' } })
   return { status: res.status, body: await res.json() as Record<string, unknown> }
 }
 const blocked = () => (alertMock.mock.calls as Array<[{ kind: string; dedupeKey: string; facts: Record<string, unknown> }]>).map((c) => c[0]).filter((a) => a.kind === 'claim_payment_blocked')
 const tokenWrites = () => w.writes.filter((x) => String(x.data.refundError ?? '').startsWith('reconcile_required'))
 /** D′ L2: the shape an approve leaves — APPROVED_AWAITING_PAYMENT, decided, untouched by any rail. */
-const AWAITING_PAYMENT = { status: 'approved', arbitrationDecision: 'approved', refundAttempted: false, refundId: null, refundError: null }
+const AWAITING_PAYMENT = { status: 'approved', arbitrationDecision: 'approved', approvedAmountCents: 500, refundAttempted: false, refundId: null, refundError: null }
 /** D′ L2: what a route approve must NOT have done — read the REFUNDS lease, called the engine, written a token, alerted, reported a refund. */
 const expectDecisionOnly = (r: { status: number; body: Record<string, unknown> }) => {
   expect(r.status).toBe(200)
@@ -57,9 +66,11 @@ const expectDecisionOnly = (r: { status: number; body: Record<string, unknown> }
   expect(execMock).not.toHaveBeenCalled()
   expect(tokenWrites()).toEqual([])
   expect(blocked()).toEqual([])
-  expect(auditMock).toHaveBeenCalledWith(expect.objectContaining({ action: 'claim.arbitrate', metadata: { decision: 'approve', moneyMoved: false } }))
+  // D′ L4: the audit records WHAT was decided — the amount the CAS wrote, and no motive when nothing was reduced.
+  expect(auditMock).toHaveBeenCalledWith(expect.objectContaining({ action: 'claim.arbitrate', metadata: { decision: 'approve', moneyMoved: false, approvedAmountCents: 500, reduceReason: null } }))
   expect(emailMock).toHaveBeenCalledTimes(1)
-  expect(emailMock.mock.calls[0][0]).toMatchObject({ decision: 'approved', refundedCents: null })
+  // D-11: the notice names the APPROVED amount (re-read from the row) and still promises no payment.
+  expect(emailMock.mock.calls[0][0]).toMatchObject({ decision: 'approved', refundedCents: null, approvedCents: 500 })
 }
 
 beforeEach(() => {
@@ -72,7 +83,10 @@ beforeEach(() => {
   emailMock.mockResolvedValue({ status: 'sent' })
   adminMock.mockResolvedValue({ id: 'admin1', email: 'admin@grubano.test' })
   execMock.mockResolvedValue(engineOk())
-  w = payableWorld({ status: 'arbitration', arbitrationDecision: null })
+  schemaMock.fn.mockReset()
+  schemaMock.fn.mockResolvedValue({ ready: true, clientReady: true, dbReady: true, missingClient: [], missingDb: [], probedAt: '', why: null })
+  // D′ L4: the claim under decision carries NO amount yet — the decision is what fixes it.
+  w = payableWorld({ status: 'arbitration', arbitrationDecision: null, approvedAmountCents: null })
   wireWorld(w, db, stripeMock)
 })
 afterEach(() => closeClaimsWindow())
@@ -112,6 +126,26 @@ describe('J-M32 (D′ L2) — approve: server order, the CLAIMS lease, the decis
     expectDecisionOnly(r)
     expect(claimOf(w)).toMatchObject(AWAITING_PAYMENT)
     expect(w.writes).toHaveLength(1)
+  })
+
+  // ── D′ L4 NEGATIVE CONTROLS — the pre-L4 request shape no longer decides anything ──────────────
+  it('NEGATIVE CONTROL (D′ L4) — the old body « decision: approve » alone → 400, 0 writes, no audit, no e-mail; and a schema that cannot hold the amount → 503, 0 writes (S-27)', async () => {
+    const res = await POST(new Request('https://app.grubano.com/api/admin/claims/cl1/arbitrate', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ decision: 'approve' }),
+    }), { params: { id: 'cl1' } })
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({ error: APPROVE_CONFIRM_REQUIRED })
+    expect(w.writes).toEqual([])
+    expect(auditMock).not.toHaveBeenCalled()
+    expect(emailMock).not.toHaveBeenCalled()
+    expect(execMock).not.toHaveBeenCalled()
+    // and the whole contract is refused upstream when the D′ columns are not usable on this server
+    schemaMock.fn.mockResolvedValue({ ready: false, clientReady: false, dbReady: null, missingClient: ['Claim.approvedAmountCents'], missingDb: [], probedAt: '', why: 'stale client' })
+    const gated = await approve()
+    expect(gated.status).toBe(503)
+    expect(gated.body).toMatchObject({ reason: 'schema_not_ready', schemaReady: false })
+    expect(w.writes).toEqual([])
+    expect(claimOf(w)).toMatchObject({ status: 'arbitration', arbitrationDecision: null, approvedAmountCents: null })
   })
 
   it('(b3) the decision CAS matches nothing → 409 « Cette réclamation a déjà été arbitrée. », no trigger, no alert', async () => {
@@ -160,13 +194,26 @@ describe('J-M32 (D′ L2) — approve: server order, the CLAIMS lease, the decis
     expect(c.refundError).toBe('engine_failed: Un remboursement est déjà en cours sur ce montant cumulé. — aucune relance possible depuis les réclamations ; décision humaine requise.')
     expect(blocked().map((a) => a.facts.cause)).toEqual(['engine_failed'])
     const now = new Date()
+    // D′ L4 (D1 v1.1): the amount is FIXED on this row, so the declared set is the rail + the withdrawal…
+    // D′ L4 control parity: an engine_failed state is past the financial frontier — the rail refuses it
+    // (already_handled) and the reversal refuses it (WITHDRAW_MONEY_RECORDED), so the declaration close is
+    // the only exit, exactly as this test's title says. Before the parity fix the table also offered
+    // 'withdraw' and 'pay' here — two controls both servers would have refused.
     expect(acceptedExits({ claim: c as never, now })).toEqual(['stuck_close'])
-    expect(arbitrationRefusal(c as never, 'approve', now)).toEqual({ status: 409, error: approvePermanentText(true) })
+    // …while the rail itself still refuses this recorded money state, and never reaches the engine twice.
+    expect(await triggerClaimRefund('cl1')).toEqual({ state: 'already_handled' })
+    expect(execMock).toHaveBeenCalledTimes(1)
+    // D′ L4 (S-29): an amount already fixed refuses a re-approval FIRST, whatever the recorded money state says.
+    expect(arbitrationRefusal(c as never, 'approve', now)).toEqual({ status: 409, error: APPROVE_ALREADY_SET })
+    // NEGATIVE CONTROL — it is the fixed AMOUNT that refuses, not the error: the same facts with no amount
+    // still yield the pre-L4 permanent refusal.
+    expect(arbitrationRefusal({ ...c, approvedAmountCents: null } as never, 'approve', now)).toEqual({ status: 409, error: approvePermanentText(true) })
     // the route refuses the same way (the rule is shared): a second approve writes nothing
     const writesBefore = w.writes.length
-    const r2 = await approve()
-    expect(r2).toEqual({ status: 409, body: { error: approvePermanentText(true) } })
+    const r2 = await approve({ approvedAmountCents: 400, reduceReason: 'nouvelle appréciation du dossier' })
+    expect(r2).toEqual({ status: 409, body: { error: APPROVE_ALREADY_SET } })
     expect(w.writes).toHaveLength(writesBefore)
+    expect(claimOf(w).approvedAmountCents).toBe(500)
   })
 
   it('(e) approved + v13 before its instant → the C4 premature refusal, 0 writes', async () => {

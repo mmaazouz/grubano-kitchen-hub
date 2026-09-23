@@ -50,7 +50,7 @@ import { GET as CENSUS } from '@/app/api/admin/claims/census/route'
 import { claimsLegacyCensus, claimsClosureCensus } from '@/lib/claims-census'
 import { triggerClaimRefund, markClaimsForRevertedRefundRow, attributeClaimRefund, arbitrateClaim } from '@/lib/claims'
 import {
-  MARKERS, reconcileRefusal, isStuckResolvable, arbitrationRefusal, acceptedExits, customerClaimStatus, refundedRowTruth, type BoundRowFacts,
+  MARKERS, reconcileRefusal, isStuckResolvable, arbitrationRefusal, acceptedExits, customerClaimStatus, refundedRowTruth, APPROVE_CONFIRM_WORD, APPROVE_CONFIRM_REQUIRED, type BoundRowFacts,
 } from '@/lib/claim-action-rules'
 import { financialVerificationCardVisible, financialVerificationHeadingVisible } from '@/lib/claim-money-line'
 import { approvalToast } from '@/lib/claim-approval-toast'
@@ -461,7 +461,8 @@ describe('J-C46 (E-10, v1.1) — an unpaid approval is payable only through the 
   })
 
   it('NEGATIVE CONTROL — both leases open, past Q-INSTANT, T2 passing → executeRefund is called exactly once (the spy works)', async () => {
-    st.claims = [claim('pay', { refundError: `${MARKERS.PROOF_PAYABLE_V13} … payable au plus tôt le ${iso(-2 * H)} (UTC).` })]
+    // D′ L4 (§8.3): the rail pays the RATIFIED amount, so a payable fixture carries one (500 c = the request).
+    st.claims = [claim('pay', { approvedAmountCents: 500, refundError: `${MARKERS.PROOF_PAYABLE_V13} … payable au plus tôt le ${iso(-2 * H)} (UTC).` })]
     st.refunds = []
     lib.refundsOn.mockReturnValue(true)
     lib.executeRefund.mockResolvedValue({ ok: false, status: 409, error: 'Refus du moteur (test).' })
@@ -476,7 +477,7 @@ describe('J-C46 (E-10, v1.1) — an unpaid approval is payable only through the 
   // the rail does), on the claim the decision left approved.
   it('A-S30e-3 before until: approve is decision-only (no refund field, 0 engine, both leases open); the rail then answers T2 (e′) unconfirmed_within_window, no engine call, the pre-image restored, toast approvedNotSentUntil carrying until', async () => {
     const world = (withPendingRow: boolean) => {
-      st.claims = [claim('ase3', { status: 'arbitration', arbitrationDecision: null })]
+      st.claims = [claim('ase3', { status: 'arbitration', arbitrationDecision: null, approvedAmountCents: null })]
       st.refunds = withPendingRow ? [row('rf_W', { status: 'pending', stripeRefundId: null, reason: 'claim:cl_OTHER', createdAt: new Date(Date.now() - 1 * H) })] : []
     }
     world(true)
@@ -486,10 +487,10 @@ describe('J-C46 (E-10, v1.1) — an unpaid approval is payable only through the 
     lib.executeRefund.mockResolvedValue({ ok: false, status: 409, error: 'Refus du moteur (test).' })
     try {
       // (1) the decision: approved, no money, no refund field, nothing written but the decision
-      const out = await arbitrateClaim({ claimId: 'ase3', adminId: 'op1', decision: 'approve' })
+      const out = await arbitrateClaim({ claimId: 'ase3', adminId: 'op1', decision: 'approve', approvedAmountCents: 500, confirm: APPROVE_CONFIRM_WORD })
       expect(out.ok).toBe(true)
       expect(out).not.toHaveProperty('refund')
-      expect(st.claims[0]).toMatchObject({ status: 'approved', arbitrationDecision: 'approved', refundAttempted: false, refundId: null, refundError: null, decidedBy: 'admin' })
+      expect(st.claims[0]).toMatchObject({ status: 'approved', arbitrationDecision: 'approved', approvedAmountCents: 500, refundAttempted: false, refundId: null, refundError: null, decidedBy: 'admin' })
       expect(st.writes).toHaveLength(1)
       noMoneyEngine()
       // (2) the rail's path on that claim (D′ L5 calls triggerClaimRefund): T2 (e′) unconfirmed_within_window
@@ -504,7 +505,12 @@ describe('J-C46 (E-10, v1.1) — an unpaid approval is payable only through the 
       // rail's call reaches it, exactly once (the spy sees a call when there is one).
       world(false)
       lib.executeRefund.mockClear()
-      const again = await arbitrateClaim({ claimId: 'ase3', adminId: 'op1', decision: 'approve' })
+      // D′ L4 NEGATIVE CONTROL — the pre-L4 call shape decided this claim; it now writes nothing at all.
+      const writesBefore = st.writes.length
+      expect(await arbitrateClaim({ claimId: 'ase3', adminId: 'op1', decision: 'approve' }))
+        .toMatchObject({ ok: false, status: 400, error: APPROVE_CONFIRM_REQUIRED })
+      expect(st.writes).toHaveLength(writesBefore)
+      const again = await arbitrateClaim({ claimId: 'ase3', adminId: 'op1', decision: 'approve', approvedAmountCents: 500, confirm: APPROVE_CONFIRM_WORD })
       expect(again.ok).toBe(true)
       expect(lib.executeRefund).not.toHaveBeenCalled()
       await triggerClaimRefund('ase3')

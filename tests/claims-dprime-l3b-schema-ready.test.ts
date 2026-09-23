@@ -9,9 +9,12 @@
 //   • schemaReady() is fail-closed (client stale ⇒ the database is never touched), latched once
 //     ready, re-probed while not ready, and never throws;
 //   • the census exposes it, booleans and field names only;
-//   • L3b ships NO consumer: nothing gates a route on schemaReady, nothing reads the three
-//     columns, no flag, no money, no migration.
-// Every assertion has a negative control on the pre-L3b shape or on a mutated schema.
+//   • AMENDED BY D′ L4: L3b itself shipped NO consumer. L4 wires the first two — the approve branch
+//     of the arbitrate route and the withdraw-approval route answer 503 schema_not_ready rather than
+//     write `approvedAmountCents` through a client that does not know it — and `approvedAmountCents`
+//     is now read and written by the decision path. `selection` and `deliveredAt` stay unconsumed
+//     (L5 owns them), and lib/refund.ts is untouched by both lots. Still no flag, no migration here.
+// Every assertion has a negative control on the pre-L3b shape, on the pre-L4 shape, or on a mutated schema.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 
@@ -265,26 +268,60 @@ describe('the census exposes schemaReady; L3b ships no consumer, no gate, no mon
     for (const a of [s.missingClient, s.missingDb]) expect(Array.isArray(a)).toBe(true)
   })
 
-  it('NO route gates on schemaReady yet (spec v2 §9 names pay/withdraw/approve/POST claims — they arrive with L4/L5)', () => {
-    const importers = ['app/api/claims/route.ts', 'app/api/admin/claims/[id]/arbitrate/route.ts',
-      'app/api/admin/claims/auto-approve/route.ts', 'app/api/claims/[id]/respond/route.ts', 'lib/claims.ts']
-    for (const p of importers) {
+  // ── INVERTED BY D′ L4 (spec v2 §9) ─────────────────────────────────────────────────────────
+  // L3b shipped the probe with NO consumer. L4 is the lot that wires the first two: the routes
+  // that WRITE approvedAmountCents — approve and withdraw-approval — answer 503 rather than write
+  // through a client that does not know the column. Everything else still gates on nothing: the
+  // intake, the machine route and the state machine itself write none of the three columns' values
+  // from a request, so a readiness gate there would only add a new way to fail.
+  it('D′ L4 — the schemaReady gate exists on EXACTLY the two writing routes (approve, withdraw), and on no other claims route nor lib/claims.ts', () => {
+    // (a) the gated routes: the probe AND the 503 it answers with
+    for (const p of ['app/api/admin/claims/[id]/arbitrate/route.ts', 'app/api/admin/claims/[id]/withdraw-approval/route.ts']) {
+      const code = strip(src(p))
+      expect(code, p).toMatch(/import \{ schemaReady \} from '@\/lib\/schema-ready'/)
+      expect(code, p).toMatch(/await schemaReady\(\)/)
+      expect(code, p).toMatch(/reason: 'schema_not_ready', schemaReady: false/)
+      expect(code, p).toMatch(/\{ status: 503 \}/)
+    }
+    // (b) NEGATIVE CONTROL of the inversion — the routes L3b listed beside them are still UNGATED:
+    // the old assertion (« no route gates on schemaReady ») would now be false, and these prove the
+    // new one is a real boundary rather than a blanket.
+    const ungated = ['app/api/claims/route.ts', 'app/api/admin/claims/auto-approve/route.ts',
+      'app/api/claims/[id]/respond/route.ts', 'lib/claims.ts']
+    for (const p of ungated) {
       expect(strip(src(p)), p).not.toMatch(/schema-ready|schemaReady/)
       expect(strip(src(p)), p).not.toMatch(/\b503\b/)
     }
-    // the ONLY importer in the shipped tree is the census
+    // (c) the probe module itself stays a leaf that only reads through Prisma
     expect(strip(src('lib/schema-ready.ts'))).toMatch(/from '@\/lib\/prisma'/)
+    expect(strip(src('lib/schema-ready.ts'))).not.toMatch(/@\/lib\/(claims|refund|stripe)['"]/)
   })
 
-  it('NO code reads or writes the three columns yet (L4 owns that), and lib/refund.ts is untouched by this lot', () => {
+  it('D′ L4 — approvedAmountCents is now READ AND WRITTEN by the decision path; `selection` and `deliveredAt` are still untouched (L5 owns them), and lib/refund.ts is untouched by BOTH lots', () => {
+    // (a) the column L4 consumes — the state machine selects it, pins it in its CAS and writes it
+    const claimsCode = strip(src('lib/claims.ts'))
+    expect(claimsCode).toMatch(/approvedAmountCents: true,/)                 // selected
+    expect(claimsCode).toMatch(/approvedAmountCents: null \}/)               // pinned in the CAS
+    expect(claimsCode).toMatch(/approvedAmountCents: amount,/)               // written
+    expect(strip(src('app/api/admin/claims/[id]/arbitrate/route.ts'))).toMatch(/approvedAmountCents:/)
+    // (b) NEGATIVE CONTROL of the inversion — the L3b assertion was `not.toMatch(/approvedAmountCents:\s/)`
+    // on these very files. It is now false for both, which is exactly what L4 changed.
+    for (const p of ['lib/claims.ts', 'app/api/admin/claims/[id]/arbitrate/route.ts']) {
+      expect(strip(src(p)), p).toMatch(/approvedAmountCents:\s/)
+    }
+    // (c) the two OTHER columns are still nobody's business but the probe's — nothing regressed into L5
     const scanned = ['lib/claims.ts', 'lib/claim-action-rules.ts', 'lib/claim-scope.ts', 'lib/refund.ts',
-      'app/api/claims/route.ts', 'app/api/admin/claims/[id]/arbitrate/route.ts']
+      'app/api/claims/route.ts', 'app/api/admin/claims/[id]/arbitrate/route.ts',
+      'app/api/admin/claims/[id]/withdraw-approval/route.ts', 'app/api/admin/claims/[id]/ceiling/route.ts']
     for (const p of scanned) {
       const code = strip(src(p))
-      expect(code, p).not.toMatch(/approvedAmountCents:\s/)      // no write, no select
       expect(code, p).not.toMatch(/selection:\s*(true|\{)/)
       expect(code, p).not.toMatch(/deliveredAt/)
     }
+    // (d) the frozen engine never learns about any of the three: no amount, no selection, no delivery
+    const engine = strip(src('lib/refund.ts'))
+    expect(engine).not.toMatch(/approvedAmountCents/)
+    expect(engine).not.toMatch(/schema-ready|schemaReady/)
     // ClaimFacts keeps the optional D1 v1.1 FACT (a plain type field, never a prisma select)
     expect(src('lib/claim-action-rules.ts')).toMatch(/approvedAmountCents\?: number \| null/)
   })

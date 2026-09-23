@@ -206,11 +206,13 @@ describe('J-C32 — the H04 templates and the H12 rewordings, 5 locales', () => 
     }
   })
 
-  it('the kept values are byte-identical to HEAD: approved.body, refunded.body, refusedFinal.body, accepted.body', () => {
+  it('the kept values are byte-identical to HEAD: refunded.body, refusedFinal.body, accepted.body (approved.body is REWORDED by D′ L4 — pinned below)', () => {
     for (const l of SPEC_LOCALES) {
-      for (const k of ['claimEmails.approved.body', 'claimEmails.refunded.body', 'claimEmails.refusedFinal.body', 'claimEmails.accepted.body']) {
+      for (const k of ['claimEmails.refunded.body', 'claimEmails.refusedFinal.body', 'claimEmails.accepted.body']) {
         expect(messageAt(M[l], k), `${l} ${k}`).toBe(HEAD[l][k])
       }
+      // NEGATIVE CONTROL of the D′ L4 rewording: approved.body is the ONE value in that set that MOVED.
+      expect(messageAt(M[l], 'claimEmails.approved.body'), `${l} approved.body moved`).not.toBe(HEAD[l]['claimEmails.approved.body'])
     }
   })
 
@@ -218,6 +220,77 @@ describe('J-C32 — the H04 templates and the H12 rewordings, 5 locales', () => 
     for (const l of SPEC_LOCALES) {
       expect(HEAD[l]['claimEmails.refused.contest'], l).not.toBe(EXPECTED['claimEmails.refused.contest'][l])
       expect(notifyHit(l, HEAD[l]['claimEmails.refused.contest']), l).toBe(true)
+    }
+  })
+})
+
+// ══ D′ L4 — claimEmails.approved.body and the new claimEmails.withdrawn.* group, 5 locales ═════════
+// An approval now has an AMOUNT (T-07), and approving is not paying (S-02). The notice must therefore
+// NAME the approved amount and say the refund will be carried out separately by the team — and it must
+// NOT say the money has been sent, nor promise a bank that has not been asked yet. A withdrawal (T-09)
+// says the opposite of a payment: the decision was taken back BEFORE any money moved.
+describe('D′ L4 — the approval notice names its amount and promises no payment; the withdrawal notice promises none either', () => {
+  /** The « carried out separately by our team » clause, per locale (spec v2 §6.4, D-11). */
+  const SEPARATE_EXECUTION: Record<SpecLocale, RegExp> = {
+    fr: /sera exécuté séparément par notre équipe/,
+    en: /will be carried out separately by our team/,
+    es: /Será ejecutado por separado por nuestro equipo/,
+    it: /Sarà eseguito separatamente dal nostro team/,
+    ar: new RegExp('سيتم تنفيذه بشكل منفصل من قِبل فريقنا', 'u'),
+  }
+  /** « the money HAS left » — a sentence an approval may never contain, since no engine has run. */
+  const ALREADY_PAID: Record<SpecLocale, RegExp> = {
+    fr: /a été (remboursé|versé|émis)|déjà rembours|est arrivé sur votre compte/i,
+    en: /has been (refunded|issued|paid|sent)|already refunded/i,
+    es: /ha sido (reembolsado|emitido|abonado|enviado)|ya reembolsad/i,
+    it: /è stato (rimborsato|emesso|accreditato|inviato)|già rimborsat/i,
+    ar: new RegExp('تم استرداد|تم الإصدار|تم تحويل', 'u'),
+  }
+  /** « no refund was issued » — what a withdrawal MUST state, per locale (T-09). */
+  const NO_PAYMENT_MADE: Record<SpecLocale, RegExp> = {
+    fr: /aucun remboursement n’a été émis/,
+    en: /no refund was issued/,
+    es: /no se emitió ningún reembolso/,
+    it: /nessun rimborso è stato emesso/,
+    ar: new RegExp('لم يُصدر أي مبلغ', 'u'),
+  }
+
+  for (const l of SPEC_LOCALES) {
+    it(`${l}: approved.body names {euros} and {ref}, carries the separate-execution clause, and claims no payment made`, () => {
+      const body = String(messageAt(M[l], 'claimEmails.approved.body'))
+      expect(body, `${l} {euros}`).toContain('{euros}')
+      expect(body, `${l} {ref}`).toContain('{ref}')
+      expect(SEPARATE_EXECUTION[l].test(body), `${l} « ${body} »`).toBe(true)
+      expect(ALREADY_PAID[l].test(body), `${l} « ${body} »`).toBe(false)
+      // the amount named is the DECISION's: the notice never calls it a refunded amount
+      expect(body, `${l} template`).not.toBe(String(messageAt(M[l], 'claimEmails.refunded.body')))
+    })
+
+    it(`${l}: the withdrawn.* group exists, states that no refund was issued, carries {ref} and NO amount`, () => {
+      const g = M[l].claimEmails.withdrawn as Record<string, string>
+      expect(Object.keys(g).sort(), l).toEqual(['body', 'subject', 'title'])
+      expect(NO_PAYMENT_MADE[l].test(g.body), `${l} « ${g.body} »`).toBe(true)
+      expect(g.body, l).toContain('{ref}')
+      expect(g.subject, l).toContain('{ref}')
+      // a withdrawal moves no money, so it names none — and it is not a refusal either
+      for (const [k, v] of Object.entries(g)) expect(v, `${l} withdrawn.${k}`).not.toContain('{euros}')
+      expect(g.title, l).not.toBe(String(M[l].claimEmails.refusedFinal.title))
+    })
+  }
+
+  it('NEGATIVE CONTROL — the HEAD approved.body of every locale fails the new contract (no amount, no separate-execution clause), and a synthetic « already refunded » body is caught', () => {
+    const SYNTHETIC: Record<SpecLocale, string> = {
+      fr: 'Un remboursement de {euros} a été remboursé sur votre moyen de paiement pour la commande {ref}.',
+      en: 'A refund of {euros} has been refunded to your payment method for order {ref}.',
+      es: 'Un reembolso de {euros} ha sido reembolsado a su método de pago para el pedido {ref}.',
+      it: 'Un rimborso di {euros} è stato rimborsato sul suo metodo di pagamento per l’ordine {ref}.',
+      ar: 'تم استرداد مبلغ {euros} إلى وسيلة الدفع الخاصة بك بخصوص الطلب {ref}.',
+    }
+    for (const l of SPEC_LOCALES) {
+      const head = HEAD[l]['claimEmails.approved.body']
+      expect(head, `${l} HEAD names no amount`).not.toContain('{euros}')
+      expect(SEPARATE_EXECUTION[l].test(head), `${l} HEAD « ${head} »`).toBe(false)
+      expect(ALREADY_PAID[l].test(SYNTHETIC[l]), `${l} synthetic « ${SYNTHETIC[l]} »`).toBe(true)
     }
   })
 })

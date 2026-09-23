@@ -61,7 +61,7 @@ import {
 } from '@/lib/claims'
 import {
   MARKERS, TERMINAL, reconcileRefusal, arbitrationRefusal, customerClaimStatus, moneyStateGuidance, type ClaimFacts,
-  acceptedExits as pureAcceptedExits, exitRegistry, REFUSE_APPROVED_AM_B3, APPROVE_ALREADY_SET, type BoundRowFacts, type ExitNote,
+  acceptedExits as pureAcceptedExits, exitRegistry, REFUSE_APPROVED_AM_B3, APPROVE_ALREADY_SET, APPROVE_CONFIRM_WORD, APPROVE_CONFIRM_REQUIRED, type BoundRowFacts, type ExitNote,
 } from '@/lib/claim-action-rules'
 import { attributionRefusal } from '@/lib/claim-attribution-rules'
 import { payableWorld, wireWorld, refundRow, claimOf, type World } from './support/claims-world'
@@ -334,7 +334,9 @@ describe('ARBITRATION PARITY — the queue carries exactly the refusal the serve
       db.claim.findUnique.mockResolvedValue(shapes.find((s) => s.id === listed.id))
       const pairs: Array<['approve' | 'refuse_final', string | null]> = [['approve', listed.approveRefusal], ['refuse_final', listed.refuseFinalRefusal]]
       for (const [decision, verdict] of pairs) {
-        const server = await arbitrateClaim({ claimId: listed.id, adminId: 'op1', decision })
+        // D′ L4 (T-07): an approval carries its confirmed, bounded amount — so the ONLY refusals left are the
+        // queue's own verdict and the lost CAS, which is exactly what this parity check measures.
+        const server = await arbitrateClaim({ claimId: listed.id, adminId: 'op1', decision, ...(decision === 'approve' ? { approvedAmountCents: 500, confirm: APPROVE_CONFIRM_WORD } : {}) })
         if (verdict) { refusals++; expect(server, `${listed.id} ${decision}`).toEqual({ ok: false, status: 409, error: verdict }) }
         else expect(server, `${listed.id} ${decision}`).toEqual({ ok: false, status: 409, error: 'Cette réclamation a déjà été arbitrée.' })
       }
@@ -343,9 +345,35 @@ describe('ARBITRATION PARITY — the queue carries exactly the refusal the serve
     expect(execMock).not.toHaveBeenCalled()
   })
 
-  it('ROUND 11 (round-10 audit, P3): an ENABLED decision really succeeds — the CAS matches, the claim moves, no engine runs', async () => {
+  // D′ L4 NEGATIVE CONTROL — the pre-L4 call (no confirmation, no amount) got the queue's verdict or a lost CAS.
+  // It now gets the CONTRACT refusal on every row the queue declares approvable, and writes nothing.
+  it('D′ L4 — the same parity run without the confirmation: every approvable row answers 400 APPROVE_CONFIRM_REQUIRED, and no CAS is attempted', async () => {
     const shapes = EXIT_TABLE.map((r, i) => ({
       ...r.claim, id: `cl${i}`, orderId: `o${i}`, consumerId: 'u1', restaurantId: 'r1', reason: 'wrong_item', requestedAmountCents: 500, createdAt: PAST,
+      approvedAmountCents: r.claim.approvedAmountCents ?? null,
+    }))
+    db.claim.findMany.mockImplementation(async (args?: { where?: { OR?: unknown } }) => (args?.where?.OR ? shapes : []))
+    const queue = await listArbitrationQueue()
+    fx.row = null; fx.forcedCount = 0
+    let contractRefusals = 0
+    for (const listed of queue) {
+      if (listed.approveRefusal) continue
+      db.claim.findUnique.mockResolvedValue(shapes.find((s) => s.id === listed.id))
+      db.claim.updateMany.mockClear()
+      expect(await arbitrateClaim({ claimId: listed.id, adminId: 'op1', decision: 'approve' }), listed.id)
+        .toEqual({ ok: false, status: 400, error: APPROVE_CONFIRM_REQUIRED })
+      expect(db.claim.updateMany, listed.id).not.toHaveBeenCalled()
+      contractRefusals++
+    }
+    expect(contractRefusals).toBeGreaterThan(0)
+    expect(execMock).not.toHaveBeenCalled()
+  })
+
+  it('ROUND 11 (round-10 audit, P3): an ENABLED decision really succeeds — the CAS matches, the claim moves, no engine runs', async () => {
+    // D′ L4 (S-29): the ratification CAS pins « no amount yet », so the simulated row must CARRY that column.
+    const shapes = EXIT_TABLE.map((r, i) => ({
+      ...r.claim, id: `cl${i}`, orderId: `o${i}`, consumerId: 'u1', restaurantId: 'r1', reason: 'wrong_item', requestedAmountCents: 500, createdAt: PAST,
+      approvedAmountCents: r.claim.approvedAmountCents ?? null,
     }))
     db.claim.findMany.mockImplementation(async (args?: { where?: { OR?: unknown } }) => (args?.where?.OR ? shapes : []))
     const queue = await listArbitrationQueue()
@@ -360,9 +388,11 @@ describe('ARBITRATION PARITY — the queue carries exactly the refusal the serve
         if (verdict) continue
         fx.row = { ...shape }; fx.forcedCount = null; fx.applyWrites = true
         db.claim.findUnique.mockResolvedValue({ ...shape })
-        const server = await arbitrateClaim({ claimId: listed.id, adminId: 'op1', decision })
+        const server = await arbitrateClaim({ claimId: listed.id, adminId: 'op1', decision, ...(decision === 'approve' ? { approvedAmountCents: 500, confirm: APPROVE_CONFIRM_WORD } : {}) })
         expect(server.ok, `${listed.id} ${decision}`).toBe(true)
         expect(fx.row!.status, `${listed.id} ${decision}`).toBe(to)
+        // D′ L4: an approval that wins writes the amount it ratified; a refusal writes none.
+        if (decision === 'approve') expect(fx.row!.approvedAmountCents, `${listed.id} ${decision}`).toBe(500)
         successes++
       }
     }

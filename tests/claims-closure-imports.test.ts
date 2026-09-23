@@ -85,7 +85,7 @@ describe('J-C48 — no scheduled job, no infra change, alert kinds confined', ()
 
 // ══ ROUND 13 (slice W6) — J-C29 (H15, H09, I-10): the senders are never in the webhook or a cron bundle ════════════
 // IMPLEMENTATION NOTE (W6) on ER-C17 / ER-C23: the roots are the webhook, reconcile-refunds and every route cron.yml calls
-// (app/api/cron does not exist). The importers of lib/claim-emails are the 8 H15 routes; H10 / H16's missing-notice list
+// (app/api/cron does not exist). The importers of lib/claim-emails are the 9 H15 routes (8 + the D′ L4 withdrawal); H10 / H16's missing-notice list
 // (financial-verification and census routes) is not in this slice — census counts closure.missing from its own reads.
 type Reader = (p: string) => string | null
 const fsReader: Reader = (p) => { try { return statSync(p).isFile() ? read(p) : null } catch { return null } }
@@ -127,6 +127,8 @@ const H15_IMPORTERS = [
   'app/api/admin/claims/[id]/closure-notice/route.ts',
   'app/api/admin/claims/[id]/reconcile/route.ts',
   'app/api/admin/claims/[id]/resolve-stuck/route.ts',
+  // D′ L4 (T-09): the withdrawal route tells the customer the approval was taken back BEFORE any payment.
+  'app/api/admin/claims/[id]/withdraw-approval/route.ts',
   'app/api/claims/[id]/respond/route.ts',
   'app/api/claims/route.ts',
   'app/api/orders/[id]/status/route.ts',
@@ -149,7 +151,7 @@ describe('J-C29 — import topology (H15)', () => {
     expect(['lib/claims.ts', 'lib/refund.ts', 'lib/stripe.ts'].filter((f) => fromSenders.has(f))).toEqual([])
   })
 
-  it('the importers of lib/claim-emails are exactly the 8 H15 routes', () => {
+  it('the importers of lib/claim-emails are exactly the 9 H15 routes (D′ L4 adds withdraw-approval)', () => {
     const files = ['app', 'lib', 'components', 'scripts'].flatMap(walk).filter((f) => /\.(ts|tsx|js|mjs)$/.test(f))
     const importers = files.filter((f) => specifiers(read(f)).some((s) => resolveImport(s, f, fsReader) === 'lib/claim-emails.ts'))
     expect(importers.sort()).toEqual([...H15_IMPORTERS].sort())
@@ -173,7 +175,7 @@ describe('J-C29 — import topology (H15)', () => {
 // closure (attribute, closure-notice, reconcile, resolve-stuck). The class is fixed PER FILE: a literal `true`, the lease
 // (`isClaimsEnabled()`), the surface (`claimsSurfaceOpen()`) or the WRONG class are violations. The gate is imported from
 // lib/claim-flags (never through lib/claims). IMPLEMENTATION NOTE (W6) on ER-C17: the files CALLING sendClaimAckEmail /
-// sendClaimDecisionEmail / sendClaimClosureEmail are the 8 H15 routes minus app/api/orders/[id]/status/route.ts, which
+// sendClaimDecisionEmail / sendClaimClosureEmail are the 9 H15 routes minus app/api/orders/[id]/status/route.ts, which
 // imports only the order-cancellation senders (H13) and reads `claimsOpenNow = claimNoticeGate('pre_money')` at send time.
 type NoticeClass = 'pre_money' | 'post_money' | 'closure'
 /** spec v2 §6.2 — the notice class of each sender-calling file (D′ L1). */
@@ -181,6 +183,8 @@ const NOTICE_CLASS: Record<string, NoticeClass> = {
   'app/api/claims/route.ts':                            'pre_money',
   'app/api/claims/[id]/respond/route.ts':               'pre_money',
   'app/api/admin/claims/[id]/arbitrate/route.ts':       'pre_money',
+  // D′ L4 (T-09): withdrawing an approval is a PRE-MONEY notice — nothing was paid, nothing is closed.
+  'app/api/admin/claims/[id]/withdraw-approval/route.ts': 'pre_money',
   'app/api/admin/claims/[id]/attribute/route.ts':       'closure',
   'app/api/admin/claims/[id]/closure-notice/route.ts':  'closure',
   'app/api/admin/claims/[id]/reconcile/route.ts':       'closure',
@@ -217,7 +221,7 @@ function senderCalls(files: Record<string, string>, classes: Record<string, Noti
 const appTree = () => Object.fromEntries(walk('app').filter((f) => /\.(ts|tsx)$/.test(f)).map((f) => [f, read(f)]))
 
 describe('J-C21 (D′ L1) — the sender call sites', () => {
-  it("each call passes claimsOpen: claimNoticeGate(<class>) with the calling file's class; the calling files are the 7 claim routes; the gate comes from lib/claim-flags", () => {
+  it("each call passes claimsOpen: claimNoticeGate(<class>) with the calling file's class; the calling files are the 8 claim routes; the gate comes from lib/claim-flags", () => {
     const { callers, violations: v } = senderCalls(appTree())
     expect(v).toEqual([])
     expect(callers).toEqual(Object.keys(NOTICE_CLASS).sort())

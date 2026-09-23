@@ -26,7 +26,7 @@ const { stripeMock } = vi.hoisted(() => ({
 vi.mock('@/lib/stripe', () => ({ getStripe: () => stripeMock }))
 
 import { triggerClaimRefund } from '@/lib/claims'
-import { MARKERS, HEAD_A, arbitrationRefusal } from '@/lib/claim-action-rules'
+import { MARKERS, HEAD_A, arbitrationRefusal, acceptedExits, APPROVE_ALREADY_SET } from '@/lib/claim-action-rules'
 import { approvalToast } from '@/lib/claim-approval-toast'
 
 const INSTANT = new Date(Date.now() - 60_000)
@@ -48,8 +48,14 @@ beforeEach(() => {
 const inject = (change: (x: World) => void) => { w.beforeClaimWrite = (n) => { if (n === 1) change(w) } }
 
 describe('J-M20 — a payable proof invalidated between approval and the money call never reaches the engine', () => {
-  it('the fixture is approvable: arbitrationRefusal null on the v13 proof past its instant', () => {
-    expect(arbitrationRefusal({ ...claimOf(w), status: 'approved' } as never, 'approve', new Date())).toBeNull()
+  it('the fixture is PAYABLE: the v13 proof is past its instant, and D′ L4 sends it to the rail (the amount is ratified) instead of to a re-approval', () => {
+    const facts = { ...claimOf(w), status: 'approved' }
+    // D′ L4 (S-29): the amount is fixed on this row, so « Approuver » is closed and « Payer » is the exit…
+    expect(arbitrationRefusal(facts as never, 'approve', new Date())).toEqual({ status: 409, error: APPROVE_ALREADY_SET })
+    expect(acceptedExits({ claim: facts as never, now: new Date() })).toContain('pay')
+    // … while the SAME proof with no amount fixed is still ratifiable: the C4 instant has passed (the property
+    // this fixture is built on, and the reason T1 admits the attempt below).
+    expect(arbitrationRefusal({ ...facts, approvedAmountCents: null } as never, 'approve', new Date())).toBeNull()
   })
 
   const VARIANTS: Array<[string, (x: World) => void, (r: unknown) => void]> = [

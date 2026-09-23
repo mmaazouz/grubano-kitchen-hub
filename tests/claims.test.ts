@@ -31,6 +31,7 @@ vi.mock('@/lib/stripe', () => ({ getStripe: () => stripeMock }))
 vi.mock('@/lib/admin-alerts', () => ({ sendAdminMoneyReviewAlert: vi.fn(async () => ({ status: 'sent' })) }))
 
 import { createClaim, respondToClaim, runClaimAutoApproval, getClaimEligibility, arbitrateClaim, listArbitrationQueue, triggerClaimRefund } from '@/lib/claims'
+import { APPROVE_CONFIRM_WORD, APPROVE_CONFIRM_REQUIRED, APPROVE_AMOUNT_REQUIRED } from '@/lib/claim-action-rules'
 import { payableWorld, wireWorld, refundRow, claimOf, engineOk, engine202 } from './support/claims-world'
 
 /** ROUND 13 (C3): T1 → T2 on fresh reads → the engine → T4, driven in an in-memory world. */
@@ -182,19 +183,33 @@ describe('respondToClaim — (b) accept → FILE ADMIN, jamais de remboursement 
 
 describe("(e) P0-24 → D′ L2 — l'ADMIN décide (décision seule) ; le RAIL paie (les deux rôles couverts)", () => {
   it("admin arbitrate approve sur une réclamation 'arbitration' (acceptée par le resto) → décision écrite, executeRefund ZÉRO fois, bail REFUNDS jamais lu, pas de champ refund (D′ L2 S-02)", async () => {
-    const w = world({ status: 'arbitration', refundAttempted: false, arbitrationDecision: null, requestedAmountCents: 5000 })
-    const res = await arbitrateClaim({ claimId: 'cl1', adminId: 'adm1', decision: 'approve' })
+    // D′ L4 (T-07): the decision carries a RATIFIED amount, confirmed by hand and bounded by the request.
+    const w = world({ status: 'arbitration', refundAttempted: false, arbitrationDecision: null, requestedAmountCents: 5000, approvedAmountCents: null })
+    const res = await arbitrateClaim({ claimId: 'cl1', adminId: 'adm1', decision: 'approve', approvedAmountCents: 5000, confirm: APPROVE_CONFIRM_WORD })
     expect(res.ok).toBe(true)
     expect(res).not.toHaveProperty('refund')
     expect(execMock).not.toHaveBeenCalled()
     expect(refundsFlag).not.toHaveBeenCalled()
     expect(w.writes).toHaveLength(1)
-    expect(claimOf(w)).toMatchObject({ status: 'approved', arbitrationDecision: 'approved', arbitratedBy: 'adm1', decidedBy: 'admin', refundAttempted: false, refundId: null, refundError: null })
+    expect(claimOf(w)).toMatchObject({ status: 'approved', arbitrationDecision: 'approved', approvedAmountCents: 5000, arbitratedBy: 'adm1', decidedBy: 'admin', refundAttempted: false, refundId: null, refundError: null })
+  })
+
+  // D′ L4 NEGATIVE CONTROL — the pre-L4 call shape (a decision with neither confirmation nor amount)
+  // used to approve this very claim; it now writes NOTHING at all.
+  it("CONTRÔLE NÉGATIF D′ L4 — l'ancien appel (sans confirmation ni montant) n'approuve plus rien : 400, ZÉRO écriture", async () => {
+    const w = world({ status: 'arbitration', refundAttempted: false, arbitrationDecision: null, requestedAmountCents: 5000, approvedAmountCents: null })
+    expect(await arbitrateClaim({ claimId: 'cl1', adminId: 'adm1', decision: 'approve' }))
+      .toMatchObject({ ok: false, status: 400, error: APPROVE_CONFIRM_REQUIRED })
+    expect(await arbitrateClaim({ claimId: 'cl1', adminId: 'adm1', decision: 'approve', confirm: APPROVE_CONFIRM_WORD }))
+      .toMatchObject({ ok: false, status: 400, error: APPROVE_AMOUNT_REQUIRED })
+    expect(w.writes).toHaveLength(0)
+    expect(claimOf(w)).toMatchObject({ status: 'arbitration', arbitrationDecision: null, approvedAmountCents: null })
+    expect(execMock).not.toHaveBeenCalled()
   })
 
   it("CONTRÔLE NÉGATIF — le même monde, après cette décision, PAIE quand le rail (triggerClaimRefund) est appelé à la main : executeRefund UNE fois, sur le montant de la réclamation", async () => {
-    const w = world({ status: 'arbitration', refundAttempted: false, arbitrationDecision: null, requestedAmountCents: 5000 })
-    const res = await arbitrateClaim({ claimId: 'cl1', adminId: 'adm1', decision: 'approve' })
+    const w = world({ status: 'arbitration', refundAttempted: false, arbitrationDecision: null, requestedAmountCents: 5000, approvedAmountCents: null })
+    const res = await arbitrateClaim({ claimId: 'cl1', adminId: 'adm1', decision: 'approve', approvedAmountCents: 5000, confirm: APPROVE_CONFIRM_WORD })
     expect(res.ok).toBe(true)
     expect(execMock).not.toHaveBeenCalled()
     const t = await triggerClaimRefund('cl1')
@@ -205,9 +220,9 @@ describe("(e) P0-24 → D′ L2 — l'ADMIN décide (décision seule) ; le RAIL 
   })
 
   it("[PHASE 2 §15 A7] RAIL (après la décision) : moteur → variante PENDING (Stripe pas encore succeeded) : la réclamation reste 'refunding' avec refundId, AUCUN refundError, AUCUN retour à 'approved'", async () => {
-    const w = world({ status: 'arbitration', refundAttempted: false, arbitrationDecision: null, requestedAmountCents: 5000 })
+    const w = world({ status: 'arbitration', refundAttempted: false, arbitrationDecision: null, requestedAmountCents: 5000, approvedAmountCents: null })
     execMock.mockImplementation(async () => { w.refunds.push(refundRow('rf1', { reason: 'claim:cl1', status: 'pending', stripeRefundId: 're_p' })); return engine202({ refundId: 'rf1', stripeRefundId: 're_p', amountCents: 5000, error: 'en attente' }) })
-    const res = await arbitrateClaim({ claimId: 'cl1', adminId: 'adm1', decision: 'approve' })
+    const res = await arbitrateClaim({ claimId: 'cl1', adminId: 'adm1', decision: 'approve', approvedAmountCents: 5000, confirm: APPROVE_CONFIRM_WORD })
     expect(res.ok).toBe(true)
     expect(execMock).not.toHaveBeenCalled()                 // the decision reached no engine
     expect(w.writes).toHaveLength(1)                        // write 0 = the decision CAS
@@ -222,14 +237,15 @@ describe("(e) P0-24 → D′ L2 — l'ADMIN décide (décision seule) ; le RAIL 
   })
 
   it('HÉRITAGE pré-P0-24 : approved + refundAttempted=false → RATIFIABLE (approve = décision complétée, ZÉRO moteur) ; le rail, lui, paie ensuite (contrôle négatif)', async () => {
-    const w = world({ id: 'cl9', orderId: 'o1', status: 'approved', refundAttempted: false, arbitrationDecision: null, arbitratedBy: null, arbitratedAt: null, decidedBy: null, decidedAt: null, requestedAmountCents: 1200 })
+    const w = world({ id: 'cl9', orderId: 'o1', status: 'approved', refundAttempted: false, arbitrationDecision: null, arbitratedBy: null, arbitratedAt: null, decidedBy: null, decidedAt: null, requestedAmountCents: 1200, approvedAmountCents: null })
     execMock.mockResolvedValue(engineOk({ refundId: 'rf9' }))
-    const res = await arbitrateClaim({ claimId: 'cl9', adminId: 'adm1', decision: 'approve' })
+    const res = await arbitrateClaim({ claimId: 'cl9', adminId: 'adm1', decision: 'approve', approvedAmountCents: 1200, confirm: APPROVE_CONFIRM_WORD })
     expect(res.ok).toBe(true)
     // le CAS de ratification exige refundAttempted:false ET refundId:null dans le WHERE (race-safe) et épingle les instants lus
+    // D′ L4 (S-29) : il épingle AUSSI l'absence de montant — un montant déjà fixé n'est jamais réécrit.
     const meta = db.claim.updateMany.mock.calls.find((c) => c[0]?.data?.arbitrationDecision === 'approved')
-    expect(meta?.[0].where).toMatchObject({ id: 'cl9', status: 'approved', refundAttempted: false, refundId: null, arbitratedAt: null, decidedAt: null })
-    expect(meta?.[0].data).toMatchObject({ status: 'approved', arbitrationDecision: 'approved', arbitratedBy: 'adm1', decidedBy: 'admin' })
+    expect(meta?.[0].where).toMatchObject({ id: 'cl9', status: 'approved', refundAttempted: false, refundId: null, arbitratedAt: null, decidedAt: null, approvedAmountCents: null })
+    expect(meta?.[0].data).toMatchObject({ status: 'approved', arbitrationDecision: 'approved', approvedAmountCents: 1200, arbitratedBy: 'adm1', decidedBy: 'admin' })
     expect(execMock).not.toHaveBeenCalled()
     expect(claimOf(w, 'cl9')).toMatchObject({ status: 'approved', arbitrationDecision: 'approved', refundAttempted: false, refundId: null })
     // contrôle négatif : le rail sur cette réclamation ratifiée → moteur UNE fois, sur 1200 c

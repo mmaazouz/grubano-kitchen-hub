@@ -40,10 +40,17 @@ vi.mock('@/lib/claim-emails', () => ({ sendClaimDecisionEmail: emailMock, sendCl
 vi.mock('@/lib/admin-guard', () => ({ resolveAdmin: adminMock }))
 vi.mock('@/lib/rate-limit', () => ({ rateLimit: () => null }))
 vi.mock('@/lib/stripe', () => ({ getStripe: () => stripeMock }))
+// D′ L4 (S-27): the route's approve branch refuses 503 unless the D′ columns are usable; here the probe answers
+// READY (the probe itself is pinned by tests/claims-dprime-l3b-schema-ready.test.ts).
+const { schemaMock } = vi.hoisted(() => ({ schemaMock: { fn: vi.fn() } }))
+vi.mock('@/lib/schema-ready', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/lib/schema-ready')>()
+  return { ...real, schemaReady: (...a: unknown[]) => schemaMock.fn(...a) }
+})
 
 import { POST as arbitrate } from '@/app/api/admin/claims/[id]/arbitrate/route'
 import { arbitrateClaim, triggerClaimRefund, runClaimAutoApproval, autoResolveSmallClaim, respondToClaim } from '@/lib/claims'
-import { acceptedExits, arbitrationRefusal, APPROVE_ALREADY_SET, REFUSE_APPROVED_AM_B3 } from '@/lib/claim-action-rules'
+import { acceptedExits, arbitrationRefusal, APPROVE_ALREADY_SET, REFUSE_APPROVED_AM_B3, APPROVE_CONFIRM_WORD, APPROVE_CONFIRM_REQUIRED } from '@/lib/claim-action-rules'
 import { payableWorld, claimOf } from './support/claims-world'
 import { wireEngineWorld, type EngineWorld } from './support/claims-engine-world'
 import { openClaimsWindow, closeClaimsWindow } from './support/claims-window'
@@ -57,9 +64,11 @@ const openRefundsLease = () => {
 }
 const closeRefundsLease = () => { delete process.env.REFUNDS_ENABLED; delete process.env.REFUNDS_WINDOW_UNTIL }
 
-const approveViaRoute = async (id = 'cl1') => {
+const approveViaRoute = async (id = 'cl1', extra: Record<string, unknown> = {}) => {
   const res = await arbitrate(new Request(`https://app.grubano.com/api/admin/claims/${id}/arbitrate`, {
-    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ decision: 'approve' }),
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    // D′ L4 (T-07): an approval carries its amount and the admin's typed confirmation.
+    body: JSON.stringify({ decision: 'approve', approvedAmountCents: 500, confirm: APPROVE_CONFIRM_WORD, ...extra }),
   }), { params: { id } })
   return { status: res.status, body: await res.json() as Record<string, unknown> }
 }
@@ -85,9 +94,11 @@ beforeEach(() => {
   auditMock.mockReset(); auditMock.mockResolvedValue(true)
   emailMock.mockReset(); emailMock.mockResolvedValue({ status: 'sent' })
   adminMock.mockReset(); adminMock.mockResolvedValue({ id: 'admin1', email: 'admin@grubano.test' })
+  schemaMock.fn.mockReset()
+  schemaMock.fn.mockResolvedValue({ ready: true, clientReady: true, dbReady: true, missingClient: [], missingDb: [], probedAt: '', why: null })
   openClaimsWindow()
   openRefundsLease()
-  setWorld({ status: 'arbitration', arbitrationDecision: null, arbitratedBy: null, arbitratedAt: null, decidedBy: null, decidedAt: null })
+  setWorld({ status: 'arbitration', arbitrationDecision: null, approvedAmountCents: null, arbitratedBy: null, arbitratedAt: null, decidedBy: null, decidedAt: null })
 })
 afterEach(() => { closeClaimsWindow(); closeRefundsLease() })
 
@@ -97,26 +108,40 @@ describe('S-02 / S-03 — approve is a decision: both leases OPEN, still zero mo
     expect(r.status).toBe(200)
     expect(r.body).not.toHaveProperty('refund')
     const c = claimOf(w)
-    expect(c).toMatchObject({ status: 'approved', arbitrationDecision: 'approved', refundAttempted: false, refundId: null, refundError: null, decidedBy: 'admin' })
+    expect(c).toMatchObject({ status: 'approved', arbitrationDecision: 'approved', approvedAmountCents: 500, refundAttempted: false, refundId: null, refundError: null, decidedBy: 'admin' })
     expect(c.arbitratedBy).toBe('admin1')
     expect(c.arbitratedAt).toBeInstanceOf(Date)
     expect(moneyTouched()).toMatchObject({ engine: 0, create: 0, rows: 0, blocked: [] })
     // no token M was ever written: T1 never ran
     expect(w.writes.some((x) => String(x.data.refundError ?? '').startsWith('reconcile_required'))).toBe(false)
-    // the audit tells the truth and the customer e-mail is the money-free 'approved'
-    expect(auditMock).toHaveBeenCalledWith(expect.objectContaining({ action: 'claim.arbitrate', metadata: { decision: 'approve', moneyMoved: false } }))
-    expect(emailMock).toHaveBeenCalledWith(expect.objectContaining({ decision: 'approved', refundedCents: null }))
+    // the audit tells the truth (D′ L4: and WHAT was decided) and the customer e-mail is the money-free 'approved'
+    expect(auditMock).toHaveBeenCalledWith(expect.objectContaining({ action: 'claim.arbitrate', metadata: { decision: 'approve', moneyMoved: false, approvedAmountCents: 500, reduceReason: null } }))
+    expect(emailMock).toHaveBeenCalledWith(expect.objectContaining({ decision: 'approved', refundedCents: null, approvedCents: 500 }))
+  })
+
+  // D′ L4 NEGATIVE CONTROL — the pre-L4 request (a decision with no amount, no confirmation) approved this claim.
+  it('D′ L4 — the pre-L4 request shape writes nothing: 400, no audit, no e-mail, zero money', async () => {
+    const res = await arbitrate(new Request('https://app.grubano.com/api/admin/claims/cl1/arbitrate', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ decision: 'approve' }),
+    }), { params: { id: 'cl1' } })
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({ error: APPROVE_CONFIRM_REQUIRED })
+    expect(w.writes).toEqual([])
+    expect(auditMock).not.toHaveBeenCalled()
+    expect(emailMock).not.toHaveBeenCalled()
+    expect(moneyTouched()).toMatchObject({ engine: 0, create: 0, rows: 0, blocked: [] })
   })
 
   it('arbitrateClaim (lib) approve on an arbitration claim → ok, no refund field, zero money', async () => {
-    const r = await arbitrateClaim({ claimId: 'cl1', adminId: 'admin1', decision: 'approve' })
+    const r = await arbitrateClaim({ claimId: 'cl1', adminId: 'admin1', decision: 'approve', approvedAmountCents: 500, confirm: APPROVE_CONFIRM_WORD })
     expect(r.ok).toBe(true)
     expect(r).not.toHaveProperty('refund')
+    expect(claimOf(w).approvedAmountCents).toBe(500)
     expect(moneyTouched()).toMatchObject({ engine: 0, create: 0, rows: 0, blocked: [] })
   })
 
   it('NEGATIVE CONTROL — the same world DOES reach Stripe when the old inline path (triggerClaimRefund after the decision CAS) is executed by hand', async () => {
-    const r = await arbitrateClaim({ claimId: 'cl1', adminId: 'admin1', decision: 'approve' })
+    const r = await arbitrateClaim({ claimId: 'cl1', adminId: 'admin1', decision: 'approve', approvedAmountCents: 500, confirm: APPROVE_CONFIRM_WORD })
     expect(r.ok).toBe(true)
     expect(moneyTouched()).toMatchObject({ engine: 0, create: 0, rows: 0 })
     // what dab754d's arbitrateClaim did right after its CAS:
@@ -129,20 +154,27 @@ describe('S-02 / S-03 — approve is a decision: both leases OPEN, still zero mo
 
 describe('Ratification (T-08) — an approved claim whose amount is not fixed may be ratified, never re-driven, never rewritten', () => {
   it('legacy approved (arbitrationDecision null) → approve writes the decision fields ONCE; a second approve keeps arbitratedAt/decidedAt byte-identical; zero money', async () => {
-    setWorld({ status: 'approved', arbitrationDecision: null, arbitratedBy: null, arbitratedAt: null, decidedBy: 'auto_timeout', decidedAt: new Date(Date.now() - 2 * HOUR) })
+    setWorld({ status: 'approved', arbitrationDecision: null, approvedAmountCents: null, arbitratedBy: null, arbitratedAt: null, decidedBy: 'auto_timeout', decidedAt: new Date(Date.now() - 2 * HOUR) })
     const decidedAt0 = claimOf(w).decidedAt
-    const r1 = await arbitrateClaim({ claimId: 'cl1', adminId: 'admin1', decision: 'approve', reason: 'ratifiée' })
+    const r1 = await arbitrateClaim({ claimId: 'cl1', adminId: 'admin1', decision: 'approve', approvedAmountCents: 500, confirm: APPROVE_CONFIRM_WORD, reason: 'ratifiée' })
     expect(r1.ok).toBe(true)
     const c1 = { ...claimOf(w) }
-    expect(c1).toMatchObject({ status: 'approved', arbitrationDecision: 'approved', arbitratedBy: 'admin1', decidedBy: 'auto_timeout', arbitrationReason: 'ratifiée' })
+    expect(c1).toMatchObject({ status: 'approved', arbitrationDecision: 'approved', approvedAmountCents: 500, arbitratedBy: 'admin1', decidedBy: 'auto_timeout', arbitrationReason: 'ratifiée' })
     expect(c1.decidedAt).toEqual(decidedAt0)               // S-06: a decision instant already set is never rewritten
-    const r2 = await arbitrateClaim({ claimId: 'cl1', adminId: 'admin2', decision: 'approve' })
-    expect(r2.ok).toBe(true)
+    const writesAfterR1 = w.writes.length
+    // D′ L4 (S-29) INVERSION — a second approve used to be an idempotent ratification. Now that the amount is
+    // FIXED the claim is closed to any re-approval: 409, zero writes, every decision field byte-identical.
+    const r2 = await arbitrateClaim({ claimId: 'cl1', adminId: 'admin2', decision: 'approve', approvedAmountCents: 400, reduceReason: 'nouvelle appréciation du dossier', confirm: APPROVE_CONFIRM_WORD })
+    expect(r2).toMatchObject({ ok: false, status: 409, error: APPROVE_ALREADY_SET })
+    expect(w.writes).toHaveLength(writesAfterR1)
     const c2 = claimOf(w)
     expect(c2.arbitratedBy).toBe('admin1')
     expect(c2.arbitratedAt).toEqual(c1.arbitratedAt)
     expect(c2.decidedAt).toEqual(decidedAt0)
+    expect(c2.approvedAmountCents).toBe(500)
     expect(moneyTouched()).toMatchObject({ engine: 0, create: 0, rows: 0, blocked: [] })
+    // and the ratification CAS itself pinned « no amount yet » — the pin that makes that refusal race-safe.
+    expect(w.writes[writesAfterR1 - 1].where).toMatchObject({ approvedAmountCents: null })
   })
 
   it('refuse_final on an approved claim stays refused (AM-B3 v1.1 text names the rail and the withdraw, never a re-approval)', async () => {
@@ -268,8 +300,10 @@ describe('STATIC PINS — the shipped sources contain no inline money path and n
 
   it('NEGATIVE CONTROL — the pins catch the dab754d shape (inline call after the CAS, refunds_disabled cause, the old AM-B3 sentence)', () => {
     const s = src('lib/claims.ts')
-    const old = s.replace(/const moved = await prisma\.claim\.updateMany\(\{\n    where: casWhere,/,
-      'const refund = await triggerClaimRefund(claim.id)\n  const moved = await prisma.claim.updateMany({\n    where: casWhere,')
+    // D′ L4: the first-decision CAS now pins the absence of an amount too (S-29), so the pin matches the
+    // statement rather than its exact where clause — it must still FIND it in the shipped source.
+    const old = s.replace(/const moved = await prisma\.claim\.updateMany\(\{\n(\s*)where: \{ \.\.\.casWhere,/,
+      'const refund = await triggerClaimRefund(claim.id)\n  const moved = await prisma.claim.updateMany({\n$1where: { ...casWhere,')
     expect(old).not.toBe(s)
     expect(strip(body(old, 'arbitrateClaim'))).toMatch(/triggerClaimRefund\(/)
     expect("| 'reverted_after_refund' | 'refunds_disabled' | 'attempt_crashed'").toMatch(/\|\s*'refunds_disabled'\s*\|\s*'attempt_crashed'/)

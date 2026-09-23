@@ -34,8 +34,11 @@ vi.mock('@/lib/admin-guard', () => ({ resolveAdmin: adminMock }))
 const { alertMock } = vi.hoisted(() => ({ alertMock: vi.fn() }))
 vi.mock('@/lib/admin-alerts', () => ({ sendAdminStaleClaimAlert: alertMock }))
 
-const { arbQueueMock, pendingMock, moneyMock } = vi.hoisted(() => ({
+const { arbQueueMock, pendingMock, moneyMock, awaitingPayMock, awaitingRatifyMock } = vi.hoisted(() => ({
   arbQueueMock: vi.fn(), pendingMock: vi.fn(), moneyMock: vi.fn(async (): Promise<Array<Record<string, unknown>>> => []),
+  // D′ L4 (spec v2 §8.5) : les deux files EN LECTURE SEULE que la route admin sert désormais aussi.
+  awaitingPayMock: vi.fn(async (): Promise<Array<Record<string, unknown>>> => []),
+  awaitingRatifyMock: vi.fn(async (): Promise<Array<Record<string, unknown>>> => []),
 }))
 vi.mock('@/lib/claims', () => ({
   listArbitrationQueue:        arbQueueMock,
@@ -43,7 +46,21 @@ vi.mock('@/lib/claims', () => ({
   // Claims batch 1: the admin route now also reads the money list and the silence list.
   listActionableRefundClaims: moneyMock,
   listSilenceExpiredClaims: vi.fn(async () => []),
+  // D′ L4 : « À rembourser » (ARGENT, servie même surface fermée) et « À ratifier » (workflow).
+  listApprovedAwaitingPayment: awaitingPayMock,
+  listAwaitingRatification:    awaitingRatifyMock,
 }))
+
+// D′ L4 : la route admin consulte la sonde de schéma AVANT de lire les deux files D′ (le client Prisma du
+// processus peut ignorer la colonne). Les doubles de ce fichier ne portent pas de quoi satisfaire la vraie
+// sonde ; on la pilote donc explicitement, et on épingle les deux réponses (prête / pas prête).
+const { schemaMock } = vi.hoisted(() => ({ schemaMock: { fn: vi.fn() } }))
+vi.mock('@/lib/schema-ready', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/lib/schema-ready')>()
+  return { ...real, schemaReady: (...a: unknown[]) => schemaMock.fn(...a) }
+})
+const SCHEMA_READY = { ready: true, clientReady: true, dbReady: true, missingClient: [], missingDb: [], probedAt: '', why: null }
+const SCHEMA_STALE = { ready: false, clientReady: false, dbReady: null, missingClient: ['Claim.approvedAmountCents'], missingDb: [], probedAt: '', why: 'client Prisma périmé' }
 
 import { GET as STALE } from '@/app/api/admin/claims/stale-alerts/route'
 import { GET as ADMIN_LIST } from '@/app/api/admin/claims/route'
@@ -64,6 +81,9 @@ beforeEach(() => {
   db.claim.findMany.mockResolvedValue(OVERDUE)
   alertMock.mockResolvedValue({ status: 'sent' })
   moneyMock.mockResolvedValue([])
+  awaitingPayMock.mockResolvedValue([])
+  awaitingRatifyMock.mockResolvedValue([])
+  schemaMock.fn.mockReset(); schemaMock.fn.mockResolvedValue(SCHEMA_READY)
   sessionMock.mockResolvedValue(null)
 })
 afterEach(() => { closeClaimsWindow(); delete process.env.CLAIMS_SURFACE_ENABLED; delete process.env.CLAIMS_INTAKE_ENABLED })
@@ -150,12 +170,18 @@ describe('GET /api/admin/claims — la file `pending` est ADDITIVE (P0-39)', () 
     adminMock.mockResolvedValue({ id: 'op1', role: 'admin', name: 'Admin', email: 'admin@grubano.com' })
     arbQueueMock.mockResolvedValue([{ id: 'arb1' }])
     pendingMock.mockResolvedValue([{ id: 'pen1', createdAt: new Date(), responseDeadlineAt: new Date() }])
+    // D′ L4 (§8.5) : les deux nouvelles files sont ADDITIVES elles aussi — `claims` et `pending` inchangées.
+    awaitingPayMock.mockResolvedValue([{ id: 'pay1', approvedAmountCents: 400 }])
+    awaitingRatifyMock.mockResolvedValue([{ id: 'rat1' }])
     const res = await ADMIN_LIST()
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.enabled).toBe(true)
     expect(body.claims).toHaveLength(1)
     expect(body.pending).toHaveLength(1)
+    expect(body.awaitingPayment).toEqual([{ id: 'pay1', approvedAmountCents: 400 }])
+    expect(body.awaitingRatification).toEqual([{ id: 'rat1' }])
+    expect(body.counts).toMatchObject({ awaitingPayment: 1, awaitingRatification: 1 })
   })
 
   it('D′ L1 (spec v2 §3.2) — surface FERMÉE · admin : la file `pending` est VIDE et non lue, enabled:false ; la liste ARGENT reste servie (CONTRÔLE NÉGATIF de la scission)', async () => {
@@ -164,15 +190,50 @@ describe('GET /api/admin/claims — la file `pending` est ADDITIVE (P0-39)', () 
     arbQueueMock.mockResolvedValue([{ id: 'arb1' }])
     pendingMock.mockResolvedValue([{ id: 'pen1' }])
     moneyMock.mockResolvedValue([{ id: 'm1', moneyState: 'approved_not_driven' }])
+    // D′ L4 : une décision PRISE et NON PAYÉE est de l'ARGENT — elle reste servie derrière le kill-switch,
+    // alors que « À ratifier » est du workflow et n'est même pas lue (CONTRÔLE NÉGATIF de la scission).
+    awaitingPayMock.mockResolvedValue([{ id: 'pay1', approvedAmountCents: 400 }])
+    awaitingRatifyMock.mockResolvedValue([{ id: 'rat1' }])
     const res = await ADMIN_LIST()
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({
-      enabled: false, claims: [], pending: [], silenceExpired: [],
+      enabled: false, schemaReady: true, claims: [], pending: [], silenceExpired: [],
       actionableRefunds: [{ id: 'm1', moneyState: 'approved_not_driven' }],
-      counts: { arbitration: 0, silenceExpired: 0, legacyPendingMoney: 0, actionableRefunds: 1, actionableTotal: 1 },
+      awaitingPayment: [{ id: 'pay1', approvedAmountCents: 400 }], awaitingRatification: [],
+      counts: {
+        arbitration: 0, silenceExpired: 0, legacyPendingMoney: 0, actionableRefunds: 1,
+        awaitingPayment: 1, awaitingRatification: 0, actionableTotal: 1,
+      },
     })
     expect(pendingMock).not.toHaveBeenCalled()
     expect(arbQueueMock).not.toHaveBeenCalled()
+    expect(awaitingPayMock).toHaveBeenCalledTimes(1)
+    expect(awaitingRatifyMock).not.toHaveBeenCalled()
+  })
+
+  // D′ L4 — CONTRÔLE NÉGATIF de la sonde : quand le client du processus ignore la colonne, les deux files D′
+  // ne sont même pas interrogées (la requête échouerait) et le payload DIT pourquoi elles sont vides. Sans ce
+  // `schemaReady:false`, une console lisant `awaitingPayment: []` conclurait « rien à payer » alors que la
+  // vérité est « je ne peux pas lire ». Le reste de la route — l'argent legacy — continue de répondre.
+  it('D′ L4 — sonde PAS prête : les deux files D′ ne sont PAS lues, payload schemaReady:false, le reste inchangé', async () => {
+    schemaMock.fn.mockResolvedValue(SCHEMA_STALE)
+    adminMock.mockResolvedValue({ id: 'op1', role: 'admin', name: 'Admin', email: 'admin@grubano.com' })
+    arbQueueMock.mockResolvedValue([{ id: 'arb1' }])
+    pendingMock.mockResolvedValue([{ id: 'pen1' }])
+    moneyMock.mockResolvedValue([{ id: 'm1', moneyState: 'approved_not_driven' }])
+    awaitingPayMock.mockResolvedValue([{ id: 'pay1', approvedAmountCents: 400 }])
+    awaitingRatifyMock.mockResolvedValue([{ id: 'rat1' }])
+    const body = await (await ADMIN_LIST()).json()
+    expect(body.schemaReady).toBe(false)
+    expect(body.awaitingPayment).toEqual([])
+    expect(body.awaitingRatification).toEqual([])
+    expect(body.counts).toMatchObject({ awaitingPayment: 0, awaitingRatification: 0 })
+    expect(awaitingPayMock).not.toHaveBeenCalled()
+    expect(awaitingRatifyMock).not.toHaveBeenCalled()
+    // l'argent legacy et le workflow ne dépendent d'aucune colonne D′ : ils répondent comme avant
+    expect(body.enabled).toBe(true)
+    expect(body.claims).toHaveLength(1)
+    expect(body.actionableRefunds).toHaveLength(1)
   })
 })
 

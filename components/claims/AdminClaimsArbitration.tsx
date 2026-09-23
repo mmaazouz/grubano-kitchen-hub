@@ -11,7 +11,13 @@ import { formatEuros } from '@/lib/format-money'
 // ROUND 13 (H07, H11): the customer e-mail result of a decision or a declaration, as a toast.
 import { customerEmailLine } from '@/lib/claim-email-toast'
 
-import { moneyStateGuidance, absenceProvenPayableLabel } from '@/lib/claim-action-rules'
+// D′ L4 (spec v2 §7.4, T-07 / T-09): the confirmation words and the minimum motive lengths belong to the
+// SERVER's contract (lib/claim-action-rules). They are IMPORTED, never retyped: a console that validated
+// its own copy of the rule would go silently out of step with the route that actually refuses.
+import {
+  moneyStateGuidance, absenceProvenPayableLabel,
+  APPROVE_CONFIRM_WORD, WITHDRAW_CONFIRM_WORD, REDUCE_REASON_MIN, WITHDRAW_REASON_MIN,
+} from '@/lib/claim-action-rules'
 import { amountLineKind, identityUnreadText, BOUND_REVERTED_TEXT } from '@/lib/claim-money-line'
 
 type Stats = { recent?: number; approvalRate?: number; flagged?: boolean; refused?: number; overturned?: number }
@@ -67,18 +73,69 @@ type ActionableRefundClaim = {
 }
 
 /**
+ * D′ L4 (spec v2 §7.4 / §8.5) — a claim whose decision is TAKEN and whose money has not moved, as
+ * GET /api/admin/claims serialises lib/claims' `AwaitingPaymentRow` (Date → ISO string over JSON).
+ * `approvedAmountCents` is ABSENT on a ratification row: those claims were approved before the amount
+ * existed, which is exactly why they are listed apart — nothing can pay a decision with no amount.
+ */
+type AwaitingPaymentRow = {
+  id: string
+  /** The customer-facing reference; the raw order id never reaches this list. */
+  orderRef: string
+  orderId: string
+  requestedAmountCents: number
+  approvedAmountCents?: number | null
+  /** The FIFO key of the queue: the instant the decision was taken. */
+  arbitratedAt?: string | null
+  arbitrationReason?: string | null
+  createdAt: string
+}
+
+/** What the mandatory approval dialog is deciding: a first decision, or the ratification of a legacy approval. */
+type ApproveTarget = { id: string; orderLabel: string; requestedAmountCents: number; mode: 'approve' | 'ratify' }
+
+/** The read-only ceiling of GET /api/admin/claims/[id]/ceiling. It DECIDES nothing — it is displayed. */
+type Ceiling = {
+  /** Whose ceiling this is. A slow response for a dialog the admin already closed must never be shown
+   *  beside another claim's numbers — an amount decided against the wrong ceiling is a money mistake. */
+  claimId: string
+  requestedAmountCents: number
+  approvedAmountCents: number | null
+  maxRefundableCents: number
+  alreadyRefundedCents: number
+  /** T-59: false ⇒ Stripe was NOT read (or the charge is disputed) — the cap may be TOO HIGH. */
+  ceilingVerified: boolean
+  approvalBoundCents: number
+}
+
+/**
+ * The euro amount the admin typed → integer cents. The French decimal comma is accepted, and the rounding
+ * closes the float door (12,30 € → 1230, never 1229). A non-usable input yields null, which keeps the
+ * submit button inactive — the server revalidates the number in any case (S-10).
+ */
+function parseCents(raw: string): number | null {
+  const n = Number(raw.replace(',', '.').trim())
+  if (!Number.isFinite(n)) return null
+  return Math.round(n * 100)
+}
+
+/**
  * `initial` (ROUND 13, slice W7): the GET /api/admin/claims payload a test renders the console with (J-M29 control parity).
  * The page mounts the console without it; the load below then reads the route.
  */
 // D′ L1: `surfaceOpen` (the claims SURFACE as the server page read it) only chooses the empty-state copy — the
 // lists themselves come from GET /api/admin/claims, split server-side; the money list is returned either way.
-export default function AdminClaimsArbitration({ initial, surfaceOpen = true }: { initial?: { claims?: Claim[]; pending?: PendingClaim[]; actionableRefunds?: ActionableRefundClaim[] }; surfaceOpen?: boolean } = {}) {
+export default function AdminClaimsArbitration({ initial, surfaceOpen = true }: { initial?: { claims?: Claim[]; pending?: PendingClaim[]; actionableRefunds?: ActionableRefundClaim[]; awaitingPayment?: AwaitingPaymentRow[]; awaitingRatification?: AwaitingPaymentRow[] }; surfaceOpen?: boolean } = {}) {
   const t = useTranslations('claims')
   const locale = useLocale()
   const toast = useToast()
   const [claims, setClaims] = useState<Claim[]>(initial?.claims ?? [])
   const [pending, setPending] = useState<PendingClaim[]>(initial?.pending ?? [])
   const [actionableRefunds, setActionableRefunds] = useState<ActionableRefundClaim[]>(initial?.actionableRefunds ?? [])
+  // D′ L4 (§8.5): the two D′ queues, split server-side. « À rembourser » is MONEY and is returned even when
+  // the claims surface is closed; « À ratifier » is workflow and comes back empty in that case.
+  const [awaitingPayment, setAwaitingPayment] = useState<AwaitingPaymentRow[]>(initial?.awaitingPayment ?? [])
+  const [awaitingRatification, setAwaitingRatification] = useState<AwaitingPaymentRow[]>(initial?.awaitingRatification ?? [])
   const [loaded, setLoaded] = useState(!!initial)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [refusingId, setRefusingId] = useState<string | null>(null)
@@ -86,6 +143,23 @@ export default function AdminClaimsArbitration({ initial, surfaceOpen = true }: 
   // BATCH 2 — the stuck-money control. `resolveStuckClaim` existed with no door; this is it.
   const [stuckId, setStuckId] = useState<string | null>(null)
   const [stuckReason, setStuckReason] = useState('')
+  // ── D′ L4 — the APPROVAL dialog. One target at a time: an approval fixes an amount, so it is never a
+  //    side effect of a click, and two half-filled forms open at once is how the wrong amount gets sent.
+  const [approveTarget, setApproveTarget] = useState<ApproveTarget | null>(null)
+  const [approveAmount, setApproveAmount] = useState('')
+  const [reduceOn, setReduceOn] = useState(false)
+  const [reduceReason, setReduceReason] = useState('')
+  const [approveConfirm, setApproveConfirm] = useState('')
+  /** The SERVER's refusal (400/409/503), shown inside the dialog: the client form is a convenience, not the authority. */
+  const [approveError, setApproveError] = useState<string | null>(null)
+  const [ceiling, setCeiling] = useState<Ceiling | null>(null)
+  const [ceilingError, setCeilingError] = useState<string | null>(null)
+  const [ceilingLoading, setCeilingLoading] = useState(false)
+  // ── D′ L4 (T-09) — the audited reversal of a decision, before any money moved.
+  const [withdrawId, setWithdrawId] = useState<string | null>(null)
+  const [withdrawReason, setWithdrawReason] = useState('')
+  const [withdrawConfirm, setWithdrawConfirm] = useState('')
+  const [withdrawError, setWithdrawError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -95,19 +169,32 @@ export default function AdminClaimsArbitration({ initial, surfaceOpen = true }: 
       setClaims(Array.isArray(data.claims) ? data.claims : [])
       setPending(Array.isArray(data.pending) ? data.pending : [])
       setActionableRefunds(Array.isArray(data.actionableRefunds) ? data.actionableRefunds : [])
+      setAwaitingPayment(Array.isArray(data.awaitingPayment) ? data.awaitingPayment : [])
+      setAwaitingRatification(Array.isArray(data.awaitingRatification) ? data.awaitingRatification : [])
     } catch { /* ignore */ } finally { setLoaded(true) }
   }, [])
   useEffect(() => { load() }, [load])
 
-  const decide = useCallback(async (id: string, decision: 'approve' | 'refuse_final', r?: string) => {
+  // D′ L4 (T-07): an approve now carries the DECIDED amount, the typed confirmation, and the motive of a
+  // reduction — collected by the dialog below. `extra` is spread as-is: the route's zod schema and
+  // lib/claims revalidate every field against the claim itself, so nothing here is an authority.
+  const decide = useCallback(async (
+    id: string,
+    decision: 'approve' | 'refuse_final',
+    r?: string,
+    extra?: { approvedAmountCents?: number; confirm?: string; reduceReason?: string },
+  ) => {
     setBusyId(id)
+    if (decision === 'approve') setApproveError(null)
     try {
       const res = await fetch(`/api/admin/claims/${id}/arbitrate`, {
         method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ decision, reason: r }),
+        body: JSON.stringify({ decision, reason: r, ...(extra ?? {}) }),
       })
       const data = await res.json().catch(() => ({}))
-      if (!res.ok) { toast.error(data.error || t('admin.processing')); return }
+      // The server is the authority on an approval: its 400 / 409 / 503 text stays in the dialog, beside the
+      // field that caused it, instead of vanishing with a toast the admin may already have dismissed.
+      if (!res.ok) { if (decision === 'approve') setApproveError(data.error || t('admin.processing')); toast.error(data.error || t('admin.processing')); return }
       // D′ L2 (spec v2 S-02, F13 v1.1): an approval is a DECISION and moves no money — the route returns no
       // engine outcome any more, so the only honest toast is the nominal « décision enregistrée, aucun
       // remboursement lancé par cette action ». The rail (D′ L5) reports its own per-claim outcomes.
@@ -120,6 +207,9 @@ export default function AdminClaimsArbitration({ initial, surfaceOpen = true }: 
       const e = customerEmailLine((data as { customerEmail?: { status?: string; why?: string } | null }).customerEmail)
       if (e) toast[e.tone](t(`admin.customerEmail.${e.key}`))
       setRefusingId(null); setReason('')
+      // D′ L4: the dialog closes only on a WON decision — a refused one keeps the typed amount on screen
+      // beside the server's reason, so the admin corrects it instead of retyping everything from memory.
+      setApproveTarget(null); setApproveConfirm(''); setReduceOn(false); setReduceReason('')
       await load()
     } catch {
       toast.error(t('admin.processing'))
@@ -158,6 +248,61 @@ export default function AdminClaimsArbitration({ initial, surfaceOpen = true }: 
     } finally { setBusyId(null) }
   }, [load, stuckReason, t, toast])
 
+  // ── D′ L4 (spec v2 §7.4) — OPENING THE APPROVAL DIALOG ────────────────────────────────────────
+  // Reading the ceiling is part of opening it: the admin must see what is already refunded on the order
+  // and what is still refundable BEFORE choosing a number. The read is advisory — the server's bound is
+  // the REQUESTED amount (S-10) — so a ceiling that cannot be read never blocks the decision; it is said.
+  const openApprove = useCallback(async (target: ApproveTarget) => {
+    setRefusingId(null); setWithdrawId(null); setWithdrawError(null)
+    setApproveTarget(target)
+    setApproveError(null); setReason('')
+    setReduceOn(false); setReduceReason(''); setApproveConfirm('')
+    setApproveAmount((target.requestedAmountCents / 100).toFixed(2))
+    setCeiling(null); setCeilingError(null); setCeilingLoading(true)
+    try {
+      const res = await fetch(`/api/admin/claims/${target.id}/ceiling`)
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) { setCeilingError((data as { error?: string }).error || t('admin.approveDialog.ceilingError')); return }
+      setCeiling(data as Ceiling)
+    } catch {
+      setCeilingError(t('admin.approveDialog.ceilingError'))
+    } finally { setCeilingLoading(false) }
+  }, [t])
+
+  const closeApprove = useCallback(() => {
+    setApproveTarget(null); setApproveError(null); setApproveConfirm('')
+    setReduceOn(false); setReduceReason(''); setReason('')
+    setCeiling(null); setCeilingError(null); setCeilingLoading(false)
+  }, [])
+
+  // ── D′ L4 (spec v2 T-09) — WITHDRAWING AN APPROVAL ────────────────────────────────────────────
+  // The ONLY legitimate way to change an amount already fixed. It moves no money and never writes a
+  // refusal: the claim goes back to the arbitration queue and a human decides again. Every precondition
+  // lives in the route (a real attempt, a stamped Refund row, a disabled audit trail, a lost race all
+  // refuse), so this handler only collects the motive kept in the audit row and the typed confirmation.
+  const withdrawApproval = useCallback(async (id: string) => {
+    setBusyId(id); setWithdrawError(null)
+    try {
+      const res = await fetch(`/api/admin/claims/${id}/withdraw-approval`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ reason: withdrawReason.trim(), confirm: withdrawConfirm.trim() }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        const message = (data as { error?: string }).error || t('admin.processing')
+        setWithdrawError(message); toast.error(message); return
+      }
+      toast.success(t('admin.withdraw.done'))
+      // ROUND 13 (H07, H11): what happened to the customer notice of this reversal.
+      const e = customerEmailLine((data as { customerEmail?: { status?: string; why?: string } | null }).customerEmail)
+      if (e) toast[e.tone](t(`admin.customerEmail.${e.key}`))
+      setWithdrawId(null); setWithdrawReason(''); setWithdrawConfirm('')
+      await load()
+    } catch {
+      toast.error(t('admin.processing'))
+    } finally { setBusyId(null) }
+  }, [load, t, toast, withdrawConfirm, withdrawReason])
+
   // V5-3 — une demande dont le reason porte le marqueur P0-08 'system_' a été
   // créée par le SYSTÈME (rail remboursement d'annulation), pas par le client :
   // ses étiquettes doivent le dire. Une demande client garde les siennes.
@@ -169,12 +314,199 @@ export default function AdminClaimsArbitration({ initial, surfaceOpen = true }: 
     const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'always' })
     return hours < 48 ? rtf.format(-hours, 'hour') : rtf.format(-Math.floor(hours / 24), 'day')
   }
+  // D′ L4: the ids the two D′ sections already render, so the arbitration list does not repeat them.
+  const dprimeIds = new Set([...awaitingPayment.map((r) => r.id), ...awaitingRatification.map((r) => r.id)])
+
   const isOverdue = (p: PendingClaim) => new Date(p.responseDeadlineAt).getTime() < Date.now()
+
+  // D′ L4 — the DECISION instant, absolute (the « À rembourser » queue is FIFO on it, so « il y a 3 h »
+  // would hide the ordering the list is built on). null when the row carries no readable instant.
+  const instantOf = (iso: string | null | undefined) => {
+    if (!iso) return null
+    const d = new Date(iso)
+    return Number.isNaN(d.getTime()) ? null : new Intl.DateTimeFormat(locale, { dateStyle: 'short', timeStyle: 'short' }).format(d)
+  }
 
   // CLAIMS BATCH 2 — a stuck refund is never "nothing to do": it must count here too, or the
   // console shows an empty state while money is waiting on a human.
-  if (loaded && claims.length === 0 && pending.length === 0 && actionableRefunds.length === 0) {
+  // D′ L4: the two D′ queues count as well — a decided, unpaid claim behind an « aucune réclamation »
+  // empty state is exactly the silence this lot exists to remove.
+  if (loaded && claims.length === 0 && pending.length === 0 && actionableRefunds.length === 0
+      && awaitingPayment.length === 0 && awaitingRatification.length === 0) {
     return <EmptyState emoji="⚖️" title={t(surfaceOpen ? 'admin.empty' : 'admin.surfaceClosedEmpty')} />
+  }
+
+  // ── D′ L4 (spec v2 §7.4) — THE MANDATORY APPROVAL DIALOG ──────────────────────────────────────
+  // An approval FIXES AN AMOUNT that a separate financial rail will later pay. It therefore shows the
+  // three numbers that make the choice informed — what the customer asked, what has ALREADY been
+  // refunded on the order, and what is still refundable — and it demands the server's confirmation word
+  // typed in full, plus a motive whenever the approved amount goes below the requested one.
+  // It is rendered by the arbitration queue AND by the ratification sub-list: same endpoint, same rules
+  // (D1 v1.1 'ratify'), so there is exactly one place where an amount can be decided.
+  const approveDialog = () => {
+    if (!approveTarget) return null
+    const requested = approveTarget.requestedAmountCents
+    const ratify = approveTarget.mode === 'ratify'
+    // Unchecked box ⇒ the approved amount IS the requested one: the full-amount case can never be
+    // mistyped, and the reduction is a deliberate, motivated branch rather than a slip of the keyboard.
+    const cents = reduceOn ? parseCents(approveAmount) : requested
+    const reduced = cents != null && cents < requested
+    const amountOk = cents != null && cents >= 1 && cents <= requested
+    const motiveOk = !reduced || reduceReason.trim().length >= REDUCE_REASON_MIN
+    const confirmOk = approveConfirm.trim() === APPROVE_CONFIRM_WORD
+    // §7.4 « avertissement BLOQUANT si > reste ». It blocks only when a ceiling was actually read: the
+    // DB-derived ceiling ignores refunds issued outside the rail, so it is an OVER-estimate — an amount
+    // above it is certainly unpayable, and letting it through would mint a decision the rail must fail.
+    // When the ceiling could not be read at all there is no number to block against, so the dialog warns
+    // and lets the admin decide (a missing read must not veto a legitimate decision).
+    // Guarded at RENDER: whatever was fetched is only shown, and only blocks, when it belongs to the
+    // claim currently in the dialog. A response that arrives after the admin moved on is simply ignored.
+    const ceilingShown = ceiling != null && ceiling.claimId === approveTarget.id ? ceiling : null
+    const aboveRemaining = ceilingShown != null && cents != null && cents > ceilingShown.maxRefundableCents
+    const valid = amountOk && motiveOk && confirmOk && !aboveRemaining
+    return (
+      <div className="mt-3 space-y-3 rounded-grubano-lg border border-grubano-border-strong bg-grubano-surface-muted p-3">
+        <p className="text-sm font-bold text-grubano-ink">{t(ratify ? 'admin.approveDialog.titleRatify' : 'admin.approveDialog.title')}</p>
+        <dl className="space-y-1 text-[13px] text-grubano-ink-muted">
+          <p><span className="font-semibold">{t('admin.order')}:</span> {approveTarget.orderLabel}</p>
+          <p><span className="font-semibold">{t('admin.approveDialog.requested')}:</span> {formatEuros(requested / 100, locale)}</p>
+          {ceilingLoading && <p>{t('admin.approveDialog.ceilingLoading')}</p>}
+          {ceilingError && <p className="text-red-700">{ceilingError}</p>}
+          {ceilingShown && (
+            <>
+              <p><span className="font-semibold">{t('admin.approveDialog.alreadyRefunded')}:</span> {formatEuros(ceilingShown.alreadyRefundedCents / 100, locale)}</p>
+              <p><span className="font-semibold">{t('admin.approveDialog.remaining')}:</span> {formatEuros(ceilingShown.maxRefundableCents / 100, locale)}</p>
+              {!ceilingShown.ceilingVerified && (
+                // T-59: without a Stripe read (or on a disputed charge) that number is derived from OUR
+                // rows alone. A refund issued outside the rail makes it TOO HIGH, so it is worded as an
+                // unconfirmed estimate — never as cash the admin can count on.
+                <p className="text-amber-800">{t('admin.approveDialog.remainingUnverified')}</p>
+              )}
+            </>
+          )}
+        </dl>
+
+        {/* §7.4: BLOCKING when a ceiling was read (see `aboveRemaining` above) — the remaining amount is an
+            over-estimate, so exceeding it means the rail could not pay this decision. The server keeps its own
+            bound (the requested amount, S-10); this guard only stops a decision that is already unpayable. */}
+        {aboveRemaining && (
+          <p className="text-[13px] font-semibold text-amber-800">{t('admin.approveDialog.aboveRemaining')}</p>
+        )}
+
+        <label className="flex items-start gap-2 text-[13px] text-grubano-ink">
+          <input
+            type="checkbox"
+            checked={reduceOn}
+            className="mt-[3px]"
+            onChange={(e) => {
+              setReduceOn(e.target.checked)
+              if (!e.target.checked) { setApproveAmount((requested / 100).toFixed(2)); setReduceReason('') }
+            }}
+          />
+          <span>{t('admin.approveDialog.reduceCheckbox')}</span>
+        </label>
+
+        {reduceOn && (
+          <div className="space-y-2">
+            <label className="block text-[13px] font-semibold text-grubano-ink" htmlFor="claim-approved-amount">
+              {t('admin.approveDialog.amountLabel')}
+            </label>
+            <input
+              id="claim-approved-amount" type="text" inputMode="decimal" autoComplete="off"
+              value={approveAmount} onChange={(e) => setApproveAmount(e.target.value)}
+              className="w-40 rounded-grubano-lg border border-grubano-border-strong bg-white px-3 py-2 text-[13px]"
+            />
+            <p className="text-[12px] text-grubano-ink-muted">
+              {t('admin.approveDialog.amountHelp', { max: formatEuros(requested / 100, locale) })}
+            </p>
+            <label className="block text-[13px] font-semibold text-grubano-ink">
+              {t('admin.approveDialog.reduceReasonLabel', { min: REDUCE_REASON_MIN })}
+            </label>
+            <textarea
+              value={reduceReason} onChange={(e) => setReduceReason(e.target.value)} rows={2} maxLength={1000}
+              placeholder={t('admin.approveDialog.reduceReasonPlaceholder')}
+              className="w-full rounded-grubano-lg border border-grubano-border-strong bg-white px-3 py-2 text-[13px]"
+            />
+          </div>
+        )}
+
+        <label className="block text-[13px] font-semibold text-grubano-ink">{t('admin.decisionReasonLabel')}</label>
+        <textarea
+          value={reason} onChange={(e) => setReason(e.target.value)} rows={2} maxLength={1000}
+          placeholder={t('admin.decisionReasonPlaceholder')}
+          className="w-full rounded-grubano-lg border border-grubano-border-strong bg-white px-3 py-2 text-[13px]"
+        />
+
+        <label className="block text-[13px] font-semibold text-grubano-ink" htmlFor="claim-approve-confirm">
+          {t('admin.approveDialog.confirmLabel', { word: APPROVE_CONFIRM_WORD })}
+        </label>
+        <input
+          id="claim-approve-confirm" type="text" autoComplete="off"
+          value={approveConfirm} onChange={(e) => setApproveConfirm(e.target.value)}
+          placeholder={APPROVE_CONFIRM_WORD}
+          className="w-48 rounded-grubano-lg border border-grubano-border-strong bg-white px-3 py-2 text-[13px]"
+        />
+
+        {/* Spec v2 §7.4 — the sentence that stops a decision from being read as a payment. */}
+        <p className="text-[13px] font-semibold text-grubano-ink">{t('admin.approveDialog.noRefundNotice')}</p>
+        {approveError && <p className="text-[12px] text-red-700">{approveError}</p>}
+
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant="ghost" disabled={busyId === approveTarget.id} onClick={closeApprove}>{t('client.cancel')}</Button>
+          <Button
+            size="sm" variant="primary" loading={busyId === approveTarget.id} disabled={!valid}
+            onClick={() => decide(approveTarget.id, 'approve', reason || undefined, {
+              approvedAmountCents: cents as number,
+              confirm: approveConfirm.trim(),
+              reduceReason: reduced ? reduceReason.trim() : undefined,
+            })}
+          >
+            {t(ratify ? 'admin.approveDialog.submitRatify' : 'admin.approveDialog.submit')}
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  // ── D′ L4 (spec v2 T-09) — THE WITHDRAWAL PANEL ───────────────────────────────────────────────
+  // The motive is not decoration: it is written in the SAME transaction as the reversal, and the route
+  // refuses the whole operation when it cannot be recorded. A reversal nobody can trace never happens.
+  const withdrawPanel = (id: string) => {
+    const ok = withdrawReason.trim().length >= WITHDRAW_REASON_MIN && withdrawConfirm.trim() === WITHDRAW_CONFIRM_WORD
+    return (
+      <div className="mt-3 space-y-2 rounded-grubano-lg border border-grubano-border bg-grubano-surface-muted p-3">
+        <p className="text-[13px] text-grubano-ink-muted">{t('admin.withdraw.hint')}</p>
+        <label className="block text-[13px] font-semibold text-grubano-ink">
+          {t('admin.withdraw.reasonLabel', { min: WITHDRAW_REASON_MIN })}
+        </label>
+        <textarea
+          value={withdrawReason} onChange={(e) => setWithdrawReason(e.target.value)} rows={2} maxLength={1000}
+          placeholder={t('admin.withdraw.reasonPlaceholder')}
+          className="w-full rounded-grubano-lg border border-grubano-border-strong bg-white px-3 py-2 text-[13px]"
+        />
+        <label className="block text-[13px] font-semibold text-grubano-ink" htmlFor="claim-withdraw-confirm">
+          {t('admin.withdraw.confirmLabel', { word: WITHDRAW_CONFIRM_WORD })}
+        </label>
+        <input
+          id="claim-withdraw-confirm" type="text" autoComplete="off"
+          value={withdrawConfirm} onChange={(e) => setWithdrawConfirm(e.target.value)}
+          placeholder={WITHDRAW_CONFIRM_WORD}
+          className="w-48 rounded-grubano-lg border border-grubano-border-strong bg-white px-3 py-2 text-[13px]"
+        />
+        {withdrawError && <p className="text-[12px] text-red-700">{withdrawError}</p>}
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm" variant="ghost" disabled={busyId === id}
+            onClick={() => { setWithdrawId(null); setWithdrawReason(''); setWithdrawConfirm(''); setWithdrawError(null) }}
+          >
+            {t('client.cancel')}
+          </Button>
+          <Button size="sm" variant="danger" loading={busyId === id} disabled={!ok} onClick={() => withdrawApproval(id)}>
+            {t('admin.withdraw.submit')}
+          </Button>
+        </div>
+      </div>
+    )
   }
 
   // Truthful, distinct wording per money state. Pending is NEVER shown as succeeded, and a
@@ -207,6 +539,92 @@ export default function AdminClaimsArbitration({ initial, surfaceOpen = true }: 
 
   return (
     <div className="space-y-4">
+      {/* ── D′ L4 (spec v2 §7.4, §8.5) — « À REMBOURSER » : les décisions PRISES et non encore payées,
+          dans l'ordre où elles ont été prises (FIFO sur l'instant de décision, comme la sélection du
+          rail). Cette liste est en LECTURE SEULE côté argent : la console ne paie rien. La seule action
+          offerte est le RETRAIT de l'approbation, que le serveur refuse dès qu'un paiement a été tenté. */}
+      {awaitingPayment.length > 0 && (
+        <section>
+          <h2 className="mb-2 text-sm font-bold uppercase tracking-wide text-grubano-ink-muted">
+            {t('admin.awaitingPayment.title')} ({awaitingPayment.length})
+          </h2>
+          <p className="mb-3 text-[13px] text-grubano-ink-muted">{t('admin.awaitingPayment.hint')}</p>
+          <div className="space-y-3">
+            {awaitingPayment.map((r) => (
+              <div key={r.id} className="rounded-grubano-xl border border-grubano-border bg-grubano-surface p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-sm font-bold text-grubano-ink">{t('admin.order')} {r.orderRef}</span>
+                  <span className="text-sm font-semibold text-grubano-primary">
+                    {t('admin.awaitingPayment.approved')}: {formatEuros((r.approvedAmountCents ?? 0) / 100, locale)}
+                  </span>
+                </div>
+                <dl className="mt-2 space-y-1 text-[13px] text-grubano-ink-muted">
+                  {/* Les deux montants côte à côte : une réduction décidée reste lisible après coup. */}
+                  <p><span className="font-semibold">{t('admin.awaitingPayment.requested')}:</span> {formatEuros(r.requestedAmountCents / 100, locale)}</p>
+                  <p><span className="font-semibold">{t('admin.awaitingPayment.decidedAt')}:</span> {instantOf(r.arbitratedAt) ?? t('admin.awaitingPayment.decidedAtUnknown')}</p>
+                  {r.arbitrationReason && <p><span className="font-semibold">{t('admin.awaitingPayment.decisionReason')}:</span> {r.arbitrationReason}</p>}
+                </dl>
+                {withdrawId === r.id ? withdrawPanel(r.id) : (
+                  <Button
+                    size="sm" variant="secondary" className="mt-3" disabled={busyId === r.id}
+                    onClick={() => { setWithdrawId(r.id); setWithdrawReason(''); setWithdrawConfirm(''); setWithdrawError(null) }}
+                  >
+                    {t('admin.withdraw.open')}
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
+          {/* D′ L5 — REPÈRE DÉSACTIVÉ, câblé à rien. Le rail financier (« Payer le lot ») n'est pas livré :
+              un bouton actif ici mentirait sur ce que cette console peut faire. Il est inerte et le dit. */}
+          <div className="mt-3">
+            <Button
+              size="sm" variant="primary" disabled
+              title={t('admin.awaitingPayment.payBatchUnavailable')}
+              aria-label={t('admin.awaitingPayment.payBatchUnavailable')}
+            >
+              {t('admin.awaitingPayment.payBatch', { count: awaitingPayment.length })}
+            </Button>
+            <p className="mt-1 text-[12px] text-grubano-ink-muted">{t('admin.awaitingPayment.payBatchUnavailable')}</p>
+          </div>
+        </section>
+      )}
+
+      {/* ── D′ L4 (spec v2 §7.4) — « À RATIFIER » : approuvées AVANT que le montant n'existe. Aucun montant
+          n'y est fixé, donc rien ne peut les payer — elles sont listées à part pour être ratifiées, avec
+          le même dialogue, le même endpoint et les mêmes règles qu'une première décision. */}
+      {awaitingRatification.length > 0 && (
+        <section>
+          <h2 className="mb-2 text-sm font-bold uppercase tracking-wide text-grubano-ink-muted">
+            {t('admin.awaitingRatification.title')} ({awaitingRatification.length})
+          </h2>
+          <p className="mb-3 text-[13px] text-grubano-ink-muted">{t('admin.awaitingRatification.hint')}</p>
+          <div className="space-y-3">
+            {awaitingRatification.map((r) => (
+              <div key={r.id} className="rounded-grubano-xl border border-amber-300 bg-amber-50 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-sm font-bold text-grubano-ink">{t('admin.order')} {r.orderRef}</span>
+                  <span className="text-sm font-semibold text-grubano-primary">{formatEuros(r.requestedAmountCents / 100, locale)}</span>
+                </div>
+                <dl className="mt-2 space-y-1 text-[13px] text-grubano-ink-muted">
+                  <p><span className="font-semibold">{t('admin.awaitingPayment.requested')}:</span> {formatEuros(r.requestedAmountCents / 100, locale)}</p>
+                  <p><span className="font-semibold">{t('admin.awaitingPayment.decidedAt')}:</span> {instantOf(r.arbitratedAt) ?? t('admin.awaitingPayment.decidedAtUnknown')}</p>
+                  {r.arbitrationReason && <p><span className="font-semibold">{t('admin.awaitingPayment.decisionReason')}:</span> {r.arbitrationReason}</p>}
+                </dl>
+                {approveTarget?.id === r.id ? approveDialog() : (
+                  <Button
+                    size="sm" variant="primary" className="mt-3" disabled={busyId === r.id}
+                    onClick={() => openApprove({ id: r.id, orderLabel: r.orderRef, requestedAmountCents: r.requestedAmountCents, mode: 'ratify' })}
+                  >
+                    {t('admin.awaitingRatification.ratify')}
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* ── BATCH 2 — ARGENT BLOQUÉ : la seule liste où un remboursement en attente, échoué
           ou non réconcilié devient visible ET actionnable. Aucune relance automatique. */}
       {actionableRefunds.length > 0 && (
@@ -393,7 +811,12 @@ export default function AdminClaimsArbitration({ initial, surfaceOpen = true }: 
           {t('admin.arbitrationTitle')} ({claims.length})
         </h2>
       )}
-      {claims.map((c) => {
+      {/* D′ L4: an approved-unpaid claim is ALSO matched by the arbitration queue's legacy branch, so the
+          same row could appear twice — once under « Réclamations en arbitrage » and once under « À rembourser »
+          or « À ratifier », with different controls. The D′ sections above own those rows; the arbitration
+          list renders what is left. The server lists are unchanged: this is a rendering choice, not a filter
+          on what the admin may see. */}
+      {claims.filter((c) => !dprimeIds.has(c.id)).map((c) => {
         const cs = c.consumerStats ?? {}
         const rs = c.restaurantStats ?? {}
         return (
@@ -447,12 +870,16 @@ export default function AdminClaimsArbitration({ initial, surfaceOpen = true }: 
                   <Button size="sm" variant="danger" loading={busyId === c.id} onClick={() => decide(c.id, 'refuse_final', reason || undefined)}>{t('admin.refuseFinal')}</Button>
                 </div>
               </div>
+            ) : approveTarget?.id === c.id ? (
+              approveDialog()
             ) : (
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 {/* ROUND-9 AUDIT FIX (P1, Class 3 again): both decisions are enabled on the SERVER's own
                     verdict (lib/claim-action-rules via listArbitrationQueue). Round 9 disabled approve on a
                     rail-locked claim and left « Refuser » live — which arbitrateClaim always refused there. */}
-                <Button size="sm" variant="primary" loading={busyId === c.id} disabled={c.approveRefusal != null} onClick={() => decide(c.id, 'approve')}>{t('admin.approve')}</Button>
+                {/* D′ L4 (T-07): « Approuver » no longer decides — it OPENS the approval dialog, where the
+                    amount, the motive of a reduction and the typed confirmation are collected. */}
+                <Button size="sm" variant="primary" loading={busyId === c.id} disabled={c.approveRefusal != null} onClick={() => openApprove({ id: c.id, orderLabel: `#${c.orderId.slice(-6)}`, requestedAmountCents: c.requestedAmountCents, mode: 'approve' })}>{t('admin.approve')}</Button>
                 <Button size="sm" variant="secondary" disabled={busyId === c.id || c.refuseFinalRefusal != null} onClick={() => setRefusingId(c.id)}>{t('admin.refuseFinal')}</Button>
                 {(c.approveRefusal || c.refuseFinalRefusal) && (
                   <span className="text-[12px] text-red-700">
