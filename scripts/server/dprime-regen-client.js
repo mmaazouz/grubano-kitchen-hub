@@ -17,15 +17,22 @@
    operator keeps its own contract (loyalty fields) and is not reused here.
 
    Steps, aborting NON-ZERO on the first failure:
-     1 the deployed prisma/schema.prisma carries the three D′ fields, each on its model (Claim gets
+     0 the DEPLOYED BUILD is the one the founder pinned — DPRIME_EXPECT_SHA against the static
+       public/version.json (read-only; skipped when unset, and the report says so) → 1 the deployed
+       prisma/schema.prisma carries the three D′ fields, each on its model (Claim gets
        approvedAmountCents + selection, Order gets deliveredAt) → 2 prisma generate (pinned 5.22.0,
        the workflow's own command, no shell) → 3 the "Generated Prisma Client" marker → 4 the
        generated index.d.ts exposes the three fields AND the model-scoped enums that prove they
        belong to the right models (ClaimScalarFieldEnum / OrderScalarFieldEnum) → 5 touch
-       tmp/restart.txt so Passenger reloads → PASS.
+       tmp/restart.txt, READ IT BACK and check its mtime → PASS.
 
-   SCOPE: staging one-off. No DB write, no schema change, no gate, no flag, no Stripe, no e-mail,
-   no money. No secret is read or printed. Nothing is coupled to deploy.
+   WHAT IT DOES NOT PROVE: the Passenger reload itself. Touching tmp/restart.txt is the documented
+   trigger and the touch is proven; the reload is asynchronous. The proof that the new client is
+   LIVE is GET /api/admin/claims/census (internal token) reporting schema.ready true — the PASS
+   report says exactly that instead of implying a restart happened.
+
+   SCOPE: staging one-off. NO DB write and no DB read, no schema change, no migration, no gate, no
+   flag, no Stripe, no e-mail, no money. No secret is read or printed. Nothing is coupled to deploy.
    ══════════════════════════════════════════════════════════════════════════════════════════════ */
 
 const fs = require('fs')
@@ -33,6 +40,8 @@ const path = require('path')
 const { execFileSync } = require('child_process')
 
 const APP_ROOT = process.env.DPRIME_APP_ROOT || path.join(__dirname, '..', '..')
+/** Founder pin (D′ L3b): when set, the DEPLOYED build must be exactly this SHA or the run refuses. */
+const EXPECT_SHA = process.env.DPRIME_EXPECT_SHA || ''
 /** The D′ fields (spec v2 §9), with the model each one must belong to. */
 const REQUIRED = [
   { model: 'Claim', field: 'approvedAmountCents' },
@@ -50,19 +59,22 @@ const VERIFY = process.env.DPRIME_VERIFY_FIELDS
 
 function pass(o) {
   console.log('========================================')
-  console.log('GRUBANO D′ L3a CLIENT REGENERATION')
+  console.log('GRUBANO D′ CLIENT REGENERATION')
   console.log('RESULT: PASS')
+  console.log('DEPLOYED BUILD: ' + (o.deployed || 'NOT PINNED (DPRIME_EXPECT_SHA unset)'))
   console.log('PRISMA GENERATE: ' + o.generate)
   console.log('CLIENT FIELDS: ' + o.fields)
   console.log('PASSENGER RESTART: ' + o.restart)
-  console.log('MONEY MOVED: NO — no DB write, no gate, no flag, no Stripe, no e-mail')
+  console.log('MONEY MOVED: NO — no DB write, no schema change, no gate, no flag, no Stripe, no e-mail')
+  console.log('VERIFY: the reload is asynchronous and is NOT proven here — GET /api/admin/claims/census')
+  console.log('        (internal token) must report schema.ready true once Passenger has reloaded.')
   console.log('SAFE TO CONTINUE: YES')
   console.log('========================================')
   process.exit(0)
 }
 function fail(step, action) {
   console.log('========================================')
-  console.log('GRUBANO D′ L3a CLIENT REGENERATION')
+  console.log('GRUBANO D′ CLIENT REGENERATION')
   console.log('RESULT: FAIL')
   console.log('FAILED STEP: ' + step)
   console.log('SAFE TO CONTINUE: NO')
@@ -81,6 +93,23 @@ function modelBody(schema, model) {
 }
 
 function main() {
+  // ── 0. the DEPLOYED BUILD must be the one the founder pinned (D′ L3b) ─────────────────────
+  // Read-only: public/version.json is a static artifact stamped by the deploy. It proves WHICH
+  // build the files on disk came from — regenerating a client against a schema from another
+  // deploy is exactly the mismatch this operator exists to prevent.
+  let deployed = 'NOT PINNED (DPRIME_EXPECT_SHA unset)'
+  if (EXPECT_SHA) {
+    let v = null
+    try { v = JSON.parse(fs.readFileSync(path.join(APP_ROOT, 'public', 'version.json'), 'utf8')) } catch { /* absent */ }
+    if (!v || !v.commit) return fail('0 expect-sha: public/version.json unreadable — the deployed build cannot be identified', 'check the deploy, then re-run')
+    const want = EXPECT_SHA.slice(0, 7)
+    if (!String(v.commit).startsWith(want) && !String(v.shortCommit || '').startsWith(want)) {
+      return fail('0 expect-sha: deployed ' + (v.shortCommit || v.commit) + ' ≠ expected ' + EXPECT_SHA, 'deploy the expected SHA first, then re-run')
+    }
+    deployed = (v.shortCommit || String(v.commit).slice(0, 7)) + ' (branch ' + (v.branch || '?') + ', build ' + (v.buildDate || '?') + ')'
+    console.log('[dprime-regen] deployed build:', deployed)
+  }
+
   // ── 1. the DEPLOYED schema must carry the D′ fields, each on its own model ─────────────────
   const schemaPath = path.join(APP_ROOT, 'prisma', 'schema.prisma')
   if (!fs.existsSync(schemaPath)) return fail('1 env: prisma/schema.prisma not found under ' + APP_ROOT, 'run from the deployed app (~/app.grubano.com)')
@@ -141,16 +170,26 @@ function main() {
   if (missing.length) return fail('4 verify: the regenerated client lacks ' + missing.join(', '), 'schema/client mismatch — RETURN THIS OUTPUT')
 
   // ── 5. Passenger restart (the same touch the deploy workflow performs) ─────────────────────
+  // The touch is PROVEN by reading it back (content + a fresh mtime). The Passenger reload that
+  // follows is asynchronous and is NOT proven here — the census is what proves the new client is
+  // live, and the report says so rather than implying a restart happened.
   let restart
   try {
     fs.mkdirSync(path.join(APP_ROOT, 'tmp'), { recursive: true })
-    fs.writeFileSync(path.join(APP_ROOT, 'tmp', 'restart.txt'), String(Date.now()))
-    restart = 'TOUCHED tmp/restart.txt'
+    const rf = path.join(APP_ROOT, 'tmp', 'restart.txt')
+    const stamp = 'dprime-regen ' + new Date().toISOString()
+    fs.writeFileSync(rf, stamp)
+    const readBack = fs.readFileSync(rf, 'utf8')
+    const ageMs = Date.now() - fs.statSync(rf).mtimeMs
+    if (readBack !== stamp) return fail('5 restart: tmp/restart.txt does not read back what was written')
+    if (!(ageMs >= 0 && ageMs < 60_000)) return fail('5 restart: tmp/restart.txt mtime is not fresh (' + ageMs + ' ms)')
+    restart = 'TOUCHED tmp/restart.txt (read back, mtime fresh) — reload is asynchronous, not proven here'
   } catch (e) {
     return fail('5 restart: could not touch tmp/restart.txt (' + String(e.message || e).slice(0, 120) + ')')
   }
 
   return pass({
+    deployed,
     generate: 'OK (' + route + ', marker present)',
     fields: 'VERIFIED (' + VERIFY.map((f) => f.model + '.' + f.field).join(', ') + ' in ' + path.relative(APP_ROOT, dts) + ', model-scoped)',
     restart,

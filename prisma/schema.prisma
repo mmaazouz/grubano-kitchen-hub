@@ -2100,26 +2100,29 @@ model Dispute {
 // ── P4.5-C1 — Customer refund claim cycle (Agent 52) ─────────────────────────────
 // ADDITIVE + STANDALONE (no @relation, mirrors Refund/Dispute/Payout → existing models
 // stay byte-identical; dropping the table leaves the schema intact). ONE row per
-// customer claim, written by lib/claims (gated by CLAIMS_ENABLED, default OFF → table
-// stays empty, no UI exposed, byte-identical).
+// customer claim, written by lib/claims. GATING (D′ L1, lib/claim-flags.ts): the feature is
+// gated by claimsSurfaceOpen() and the filing of NEW claims by claimsIntakeOpen() — product
+// flags CLAIMS_SURFACE_ENABLED / CLAIMS_INTAKE_ENABLED, or the legacy CLAIMS_ENABLED lease when
+// no product flag is set. All default OFF → table stays empty, no UI exposed, byte-identical.
 //
-// CYCLE: a consumer who OWNS a paid order, within CLAIM_WINDOW_HOURS (default 48h,
-// anchored on Order.updatedAt — the delivery/last-activity time; no deliveredAt column
-// exists and the status route is off-limits), files a claim (reason + optional photo +
-// requested amount ≤ order total). The OWNING restaurant responds within
-// CLAIM_RESPONSE_HOURS (default 24h): ACCEPT → triggers the P4.5-A engine
-// (lib/refund.executeRefund) for the requested amount / REFUSE (motivated, terminal in
-// C1 — contest = C2). NO restaurant response by responseDeadlineAt → AUTO-APPROVED by
-// the internal cron (a resto cannot block by ignoring).
+// CYCLE: a consumer who OWNS a paid order, within CLAIM_WINDOW_HOURS (default 48h), files a
+// claim (reason + optional line selection; beta stores no photo). The OWNING restaurant responds
+// within CLAIM_RESPONSE_HOURS (default 24h): ACCEPT or REFUSE (motivated; the client may contest
+// → 'arbitration'). NO restaurant response by responseDeadlineAt → the sweep ROUTES the claim to
+// 'arbitration' where a human decides (D′ L2: a machine never approves and never pays).
+//   • WINDOW ANCHOR: the shipped code still anchors on Order.updatedAt. `Order.deliveredAt`
+//     exists since D′ L3b and becomes the anchor with the delivered-only rules of D′ L6.
 //
-// MONEY: C1 does NOT compute any split — it CALLS executeRefund (royalty-aware engine).
-// The real refund only happens when REFUNDS_ENABLED is ON; with CLAIMS on but REFUNDS
-// off, an accepted/auto-approved claim rests at 'approved' (refundAttempted=false,
-// refundId=null) — refund PENDING activation, NOT silently lost.
+// MONEY (D′ L2 — APPROVING IS NOT REFUNDING): an approval writes a DECISION only. Neither
+// arbitrateClaim nor any machine path calls lib/refund — whatever the REFUNDS lease says. The
+// resulting state (status 'approved', refundAttempted=false, refundId=null, refundError=null) is
+// APPROVED_AWAITING_PAYMENT: a NORMAL state, paid later by the separate financial rail (admin
+// session + REFUNDS lease, D′ L5) on `approvedAmountCents`, never by a re-approval. C1 still
+// computes no split: the rail calls the royalty-aware engine (lib/refund.executeRefund).
 //
 // IDEMPOTENCE: executeRefund is called AT MOST ONCE per claim — `refundAttempted`
-// flips false→true via an atomic updateMany guard (count===1 winner); a double-accept /
-// re-click / cron+accept race / replay never refunds twice. `activeOrderKey` (= orderId
+// flips false→true via an atomic updateMany guard (count===1 winner); a replayed or
+// concurrent payment attempt never refunds twice. `activeOrderKey` (= orderId
 // while active, null when terminal) is @unique → at most ONE active claim per order
 // (race-safe; a terminal claim frees the order for a future C2 re-claim). CENTS = ints.
 model Claim {
@@ -2138,8 +2141,8 @@ model Claim {
   status                   String    @default("restaurant_review")
   restaurantResponse       String? // accepted | refused (what the resto chose; null if auto/none)
   restaurantResponseReason String?   @db.Text // refusal motive
-  responseDeadlineAt       DateTime // createdAt + CLAIM_RESPONSE_HOURS → auto-approve after
-  decidedBy                String? // restaurant | auto_timeout | auto_small | admin
+  responseDeadlineAt       DateTime // createdAt + CLAIM_RESPONSE_HOURS → routed to arbitration after (D′ L2)
+  decidedBy                String? // restaurant | admin (auto_timeout / auto_small: historical values, no writer since D′ L2)
   refundAttempted          Boolean   @default(false) // executeRefund called at most once (idempotence guard)
   refundId                 String? // → Refund.id (set when the engine refund succeeds)
   refundError              String?   @db.Text // last refund failure (audit; refund still pending)
@@ -2160,6 +2163,22 @@ model Claim {
   arbitrationDecision      String? // approved | refused_final
   arbitrationReason        String?   @db.Text // the admin's motive
   arbitratedAt             DateTime?
+  // ── D′ L3b (spec v2 §9, additive nullable) — the APPROVED amount and the line SELECTION ──
+  // approvedAmountCents: the amount a Grubano admin APPROVED. THE BOUND IS THE REQUESTED AMOUNT
+  // (spec v2 T-07 / invariant S-10): `1 ≤ approvedAmountCents ≤ requestedAmountCents`, with
+  // `reduceReason` required when strictly less — an equal amount is a normal full approval. The
+  // Stripe/order ceiling (E6) is DISPLAYED to the admin (§7.4) with a blocking warning; it is
+  // never the server bound, and it is LOOSER than the requested amount. null = no amount fixed
+  // yet: the claim is ratifiable but NOT payable. The financial rail (D′ L5) pays THIS number
+  // and nothing else — there is NO fallback on requestedAmountCents.
+  // selection: the line selection the customer pointed at, PERSISTED (T-50 correction) and
+  // never consumed automatically — an item claimed once is not blocked for a later claim (the
+  // ANTI-REPEAT ITEM CLAIM POLICY is recorded post-beta debt).
+  // Both nullable, no default, no index, no backfill → every existing row stays valid. The
+  // staging columns were applied 2026-09-22 by scripts/server/dprime-staging-migrate.js
+  // (migration hash 43cdb3bb51fbe95b, all NULL); no reader ships before D′ L4.
+  approvedAmountCents      Int?
+  selection                Json?
 
   @@index([consumerId, createdAt])
   @@index([restaurantId, status])
@@ -2342,6 +2361,15 @@ model Order {
   deliveryMissions      Mission[]
   createdAt             DateTime       @default(now())
   updatedAt             DateTime       @updatedAt
+  // ── D′ L3b (spec v2 §9, additive nullable) — the DELIVERY instant ────────────
+  // The moment the order became 'delivered'. It exists because `updatedAt` moves on EVERY
+  // later write, which silently re-opened a claim window that should have closed. It will be
+  // the anchor of the claim rules (E3 delivered-only, E4 48 h from deliveredAt) when D′ L6
+  // ships their reader — and THIS field is the subject of decision D-1 (« ancre STRICTE »:
+  // deliveredAt null ⇒ ineligible for self-service, NO updatedAt fallback, manual support).
+  // Until L6 nothing reads this column and the eligibility code still anchors on updatedAt. Nullable, no default, no backfill → orders delivered before this
+  // column stay NULL. Applied on staging 2026-09-22 by dprime-staging-migrate.js (all NULL).
+  deliveredAt           DateTime?
 
   @@index([pointOfSaleId])
   @@index([referralCode])

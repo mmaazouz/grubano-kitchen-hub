@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { isInternalCronRequest } from '@/lib/safe-compare'
 import { FINANCIAL_VERIFICATION, RECONCILE_REQUIRED, TERMINAL_STATUSES } from '@/lib/claims'
 import { claimsFlagsSnapshot } from '@/lib/claim-flags'
+import { schemaReady } from '@/lib/schema-ready'
 import { isRefundsEnabled } from '@/lib/refund'
 import { claimsLegacyCensus, claimsClosureCensus } from '@/lib/claims-census'
 
@@ -23,6 +24,11 @@ export const dynamic = 'force-dynamic'
 // NOT gated by CLAIMS_ENABLED: measuring the population is exactly what you need to do while
 // the feature is off, and a census that hides itself behind the flag would answer the wrong
 // question. It writes nothing.
+//
+// D′ L3b: it also reports `schema` — whether the D′ columns are usable RIGHT NOW in the running
+// process (generated client + database, lib/schema-ready). That is how the founder sees, without
+// SSH, whether scripts/server/dprime-regen-client.js still needs to be run after a deploy. Booleans
+// and field names only: no secret, no DSN, no row content.
 export async function GET(req: NextRequest) {
   if (!isInternalCronRequest(req)) {
     return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
@@ -78,6 +84,8 @@ export async function GET(req: NextRequest) {
         legacy,
         closure,
       },
+      // D′ L3b: are the three additive columns usable in THIS process (client + database)?
+      schema: await schemaReady(),
       // D′ L1: every claims gate at once (product flags + legacy lease), read-only, no secret.
       gates: (() => {
         const f = claimsFlagsSnapshot()

@@ -27,6 +27,7 @@ vi.mock('@/lib/safe-compare', async (importOriginal) => ({ ...(await importOrigi
 import { GET as CENSUS } from '@/app/api/admin/claims/census/route'
 import { RESUME_CREATE_WINDOW_MS } from '@/lib/refund'
 import { claimsLegacyCensus, claimsClosureCensus } from '@/lib/claims-census'
+import { resetSchemaReadyCache } from '@/lib/schema-ready'
 import { arbitrationRefusal, reconcileRefusal, APPROVE_LEGACY_PROOF } from '@/lib/claim-action-rules'
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -351,5 +352,52 @@ describe('J-M53 / J-C35 — phase2-claims-gate.js census lines (I-07)', () => {
     // BREAK/RESTORE witness: the same printer implemented with A() would push to anomalies and FAIL every precheck.
     const broken = cLine.replace('census.push(', 'A(')
     expect(broken).toMatch(/\bA\(/)
+  })
+})
+
+// ── D′ L3b — the census reports whether the three additive columns are usable RIGHT NOW ──────
+// The founder has no SSH, and the post-deploy `prisma generate` is the step that times out. So the
+// census is the read-only place that says « the client still needs regenerating » — and it must say
+// it without ever failing the census itself.
+describe('D′ L3b — GET /api/admin/claims/census: the `schema` block (spec v2 §9)', () => {
+  it('the block is reported, shaped, and carries booleans + field names only (no DSN, no row content)', async () => {
+    resetSchemaReadyCache()
+    const body = await census()
+    expect(Object.keys(body.schema as Record<string, unknown>).sort())
+      .toEqual(['clientReady', 'dbReady', 'missingClient', 'missingDb', 'probedAt', 'ready', 'why'])
+    const text = JSON.stringify(body.schema)
+    expect(text).not.toMatch(/mysql:\/\/|password|DATABASE_URL|c[a-z0-9]{24}/)
+  })
+
+  it('the probe reaching both models → schema.ready true, clientReady true, dbReady true', async () => {
+    resetSchemaReadyCache()
+    const probes: string[] = []
+    ;(db as Record<string, unknown>).order = { findFirst: async () => { probes.push('order'); return null } }
+    const realClaimFindFirst = db.claim.findFirst
+    db.claim.findFirst = (async () => { probes.push('claim'); return null }) as never
+    try {
+      const body = await census()
+      expect(body.schema).toMatchObject({ ready: true, clientReady: true, dbReady: true, missingClient: [], missingDb: [], why: null })
+      expect(probes).toEqual(expect.arrayContaining(['claim', 'order']))
+      expect(body.claims).toBeTruthy() // the census itself still answers
+    } finally {
+      db.claim.findFirst = realClaimFindFirst
+      delete (db as Record<string, unknown>).order
+      resetSchemaReadyCache()
+    }
+  })
+
+  it('NEGATIVE CONTROL — a probe that cannot complete → schema.ready false with a reason, and the census STILL answers its counts (fail-closed, never fail-loud)', async () => {
+    resetSchemaReadyCache()
+    // no `order` model on this harness' prisma double: the Order half of the probe cannot complete
+    expect((db as Record<string, unknown>).order).toBeUndefined()
+    const body = await census()
+    expect(body.schema).toMatchObject({ ready: false })
+    expect((body.schema as { missingDb: string[] }).missingDb).toContain('Order.deliveredAt')
+    expect((body.schema as { why: string }).why).toBeTruthy()
+    // the census answered anyway: the counts are all there, and nothing was written
+    expect(body.claims.legacy).toEqual(ONES)
+    expect(writes.count).toBe(0)
+    resetSchemaReadyCache()
   })
 })

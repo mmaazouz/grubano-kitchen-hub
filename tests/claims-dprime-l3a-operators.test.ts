@@ -269,3 +269,72 @@ model Order {
     expect(r.out).not.toMatch(/RESULT: PASS/)
   })
 })
+
+// ── D′ L3b — the regen operator gained the founder SHA pin and a PROVEN restart touch ────────
+// The founder's stop-gate requires the single cPanel command to verify the expected L3b SHA, to
+// touch nothing but the Prisma client, and to prove what it did without claiming what it cannot.
+describe('dprime-regen-client — the D′ L3b founder pin and the restart proof', () => {
+  const withSchema = () => fs.writeFileSync(path.join(world, 'prisma', 'schema.prisma'), DPRIME_SCHEMA)
+  const version = (o: Record<string, unknown>) => {
+    fs.mkdirSync(path.join(world, 'public'), { recursive: true })
+    fs.writeFileSync(path.join(world, 'public', 'version.json'), JSON.stringify(o))
+  }
+
+  it('REFUSES when the SHA is pinned and version.json is absent — before reading the schema, before generating', () => {
+    withSchema()
+    const r = run(REGEN, { DPRIME_EXPECT_SHA: 'abcdef0' })
+    expect(r.code).toBe(1)
+    expect(r.out).toMatch(/0 expect-sha: public\/version\.json unreadable/)
+    expect(r.out).not.toMatch(/1 env:|prisma generate/)
+    expect(fs.existsSync(path.join(world, 'tmp', 'restart.txt'))).toBe(false)
+  })
+
+  it('REFUSES a deployed build that is not the pinned one, and names both SHAs', () => {
+    withSchema()
+    version({ commit: 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef', shortCommit: 'deadbee', branch: 'develop' })
+    const r = run(REGEN, { DPRIME_EXPECT_SHA: '9c86fb303a55602c976358613ff6f3f43307d3c3' })
+    expect(r.code).toBe(1)
+    expect(r.out).toMatch(/0 expect-sha: deployed deadbee ≠ expected 9c86fb303a55602c976358613ff6f3f43307d3c3/)
+    expect(r.out).toMatch(/deploy the expected SHA first/)
+    expect(fs.existsSync(path.join(world, 'tmp', 'restart.txt'))).toBe(false)
+  })
+
+  it('ACCEPTS the matching build (long or short form) and moves on to the schema check — never a PASS without generation', () => {
+    withSchema()
+    version({ commit: '9c86fb303a55602c976358613ff6f3f43307d3c3', shortCommit: '9c86fb3', branch: 'develop', buildDate: '2026-09-22T19:55:56.830Z' })
+    for (const pin of ['9c86fb303a55602c976358613ff6f3f43307d3c3', '9c86fb3']) {
+      const r = run(REGEN, { DPRIME_EXPECT_SHA: pin })
+      expect(r.out, pin).toMatch(/deployed build: 9c86fb3 \(branch develop/)
+      expect(r.out, pin).not.toMatch(/0 expect-sha/)
+      expect(r.out, pin).toMatch(/3 prisma generate/)   // it died where the fake world has no CLI
+      expect(r.out, pin).not.toMatch(/RESULT: PASS/)
+      expect(r.code, pin).toBe(1)
+    }
+  })
+
+  it('the pin is OPTIONAL and says so — unpinned, step 0 is skipped and the run reports it rather than implying a check', () => {
+    withSchema()
+    const r = run(REGEN, {})
+    expect(r.out).not.toMatch(/0 expect-sha/)
+    expect(read(REGEN)).toMatch(/NOT PINNED \(DPRIME_EXPECT_SHA unset\)/)
+  })
+
+  it('the restart touch is PROVEN (read back + fresh mtime) and the reload is explicitly NOT claimed', () => {
+    const s = code(REGEN)
+    expect(s).toMatch(/const readBack = fs\.readFileSync\(rf, 'utf8'\)/)
+    expect(s).toMatch(/if \(readBack !== stamp\) return fail\('5 restart/)
+    expect(s).toMatch(/mtimeMs/)
+    expect(s).toMatch(/reload is asynchronous, not proven here/)
+    // the PASS report points at the census as the proof the new client is live
+    expect(s).toMatch(/schema\.ready true once Passenger has reloaded/)
+  })
+
+  it('step 0 reads a STATIC file only: no DB, no flag, no Stripe, no secret, no write outside tmp/restart.txt', () => {
+    const s = code(REGEN)
+    expect(s).not.toMatch(/DATABASE_URL|\$queryRaw|\$executeRaw|PrismaClient|mysqldump/)
+    expect(s).not.toMatch(/process\.env\.(REFUNDS_ENABLED|CLAIMS_ENABLED|CLAIMS_SURFACE_ENABLED|CLAIMS_INTAKE_ENABLED)/)
+    expect(s).not.toMatch(/require\(['"][^'"]*stripe/i)
+    const writes = s.match(/writeFileSync\(([^,]+)/g) ?? []
+    expect(writes).toEqual(['writeFileSync(rf'])
+  })
+})
