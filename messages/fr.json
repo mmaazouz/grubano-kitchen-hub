@@ -7277,8 +7277,7 @@
         "decidedAt": "Décision prise le",
         "decidedAtUnknown": "instant non enregistré",
         "decisionReason": "Motivation de la décision",
-        "payBatch": "Payer le lot ({count})",
-        "payBatchUnavailable": "Le rail financier n’est pas encore disponible : aucun paiement ne peut être lancé depuis cette console."
+        "payBatch": "Payer le lot ({count})"
       },
       "awaitingRatification": {
         "title": "À ratifier",
@@ -7313,6 +7312,104 @@
         "confirmLabel": "Pour confirmer, saisissez « {word} »",
         "submit": "Retirer l’approbation",
         "done": "Approbation retirée : la réclamation repart en arbitrage et son montant approuvé est effacé. Cette action n’a déplacé aucun argent."
+      },
+      "payBatch": {
+        "title": "Rail financier — payer le lot",
+        "hint": "Le paiement se fait en deux temps. La simulation lit la file, le reste remboursable de chaque commande et la fenêtre de remboursement, sans rien écrire. Le paiement exécute ensuite exactement le lot simulé, réclamation par réclamation, et rien d’autre.",
+        "simulate": "Simuler le lot",
+        "simulateAgain": "Relancer la simulation",
+        "dryRunFailed": "La simulation n’a pas abouti. Aucune réclamation n’a été offerte au moteur et aucun paiement n’a été tenté.",
+        "summary": "{payable} réclamation(s) payable(s), {total} au total — {held} retenue(s).",
+        "heldNotCounted": "Une réclamation retenue est affichée avec son motif et n’entre dans aucun total : le rail ne l’offrira pas au moteur dans ce lot.",
+        "noAmount": "aucun montant ratifié",
+        "leaseOpen": "Fenêtre de remboursement ouverte jusqu’au {until}.",
+        "leaseNone": "Aucune fenêtre ouverte ({reason}).",
+        "tokenExpiresAt": "Ce lot simulé est valable jusqu’au {until}. Passé ce délai, relancez la simulation pour revoir les montants avant de payer.",
+        "rowPayable": "Payable",
+        "rowHeld": "Retenue",
+        "leaseReason": {
+          "flagOff": "les remboursements sont désactivés sur ce serveur",
+          "noLease": "aucune fenêtre n’est déclarée",
+          "leaseUnreadable": "la fenêtre déclarée est illisible",
+          "leaseExpired": "la fenêtre déclarée est échue",
+          "leaseTooLong": "la fenêtre déclarée dépasse la durée maximale admise, elle est refusée",
+          "unknown": "motif non reconnu par cette console"
+        },
+        "blockedIntro": "« Payer le lot » est indisponible :",
+        "blocked": {
+          "noPayable": "aucune réclamation payable dans cette simulation : il n’y a rien à payer.",
+          "leaseClosed": "aucune fenêtre de remboursement ouverte ({reason}) : un opérateur autorisé doit en ouvrir une.",
+          "leaseClosing": "la fenêtre de remboursement se referme dans moins d’une minute : le rail refuse de commencer un lot avec une marge aussi courte.",
+          "surfaceClosed": "la surface des réclamations est fermée sur ce serveur : le rail refuse de payer.",
+          "auditDisabled": "le journal d’audit admin est désactivé : sans trace nominative, le rail refuse de payer."
+        },
+        "confirmTitle": "Payer ce lot ?",
+        "confirmBody": "{count} réclamation(s), {total} au total. L’argent part maintenant, réclamation par réclamation, dans l’ordre du lot simulé.",
+        "confirmNotice": "Le rail paie exactement les réclamations de ce lot simulé : il ne relit pas la file. Une réclamation dont le montant approuvé ou l’instant de décision a changé depuis la simulation est ignorée, sans rien tenter.",
+        "confirmLabel": "Pour confirmer, saisissez « {word} »",
+        "submit": "Payer le lot",
+        "refused": "Le paiement a été refusé avant toute lecture : aucune réclamation n’a été offerte au moteur.",
+        "answerLost": "La réponse du serveur n’est pas parvenue jusqu’ici : ce que ce lot a fait n’est pas établi depuis cette page. Ne relancez pas le paiement — rechargez la file, puis vérifiez le journal d’audit et le prestataire de paiement avant toute autre action.",
+        "reportTitle": "Résultat du lot",
+        "reportCounts": "{requested} réclamation(s) traitée(s) : {paid} payée(s), {pending} acceptée(s) et non confirmée(s), {held} retenue(s), {review} à vérifier, {failed} non payée(s), {skipped} ignorée(s), {notAttempted} non tentée(s).",
+        "engineAmount": "Montant porté par la ligne de remboursement",
+        "refundId": "Identifiant du remboursement chez le prestataire de paiement",
+        "until": "Conclusion possible à partir du",
+        "engineMessage": "Message du moteur",
+        "stopped": {
+          "leaseExpired": "Le lot s’est arrêté : la fenêtre de remboursement s’est refermée. Les réclamations suivantes n’ont pas été tentées et leur décision est intacte.",
+          "budget": "Le lot s’est arrêté sur son budget de temps. Les réclamations suivantes n’ont pas été tentées et leur décision est intacte.",
+          "crashed": "Le lot s’est arrêté sur une erreur survenue pendant une tentative. Les réclamations suivantes n’ont pas été tentées."
+        },
+        "evidence": {
+          "claimReread": "Classement établi en relisant l’état enregistré de la réclamation.",
+          "claimUnreadable": "La réclamation n’a pas pu être relue après la tentative : le classement le plus prudent a été retenu.",
+          "engineCalledUnknown": "On ne sait pas si le moteur a été atteint par cette tentative.",
+          "identityMoved": "La décision a changé depuis la simulation (montant approuvé ou instant de décision) : rien n’a été tenté pour cette réclamation.",
+          "shapeRefused": "Le rail n’accepte plus cette réclamation dans son état enregistré ({clause}) : rien n’a été tenté pour elle."
+        },
+        "hold": {
+          "routedWithoutFee": "Paiement reversé au restaurant sans commission enregistrée : le prestataire de paiement rejetterait ce remboursement. Le rail ne l’offre pas au moteur dans ce lot.",
+          "fundingUnreadable": "Le financement de ce paiement n’a pas pu être lu chez le prestataire de paiement : rien n’est établi, le rail ne l’offre pas au moteur dans ce lot.",
+          "exceedsRefundable": "Le montant approuvé dépasse ce qui reste remboursable sur la commande, lu en direct : le rail ne l’offre pas au moteur dans ce lot.",
+          "ceilingUnreadable": "Le reste remboursable de la commande n’a pas pu être calculé : une valeur inconnue n’est pas un plafond, le rail ne l’offre pas au moteur dans ce lot.",
+          "orderHasPendingRow": "Un autre remboursement de cette commande est encore en attente : un second entrerait en course avec lui. Le rail ne l’offre pas au moteur dans ce lot.",
+          "amountNotRatified": "Aucun montant ratifié, ou montant hors de la borne du montant demandé : rien ne peut être payé. Ratifiez le montant dans « À ratifier ».",
+          "notSelectable": "Le rail n’accepte pas cette réclamation dans son état enregistré ({detail}) : rien n’est tenté pour elle."
+        },
+        "outcome": {
+          "paid": "Payée : remboursement abouti chez le prestataire de paiement pour cette réclamation.",
+          "acceptedPending": "Acceptée par le prestataire de paiement, pas encore confirmée : rien n’est établi pour l’instant, et aucun avis n’est envoyé au client tant que rien ne l’est.",
+          "leaseClosed": "Fenêtre refermée avant cette réclamation : rien n’a été envoyé au prestataire de paiement (0 €) et sa décision est intacte.",
+          "stateChanged": "L’état de cette réclamation avait changé depuis la simulation : le moteur n’a rien fait de nouveau. Ouvrez son détail avant toute autre action.",
+          "superseded": "Une autre écriture a pris cette réclamation pendant la tentative : celle-ci n’a rien écrit, et selon le moment un remboursement a pu être lancé. Établissez la preuve chez le prestataire de paiement avant toute autre action sur cette commande.",
+          "notPaidAmountNotRatified": "Non payée : aucun montant ratifié au moment de la tentative. Le moteur a refusé avant d’écrire quoi que ce soit (0 €).",
+          "notPaidEngineFailed": "Non payée : le moteur a refusé avant de créer quoi que ce soit — rien n’a été envoyé au prestataire de paiement (0 €).",
+          "heldSafetyHold": "Retenue par une règle de sûreté : rien n’a été envoyé au prestataire de paiement (0 €).",
+          "heldProofStale": "Retenue : la preuve d’absence de remboursement n’était plus fraîche à la relecture. Rien n’a été envoyé au prestataire de paiement (0 €).",
+          "heldOwnRowExists": "Retenue : une ligne de remboursement portant l’identité de cette réclamation existe déjà. Rien n’a été envoyé au prestataire de paiement (0 €).",
+          "heldUnconfirmedWithinWindow": "Retenue : une tentative récente n’est pas encore concluable. Rien n’a été envoyé au prestataire de paiement (0 €) ; une conclusion devient possible à l’instant indiqué.",
+          "heldSafetyCheckUnreadable": "Retenue : un contrôle de sûreté n’a pas pu être lu. Rien n’a été envoyé au prestataire de paiement (0 €).",
+          "reviewResumeMismatch": "À VÉRIFIER : de l’argent a pu partir, et les écritures ne disent pas pour qui. Établissez la preuve chez le prestataire de paiement avant toute autre action sur cette commande.",
+          "reviewIdentityUnverified": "À VÉRIFIER : l’identité du remboursement lié n’est pas établie, et de l’argent a pu partir. Établissez la preuve chez le prestataire de paiement avant toute autre action sur cette commande.",
+          "reviewEngineOwnRow": "À VÉRIFIER : le moteur a refusé alors qu’une ligne de remboursement peut porter cette réclamation ; de l’argent a pu partir. Établissez la preuve chez le prestataire de paiement avant toute autre action sur cette commande.",
+          "crashed": "La tentative a levé une erreur : on ne sait pas si le moteur a été atteint, donc de l’argent a pu partir. Établissez la preuve chez le prestataire de paiement avant toute autre action ; le lot s’est arrêté ici.",
+          "notAttempted": "Non tentée : le lot s’était arrêté avant elle. Rien n’a été lu ni écrit pour cette réclamation et sa décision est intacte.",
+          "skippedStaleDryRun": "Ignorée : cette réclamation ne portait plus l’identité simulée (montant approuvé ou instant de décision différent). Rien n’a été tenté (0 €).",
+          "skippedNotSelectable": "Ignorée : le rail n’accepte pas cette réclamation dans son état enregistré. Rien n’a été tenté (0 €).",
+          "skippedClaimUnreadable": "Ignorée : cette réclamation n’a pas pu être RELUE avant la tentative. Rien ne lui a été tenté (0 €) ; rechargez la file, l’état n’est pas établi depuis cette page."
+        },
+        "clause": {
+          "status": "son statut a changé",
+          "arbitration_decision": "sa décision d’arbitrage a changé",
+          "refund_attempted": "une tentative de remboursement a déjà eu lieu",
+          "refund_id": "une ligne de remboursement lui est déjà liée",
+          "amount_not_ratified": "aucun montant ratifié, ou montant hors borne",
+          "refund_error": "un état de remboursement est enregistré",
+          "v13_before_instant": "sa preuve n’est pas encore exploitable",
+          "not_found": "elle est introuvable en base",
+          "claim_unreadable": "elle n’a pas pu être relue"
+        }
       }
     }
   },

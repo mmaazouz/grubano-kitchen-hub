@@ -324,6 +324,11 @@ export function arbitrationRefusal(c: ClaimFacts, decision: 'approve' | 'refuse_
 // the decision exit of arbitration / silence-expired claims only.
 export type Exit = 'approve' | 'ratify' | 'refuse_final' | 'withdraw' | 'pay' | 'reconcile' | 'attribute' | 'adopt' | 'stuck_close'
 
+// ── D′ L5 (spec v2 §8.2) — the word the admin types to release a BATCH of money ──
+// Declared here beside the other two so the rail and the console never retype it: a confirmation word
+// that exists in two places is a confirmation word that can silently stop matching.
+export const PAY_CONFIRM_WORD = 'PAYER'
+
 // ── D′ L4 (spec v2 §4) — the WITHDRAW contract, in one place the route and the console share ──
 /** The admin types this word to confirm a withdrawal. */
 export const WITHDRAW_CONFIRM_WORD = 'RETIRER'

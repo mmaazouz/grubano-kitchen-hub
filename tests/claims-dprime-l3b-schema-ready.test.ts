@@ -274,9 +274,15 @@ describe('the census exposes schemaReady; L3b ships no consumer, no gate, no mon
   // through a client that does not know the column. Everything else still gates on nothing: the
   // intake, the machine route and the state machine itself write none of the three columns' values
   // from a request, so a readiness gate there would only add a new way to fail.
-  it('D′ L4 — the schemaReady gate exists on EXACTLY the two writing routes (approve, withdraw), and on no other claims route nor lib/claims.ts', () => {
+  // ── EXTENDED BY D′ L5 (spec v2 §9) ─────────────────────────────────────────────────────────
+  // The financial rail is the third consumer of the probe, and the one with the most to lose from a
+  // stale client: its dryRun SELECTS on approvedAmountCents and its PAYER re-reads it per claim. A
+  // process that cannot use the column must answer « not right now » instead of throwing halfway
+  // through a batch — the title below counts three routes for that reason.
+  it('D′ L4/L5 — the schemaReady gate exists on EXACTLY the three D′ money routes (approve, withdraw, pay-approved), and on no other claims route nor lib/claims.ts', () => {
     // (a) the gated routes: the probe AND the 503 it answers with
-    for (const p of ['app/api/admin/claims/[id]/arbitrate/route.ts', 'app/api/admin/claims/[id]/withdraw-approval/route.ts']) {
+    for (const p of ['app/api/admin/claims/[id]/arbitrate/route.ts', 'app/api/admin/claims/[id]/withdraw-approval/route.ts',
+      'app/api/admin/claims/pay-approved/route.ts']) {
       const code = strip(src(p))
       expect(code, p).toMatch(/import \{ schemaReady \} from '@\/lib\/schema-ready'/)
       expect(code, p).toMatch(/await schemaReady\(\)/)

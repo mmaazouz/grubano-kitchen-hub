@@ -131,6 +131,12 @@ jobs:
           mkdir -p deploy-temp/lib
           cp lib/ledger-check-core.js deploy-temp/lib/ledger-check-core.js
 
+          # D' L5 (spec v2 8.5 / 8.8) — the payable selection of the claims financial rail.
+          # Same reason as above: the pay-window operator decides whether to OPEN a refund
+          # window by counting what the rail would pay, so it must ask the EXACT query the
+          # rail asks. Plain CommonJS, no auth, no env read, no write, no Stripe.
+          cp lib/claims-payable-core.js deploy-temp/lib/claims-payable-core.js
+
           # Cron probes (rail A6 gardiens — ledger check + monthly invoices,
           # called by cPanel cron). ONLY scripts/cron/ ships — never the whole
           # scripts/ folder (local tooling like notion-sync must NOT reach a

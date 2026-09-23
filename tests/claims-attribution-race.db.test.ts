@@ -18,6 +18,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type Stripe from 'stripe'
 import type { PrismaClient } from '@prisma/client'
+import { applicationDatabaseUrls, rehearsalTargetRefusal } from './support/rehearsal-target'
 
 vi.mock('@/lib/stripe', () => ({ getStripe: () => { throw new Error('the rehearsal never calls Stripe') } }))
 vi.mock('@/lib/refund', () => ({
@@ -29,51 +30,10 @@ vi.mock('@/lib/admin-alerts', () => ({ sendAdminMoneyReviewAlert: vi.fn(async ()
 vi.mock('@/lib/admin-audit', () => ({ recordAdminAudit: vi.fn(async () => false) }))
 
 const RACE_URL = process.env.CLAIMS_RACE_DATABASE_URL
-const LOOPBACK = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
-/** C10 (W4 fixer): the database must SAY it is a disposable rehearsal database — a loopback host alone proves nothing. */
-const DISPOSABLE_DB_NAME = /^claims_race(?:_[a-z0-9]+)?$/i
-/** The o2switch cPanel account prefix: every hosted database and database user carries it (/home/deyi0010). */
-const HOSTED_ACCOUNT_PREFIX = /deyi0010/i
 
-/**
- * The DATABASE_URL* values the application reads: process.env AND the env files, which vitest does not load into
- * process.env (vitest.config.ts sets no env loading). Values are only compared, never printed.
- */
-function applicationDatabaseUrls(env: Record<string, string | undefined>, files: string[] = ['.env.local', '.env']): string[] {
-  const out: string[] = []
-  for (const [k, v] of Object.entries(env)) if (/^DATABASE_URL/.test(k) && v) out.push(v)
-  for (const f of files) {
-    if (!existsSync(f)) continue
-    for (const line of readFileSync(f, 'utf8').split(/\r?\n/)) {
-      const m = line.match(/^\s*(?:export\s+)?DATABASE_URL[A-Z0-9_]*\s*=\s*(.*?)\s*$/)
-      if (m && m[1]) out.push(m[1].replace(/^(['"])(.*)\1$/, '$2'))
-    }
-  }
-  return out
-}
-
-const dbName = (u: URL) => decodeURIComponent(u.pathname.replace(/^\//, ''))
-
-/** C10: only a disposable local MySQL/MariaDB database is accepted. Returns the refusal reason, or null. */
-function rehearsalTargetRefusal(raw: string | undefined, applicationUrls: string[]): string | null {
-  if (!raw) return 'CLAIMS_RACE_DATABASE_URL is not set'
-  let u: URL
-  try { u = new URL(raw) } catch { return 'not a URL' }
-  if (u.protocol !== 'mysql:') return 'not a mysql:// URL'
-  if (!LOOPBACK.has(u.hostname)) return `host ${u.hostname} is not a local loopback host: staging and production are refused`
-  if (/grubano|o2switch|jabatus/i.test(raw)) return 'the URL names a Grubano or o2switch resource'
-  if (HOSTED_ACCOUNT_PREFIX.test(raw)) return 'the URL carries the o2switch cPanel account prefix: a hosted database or user, possibly through a loopback tunnel'
-  const name = dbName(u)
-  if (!name) return 'no database name'
-  if (!DISPOSABLE_DB_NAME.test(name)) return `database ${name} is not named as a disposable rehearsal database (claims_race…)`
-  for (const app of applicationUrls) {
-    if (app === raw) return 'the URL equals an application DATABASE_URL: a rehearsal database is disposable, never an application database'
-    let a: URL | null = null
-    try { a = new URL(app) } catch { /* an unparseable application URL is compared as text only */ }
-    if (a && dbName(a) === name) return 'the database name equals an application database name'
-  }
-  return null
-}
+// D' L5: the guard moved to tests/support/rehearsal-target.ts when a SECOND rehearsal against a real
+// database (the financial rail races) needed it. ONE definition of « never point this at real data »;
+// the always-run tests of that definition stay HERE, where the rule was first written.
 
 describe('J-M24 — the rehearsal target guard (always runs)', () => {
   it('refuses unset, non-mysql, remote (staging / production), Grubano-named, tunnelled hosted, non-disposable and application URLs; accepts a disposable loopback database', () => {

@@ -31,6 +31,9 @@ import { sendAdminMoneyReviewAlert } from '@/lib/admin-alerts'
 import { recordAdminAudit, isAdminAuditEnabled } from '@/lib/admin-audit'
 // D′ L4: the customer-facing order reference — a queue never shows a raw order id.
 import { orderRef } from '@/lib/order-ref'
+// D′ L5 (spec v2 §8.5 / §8.8): the payable selection, shared byte-for-byte with the rail's dryRun and
+// with the server operator (plain CommonJS — the server has no TypeScript build).
+import { PAYABLE_WHERE } from '@/lib/claims-payable-core'
 // ROUND-6 AUDIT FIX: the "is this bound refund actually ours?" predicate lives in ONE place. It
 // used to be re-derived here from `refundId` alone, which is exactly the proxy four rounds removed.
 import { isResumeMismatch } from '@/lib/claim-money-line'
@@ -1476,14 +1479,12 @@ export type AwaitingPaymentRow = {
   createdAt: Date
 }
 
-const AWAITING_PAYMENT_WHERE = {
-  status:              'approved',
-  arbitrationDecision: 'approved',
-  refundAttempted:     false,
-  refundId:            null,
-  refundError:         null,
-  approvedAmountCents: { not: null },
-} as const
+// D′ L5 (spec v2 §8.5 / §8.8) — ONE definition of « payable by the financial rail », and it lives in
+// lib/claims-payable-core.js, a plain CommonJS module the server operator can require under bare node
+// (no TypeScript build exists on the server). The admin queue below, the rail's dryRun and the
+// pay-window operator's precheck therefore ask the SAME question: a window can never be opened for a
+// set the rail would then refuse, nor closed while the rail still had work.
+const AWAITING_PAYMENT_WHERE = PAYABLE_WHERE
 
 /** FIFO by decision instant (§8.5). Read-only, PII-free, capped. */
 export async function listApprovedAwaitingPayment(take = 20): Promise<AwaitingPaymentRow[]> {

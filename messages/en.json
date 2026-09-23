@@ -7277,8 +7277,7 @@
         "decidedAt": "Decision taken on",
         "decidedAtUnknown": "instant not recorded",
         "decisionReason": "Decision rationale",
-        "payBatch": "Pay the batch ({count})",
-        "payBatchUnavailable": "The financial rail is not available yet: no payment can be started from this console."
+        "payBatch": "Pay the batch ({count})"
       },
       "awaitingRatification": {
         "title": "To ratify",
@@ -7313,6 +7312,104 @@
         "confirmLabel": "To confirm, type “{word}”",
         "submit": "Withdraw the approval",
         "done": "Approval withdrawn: the claim goes back to arbitration and its approved amount is cleared. This action moved no money."
+      },
+      "payBatch": {
+        "title": "Financial rail — pay the batch",
+        "hint": "Payment happens in two steps. The simulation reads the queue, the remaining refundable amount of each order and the refund window, and writes nothing. The payment then runs exactly the simulated batch, claim by claim, and nothing else.",
+        "simulate": "Simulate the batch",
+        "simulateAgain": "Run the simulation again",
+        "dryRunFailed": "The simulation did not complete. No claim was offered to the engine and no payment was attempted.",
+        "summary": "{payable} payable claim(s), {total} in total — {held} held.",
+        "heldNotCounted": "A held claim is shown with its cause and counts towards no total: the rail will not offer it to the engine in this batch.",
+        "noAmount": "no ratified amount",
+        "leaseOpen": "Refund window open until {until}.",
+        "leaseNone": "No window open ({reason}).",
+        "tokenExpiresAt": "This simulated batch is valid until {until}. After that, run the simulation again to review the amounts before paying.",
+        "rowPayable": "Payable",
+        "rowHeld": "Held",
+        "leaseReason": {
+          "flagOff": "refunds are disabled on this server",
+          "noLease": "no window is declared",
+          "leaseUnreadable": "the declared window cannot be read",
+          "leaseExpired": "the declared window has lapsed",
+          "leaseTooLong": "the declared window exceeds the maximum allowed duration and is refused",
+          "unknown": "a reason this console does not recognise"
+        },
+        "blockedIntro": "“Pay the batch” is unavailable:",
+        "blocked": {
+          "noPayable": "no payable claim in this simulation: there is nothing to pay.",
+          "leaseClosed": "no refund window is open ({reason}): an authorised operator must open one.",
+          "leaseClosing": "the refund window closes in less than a minute: the rail refuses to start a batch on such a short margin.",
+          "surfaceClosed": "the claims surface is closed on this server: the rail refuses to pay.",
+          "auditDisabled": "the admin audit trail is disabled: without a named trace, the rail refuses to pay."
+        },
+        "confirmTitle": "Pay this batch?",
+        "confirmBody": "{count} claim(s), {total} in total. The money leaves now, claim by claim, in the order of the simulated batch.",
+        "confirmNotice": "The rail pays exactly the claims of this simulated batch: it does not read the queue again. A claim whose approved amount or decision instant has changed since the simulation is skipped, with nothing attempted.",
+        "confirmLabel": "To confirm, type “{word}”",
+        "submit": "Pay the batch",
+        "refused": "The payment was refused before anything was read: no claim was offered to the engine.",
+        "answerLost": "The server’s answer never reached this page: what this batch did is not established from here. Do not run the payment again — reload the queue, then check the audit trail and the payment provider before any other action.",
+        "reportTitle": "Batch result",
+        "reportCounts": "{requested} claim(s) processed: {paid} paid, {pending} accepted and not confirmed, {held} held, {review} to verify, {failed} not paid, {skipped} skipped, {notAttempted} not attempted.",
+        "engineAmount": "Amount carried by the refund row",
+        "refundId": "Refund identifier at the payment provider",
+        "until": "A conclusion becomes possible from",
+        "engineMessage": "Engine message",
+        "stopped": {
+          "leaseExpired": "The batch stopped: the refund window closed. The following claims were not attempted and their decision is intact.",
+          "budget": "The batch stopped on its time budget. The following claims were not attempted and their decision is intact.",
+          "crashed": "The batch stopped on an error raised during an attempt. The following claims were not attempted."
+        },
+        "evidence": {
+          "claimReread": "Classified by re-reading the claim’s recorded state.",
+          "claimUnreadable": "The claim could not be re-read after the attempt: the safer classification was taken.",
+          "engineCalledUnknown": "Whether the engine was reached by this attempt is unknown.",
+          "identityMoved": "The decision changed since the simulation (approved amount or decision instant): nothing was attempted for this claim.",
+          "shapeRefused": "The rail no longer accepts this claim in its recorded state ({clause}): nothing was attempted for it."
+        },
+        "hold": {
+          "routedWithoutFee": "Payment routed to the restaurant with no recorded commission: the payment provider would reject this refund. The rail does not offer it to the engine in this batch.",
+          "fundingUnreadable": "The funding of this payment could not be read at the payment provider: nothing is established, so the rail does not offer it to the engine in this batch.",
+          "exceedsRefundable": "The approved amount exceeds what is still refundable on the order, read live: the rail does not offer it to the engine in this batch.",
+          "ceilingUnreadable": "The remaining refundable amount of the order could not be computed: an unknown value is not a cap, so the rail does not offer it to the engine in this batch.",
+          "orderHasPendingRow": "Another refund of this order is still pending: a second one would race it. The rail does not offer it to the engine in this batch.",
+          "amountNotRatified": "No ratified amount, or an amount outside the bound of the requested one: nothing can be paid. Ratify the amount under “To ratify”.",
+          "notSelectable": "The rail does not accept this claim in its recorded state ({detail}): nothing is attempted for it."
+        },
+        "outcome": {
+          "paid": "Paid: the payment provider reports this claim’s refund as succeeded.",
+          "acceptedPending": "Accepted by the payment provider, not yet confirmed: nothing is established for now, and no notice is sent to the customer while nothing is.",
+          "leaseClosed": "The window closed before this claim: nothing was sent to the payment provider (€0) and its decision is intact.",
+          "stateChanged": "This claim’s state had changed since the simulation: the engine did nothing new. Open its detail before any other action.",
+          "superseded": "Another write took this claim during the attempt: this one wrote nothing, and depending on the moment a refund may have been issued. Establish the proof at the payment provider before any other action on this order.",
+          "notPaidAmountNotRatified": "Not paid: no amount was ratified at the time of the attempt. The engine refused before writing anything (€0).",
+          "notPaidEngineFailed": "Not paid: the engine refused before creating anything — nothing was sent to the payment provider (€0).",
+          "heldSafetyHold": "Held by a safety rule: nothing was sent to the payment provider (€0).",
+          "heldProofStale": "Held: the proof that no refund exists was no longer fresh on re-reading. Nothing was sent to the payment provider (€0).",
+          "heldOwnRowExists": "Held: a refund row carrying this claim’s identity already exists. Nothing was sent to the payment provider (€0).",
+          "heldUnconfirmedWithinWindow": "Held: a recent attempt cannot be concluded yet. Nothing was sent to the payment provider (€0); a conclusion becomes possible at the instant shown.",
+          "heldSafetyCheckUnreadable": "Held: a safety check could not be read. Nothing was sent to the payment provider (€0).",
+          "reviewResumeMismatch": "TO VERIFY: money may have left, and the records do not say for whom. Establish the proof at the payment provider before any other action on this order.",
+          "reviewIdentityUnverified": "TO VERIFY: the identity of the linked refund is not established, and money may have left. Establish the proof at the payment provider before any other action on this order.",
+          "reviewEngineOwnRow": "TO VERIFY: the engine refused while a refund row may carry this claim; money may have left. Establish the proof at the payment provider before any other action on this order.",
+          "crashed": "The attempt raised an error: whether the engine was reached is unknown, so money may have left. Establish the proof at the payment provider before any other action; the batch stopped here.",
+          "notAttempted": "Not attempted: the batch had stopped before it. Nothing was read or written for this claim and its decision is intact.",
+          "skippedStaleDryRun": "Skipped: this claim no longer carried the simulated identity (a different approved amount or decision instant). Nothing was attempted (€0).",
+          "skippedNotSelectable": "Skipped: the rail does not accept this claim in its recorded state. Nothing was attempted (€0).",
+          "skippedClaimUnreadable": "Skipped: this claim could not be RE-READ before the attempt. Nothing was attempted for it (0 €); reload the queue, its state is not established from this page."
+        },
+        "clause": {
+          "status": "its status changed",
+          "arbitration_decision": "its arbitration decision changed",
+          "refund_attempted": "a refund attempt has already taken place",
+          "refund_id": "a refund row is already bound to it",
+          "amount_not_ratified": "no ratified amount, or an amount out of bounds",
+          "refund_error": "a refund state is recorded",
+          "v13_before_instant": "its proof is not usable yet",
+          "not_found": "it cannot be found in the database",
+          "claim_unreadable": "it could not be re-read"
+        }
       }
     }
   },

@@ -1,8 +1,9 @@
 // tests/claims-r13-absent-surfaces.test.ts — T-49 round 13, slice W5: J-M54 (I-10, I-02, I-03, I-04, I-05 sender sites).
 //
-// No scheduled job and no infra change: the workflow files are byte-identical to 40da45e, no cron path exists under
-// app/api/cron, the cron routes gain no alert helper or claim-marking import, and every claim alert is sent from the
-// request or webhook that performs the write. (J-M41, the D13 absent-exit scan, belongs to another slice.)
+// No scheduled job and no infra change: the workflow files equal their pinned hashes (40da45e, plus the one D′ L5 copy
+// line in deploy-staging.yml), no cron path exists under app/api/cron, the cron routes gain no alert helper or
+// claim-marking import, and every claim alert is sent from the request or webhook that performs the write.
+// (J-M41, the D13 absent-exit scan, belongs to another slice.)
 // IMPLEMENTATION NOTE (W5) on J-M54 / ER-C23: app/api/cron does not exist; the cron routes are the ones
 // .github/workflows/cron.yml calls, read from that file, plus the auto-approve route the rule names.
 import { describe, it, expect } from 'vitest'
@@ -17,12 +18,18 @@ const walk = (dir: string): string[] => readdirSync(dir).flatMap((n) => {
   return statSync(p).isDirectory() ? walk(p) : [p]
 })
 
-/** sha256 of each workflow file at 40da45e, CRLF normalized (git show 40da45e:<file> | tr -d '\r' | sha256sum). */
+/**
+ * sha256 of each workflow file, CRLF normalized (git show <sha>:<file> | tr -d '\r' | sha256sum): 40da45e for every
+ * file but deploy-staging.yml, which D′ L5 moved — see the note beside its pin.
+ */
 const WORKFLOWS_40DA45E: Record<string, string> = {
   '.github/workflows/claims-census.yml':        'f55626c91a4dc332a60284d9f3aee36f064ed44def7c71b4cbb89470a674c2b9',
   '.github/workflows/cron.yml':                 'fb2e484d1eb21cfbf308bdc86c35ce650384d4ea39c2a5be0257bbc317a1bd2a',
   '.github/workflows/deploy-production.yml':    'b15b2cde6cbf37c3c74e21e4a0b66ac41732bb06a675cbf7996c4e3409775d4a',
-  '.github/workflows/deploy-staging.yml':       '03912758350db266030e9dc7368f5acdcc8646d5601497315896efb4f37d7813',
+  // D′ L5 — moved from 03912758…7813 (40da45e): the staging workflow now also copies lib/claims-payable-core.js into
+  // deploy-temp/lib, because the pay-window operator must recompute the rail's selection with the SAME query the rail
+  // uses (spec v2 §8.8). One `cp` line: no schedule, no new job, no new workflow file.
+  '.github/workflows/deploy-staging.yml':       'fcff73434d1670f4403edaf1122fd68efb9650cecb3a288a92ee3285a3bbebb6',
   '.github/workflows/internal-token-probe.yml': 'd171c534104f46fb3ac60b910bb12fcea98f3aebe61fbca556a5762e4d19db65',
   '.github/workflows/refund-rehearsal.yml':     '5d825384520defb44f6977324e92a2555b667204f1e4db35da9724ca1ca235a4',
   '.github/workflows/tests.yml':                '593120f3009bca35eac5be8556710036d2aec9644e88538333b5a44e0be26287',
@@ -44,7 +51,7 @@ function kindHolders(files: Record<string, string>): string[] {
 }
 
 describe('J-M54 — no scheduled job, no infra change (I-10, R-D8)', () => {
-  it('the workflow files are byte-identical to 40da45e (hash pin), and no workflow was added', () => {
+  it('the workflow files equal their pinned hashes (40da45e, deploy-staging at its D′ L5 value), and no workflow was added', () => {
     const now = walk('.github/workflows').filter((f) => f.endsWith('.yml')).sort()
     expect(now).toEqual(Object.keys(WORKFLOWS_40DA45E).sort())
     for (const [f, h] of Object.entries(WORKFLOWS_40DA45E)) expect(sha(read(f)), f).toBe(h)

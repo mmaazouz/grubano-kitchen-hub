@@ -7277,8 +7277,7 @@
         "decidedAt": "Decisione presa il",
         "decidedAtUnknown": "istante non registrato",
         "decisionReason": "Motivazione della decisione",
-        "payBatch": "Paga il lotto ({count})",
-        "payBatchUnavailable": "Il binario finanziario non è ancora disponibile: da questa console non è possibile avviare alcun pagamento."
+        "payBatch": "Paga il lotto ({count})"
       },
       "awaitingRatification": {
         "title": "Da ratificare",
@@ -7313,6 +7312,104 @@
         "confirmLabel": "Per confermare, digiti «{word}»",
         "submit": "Ritira l’approvazione",
         "done": "Approvazione ritirata: il reclamo torna in arbitrato e il suo importo approvato viene cancellato. Questa azione non ha spostato denaro."
+      },
+      "payBatch": {
+        "title": "Binario finanziario — pagare il lotto",
+        "hint": "Il pagamento avviene in due tempi. La simulazione legge l’elenco, l’importo ancora rimborsabile di ogni ordine e la finestra di rimborso, e non scrive nulla. Il pagamento esegue poi esattamente il lotto simulato, reclamo per reclamo, e nient’altro.",
+        "simulate": "Simula il lotto",
+        "simulateAgain": "Rilancia la simulazione",
+        "dryRunFailed": "La simulazione non è andata a buon fine. Nessun reclamo è stato offerto al motore e nessun pagamento è stato tentato.",
+        "summary": "{payable} reclamo/i pagabile/i, {total} in totale — {held} trattenuto/i.",
+        "heldNotCounted": "Un reclamo trattenuto è mostrato con la sua causa e non entra in alcun totale: il binario non lo offre al motore in questo lotto.",
+        "noAmount": "nessun importo ratificato",
+        "leaseOpen": "Finestra di rimborso aperta fino al {until}.",
+        "leaseNone": "Nessuna finestra aperta ({reason}).",
+        "tokenExpiresAt": "Questo lotto simulato è valido fino al {until}. Dopo di che, rilanci la simulazione per rivedere gli importi prima di pagare.",
+        "rowPayable": "Pagabile",
+        "rowHeld": "Trattenuto",
+        "leaseReason": {
+          "flagOff": "i rimborsi sono disattivati su questo server",
+          "noLease": "nessuna finestra è dichiarata",
+          "leaseUnreadable": "la finestra dichiarata non è leggibile",
+          "leaseExpired": "la finestra dichiarata è scaduta",
+          "leaseTooLong": "la finestra dichiarata supera la durata massima ammessa ed è rifiutata",
+          "unknown": "un motivo che questa console non riconosce"
+        },
+        "blockedIntro": "«Paga il lotto» non è disponibile:",
+        "blocked": {
+          "noPayable": "nessun reclamo pagabile in questa simulazione: non c’è nulla da pagare.",
+          "leaseClosed": "nessuna finestra di rimborso aperta ({reason}): un operatore autorizzato deve aprirne una.",
+          "leaseClosing": "la finestra di rimborso si richiude tra meno di un minuto: il binario rifiuta di iniziare un lotto con un margine così breve.",
+          "surfaceClosed": "la superficie dei reclami è chiusa su questo server: il binario rifiuta di pagare.",
+          "auditDisabled": "la traccia di audit admin è disattivata: senza traccia nominativa, il binario rifiuta di pagare."
+        },
+        "confirmTitle": "Pagare questo lotto?",
+        "confirmBody": "{count} reclamo/i, {total} in totale. Il denaro parte adesso, reclamo per reclamo, nell’ordine del lotto simulato.",
+        "confirmNotice": "Il binario paga esattamente i reclami di questo lotto simulato: non rilegge l’elenco. Un reclamo il cui importo approvato o istante di decisione è cambiato dopo la simulazione viene ignorato, senza tentare nulla.",
+        "confirmLabel": "Per confermare, digiti «{word}»",
+        "submit": "Paga il lotto",
+        "refused": "Il pagamento è stato rifiutato prima di qualsiasi lettura: nessun reclamo è stato offerto al motore.",
+        "answerLost": "La risposta del server non è arrivata fino a questa pagina: ciò che ha fatto questo lotto non è stabilito da qui. Non rilanci il pagamento — ricarichi l’elenco, poi verifichi la traccia di audit e il fornitore di pagamento prima di qualsiasi altra azione.",
+        "reportTitle": "Risultato del lotto",
+        "reportCounts": "{requested} reclamo/i trattato/i: {paid} pagato/i, {pending} accettato/i e non confermato/i, {held} trattenuto/i, {review} da verificare, {failed} non pagato/i, {skipped} ignorato/i, {notAttempted} non tentato/i.",
+        "engineAmount": "Importo portato dalla riga di rimborso",
+        "refundId": "Identificativo del rimborso presso il fornitore di pagamento",
+        "until": "Conclusione possibile a partire dal",
+        "engineMessage": "Messaggio del motore",
+        "stopped": {
+          "leaseExpired": "Il lotto si è fermato: la finestra di rimborso si è richiusa. I reclami successivi non sono stati tentati e la loro decisione è intatta.",
+          "budget": "Il lotto si è fermato sul suo budget di tempo. I reclami successivi non sono stati tentati e la loro decisione è intatta.",
+          "crashed": "Il lotto si è fermato su un errore sorto durante un tentativo. I reclami successivi non sono stati tentati."
+        },
+        "evidence": {
+          "claimReread": "Classificazione stabilita rileggendo lo stato registrato del reclamo.",
+          "claimUnreadable": "Il reclamo non è stato rileggibile dopo il tentativo: è stata presa la classificazione più prudente.",
+          "engineCalledUnknown": "Non si sa se il motore sia stato raggiunto da questo tentativo.",
+          "identityMoved": "La decisione è cambiata dopo la simulazione (importo approvato o istante della decisione): non è stato tentato nulla per questo reclamo.",
+          "shapeRefused": "Il binario non accetta più questo reclamo nello stato registrato ({clause}): non è stato tentato nulla per esso."
+        },
+        "hold": {
+          "routedWithoutFee": "Pagamento riversato al ristorante senza commissione registrata: il fornitore di pagamento rifiuterebbe questo rimborso. Il binario non lo offre al motore in questo lotto.",
+          "fundingUnreadable": "Il finanziamento di questo pagamento non è stato letto presso il fornitore di pagamento: nulla è stabilito, quindi il binario non lo offre al motore in questo lotto.",
+          "exceedsRefundable": "L’importo approvato supera quanto resta rimborsabile sull’ordine, letto in diretta: il binario non lo offre al motore in questo lotto.",
+          "ceilingUnreadable": "L’importo ancora rimborsabile dell’ordine non è stato calcolato: un valore sconosciuto non è un massimale, quindi il binario non lo offre al motore in questo lotto.",
+          "orderHasPendingRow": "Un altro rimborso di questo ordine è ancora in attesa: un secondo entrerebbe in corsa con lui. Il binario non lo offre al motore in questo lotto.",
+          "amountNotRatified": "Nessun importo ratificato, o importo fuori dal limite dell’importo richiesto: nulla può essere pagato. Ratifichi l’importo in «Da ratificare».",
+          "notSelectable": "Il binario non accetta questo reclamo nel suo stato registrato ({detail}): non viene tentato nulla per esso."
+        },
+        "outcome": {
+          "paid": "Pagato: il fornitore di pagamento riporta questo rimborso come riuscito per questo reclamo.",
+          "acceptedPending": "Accettato dal fornitore di pagamento, non ancora confermato: per ora nulla è stabilito, e nessun avviso è inviato al cliente finché nulla lo è.",
+          "leaseClosed": "La finestra si è richiusa prima di questo reclamo: nulla è stato inviato al fornitore di pagamento (0 €) e la sua decisione è intatta.",
+          "stateChanged": "Lo stato di questo reclamo era cambiato dopo la simulazione: il motore non ha fatto nulla di nuovo. Apra il suo dettaglio prima di qualsiasi altra azione.",
+          "superseded": "Un’altra scrittura ha preso questo reclamo durante il tentativo: questo non ha scritto nulla e, a seconda del momento, un rimborso può essere stato emesso. Stabilite la prova presso il fornitore di pagamento prima di qualsiasi altra azione su questo ordine.",
+          "notPaidAmountNotRatified": "Non pagato: nessun importo ratificato al momento del tentativo. Il motore ha rifiutato prima di scrivere qualsiasi cosa (0 €).",
+          "notPaidEngineFailed": "Non pagato: il motore ha rifiutato prima di creare qualsiasi cosa — nulla è stato inviato al fornitore di pagamento (0 €).",
+          "heldSafetyHold": "Trattenuto da una regola di sicurezza: nulla è stato inviato al fornitore di pagamento (0 €).",
+          "heldProofStale": "Trattenuto: la prova di assenza di rimborso non era più fresca alla rilettura. Nulla è stato inviato al fornitore di pagamento (0 €).",
+          "heldOwnRowExists": "Trattenuto: esiste già una riga di rimborso che porta l’identità di questo reclamo. Nulla è stato inviato al fornitore di pagamento (0 €).",
+          "heldUnconfirmedWithinWindow": "Trattenuto: un tentativo recente non è ancora concludibile. Nulla è stato inviato al fornitore di pagamento (0 €); una conclusione diventa possibile nell’istante indicato.",
+          "heldSafetyCheckUnreadable": "Trattenuto: un controllo di sicurezza non è stato letto. Nulla è stato inviato al fornitore di pagamento (0 €).",
+          "reviewResumeMismatch": "DA VERIFICARE: del denaro può essere partito, e le scritture non dicono per chi. Stabilisca la prova presso il fornitore di pagamento prima di qualsiasi altra azione su questo ordine.",
+          "reviewIdentityUnverified": "DA VERIFICARE: l’identità del rimborso collegato non è stabilita, e del denaro può essere partito. Stabilisca la prova presso il fornitore di pagamento prima di qualsiasi altra azione su questo ordine.",
+          "reviewEngineOwnRow": "DA VERIFICARE: il motore ha rifiutato mentre una riga di rimborso può portare questo reclamo; del denaro può essere partito. Stabilisca la prova presso il fornitore di pagamento prima di qualsiasi altra azione su questo ordine.",
+          "crashed": "Il tentativo ha sollevato un errore: non si sa se il motore sia stato raggiunto, quindi del denaro può essere partito. Stabilisca la prova presso il fornitore di pagamento prima di qualsiasi altra azione; il lotto si è fermato qui.",
+          "notAttempted": "Non tentato: il lotto si era fermato prima di esso. Nulla è stato letto né scritto per questo reclamo e la sua decisione è intatta.",
+          "skippedStaleDryRun": "Ignorato: questo reclamo non portava più l’identità simulata (importo approvato o istante di decisione diverso). Non è stato tentato nulla (0 €).",
+          "skippedNotSelectable": "Ignorato: il binario non accetta questo reclamo nel suo stato registrato. Non è stato tentato nulla (0 €).",
+          "skippedClaimUnreadable": "Ignorato: questo reclamo non è stato RILETTO prima del tentativo. Nulla è stato tentato per esso (0 €); ricaricate la coda, il suo stato non è stabilito da questa pagina."
+        },
+        "clause": {
+          "status": "il suo stato è cambiato",
+          "arbitration_decision": "la sua decisione di arbitrato è cambiata",
+          "refund_attempted": "un tentativo di rimborso è già avvenuto",
+          "refund_id": "una riga di rimborso è già collegata",
+          "amount_not_ratified": "nessun importo ratificato, o importo fuori limite",
+          "refund_error": "uno stato di rimborso è registrato",
+          "v13_before_instant": "la sua prova non è ancora utilizzabile",
+          "not_found": "non si trova nel database",
+          "claim_unreadable": "non è stato possibile rileggerlo"
+        }
       }
     }
   },

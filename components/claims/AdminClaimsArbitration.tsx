@@ -16,9 +16,14 @@ import { customerEmailLine } from '@/lib/claim-email-toast'
 // its own copy of the rule would go silently out of step with the route that actually refuses.
 import {
   moneyStateGuidance, absenceProvenPayableLabel,
-  APPROVE_CONFIRM_WORD, WITHDRAW_CONFIRM_WORD, REDUCE_REASON_MIN, WITHDRAW_REASON_MIN,
+  APPROVE_CONFIRM_WORD, WITHDRAW_CONFIRM_WORD, PAY_CONFIRM_WORD, REDUCE_REASON_MIN, WITHDRAW_REASON_MIN,
 } from '@/lib/claim-action-rules'
 import { amountLineKind, identityUnreadText, BOUND_REVERTED_TEXT } from '@/lib/claim-money-line'
+
+// D′ L5 (spec v2 §8.2 / §8.6): the rail's own vocabulary — the closed set of per-claim outcomes, the
+// preflight causes and the batch counters. TYPE-ONLY, so none of the rail's server code is bundled
+// here; the console names what the route answers instead of keeping a second copy of the list.
+import type { RailOutcome, PreflightHold, RailCounts } from '@/lib/claims-pay-rail'
 
 type Stats = { recent?: number; approvalRate?: number; flagged?: boolean; refused?: number; overturned?: number }
 type Claim = {
@@ -109,6 +114,142 @@ type Ceiling = {
 }
 
 /**
+ * D′ L5 (spec v2 §8.2) — one row of a dryRun, as POST /api/admin/claims/pay-approved serialises it.
+ * `payable` is the ONLY thing that puts a claim in the batch: a held row is listed, with its cause, and
+ * is never added to a total. `hold` is the preflight cause; when it is null on a refused row, the row's
+ * SHAPE refused it and the clause travels in `holdDetail`.
+ */
+type DryRunRow = {
+  claimId: string
+  orderId: string
+  orderRef: string
+  requestedAmountCents: number
+  approvedAmountCents: number | null
+  arbitratedAt: string | null
+  payable: boolean
+  hold: PreflightHold | null
+  holdDetail: string | null
+}
+
+/** A dryRun answer. `token` is null ⇔ nothing is payable: there is then nothing signed, so nothing to pay. */
+type DryRun = {
+  sha: string
+  claims: DryRunRow[]
+  payableCount: number
+  heldCount: number
+  totalPayableCents: number
+  lease:
+    | { open: true; expiresAt: string; remainingMs: number; usable: boolean }
+    | { open: false; reason: string; usable: false }
+  surfaceEnabled: boolean
+  auditEnabled: boolean
+  token: string | null
+  tokenExpiresAt: string | null
+}
+
+/** One line of the per-claim report of a PAYER batch (spec v2 §8.6). */
+type PayRow = {
+  claimId: string
+  orderRef: string
+  approvedAmountCents: number
+  outcome: RailOutcome
+  refundRowId: string | null
+  /** What the engine actually refunded, read off the row it drove — never the approved figure. */
+  engineAmountCents: number | null
+  stripeRefundId: string | null
+  error: string | null
+  until: string | null
+  evidence: string | null
+  customerEmail: { status?: string; why?: string } | null
+}
+
+type PayReport = {
+  stoppedBy: 'lease_expired' | 'crashed' | 'budget' | null
+  leaseExpiresAt: string | null
+  items: PayRow[]
+  counts: RailCounts
+}
+
+/**
+ * D′ L5 (spec v2 §8.6) — one i18n key and one tone per rail outcome. Declared as a TOTAL Record: an
+ * outcome added to lib/claims-pay-rail without its sentence fails the build HERE, instead of printing a
+ * raw engine literal to the one person reading the screen to decide whether money moved.
+ */
+const OUTCOME: Record<RailOutcome, { key: string; tone: 'success' | 'warning' | 'danger' | 'neutral' }> = {
+  paid:                             { key: 'paid',                        tone: 'success' },
+  accepted_pending:                 { key: 'acceptedPending',             tone: 'warning' },
+  lease_closed:                     { key: 'leaseClosed',                 tone: 'neutral' },
+  state_changed_since_dryrun:       { key: 'stateChanged',                tone: 'warning' },
+  superseded:                       { key: 'superseded',                  tone: 'warning' },
+  'not_paid:amount_not_ratified':   { key: 'notPaidAmountNotRatified',    tone: 'warning' },
+  'not_paid:engine_failed':         { key: 'notPaidEngineFailed',         tone: 'danger'  },
+  'held:safety_hold':               { key: 'heldSafetyHold',              tone: 'warning' },
+  'held:proof_stale':               { key: 'heldProofStale',              tone: 'warning' },
+  'held:own_row_exists':            { key: 'heldOwnRowExists',            tone: 'warning' },
+  'held:unconfirmed_within_window': { key: 'heldUnconfirmedWithinWindow', tone: 'warning' },
+  'held:safety_check_unreadable':   { key: 'heldSafetyCheckUnreadable',   tone: 'warning' },
+  // The three buckets where money MAY have left: they are `danger`, and their copy asks for proof.
+  'review:resume_mismatch':         { key: 'reviewResumeMismatch',        tone: 'danger'  },
+  'review:identity_unverified':     { key: 'reviewIdentityUnverified',    tone: 'danger'  },
+  'review:engine_own_row':          { key: 'reviewEngineOwnRow',          tone: 'danger'  },
+  crashed:                          { key: 'crashed',                     tone: 'danger'  },
+  not_attempted:                    { key: 'notAttempted',                tone: 'neutral' },
+  'skipped:stale_dryrun':           { key: 'skippedStaleDryRun',          tone: 'neutral' },
+  'skipped:not_selectable':         { key: 'skippedNotSelectable',        tone: 'neutral' },
+  // Not « neutral »: a read that failed is a fact the admin should chase, not a quiet outcome.
+  'skipped:claim_unreadable':       { key: 'skippedClaimUnreadable',      tone: 'warning' },
+}
+
+/** The preflight causes of a dryRun (spec v2 §8.2), each with its own sentence. */
+const HOLD: Record<PreflightHold, string> = {
+  routed_without_fee:    'routedWithoutFee',
+  funding_unreadable:    'fundingUnreadable',
+  exceeds_refundable:    'exceedsRefundable',
+  ceiling_unreadable:    'ceilingUnreadable',
+  order_has_pending_row: 'orderHasPendingRow',
+  amount_not_ratified:   'amountNotRatified',
+  not_selectable:        'notSelectable',
+}
+
+/** Why `refundGateState()` reports no window (lib/refund). An unknown value is said as unknown. */
+const LEASE_REASON: Record<string, string> = {
+  flag_off:         'flagOff',
+  no_lease:         'noLease',
+  lease_unreadable: 'leaseUnreadable',
+  lease_expired:    'leaseExpired',
+  lease_too_long:   'leaseTooLong',
+}
+
+/** What the rail stopped a batch on, when it did (spec v2 §8.6). */
+const STOPPED: Record<'lease_expired' | 'crashed' | 'budget', string> = {
+  lease_expired: 'leaseExpired',
+  crashed:       'crashed',
+  budget:        'budget',
+}
+
+/**
+ * The clause of the payable shape that refused a claim (lib/claims-pay-rail payableShapeRefusal), said in
+ * the admin's language. These are internal tokens; rendering them raw inside a French sentence is how an
+ * English identifier ends up on a console. An unknown token falls back to itself rather than to silence.
+ */
+const CLAUSES = new Set([
+  'status', 'arbitration_decision', 'refund_attempted', 'refund_id',
+  'amount_not_ratified', 'refund_error', 'v13_before_instant', 'not_found', 'claim_unreadable',
+])
+const clauseOf = (token: string | null, t: (k: string) => string): string => {
+  if (!token) return '—'
+  return CLAUSES.has(token) ? t('admin.payBatch.clause.' + token) : token
+}
+
+/** How an ambiguous engine refusal was classified (lib/claims-pay-rail), when the rail says so. */
+const EVIDENCE: Record<string, string> = {
+  claim_reread:          'claimReread',
+  claim_unreadable:      'claimUnreadable',
+  engine_called_unknown: 'engineCalledUnknown',
+  identity_moved:        'identityMoved',
+}
+
+/**
  * The euro amount the admin typed → integer cents. The French decimal comma is accepted, and the rounding
  * closes the float door (12,30 € → 1230, never 1229). A non-usable input yields null, which keeps the
  * submit button inactive — the server revalidates the number in any case (S-10).
@@ -160,6 +301,17 @@ export default function AdminClaimsArbitration({ initial, surfaceOpen = true }: 
   const [withdrawReason, setWithdrawReason] = useState('')
   const [withdrawConfirm, setWithdrawConfirm] = useState('')
   const [withdrawError, setWithdrawError] = useState<string | null>(null)
+  // ── D′ L5 (spec v2 §8.2) — THE FINANCIAL RAIL, in two calls. `dryRun` is the simulation currently on
+  //    screen, with the token that signs it; `payReport` is the per-claim report of the last batch. A
+  //    payment NEVER runs off the queue above: it runs off the list the admin has just read.
+  const [dryRun, setDryRun] = useState<DryRun | null>(null)
+  const [dryRunError, setDryRunError] = useState<string | null>(null)
+  const [simulating, setSimulating] = useState(false)
+  const [payOpen, setPayOpen] = useState(false)
+  const [payConfirm, setPayConfirm] = useState('')
+  const [payError, setPayError] = useState<string | null>(null)
+  const [paying, setPaying] = useState(false)
+  const [payReport, setPayReport] = useState<PayReport | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -302,6 +454,63 @@ export default function AdminClaimsArbitration({ initial, surfaceOpen = true }: 
       toast.error(t('admin.processing'))
     } finally { setBusyId(null) }
   }, [load, t, toast, withdrawConfirm, withdrawReason])
+
+  // ── D′ L5 (spec v2 §8.2) — THE SIMULATION ─────────────────────────────────────────────────────
+  // Read-only on both sides: it needs neither an open window nor the product flag, because an admin
+  // must be able to see what is waiting — and why a claim would be held — BEFORE anyone opens
+  // anything. It writes nothing, it pays nothing, and the token it brings back is what makes the
+  // payment possible at all: the rail pays a list that was read, never a query run again later.
+  const simulate = useCallback(async () => {
+    setSimulating(true); setDryRunError(null); setPayError(null); setPayReport(null)
+    setPayOpen(false); setPayConfirm('')
+    try {
+      const res = await fetch('/api/admin/claims/pay-approved', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ dryRun: true }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) { setDryRun(null); setDryRunError((data as { error?: string }).error || t('admin.payBatch.dryRunFailed')); return }
+      setDryRun(data as DryRun)
+    } catch {
+      setDryRun(null); setDryRunError(t('admin.payBatch.dryRunFailed'))
+    } finally { setSimulating(false) }
+  }, [t])
+
+  // ── D′ L5 (spec v2 §8.2) — THE PAYMENT ────────────────────────────────────────────────────────
+  // It sends the signed batch back and nothing else: the rail pays exactly those claims, in that
+  // order, re-reading each one first. A refusal (400 / 403 / 409) is taken BEFORE anything is read,
+  // which is the one case where « nothing was attempted » is a fact the console may state. An answer
+  // that never arrives is NOT that case, and says so instead of guessing.
+  // The simulation is spent either way — a second click can never replay a batch from this screen.
+  const payApproved = useCallback(async () => {
+    const token = dryRun?.token
+    if (!token) return
+    setPaying(true); setPayError(null)
+    try {
+      const res = await fetch('/api/admin/claims/pay-approved', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ confirm: PAY_CONFIRM_WORD, token }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        // « Refused before any read » is only true of a refusal THIS RAIL produced — each one carries a
+        // `reason` and a status below 500, and each one happens before a claim is offered to the engine.
+        // A 502, a 504 or a proxy page is not that: it can arrive after claims were paid, so it falls back
+        // to the « answer lost » wording, which asserts nothing about what the batch did.
+        const refusal = (data as { reason?: string; error?: string })
+        const isOwnRefusal = res.status < 500 && typeof refusal.reason === 'string' && refusal.reason.length > 0
+        setPayError(isOwnRefusal ? (refusal.error || t('admin.payBatch.refused')) : t('admin.payBatch.answerLost'))
+        return
+      }
+      setPayReport(data as PayReport)
+    } catch {
+      setPayError(t('admin.payBatch.answerLost'))
+    } finally {
+      setDryRun(null); setPayOpen(false); setPayConfirm(''); setPaying(false)
+      // §7.4: the queue is re-read after a batch — a claim that was paid must leave « À rembourser ».
+      await load()
+    }
+  }, [dryRun, load, t])
 
   // V5-3 — une demande dont le reason porte le marqueur P0-08 'system_' a été
   // créée par le SYSTÈME (rail remboursement d'annulation), pas par le client :
@@ -509,6 +718,191 @@ export default function AdminClaimsArbitration({ initial, surfaceOpen = true }: 
     )
   }
 
+  // ── D′ L5 (spec v2 §8.2) — WHY « PAYER LE LOT » IS NOT AVAILABLE ──────────────────────────────
+  // Every condition is the SERVER's own answer, never a guess: a signed batch, a window with more
+  // than its safety margin left, the claims surface on, the audit trail on. A control greyed out with
+  // no reason is how an admin concludes the console is broken and goes looking for another door, so
+  // each missing condition is said in words beside the button.
+  const payBlockers = (d: DryRun): string[] => {
+    const out: string[] = []
+    if (!d.token) out.push(t('admin.payBatch.blocked.noPayable'))
+    if (!d.lease.usable) {
+      out.push(d.lease.open
+        ? t('admin.payBatch.blocked.leaseClosing')
+        : t('admin.payBatch.blocked.leaseClosed', { reason: t(`admin.payBatch.leaseReason.${LEASE_REASON[d.lease.reason] ?? 'unknown'}`) }))
+    }
+    if (!d.surfaceEnabled) out.push(t('admin.payBatch.blocked.surfaceClosed'))
+    if (!d.auditEnabled) out.push(t('admin.payBatch.blocked.auditDisabled'))
+    return out
+  }
+
+  // ── D′ L5 (spec v2 §8.2) — THE PAYMENT DIALOG ─────────────────────────────────────────────────
+  // Same idiom as the L4 approval dialog: it restates the two numbers the admin is committing to, says
+  // plainly that the money leaves now, and demands the route's confirmation word typed in full.
+  const payDialog = (d: DryRun) => {
+    const ok = payConfirm.trim() === PAY_CONFIRM_WORD
+    return (
+      <div className="mt-3 space-y-3 rounded-grubano-lg border border-grubano-border-strong bg-grubano-surface p-3">
+        <p className="text-sm font-bold text-grubano-ink">{t('admin.payBatch.confirmTitle')}</p>
+        <p className="text-[13px] text-grubano-ink-muted">
+          {t('admin.payBatch.confirmBody', { count: d.payableCount, total: formatEuros(d.totalPayableCents / 100, locale) })}
+        </p>
+        <p className="text-[13px] font-semibold text-grubano-ink">{t('admin.payBatch.confirmNotice')}</p>
+
+        <label className="block text-[13px] font-semibold text-grubano-ink" htmlFor="claim-pay-confirm">
+          {t('admin.payBatch.confirmLabel', { word: PAY_CONFIRM_WORD })}
+        </label>
+        <input
+          id="claim-pay-confirm" type="text" autoComplete="off"
+          value={payConfirm} onChange={(e) => setPayConfirm(e.target.value)}
+          placeholder={PAY_CONFIRM_WORD}
+          className="w-48 rounded-grubano-lg border border-grubano-border-strong bg-white px-3 py-2 text-[13px]"
+        />
+
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant="ghost" disabled={paying} onClick={() => { setPayOpen(false); setPayConfirm('') }}>{t('client.cancel')}</Button>
+          <Button size="sm" variant="danger" loading={paying} disabled={!ok} onClick={payApproved}>{t('admin.payBatch.submit')}</Button>
+        </div>
+      </div>
+    )
+  }
+
+  // ── D′ L5 (spec v2 §8.2) — THE BATCH SUMMARY ──────────────────────────────────────────────────
+  // What the rail WOULD pay, claim by claim. A held claim is shown with its cause and is counted in
+  // no total: the two figures an admin reads before typing the word are the payable count and the
+  // payable sum, and both come from the server's own arithmetic.
+  const dryRunSummary = (d: DryRun) => {
+    const blockers = payBlockers(d)
+    return (
+      <div className="space-y-3">
+        <dl className="space-y-1 text-[13px] text-grubano-ink-muted">
+          <p className="font-semibold text-grubano-ink">
+            {t('admin.payBatch.summary', { payable: d.payableCount, total: formatEuros(d.totalPayableCents / 100, locale), held: d.heldCount })}
+          </p>
+          <p>
+            {d.lease.open
+              ? t('admin.payBatch.leaseOpen', { until: instantOf(d.lease.expiresAt) ?? d.lease.expiresAt })
+              : t('admin.payBatch.leaseNone', { reason: t(`admin.payBatch.leaseReason.${LEASE_REASON[d.lease.reason] ?? 'unknown'}`) })}
+          </p>
+          {d.tokenExpiresAt && <p>{t('admin.payBatch.tokenExpiresAt', { until: instantOf(d.tokenExpiresAt) ?? d.tokenExpiresAt })}</p>}
+          {d.heldCount > 0 && <p>{t('admin.payBatch.heldNotCounted')}</p>}
+        </dl>
+
+        <div className="space-y-2">
+          {d.claims.map((r) => (
+            <div key={r.claimId} className="rounded-grubano-lg border border-grubano-border bg-grubano-surface p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-[13px] font-bold text-grubano-ink">{t('admin.order')} {r.orderRef}</span>
+                <span className="text-[13px] font-semibold text-grubano-primary">
+                  {/* Never « 0,00 € » for a claim whose amount was never ratified: the absence is said. */}
+                  {r.approvedAmountCents === null ? t('admin.payBatch.noAmount') : formatEuros(r.approvedAmountCents / 100, locale)}
+                </span>
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <Badge tone={r.payable ? 'success' : 'warning'}>{t(r.payable ? 'admin.payBatch.rowPayable' : 'admin.payBatch.rowHeld')}</Badge>
+                <Badge tone="neutral">{t('admin.awaitingPayment.decidedAt')} {instantOf(r.arbitratedAt) ?? t('admin.awaitingPayment.decidedAtUnknown')}</Badge>
+              </div>
+              {!r.payable && (
+                <p className="mt-2 text-[13px] text-amber-800">
+                  {/* `detail` is passed to every hold sentence: `notSelectable` names the clause that
+                      refused the claim, the others ignore the parameter. A hold is always set when a row
+                      is not payable, so the fallback is a defence, not a path. */}
+                  {t(`admin.payBatch.hold.${HOLD[r.hold ?? 'not_selectable']}`, { detail: clauseOf(r.holdDetail, t) })}
+                  {r.hold && r.hold !== 'not_selectable' && r.holdDetail ? ` (${r.holdDetail})` : ''}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {blockers.length > 0 ? (
+          <div className="space-y-1">
+            <Button size="sm" variant="primary" disabled title={blockers.join(' ')} aria-label={blockers.join(' ')}>
+              {t('admin.awaitingPayment.payBatch', { count: d.payableCount })}
+            </Button>
+            <p className="text-[12px] text-grubano-ink-muted">{t('admin.payBatch.blockedIntro')}</p>
+            <ul className="list-disc space-y-1 pl-5 text-[12px] text-grubano-ink-muted">
+              {blockers.map((b) => <li key={b}>{b}</li>)}
+            </ul>
+          </div>
+        ) : payOpen ? payDialog(d) : (
+          <Button size="sm" variant="primary" onClick={() => { setPayOpen(true); setPayConfirm('') }}>
+            {t('admin.awaitingPayment.payBatch', { count: d.payableCount })}
+          </Button>
+        )}
+      </div>
+    )
+  }
+
+  // ── D′ L5 (spec v2 §8.6) — THE PER-CLAIM REPORT ───────────────────────────────────────────────
+  // One line per claim of the batch, in the order the rail ran them, each saying what happened to THAT
+  // claim's money — and, when a notice was due, what happened to the customer e-mail, through the same
+  // helper every other action of this console already uses.
+  const payReportPanel = (p: PayReport) => (
+    <div className="space-y-3 rounded-grubano-lg border border-grubano-border-strong bg-grubano-surface p-3">
+      <p className="text-sm font-bold text-grubano-ink">{t('admin.payBatch.reportTitle')}</p>
+      <p className="text-[13px] text-grubano-ink-muted">
+        {t('admin.payBatch.reportCounts', {
+          requested: p.counts.requested, paid: p.counts.paid, pending: p.counts.pending, held: p.counts.held,
+          review: p.counts.review, failed: p.counts.failed, skipped: p.counts.skipped, notAttempted: p.counts.notAttempted,
+        })}
+      </p>
+      {p.stoppedBy && <p className="text-[13px] font-semibold text-amber-800">{t(`admin.payBatch.stopped.${STOPPED[p.stoppedBy]}`)}</p>}
+
+      <div className="space-y-2">
+        {p.items.map((it) => {
+          const o = OUTCOME[it.outcome]
+          // ROUND 13 (H07, H11): the SAME customer-e-mail helper as every other action of this console.
+          const e = customerEmailLine(it.customerEmail)
+          return (
+            <div key={it.claimId} className="rounded-grubano-lg border border-grubano-border bg-grubano-surface-muted p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-[13px] font-bold text-grubano-ink">{t('admin.order')} {it.orderRef || it.claimId}</span>
+                <span className="text-[13px] font-semibold text-grubano-primary">{formatEuros(it.approvedAmountCents / 100, locale)}</span>
+              </div>
+              <div className="mt-2"><Badge tone={o.tone}>{t(`admin.payBatch.outcome.${o.key}`)}</Badge></div>
+              <dl className="mt-2 space-y-1 text-[13px] text-grubano-ink-muted">
+                {/* The amount the ENGINE drove, read off its refund row — never the approved figure. */}
+                {it.engineAmountCents !== null && (
+                  <p><span className="font-semibold">{t('admin.payBatch.engineAmount')}:</span> {formatEuros(it.engineAmountCents / 100, locale)}</p>
+                )}
+                {it.stripeRefundId && <p><span className="font-semibold">{t('admin.payBatch.refundId')}:</span> {it.stripeRefundId}</p>}
+                {it.until && <p><span className="font-semibold">{t('admin.payBatch.until')}:</span> {instantOf(it.until) ?? it.until}</p>}
+                {/* A known evidence value has its own sentence; a SKIP carries the clause that refused the
+                    claim (lib/claims-pay-rail payableShapeRefusal), which is said with the clause inside
+                    rather than dropped — the reason a claim was not attempted is the useful part. */}
+                {it.evidence && EVIDENCE[it.evidence]
+                  ? <p>{t(`admin.payBatch.evidence.${EVIDENCE[it.evidence]}`)}</p>
+                  : it.evidence && it.outcome.startsWith('skipped:')
+                    ? <p>{t('admin.payBatch.evidence.shapeRefused', { clause: clauseOf(it.evidence, t) })}</p>
+                    : null}
+                {it.error && <p className="text-red-700"><span className="font-semibold">{t('admin.payBatch.engineMessage')}:</span> {it.error}</p>}
+                {e && <p className={e.tone === 'error' ? 'text-red-700' : undefined}>{t(`admin.customerEmail.${e.key}`)}</p>}
+              </dl>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+
+  // ── D′ L5 (spec v2 §8.2, §7.4) — THE RAIL'S PANEL, under the « À rembourser » queue ────────────
+  // Two steps in the order the rail imposes: simulate, read what would happen, then pay. Nothing on
+  // this panel moves money before the word is typed, and the panel never re-selects the queue itself.
+  const payRail = () => (
+    <div className="mt-4 space-y-3 rounded-grubano-xl border border-grubano-border-strong bg-grubano-surface-muted p-4">
+      <p className="text-sm font-bold text-grubano-ink">{t('admin.payBatch.title')}</p>
+      <p className="text-[13px] text-grubano-ink-muted">{t('admin.payBatch.hint')}</p>
+      <Button size="sm" variant="secondary" loading={simulating} disabled={paying} onClick={simulate}>
+        {t(dryRun || payReport ? 'admin.payBatch.simulateAgain' : 'admin.payBatch.simulate')}
+      </Button>
+      {dryRunError && <p className="text-[13px] text-red-700">{dryRunError}</p>}
+      {dryRun && dryRunSummary(dryRun)}
+      {payError && <p className="text-[13px] font-semibold text-red-700">{payError}</p>}
+      {payReport && payReportPanel(payReport)}
+    </div>
+  )
+
   // Truthful, distinct wording per money state. Pending is NEVER shown as succeeded, and a
   // failed refund never reads as "in progress".
   const MONEY_LABEL: Record<MoneyState, { text: string; tone: 'warning' | 'danger' | 'neutral' }> = {
@@ -575,18 +969,9 @@ export default function AdminClaimsArbitration({ initial, surfaceOpen = true }: 
               </div>
             ))}
           </div>
-          {/* D′ L5 — REPÈRE DÉSACTIVÉ, câblé à rien. Le rail financier (« Payer le lot ») n'est pas livré :
-              un bouton actif ici mentirait sur ce que cette console peut faire. Il est inerte et le dit. */}
-          <div className="mt-3">
-            <Button
-              size="sm" variant="primary" disabled
-              title={t('admin.awaitingPayment.payBatchUnavailable')}
-              aria-label={t('admin.awaitingPayment.payBatchUnavailable')}
-            >
-              {t('admin.awaitingPayment.payBatch', { count: awaitingPayment.length })}
-            </Button>
-            <p className="mt-1 text-[12px] text-grubano-ink-muted">{t('admin.awaitingPayment.payBatchUnavailable')}</p>
-          </div>
+          {/* D′ L5 (spec v2 §8.2) — LE RAIL FINANCIER. La file ci-dessus reste en lecture seule : le
+              paiement se fait en deux appels, une simulation puis un lot signé, et il se lit ici. */}
+          {payRail()}
         </section>
       )}
 

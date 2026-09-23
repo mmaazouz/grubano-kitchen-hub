@@ -7277,8 +7277,7 @@
         "decidedAt": "Decisión tomada el",
         "decidedAtUnknown": "instante no registrado",
         "decisionReason": "Motivación de la decisión",
-        "payBatch": "Pagar el lote ({count})",
-        "payBatchUnavailable": "El raíl financiero todavía no está disponible: no se puede iniciar ningún pago desde esta consola."
+        "payBatch": "Pagar el lote ({count})"
       },
       "awaitingRatification": {
         "title": "Pendientes de ratificación",
@@ -7313,6 +7312,104 @@
         "confirmLabel": "Para confirmar, escriba «{word}»",
         "submit": "Retirar la aprobación",
         "done": "Aprobación retirada: la reclamación vuelve al arbitraje y su importe aprobado queda borrado. Esta acción no ha movido dinero."
+      },
+      "payBatch": {
+        "title": "Raíl financiero — pagar el lote",
+        "hint": "El pago se hace en dos tiempos. La simulación lee la lista, el importe aún reembolsable de cada pedido y la ventana de reembolso, y no escribe nada. El pago ejecuta después exactamente el lote simulado, reclamación por reclamación, y nada más.",
+        "simulate": "Simular el lote",
+        "simulateAgain": "Volver a simular",
+        "dryRunFailed": "La simulación no se completó. Ninguna reclamación se ofreció al motor y no se intentó ningún pago.",
+        "summary": "{payable} reclamación(es) pagable(s), {total} en total — {held} retenida(s).",
+        "heldNotCounted": "Una reclamación retenida se muestra con su motivo y no cuenta en ningún total: el raíl no la ofrece al motor en este lote.",
+        "noAmount": "ningún importe ratificado",
+        "leaseOpen": "Ventana de reembolso abierta hasta el {until}.",
+        "leaseNone": "Ninguna ventana abierta ({reason}).",
+        "tokenExpiresAt": "Este lote simulado es válido hasta el {until}. Después, vuelva a simular para revisar los importes antes de pagar.",
+        "rowPayable": "Pagable",
+        "rowHeld": "Retenida",
+        "leaseReason": {
+          "flagOff": "los reembolsos están desactivados en este servidor",
+          "noLease": "no hay ninguna ventana declarada",
+          "leaseUnreadable": "la ventana declarada no se puede leer",
+          "leaseExpired": "la ventana declarada ha vencido",
+          "leaseTooLong": "la ventana declarada supera la duración máxima admitida y queda rechazada",
+          "unknown": "un motivo que esta consola no reconoce"
+        },
+        "blockedIntro": "«Pagar el lote» no está disponible:",
+        "blocked": {
+          "noPayable": "ninguna reclamación pagable en esta simulación: no hay nada que pagar.",
+          "leaseClosed": "no hay ninguna ventana de reembolso abierta ({reason}): un operador autorizado debe abrir una.",
+          "leaseClosing": "la ventana de reembolso se cierra en menos de un minuto: el raíl se niega a empezar un lote con un margen tan corto.",
+          "surfaceClosed": "la superficie de reclamaciones está cerrada en este servidor: el raíl se niega a pagar.",
+          "auditDisabled": "la traza de auditoría admin está desactivada: sin traza nominativa, el raíl se niega a pagar."
+        },
+        "confirmTitle": "¿Pagar este lote?",
+        "confirmBody": "{count} reclamación(es), {total} en total. El dinero sale ahora, reclamación por reclamación, en el orden del lote simulado.",
+        "confirmNotice": "El raíl paga exactamente las reclamaciones de este lote simulado: no vuelve a leer la lista. Una reclamación cuyo importe aprobado o instante de decisión haya cambiado desde la simulación se omite, sin intentar nada.",
+        "confirmLabel": "Para confirmar, escriba «{word}»",
+        "submit": "Pagar el lote",
+        "refused": "El pago se ha rechazado antes de leer nada: ninguna reclamación se ha ofrecido al motor.",
+        "answerLost": "La respuesta del servidor no ha llegado hasta esta página: lo que ha hecho este lote no está establecido desde aquí. No vuelva a lanzar el pago — recargue la lista y compruebe la traza de auditoría y el proveedor de pagos antes de cualquier otra acción.",
+        "reportTitle": "Resultado del lote",
+        "reportCounts": "{requested} reclamación(es) tratada(s): {paid} pagada(s), {pending} aceptada(s) y no confirmada(s), {held} retenida(s), {review} a verificar, {failed} no pagada(s), {skipped} omitida(s), {notAttempted} no intentada(s).",
+        "engineAmount": "Importe que lleva la línea de reembolso",
+        "refundId": "Identificador del reembolso en el proveedor de pagos",
+        "until": "Conclusión posible a partir del",
+        "engineMessage": "Mensaje del motor",
+        "stopped": {
+          "leaseExpired": "El lote se ha detenido: la ventana de reembolso se ha cerrado. Las reclamaciones siguientes no se han intentado y su decisión queda intacta.",
+          "budget": "El lote se ha detenido por su presupuesto de tiempo. Las reclamaciones siguientes no se han intentado y su decisión queda intacta.",
+          "crashed": "El lote se ha detenido por un error surgido durante un intento. Las reclamaciones siguientes no se han intentado."
+        },
+        "evidence": {
+          "claimReread": "Clasificación establecida releyendo el estado registrado de la reclamación.",
+          "claimUnreadable": "La reclamación no se ha podido releer tras el intento: se ha tomado la clasificación más prudente.",
+          "engineCalledUnknown": "No se sabe si el motor ha sido alcanzado por este intento.",
+          "identityMoved": "La decisión cambió desde la simulación (importe aprobado o instante de decisión): no se intentó nada para esta reclamación.",
+          "shapeRefused": "El carril ya no acepta esta reclamación en su estado registrado ({clause}): no se intentó nada para ella."
+        },
+        "hold": {
+          "routedWithoutFee": "Pago transferido al restaurante sin comisión registrada: el proveedor de pagos rechazaría este reembolso. El raíl no lo ofrece al motor en este lote.",
+          "fundingUnreadable": "La financiación de este pago no se ha podido leer en el proveedor de pagos: nada está establecido, así que el raíl no lo ofrece al motor en este lote.",
+          "exceedsRefundable": "El importe aprobado supera lo que queda reembolsable en el pedido, leído en directo: el raíl no lo ofrece al motor en este lote.",
+          "ceilingUnreadable": "El importe aún reembolsable del pedido no se ha podido calcular: un valor desconocido no es un límite, así que el raíl no lo ofrece al motor en este lote.",
+          "orderHasPendingRow": "Otro reembolso de este pedido sigue pendiente: un segundo entraría en carrera con él. El raíl no lo ofrece al motor en este lote.",
+          "amountNotRatified": "Ningún importe ratificado, o importe fuera del límite del importe solicitado: no se puede pagar nada. Ratifique el importe en «Pendientes de ratificación».",
+          "notSelectable": "El raíl no acepta esta reclamación en su estado registrado ({detail}): no se intenta nada con ella."
+        },
+        "outcome": {
+          "paid": "Pagada: el proveedor de pagos informa de este reembolso como completado para esta reclamación.",
+          "acceptedPending": "Aceptada por el proveedor de pagos, todavía no confirmada: por ahora nada está establecido, y no se envía ningún aviso al cliente mientras no lo esté.",
+          "leaseClosed": "La ventana se ha cerrado antes de esta reclamación: no se ha enviado nada al proveedor de pagos (0 €) y su decisión queda intacta.",
+          "stateChanged": "El estado de esta reclamación había cambiado desde la simulación: el motor no ha hecho nada nuevo. Abra su detalle antes de cualquier otra acción.",
+          "superseded": "Otra escritura tomó esta reclamación durante el intento: este no escribió nada y, según el momento, se pudo haber emitido un reembolso. Establezca la prueba en el proveedor de pago antes de cualquier otra acción sobre este pedido.",
+          "notPaidAmountNotRatified": "No pagada: ningún importe ratificado en el momento del intento. El motor ha rechazado antes de escribir nada (0 €).",
+          "notPaidEngineFailed": "No pagada: el motor ha rechazado antes de crear nada — no se ha enviado nada al proveedor de pagos (0 €).",
+          "heldSafetyHold": "Retenida por una regla de seguridad: no se ha enviado nada al proveedor de pagos (0 €).",
+          "heldProofStale": "Retenida: la prueba de ausencia de reembolso ya no estaba fresca al releerla. No se ha enviado nada al proveedor de pagos (0 €).",
+          "heldOwnRowExists": "Retenida: ya existe una línea de reembolso que lleva la identidad de esta reclamación. No se ha enviado nada al proveedor de pagos (0 €).",
+          "heldUnconfirmedWithinWindow": "Retenida: un intento reciente todavía no se puede concluir. No se ha enviado nada al proveedor de pagos (0 €); la conclusión será posible en el instante indicado.",
+          "heldSafetyCheckUnreadable": "Retenida: un control de seguridad no se ha podido leer. No se ha enviado nada al proveedor de pagos (0 €).",
+          "reviewResumeMismatch": "A VERIFICAR: puede haber salido dinero y los registros no dicen para quién. Establezca la prueba en el proveedor de pagos antes de cualquier otra acción sobre este pedido.",
+          "reviewIdentityUnverified": "A VERIFICAR: la identidad del reembolso vinculado no está establecida y puede haber salido dinero. Establezca la prueba en el proveedor de pagos antes de cualquier otra acción sobre este pedido.",
+          "reviewEngineOwnRow": "A VERIFICAR: el motor ha rechazado mientras una línea de reembolso puede llevar esta reclamación; puede haber salido dinero. Establezca la prueba en el proveedor de pagos antes de cualquier otra acción sobre este pedido.",
+          "crashed": "El intento ha lanzado un error: no se sabe si el motor ha sido alcanzado, así que puede haber salido dinero. Establezca la prueba en el proveedor de pagos antes de cualquier otra acción; el lote se ha detenido aquí.",
+          "notAttempted": "No intentada: el lote se había detenido antes de ella. No se ha leído ni escrito nada para esta reclamación y su decisión queda intacta.",
+          "skippedStaleDryRun": "Omitida: esta reclamación ya no llevaba la identidad simulada (importe aprobado o instante de decisión distinto). No se ha intentado nada (0 €).",
+          "skippedNotSelectable": "Omitida: el raíl no acepta esta reclamación en su estado registrado. No se ha intentado nada (0 €).",
+          "skippedClaimUnreadable": "Omitida: esta reclamación no pudo ser RELEÍDA antes del intento. No se intentó nada para ella (0 €); recargue la cola, su estado no está establecido desde esta página."
+        },
+        "clause": {
+          "status": "su estado cambió",
+          "arbitration_decision": "su decisión de arbitraje cambió",
+          "refund_attempted": "ya hubo un intento de reembolso",
+          "refund_id": "ya tiene una línea de reembolso vinculada",
+          "amount_not_ratified": "ningún importe ratificado, o importe fuera de límite",
+          "refund_error": "hay un estado de reembolso registrado",
+          "v13_before_instant": "su prueba aún no es utilizable",
+          "not_found": "no se encuentra en la base de datos",
+          "claim_unreadable": "no pudo ser releída"
+        }
       }
     }
   },

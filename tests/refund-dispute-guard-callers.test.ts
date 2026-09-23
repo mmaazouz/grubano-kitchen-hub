@@ -10,6 +10,10 @@
 // octet par octet par le miroir G5 `engineRefusalOnReapproval`, lui-même vérifié contre le VRAI
 // moteur par tests/claims-r13-engine-parity.test.ts. Ajouter la garde au rail réclamation
 // changerait ce miroir en silence : le test le refuse.
+//
+// D′ L5 — le préflight FINANCEMENT suit une règle DIFFÉRENTE de la garde litige sur cette surface :
+// la spec v2 §8.2 l'exige au dryRun du rail de paiement, qui en est nommément exempté ci-dessous.
+// Toute autre surface réclamation reste interdite aux deux.
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -209,15 +213,49 @@ describe('PRE-MODE-B V1 — la garde couvre les rails directs, et SEULEMENT eux'
     expect(src.indexOf('chargeIsDisputed(charge)')).toBeLessThan(src.indexOf('const refundableCents'))
   })
 
-  it('⭐ CONTRÔLE NÉGATIF — AUCUNE surface du rail RÉCLAMATION n’utilise la garde (H5 le couvre déjà ; le miroir G5 deviendrait faux)', () => {
-    // recensement, pas deux chemins écrits à la main : toute la surface réclamation (routes + libs)
-    const claimSurface = [...walk('app/api/claims'), ...walk('app/api/admin/claims'), ...walk('lib')]
-      .filter((f) => f.startsWith('app/') || /^lib\/claim/.test(f))
-    expect(claimSurface.length).toBeGreaterThan(10)   // le recensement doit vraiment ratisser
-    for (const f of claimSurface) {
-      expect(read(f), f).not.toMatch(/refund-dispute-guard|assertChargeNotDisputed/)
-      expect(read(f), f).not.toMatch(/refund-preflight|preflightRefundFunding/)
+  // ── LA DOUBLE INTERDICTION SUR LA SURFACE RÉCLAMATION, ET SON UNIQUE EXEMPTION ────
+  // GARDE LITIGE : interdite à TOUTE la surface réclamation, rail de paiement D′ L5 compris. Le
+  // moteur réclamation refuse déjà une charge contestée par son propre blocage de sûreté H5
+  // 'disputed' (lib/claim-action-rules.ts) ; ajouter la garde ici rendrait faux EN SILENCE le miroir
+  // G5 `engineRefusalOnReapproval`, qui modélise ce refus octet par octet.
+  // PRÉFLIGHT FINANCEMENT : la spec v2 §8.2 l'EXIGE au dryRun du rail de paiement — une charge routée
+  // sans commission est le seul rejet Stripe TERMINAL que ce dépôt sache prouver, et le refuser avant
+  // la moindre écriture est toute la raison d'être de ce rail. L'exemption est donc NOMINATIVE : un
+  // fichier, pas un motif ni un répertoire.
+  const PREFLIGHT_EXEMPT = 'app/api/admin/claims/pay-approved/route.ts'
+  const DISPUTE_BAN = /refund-dispute-guard|assertChargeNotDisputed/
+  const PREFLIGHT_BAN = /refund-preflight|preflightRefundFunding/
+  // recensement, pas deux chemins écrits à la main : toute la surface réclamation (routes + libs)
+  const claimSurface = () => [...walk('app/api/claims'), ...walk('app/api/admin/claims'), ...walk('lib')]
+    .filter((f) => f.startsWith('app/') || /^lib\/claim/.test(f))
+  /** fichiers → violations, pour que l'interdiction reste exerçable sur des sources SYNTHÉTIQUES. */
+  const banViolations = (files: Record<string, string>): string[] => {
+    const out: string[] = []
+    for (const [f, src] of Object.entries(files)) {
+      if (DISPUTE_BAN.test(src)) out.push(`${f}: garde litige`)
+      if (f !== PREFLIGHT_EXEMPT && PREFLIGHT_BAN.test(src)) out.push(`${f}: préflight financement`)
     }
+    return out.sort()
+  }
+
+  it('⭐ CONTRÔLE NÉGATIF — AUCUNE surface du rail RÉCLAMATION n’utilise la garde LITIGE (H5 le couvre déjà ; le miroir G5 deviendrait faux) ; le préflight n’est permis qu’au rail de paiement (§8.2)', () => {
+    const files = claimSurface()
+    expect(files.length).toBeGreaterThan(10)    // le recensement doit vraiment ratisser
+    expect(files).toContain(PREFLIGHT_EXEMPT)   // l'exemption porte sur un fichier RECENSÉ, pas sur un nom mort
+    expect(banViolations(Object.fromEntries(files.map((f) => [f, read(f)])))).toEqual([])
+  })
+
+  it('⭐ CONTRÔLE NÉGATIF — l’interdiction mord toujours : le préflight copié dans une AUTRE surface réclamation, et la garde litige copiée dans le rail exempté, sont signalés', () => {
+    const autre = 'app/api/admin/claims/[id]/arbitrate/route.ts'
+    // l'exemption est RÉELLE (le rail appelle bien le préflight) : sans cela le test ci-dessus serait vert pour rien
+    expect(read(PREFLIGHT_EXEMPT)).toMatch(PREFLIGHT_BAN)
+    expect(banViolations({
+      [autre]:            read(autre) + "\nimport { preflightRefundFunding } from '@/lib/refund-preflight'\n",
+      [PREFLIGHT_EXEMPT]: read(PREFLIGHT_EXEMPT) + "\nimport { assertChargeNotDisputed } from '@/lib/refund-dispute-guard'\n",
+    })).toEqual([
+      `${autre}: préflight financement`,
+      `${PREFLIGHT_EXEMPT}: garde litige`,
+    ])
   })
 
   it('⭐ CONTRÔLE NÉGATIF — le MOTEUR gelé n’importe ni la garde ni le préflight (empreinte SHA-256 épinglée)', () => {
