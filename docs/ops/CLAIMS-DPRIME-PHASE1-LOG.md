@@ -187,5 +187,17 @@ Les douze autres : la sonde de plafond acceptait un plafond dérivé de la base 
 
 **Correction d'un constat périmé du rapport L4.** Le §11 du rapport L4 mentionnait « deux sauvegardes `bak-modeb-gate` restent à neutraliser côté serveur ». C'est **faux et périmé** : T-43 est CLOS et PASS — aucune `.env.local.bak*` ne subsiste dans `~/app.grubano.com`, les deux anciennes sauvegardes Mode B ont été neutralisées et archivées hors racine applicative dans `~/.grubano/phase2-evidence` (700/600, empreintes vérifiées, copies à `CLAIMS_ENABLED=false` / `REFUNDS_ENABLED=false`, dry-run final PASS). Aucune mesure serveur postérieure à T-43 ne dit le contraire ; la ligne était un résidu documentaire. T-43 n'est pas rouvert, rien n'a été neutralisé, aucune commande cPanel n'a été demandée.
 
+### L5 — déploiement staging vérifié (2026-09-23)
+Commit `41d4fd7f9eb812048f16591ccee9e3db5de3aa56`, poussé sur `develop`. CI « Deploy to Staging » run 35883053887 : job `test` **success**, job `deploy` **success**. `version.json` servi par staging = `41d4fd7…` (build 15:46:15Z, ciRunId 35883053887) — le SHA déployé est EXACTEMENT celui de L5. Santé : `/fr/eat` 200, `/api/restaurants` 200.
+
+Recensement read-only `claims-census.yml` run 35887946737, mesuré 2026-09-23T16:19:36Z :
+- `schema` = `{ready:true, clientReady:true, dbReady:true, missingClient:[], missingDb:[], why:null}` — inchangé, aucune migration ni regen n'a été nécessaire.
+- `gates` = `{claimsEnabled:false, claimsGate:"CLOSED (flag_off)", claimsSurfaceEnabled:false, claimsIntakeEnabled:false, claimsSurfaceOpen:false, claimsIntakeOpen:false, refundsEnabled:false}` — **toutes fermées**, les deux flags produit toujours OFF, le bail REFUNDS jamais ouvert.
+- **Population réclamations INCHANGÉE** depuis le recensement L0 (`dab754d`) : total 9, `{refunded:4, refused:3, refused_final:2}`, `active:0`, `nonTerminal:3`, `approvedUnpaid:0`, `closure.terminalWithoutRecord:4`, **tous les compteurs d'anomalie héritée à 0**.
+
+Sondes externes du rail déployé (non authentifiées) : `POST /api/admin/claims/pay-approved {"dryRun":true}` → **403 « Accès refusé »**, et `{"confirm":"PAYER","token":…}` → **403 « Accès refusé »** : `resolveAdmin()` répond AVANT toute porte, ce qui est le contrat (§8.1) — aucun chemin machine n'existe dans ce fichier. `POST /api/admin/refunds/run` 403 `{gated:true}` · `POST /api/claims` 403 `{gated:true}`.
+
+**Aucune fenêtre ouverte, aucun flag modifié, aucune migration, aucun regen Prisma, aucun accès cPanel, aucune opération Stripe, aucun e-mail envoyé. L'opérateur `phase2-claims-pay-window.js` n'a jamais été exécuté sur le serveur.**
+
 ## Lots suivants
 (complété lot par lot : SHA, preuves, CI, SHA déployé)
