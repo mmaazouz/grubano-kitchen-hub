@@ -23,26 +23,25 @@
 //     `Refund` row of ours exists.
 // Neither source is `charge.amount_refunded`, which is a running total and would double-count.
 //
-// THE ORDER OF THE EVENTS MATTERS — AND THERE IS A NAMED RESIDUAL HERE. The per-event deltas telescope over
-// a SORTED and COMPLETE prefix: §9 is drift-free for a writer that holds the WHOLE refund set in one pass,
-// which is exactly why the refund webhook re-reads Stripe's list and answers 503 rather than proceed on a
-// partial one. This replay's set is « what the database proves », which is strictly weaker — and every
-// written `(re_, type)` row FREEZES the delta it computed, because nothing ever recomputes a keyed row.
+// THE ORDER OF THE EVENTS NO LONGER MATTERS (L6.1, founder decision option (a), 2026-09-25). L6 shipped a
+// per-event model and NAMED its residual: deltas telescope only over a SORTED and COMPLETE prefix, and every
+// written `(re_, type)` row froze the delta it computed, because nothing ever recomputed a keyed row. So a
+// set that became provable in the wrong order — a Dashboard refund whose webhook had not landed, beside a
+// rail refund whose row was written — settled one point away from §9, permanently.
 //
-// So the instant is derived deterministically and the LEDGER wins when both sources carry the same `re_`
-// (its `createdAt` is Stripe's own `refund.created`; our `settledAt` is when WE noticed) — but that makes
-// the two paths agree only when they see the SAME set. If an EARLIER refund is invisible to the database
-// while a LATER one is visible (a Dashboard refund whose webhook has not landed, beside a rail refund whose
-// row is written), the later refund's delta is priced from a cumulative of zero, and the earlier refund's
-// own delta — computed afterwards, over the complete set — is a different number for a key that is now
-// frozen. The booked total can then miss the §9 target by at most ONE point per refund event, either way.
+// The founder closed it by choosing ADJUSTMENT TO THE CUMULATIVE TARGET. `reconcileLoyaltyOnRefund` now
+// computes the target for the set currently proven, reads the effect REALLY applied, and writes only the
+// difference. The target depends on the SUM of the proven amounts, so there is no prefix to get wrong and no
+// arrival order to be unlucky with; at the target the difference is 0 and nothing is written.
 //
-// That is a residual of the CONTRACT, not of this file: §24 (3) prescribes both the DB-known set and this
-// instant rule without restating §9's prefix-completeness precondition. Closing it needs a change to §9 or
-// §16 (a top-up-to-target effect, or an explicit prefix precondition) — a founder decision, not a patch.
-// What this file does is refuse to let it be SILENT: after every replay the booked reversal is compared
-// with the §9 target for the set now known, and any gap is logged and alerted rather than discovered in a
-// customer's balance. See `detectProrataDrift`.
+// This file's job is therefore narrower and stronger. It still assembles the DB-known set of §24 — and the
+// instant rule stays, because `RefundEvent.createdUnix` is part of that contract and the LEDGER still wins
+// on a duplicated `re_` (its `createdAt` is Stripe's own `refund.created`; our `settledAt` is when WE
+// noticed) — but the numbers no longer depend on it. And the comparison below is no longer the report of an
+// accepted gap: it is an INDEPENDENT VERIFIER of the writer, on BOTH sides. It re-reads the rows, recomputes
+// §9 from the set — with the same base the writer uses, and the same high-water floor — and compares. After
+// L6.1 a non-null result is not a residual: it is a defect (a row written outside the reconciliation, a
+// target the writer refused or failed to reach) and it is alerted as one. See `detectProrataDrift`.
 import type { PrismaClient } from '@prisma/client'
 import { reconcileLoyaltyOnRefund, type ReconcileResult } from '@/lib/loyalty-refund-apply'
 import { loyaltyPointsCumulative, type RefundEvent } from '@/lib/loyalty-refund'
@@ -136,12 +135,23 @@ export async function buildDbKnownRefundSet(db: Db, orderId: string): Promise<Db
 /** Rows of one order's loyalty ledger, by kind. Used to say what a failed replay DID write. */
 interface LoyaltyRowCount { earnReversal: number; refund: number }
 
-/** A gap between what is booked and the §9 target for the refunds the database now knows. */
+/**
+ * A gap between what is BOOKED and the §9 target for the refunds the database now knows.
+ *
+ * After L6.1 this should always be null: the reconciliation converges. A non-null value means the ledger
+ * disagrees with the contract — something wrote an `earn_reversal` row that the convergence did not, or the
+ * writer could not reach its target — and it is alerted rather than left in a customer's balance.
+ */
 export interface ProrataDrift {
   targetEarnReversal: number
   bookedEarnReversal: number
+  /** L6.1 — the D2 side is verified too: a wrong spent-restore total is a wrong balance just the same. */
+  targetSpentRestore: number
+  bookedSpentRestore: number
   knownRefundedCents: number
   chargeAmountCents: number
+  /** Which side(s) disagree with §9. */
+  sides: string
 }
 
 export type ProrataOutcome =
@@ -168,12 +178,13 @@ async function countLoyaltyRows(db: Db, orderId: string): Promise<LoyaltyRowCoun
 }
 
 /**
- * The §9 target for the KNOWN set, against what is actually booked (D′ L6 residual guard).
+ * The §9 target for the KNOWN set, against what is actually booked — an INDEPENDENT verifier of the writer.
  *
- * A gap means a delta was frozen against a different set than the one visible now — the residual this
- * file's header names. It is never repaired here: rewriting a keyed row would break the one-effect-per-
- * refund model the whole idempotency rests on. It is REPORTED, so a wrong balance is found by an alert and
- * not by a customer. A detection that cannot read says nothing rather than something false.
+ * It deliberately does not trust `ReconcileResult`: it re-reads the rows and recomputes the target, so a
+ * convergence that reported success while landing somewhere else is still caught. Nothing is repaired here
+ * (that is the writer's job, and rewriting a row would break the append-only ledger); it is REPORTED, so a
+ * wrong balance is found by an alert and not by a customer. A detection that cannot read says nothing rather
+ * than something false.
  */
 async function detectProrataDrift(
   db: Db,
@@ -184,25 +195,45 @@ async function detectProrataDrift(
   // A grandfathered order is left exactly as the pre-Phase-1 code wrote it, by contract: §9 is not its rule.
   if (result.grandfathered) return null
   try {
-    const order = await db.order.findUnique({ where: { id: orderId }, select: { pointsEarned: true } })
+    const order = await db.order.findUnique({ where: { id: orderId }, select: { pointsRedeemed: true } })
     if (!order) return null
-    // The D1 precondition: only points actually CREDITED can be reversed. No earn row ⇒ target 0.
+    // The D1 precondition: only points actually CREDITED can be reversed. No earn row ⇒ base 0. The base is
+    // the ROW's points, exactly as the writer reads it — taking `Order.pointsEarned` here instead would make
+    // any divergence between the column and the credit look like a permanent defect that no repair can clear.
     const earn = await db.loyaltyTransaction.findFirst({
-      where: { orderId, type: 'earn' }, select: { id: true },
+      where: { orderId, type: 'earn' }, select: { points: true },
     })
-    const base = earn ? Math.max(0, Math.floor(order.pointsEarned)) : 0
-    const cum = set.refunds.reduce((a, r) => a + Math.max(0, Math.floor(r.amountCents)), 0)
-    const target = loyaltyPointsCumulative(base, set.chargeAmountCents, cum)
+    const earnBase = earn ? Math.max(0, Math.floor(Number(earn.points) || 0)) : 0
+    const spentBase = Math.max(0, Math.floor(order.pointsRedeemed))
+    // The cumulative the WRITER used, not merely the one visible now: it floors the proven Σ at the order's
+    // high-water, so a set that has since shrunk must not read as a gap.
+    const cum = Math.max(
+      set.refunds.reduce((a, r) => a + Math.max(0, Math.floor(r.amountCents)), 0),
+      result.cumEffectiveCents || 0,
+    )
     const rows = await db.loyaltyTransaction.findMany({
-      where: { orderId, type: 'earn_reversal' }, select: { points: true },
+      where: { orderId, type: { in: ['earn_reversal', 'refund'] } }, select: { type: true, points: true },
     })
-    const booked = rows.reduce((a, r) => a + Math.abs(Math.floor(r.points)), 0)
-    if (booked === target) return null
+    // SIGNED, not absolute. An `earn_reversal` row carries NEGATIVE points when it claws back and POSITIVE
+    // points when a convergence gives some back (L6.1) — and a `refund` row the mirror image. Summing
+    // magnitudes would count a give-back as MORE effect, so the verifier would report a gap on exactly the
+    // orders it had just corrected.
+    const signedSum = (type: string, sign: -1 | 1) =>
+      rows.filter((r) => r.type === type).reduce((a, r) => a + sign * Math.floor(Number(r.points) || 0), 0)
+    const targetEarnReversal = loyaltyPointsCumulative(earnBase, set.chargeAmountCents, cum)
+    const targetSpentRestore = loyaltyPointsCumulative(spentBase, set.chargeAmountCents, cum)
+    const bookedEarnReversal = signedSum('earn_reversal', -1)
+    const bookedSpentRestore = signedSum('refund', +1)
+    const sides = [
+      bookedEarnReversal !== targetEarnReversal ? 'earn_reversal' : null,
+      bookedSpentRestore !== targetSpentRestore ? 'refund' : null,
+    ].filter(Boolean).join('+')
+    if (!sides) return null
     return {
-      targetEarnReversal: target,
-      bookedEarnReversal: booked,
+      targetEarnReversal, bookedEarnReversal, targetSpentRestore, bookedSpentRestore,
       knownRefundedCents: cum,
       chargeAmountCents:  set.chargeAmountCents,
+      sides,
     }
   } catch { return null }
 }
@@ -248,23 +279,29 @@ export async function replayLoyaltyProrata(
       })
       const drift = await detectProrataDrift(db, orderId, set, result)
       if (drift) {
-        // The replay itself SUCCEEDED; the total it lands on does not match §9 for the set now visible.
-        console.error('[LOYALTY MISS] earn_prorata_drift', JSON.stringify({ orderId, via: opts?.via ?? 'unknown', ...drift }))
+        // The replay returned; the ledger does not agree with §9 for the set now visible. After L6.1 this is
+        // a DEFECT, not an accepted residual — the convergence should have reached the target.
+        console.error('[LOYALTY MISS] earn_prorata_drift', JSON.stringify({ orderId, via: opts?.via ?? 'unknown', converged: result.converged, ...drift }))
         if (opts?.notifyOnFailure !== false) {
           try {
             await sendAdminMoneyReviewAlert({
               kind:      'loyalty_prorata_incomplete',
               dedupeKey: `loyalty:${orderId}:drift`,
-              title:     'Prorata fidélité incohérent avec les remboursements connus',
+              title:     'Prorata fidélité incohérent avec les remboursements connus (cible cumulative non atteinte)',
               facts:     {
                 orderId,
                 via:                opts?.via ?? 'unknown',
+                sides:              drift.sides,
                 targetEarnReversal: drift.targetEarnReversal,
                 bookedEarnReversal: drift.bookedEarnReversal,
+                targetSpentRestore: drift.targetSpentRestore,
+                bookedSpentRestore: drift.bookedSpentRestore,
                 knownRefundedCents: drift.knownRefundedCents,
                 chargeAmountCents:  drift.chargeAmountCents,
                 chargeSource:       set.chargeSource,
-                note:               'un delta a été figé sur un ensemble différent de celui visible maintenant — aucune ligne n’est réécrite, décision humaine',
+                blocked:            result.blocked,
+                converged:          result.converged,
+                note:               'après L6.1 la réconciliation converge vers la cible : un écart ici est un DÉFAUT (ligne écrite hors réconciliation, ou cible non atteinte), pas un résidu accepté — aucune ligne n’est réécrite, décision humaine',
                 moneyMoved:         false,
               },
             })

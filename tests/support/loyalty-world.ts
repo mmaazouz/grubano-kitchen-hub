@@ -199,11 +199,16 @@ export function makeLoyaltyWorld(opts: {
         throw e
       }
     },
-    /** The FOR UPDATE read the clawback does. Returns the live balance. */
+    /**
+     * The FOR UPDATE read the clawback does. It returns EXACTLY the columns the SQL names — a double that
+     * always returned `pointsBalance` would hide a caller that forgot to select `recoveryOffsetPoints` and
+     * then read it as undefined ⇒ 0, i.e. a debt silently treated as absent.
+     */
     $queryRawUnsafe: async (sql: string) => {
-      if (/pointsBalance/.test(sql)) return [{ pointsBalance: w.customer.pointsBalance }]
-      if (/recoveryOffsetPoints/.test(sql)) return [{ recoveryOffsetPoints: w.customer.recoveryOffsetPoints }]
-      return []
+      const row: Record<string, number> = {}
+      if (/pointsBalance/.test(sql)) row.pointsBalance = w.customer.pointsBalance
+      if (/recoveryOffsetPoints/.test(sql)) row.recoveryOffsetPoints = w.customer.recoveryOffsetPoints
+      return Object.keys(row).length ? [row] : []
     },
   }
   w.db = client as unknown as LoyaltyDb

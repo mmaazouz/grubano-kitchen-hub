@@ -14,7 +14,7 @@ import { sendOrderStatusEmail } from '@/lib/transactional-emails'
 import { createSystemClaim } from '@/lib/claims'
 import { claimsSurfaceOpen, claimNoticeGate } from '@/lib/claim-flags'
 import { sendOrderCancelledPaidEmail, sendOrderCancelledPaidOffEmail } from '@/lib/claim-emails'
-import { sendAdminPaidCancellationAlert } from '@/lib/admin-alerts'
+import { sendAdminPaidCancellationAlert, sendAdminMoneyReviewAlert } from '@/lib/admin-alerts'
 import { z } from 'zod'
 
 // ── Valid status machine ──────────────────────────────────────────────────────
@@ -208,6 +208,8 @@ export async function PATCH(
     // the 'earn' row are atomic, a failed credit leaves no 'earn' row and safely
     // retries. Best-effort: a loyalty hiccup never blocks the status update. This
     // touches ONLY the points credit — zero financial amount/fee/total.
+    /** §24 (8) / T-44: how much pre-existing DEBT this delivery's earning repaid, if any. */
+    let earnRepaidOffset = 0
     if (newStatus === 'delivered' && order.pointsEarned > 0) {
       try {
         const already = await prisma.loyaltyTransaction.findFirst({
@@ -256,6 +258,12 @@ export async function PATCH(
               )
               const off = Number(rows?.[0]?.recoveryOffsetPoints ?? 0)
               const { spendableIncrement, offsetRepaid } = applyEarnWithOffsetRepay(order.pointsEarned, off)
+              // §24 (8), DEFERRED TO T-44: this earning has just extinguished part of a debt left by an
+              // EARLIER refund. If this order then turns out to be refunded too, the clawback below takes its
+              // points out of a balance that was already reduced by that repayment — a composition the
+              // contract does not decide. Remembered here, alerted after the replay (which is the only place
+              // that knows whether points were actually clawed back).
+              earnRepaidOffset = offsetRepaid
               await tx.loyaltyCustomer.update({
                 where: { id: lc.id },
                 data:  { pointsBalance: { increment: spendableIncrement }, recoveryOffsetPoints: { decrement: offsetRepaid } },
@@ -281,13 +289,34 @@ export async function PATCH(
       // Stripe re_), one code path — over the refunds the DATABASE already proves. It is called on the root
       // client, never inside the transaction above: that function opens its own, and a delivery that already
       // happened is never rolled back because a points reconciliation failed. A set already applied writes
-      // nothing (the unique (re_, type) makes the replay a no-op), and an order with no known refund is left
+      // nothing (L6.1: at the cumulative target the difference is 0), and an order with no known refund is left
       // whole, which is the correct answer. It never throws; the belt is defence, not a path.
       //
       // Only reached when points were earned: with 0 earned there is nothing to prorate, and the SPENT side
       // was already restored by the refund webhook at the moment of the refund.
       try {
-        await replayLoyaltyProrata(prisma, order.id, { via: 'order_delivered' })
+        const prorata = await replayLoyaltyProrata(prisma, order.id, { via: 'order_delivered' })
+        // §24 (8) — the case the founder DEFERRED to T-44 and asked to see: the earning repaid a debt AND
+        // this order's refunds then clawed points back, so the clawback came out of a balance already reduced
+        // by that repayment. Nothing is reinterpreted; a human is told. Best-effort, like everything here.
+        if (earnRepaidOffset > 0 && prorata.ok && prorata.replayed && prorata.result.earnReversed > 0) {
+          try {
+            await sendAdminMoneyReviewAlert({
+              kind:      'loyalty_offset_t44_review',
+              dedupeKey: `loyalty:${order.id}:offset-t44-earn:${earnRepaidOffset}`,
+              title:     'Gain fidélité ayant remboursé une dette, puis reprisé par un remboursement (composition différée T-44)',
+              facts:     {
+                orderId:          order.id,
+                earnRepaidOffset,
+                pointsEarned:     order.pointsEarned,
+                earnReversed:     prorata.result.earnReversed,
+                cumEffectiveCents: prorata.result.cumEffectiveCents,
+                note:             'le gain a éteint une dette antérieure avant d’être reprisé : la composition D-15 × recoveryOffsetPoints n’est PAS certifiée (T-44 PRE-LIVE)',
+                moneyMoved:       false,
+              },
+            })
+          } catch { /* an alert that cannot be sent never changes what is booked */ }
+        }
       } catch (e) {
         console.error('[LOYALTY MISS] earn_prorata_incomplete (belt)', order.id, e instanceof Error ? e.message : e)
       }

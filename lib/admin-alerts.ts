@@ -197,6 +197,13 @@ export type MoneyReviewKind =
   // replayed. Points are over-credited until it is repaired — the amount is known and the repair is one
   // admin call (POST /api/admin/loyalty/reconcile), so the alert names the order rather than guessing it.
   | 'loyalty_prorata_incomplete'
+  // L6.1 — a side of the reconciliation did not reach its cumulative target within its bounded attempts.
+  // A customer's balance is wrong by a KNOWN amount; the repair is one admin call. Never silent.
+  | 'loyalty_target_unconverged'
+  // L6.1 / T-44 PRE-LIVE — a give-back had to unwind a recoveryOffsetPoints debt. The arithmetic inverse is
+  // applied (a customer must never hold points they still owe), but the composition of D-15 with the D3 debt
+  // contract is DEFERRED to T-44: a human confirms it, and nothing here claims it is certified.
+  | 'loyalty_offset_t44_review'
 
 export async function sendAdminMoneyReviewAlert(p: {
   kind:      MoneyReviewKind

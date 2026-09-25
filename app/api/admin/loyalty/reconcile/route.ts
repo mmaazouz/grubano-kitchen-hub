@@ -19,7 +19,7 @@ export const dynamic = 'force-dynamic'
 //
 // WHAT IT DOES: exactly the replay the delivered transition runs, on the same DB-known refund set, with the
 // same rounding rule and the same idempotency key (the Stripe `re_`). Replaying an order that is already
-// settled writes nothing — the unique `(re_, type)` makes every effect a no-op — so it is safe to call
+// settled writes nothing — L6.1: at the cumulative target the difference is 0 — so it is safe to call
 // twice, or on an order that never needed it.
 //
 // WHAT IT NEVER DOES: no Stripe call of any kind; no cash; no claim; no order field. It moves POINTS, and
@@ -64,6 +64,14 @@ export async function POST(req: Request) {
             earnReversed:    outcome.result.earnReversed,
             spentRestored:   outcome.result.spentRestored,
             offsetAdded:     outcome.result.offsetAdded,
+            /** L6.1 — a points movement an admin caused must be fully legible in the trail, not partly. */
+            offsetReleased:  outcome.result.offsetReleased,
+            offsetDeferredT44: outcome.result.offsetDeferredT44,
+            converged:       outcome.result.converged,
+            blocked:         outcome.result.blocked,
+            /** Points a give-back WOULD have returned, held because this route's proof is DB-derived. */
+            heldGiveBack:    outcome.result.heldGiveBack,
+            cumEffectiveCents: outcome.result.cumEffectiveCents,
             grandfathered:   outcome.result.grandfathered,
             /** A gap against the §9 target for the set now known — reported, never silently repaired. */
             drift:           outcome.drift ? `booked ${outcome.drift.bookedEarnReversal} ≠ cible ${outcome.drift.targetEarnReversal}` : null,
@@ -84,8 +92,9 @@ export async function POST(req: Request) {
   if (!outcome.ok) {
     // The replay applies its plan one transaction per effect, so a failure part-way leaves the earlier
     // effects COMMITTED. Telling an admin « nothing was written » here would be false, and would invite a
-    // manual correction on top of rows that already exist. Replaying is safe — the unique `(re_, type)`
-    // makes every applied effect a no-op — so the honest answer is: some of it may be done, call it again.
+    // manual correction on top of rows that already exist. Replaying is safe — L6.1: the effect already
+    // applied is measured and only the difference is written — so the honest answer is: some of it may be
+    // done, call it again.
     const wrote = outcome.applied
     return NextResponse.json({
       error: wrote && (wrote.earnReversal > 0 || wrote.refund > 0)
@@ -108,18 +117,52 @@ export async function POST(req: Request) {
       ok: true, replayed: false, reason: outcome.reason,
       message: outcome.reason === 'no_order'
         ? 'Commande introuvable : rien n’a été réconcilié.'
-        : 'Aucun remboursement connu sur cette commande : les points restent entiers, rien n’a été écrit.',
+        : 'Aucun remboursement connu sur cette commande : il n’y a aucune cible à atteindre, rien n’a été lu ni écrit côté points. (Cette réponse ne dit PAS que les points sont justes — elle dit qu’aucun remboursement ne les met en cause.)',
     })
   }
+  // A replay that RAN is not the same as a replay that LANDED. Say which, in words, before the numbers.
+  const landed = outcome.result.converged
   return NextResponse.json({
     ok: true,
     replayed: true,
+    message: landed
+      ? 'Réconciliation terminée : les deux côtés sont exactement sur leur cible cumulative.'
+      : outcome.result.heldGiveBack > 0
+        ? `Réconciliation INCOMPLÈTE : ${outcome.result.heldGiveBack} point(s) de reprise sont RETENUS. L'effet appliqué dépasse la cible de l'ensemble que la base peut prouver — ce qui arrive aussi quand un remboursement Dashboard n'a pas encore été reçu. Rien n'a été rendu au client ; une passe à preuve complète (webhook charge.refunded) tranchera, sinon décision humaine. Une alerte a été émise.`
+        : outcome.result.blocked
+        ? 'Réconciliation INCOMPLÈTE : un ajustement est dû mais la clé de ce cumul est déjà utilisée (dénominateur ou base divergents). Rappeler cette route ne changera rien — décision humaine requise, une alerte a été émise.'
+        : 'Réconciliation INCOMPLÈTE : la cible n’a pas été atteinte dans le budget de tentatives. Une alerte a été émise ; rappelez cette route.',
     /** 0 applied with a non-empty set ⇒ the order was already settled: the replay is a no-op, not a failure. */
     applied:       outcome.result.applied,
     skipped:       outcome.result.skipped,
+    /** NET for this call: negative when it gave points back rather than taking them. */
     earnReversed:  outcome.result.earnReversed,
     spentRestored: outcome.result.spentRestored,
     offsetAdded:   outcome.result.offsetAdded,
+    /** L6.1 — points taken back OFF a recovery-offset debt by a give-back (bounded to this order's own). */
+    offsetReleased: outcome.result.offsetReleased,
+    /**
+     * L6.1 / T-44 — the movement touched a recoveryOffsetPoints debt. The composition of D-15 with the debt
+     * contract is DEFERRED to T-44 PRE-LIVE: an alert names the order, and nothing here claims it certified.
+     */
+    offsetDeferredT44: outcome.result.offsetDeferredT44,
+    /** L6.1 — did both sides land exactly on their cumulative target? */
+    converged:     outcome.result.converged,
+    /**
+     * L6.1 — points this route did NOT return although the effect applied exceeds the target of the set it
+     * could prove. This route's proof comes from the DATABASE, which cannot see a Dashboard refund whose
+     * webhook has not landed, so lowering an applied clawback here could take back a correct one. Non-zero
+     * means: a discrepancy is real and visible, and it needs a complete-proof pass (the charge.refunded
+     * webhook) or a human — calling this route again will not change it.
+     */
+    heldGiveBack:  outcome.result.heldGiveBack,
+    /**
+     * L6.1 — true when an adjustment was owed but the key for this cumulative is already used, so it cannot
+     * be written without rewriting history. The usual cause is two callers disagreeing about the denominator
+     * T, or a base edited after the fact. Calling again will NOT help: a human decides.
+     */
+    blocked:       outcome.result.blocked,
+    cumEffectiveCents: outcome.result.cumEffectiveCents,
     grandfathered: outcome.result.grandfathered,
     knownRefunds:  outcome.set.refunds.length,
     chargeAmountCents: outcome.set.chargeAmountCents,

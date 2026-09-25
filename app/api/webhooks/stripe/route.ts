@@ -813,7 +813,9 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
     //   D2 spent points are RESTORED proportionally (no longer 100 % on a partial);
     //   D3 a clawback that would go below 0 floors the balance and spills the
     //      remainder into the customer's recovery offset (repaid by future earnings).
-    // Idempotent per (sourceEventId = refund re_…, type); POINTS ONLY, never cash.
+    // L6.1: the reconciliation CONVERGES to the cumulative target of the proven set — it does not apply a
+    // per-refund delta any more, so this list's order is irrelevant and a redelivery writes nothing when the
+    // target is already reached. POINTS ONLY, never cash.
     // Best-effort + tolerant: a loyalty hiccup never fails the webhook (money is done).
     try {
       const orderId = orderIdMeta
@@ -822,6 +824,11 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
           orderId,
           chargeAmountCents: charge.amount,
           refunds: refunds.map(r => ({ id: r.id, amountCents: r.amount, createdUnix: r.created })),
+          // L6.1: this is the ONE caller whose set comes from Stripe's own list of the charge's refunds, so
+          // it is the only one allowed to LOWER an applied effect. `!listFailed` and not `true`: on the
+          // fallback path the embedded payload carries at most the 10 most recent, and an incomplete list
+          // must not be able to hand a customer back points that were rightly clawed.
+          proofComplete: !listFailed,
         })
       }
     } catch (e) {

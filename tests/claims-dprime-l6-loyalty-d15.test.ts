@@ -168,11 +168,26 @@ describe('D′ L6 — D-15, case by case (the numbers are computed, never restat
     expect(balance(), 'a meal refunded in full leaves no points behind').toBe(0)
   })
 
-  it('⭐ E — 470 × 3 ⇒ −5 / −4 / −5 and net 0: the deltas TELESCOPE, they are not rounded one by one', async () => {
-    // The naive per-event round would give 5+5+5 = 15 on an earning of 14 — the drift §9 exists to remove.
+  it('⭐ E — 470 × 3 all proven at once ⇒ ONE adjustment of −14, net 0 (L6.1: the target, not three deltas)', async () => {
+    // A naive per-event round would give 5+5+5 = 15 on an earning of 14. L6.1 does not round per event at
+    // all: it asks what the TOTAL should be for 1410 refunded and writes the single difference.
     w.refunds.push(w.refundRow('re_1', 470, 1_000_000), w.refundRow('re_2', 470, 2_000_000), w.refundRow('re_3', 470, 3_000_000))
     const out = await deliverAndReplay()
     expect(out.ok && out.replayed).toBe(true)
+    expect(pointsOf('earn_reversal')).toEqual([-14])
+    expect(balance()).toBe(0)
+  })
+
+  it('⭐ E (successively) — the same three refunds becoming provable one at a time ⇒ −5 / −4 / −5, net 0', async () => {
+    // The founder's case C. Each pass writes only what is missing to reach the target of the set proven so
+    // far: 5, then 9−5, then 14−9. The sum is the base exactly, with no per-event rounding drift.
+    w.creditEarn()
+    w.refunds.push(w.refundRow('re_1', 470, 1_000_000))
+    await replayLoyaltyProrata(w.db, ORDER, { via: 'order_delivered' })
+    w.refunds.push(w.refundRow('re_2', 470, 2_000_000))
+    await replayLoyaltyProrata(w.db, ORDER, { via: 'order_delivered' })
+    w.refunds.push(w.refundRow('re_3', 470, 3_000_000))
+    await replayLoyaltyProrata(w.db, ORDER, { via: 'order_delivered' })
     expect(pointsOf('earn_reversal')).toEqual([-5, -4, -5])
     expect(pointsOf('earn_reversal').reduce((a, b) => a + b, 0)).toBe(-14)
     expect(balance()).toBe(0)
@@ -215,7 +230,11 @@ describe('D′ L6 — D-15, case by case (the numbers are computed, never restat
     expect(second.ok && second.replayed).toBe(true)
     if (second.ok && second.replayed) {
       expect(second.result.applied, 'nothing new').toBe(0)
-      expect(second.result.skipped).toBeGreaterThan(0)
+      // L6.1: NOT « skipped ». The old model needed the unique key to throw P2002 to stop a replay; the
+      // convergence never reaches a write — at the target the difference is 0. « skipped » now means only
+      // « a concurrent writer took this exact transition », which did not happen here.
+      expect(second.result.skipped).toBe(0)
+      expect(second.result.converged).toBe(true)
     }
     expect(w.loyaltyTransactions).toHaveLength(after.rows)
     expect(balance()).toBe(after.bal)
@@ -225,9 +244,9 @@ describe('D′ L6 — D-15, case by case (the numbers are computed, never restat
     w.refunds.push(w.refundRow('re_1', 470))
     await deliverAndReplay()
     expect(pointsOf('earn_reversal')).toEqual([-5])
-    // A second refund arrives LATER — and its instant is later too, which is what makes the telescoping
-    // sound: Stripe's refund.created only ever moves forward, so a new refund appends at the END of the
-    // sorted prefix and never shifts a delta that was already booked.
+    // A second refund arrives later. L6.1 does not care about its instant at all: the target depends on the
+    // SUM of the proven amounts, so there is no prefix to shift and no order to get wrong. The next test
+    // proves the case that used to break — an EARLIER refund arriving after a later one.
     w.refunds.push(w.refundRow('re_2', 470, 2_000_000))
     await replayLoyaltyProrata(w.db, ORDER, { via: 'order_delivered' })
     expect(pointsOf('earn_reversal')).toEqual([-5, -4])
@@ -370,16 +389,18 @@ describe('D′ L6 — a failed replay reports WHAT IT APPLIED', () => {
    * `db.loyaltyTransaction.create` would never be reached by the writes inside a transaction.
    */
   const failAfterFirstCreate = () => {
-    let creates = 0
+    // L6.1 writes ONE adjustment per SIDE, not one per refund — so the partial shape is « the D1 clawback
+    // committed, the D2 restore did not ». Refusing the 'refund' row leaves exactly that state, which is
+    // the one an admin must never be told was empty. The error is not a P2002, so it is not an idempotent
+    // skip: the reconciliation rethrows it.
     w.onLoyaltyCreate = (data) => {
-      creates++
-      if (creates >= 2 && data.type === 'earn_reversal') throw new Error('server has gone away')
+      if (data.type === 'refund') throw new Error('server has gone away')
     }
   }
 
-  it('⭐ the first effect is COMMITTED and the outcome says so, row by row', async () => {
-    // Two refunds, monotonic instants ⇒ deltas −5 then −4 (the telescoping of case E).
-    w.refunds.push(w.refundRow('re_1', 470, 1_000_000), w.refundRow('re_2', 470, 1_000_100))
+  it('⭐ the D1 clawback is COMMITTED and the outcome says so, row by row', async () => {
+    setWorld({ pointsRedeemed: 20 })   // a spent side to restore, so there IS a second effect to fail on
+    w.refunds.push(w.refundRow('re_1', 470, 1_000_000))
     w.creditEarn()
     failAfterFirstCreate()
     const out = await replayLoyaltyProrata(w.db, ORDER, { via: 'order_delivered' })
@@ -387,13 +408,15 @@ describe('D′ L6 — a failed replay reports WHAT IT APPLIED', () => {
     if (!out.ok) {
       expect(out.applied, 'the count is measured, not assumed').toEqual({ earnReversal: 1, refund: 0 })
     }
-    // …and the measurement matches the database: the first reversal really is there.
+    // …and the measurement matches the database: the clawback really is there, the restore is not.
     expect(pointsOf('earn_reversal')).toEqual([-5])
+    expect(pointsOf('refund')).toEqual([])
     expect(balance()).toBe(E - 5)
   })
 
   it('⭐ the alert names the rows the failed call wrote, so nobody corrects on top of them', async () => {
-    w.refunds.push(w.refundRow('re_1', 470, 1_000_000), w.refundRow('re_2', 470, 1_000_100))
+    setWorld({ pointsRedeemed: 20 })
+    w.refunds.push(w.refundRow('re_1', 470, 1_000_000))
     w.creditEarn()
     failAfterFirstCreate()
     await replayLoyaltyProrata(w.db, ORDER, { via: 'order_delivered' })
@@ -402,7 +425,8 @@ describe('D′ L6 — a failed replay reports WHAT IT APPLIED', () => {
   })
 
   it('⭐ the REPAIR route no longer claims nothing was written — and says to call it again', async () => {
-    w.refunds.push(w.refundRow('re_1', 470, 1_000_000), w.refundRow('re_2', 470, 1_000_100))
+    setWorld({ pointsRedeemed: 20 })
+    w.refunds.push(w.refundRow('re_1', 470, 1_000_000))
     w.creditEarn()
     failAfterFirstCreate()
     const { POST } = await import('@/app/api/admin/loyalty/reconcile/route')
@@ -421,15 +445,21 @@ describe('D′ L6 — a failed replay reports WHAT IT APPLIED', () => {
     // …and calling it again on a healthy database finishes the plan without re-applying the first effect.
     const finish = await replayLoyaltyProrata(w.db, ORDER, { via: 'admin_repair', notifyOnFailure: false })
     expect(finish.ok && finish.replayed).toBe(true)
-    if (finish.ok && finish.replayed) expect(finish.result.skipped).toBe(1)
-    expect(pointsOf('earn_reversal')).toEqual([-5, -4])
-    expect(balance()).toBe(E - 9)
+    if (finish.ok && finish.replayed) {
+      // The D1 side is already at its target, so it writes nothing at all — no P2002 needed to stop it.
+      expect(finish.result.converged).toBe(true)
+      expect(finish.result.earnReversed, 'the clawback was NOT applied a second time').toBe(0)
+    }
+    expect(pointsOf('earn_reversal'), 'still one clawback row').toEqual([-5])
+    expect(pointsOf('refund'), 'and now the restore: round(20 × 470 / 1410)').toEqual([7])
+    expect(balance()).toBe(E - 5 + 7)
   })
 
   it('a failure that wrote NOTHING still says so, and does not invent a number', async () => {
     w.refunds.push(w.refundRow('re_full', T))
     w.creditEarn()
     const dead = { ...w.db, loyaltyTransaction: { ...w.db.loyaltyTransaction, findFirst: async () => { throw new Error('lock wait timeout') } } }
+    // findFirst is read BEFORE any target is computed (the grandfather guard), so nothing is written.
     const out = await replayLoyaltyProrata(dead as typeof w.db, ORDER, { via: 'order_delivered' })
     expect(out.ok).toBe(false)
     if (!out.ok) expect(out.applied).toEqual({ earnReversal: 0, refund: 0 })
@@ -437,68 +467,125 @@ describe('D′ L6 — a failed replay reports WHAT IT APPLIED', () => {
   })
 })
 
-// ══ 5. THE §24 PREFIX RESIDUAL — DETECTED, NEVER SILENT (review P1, spec territory) ═══════════════
+// ══ 5. THE §24 PREFIX RESIDUAL — CLOSED BY L6.1, AND STILL VERIFIED ══════════════════════════════
 //
-// §9 is drift-free for a writer that holds the WHOLE refund set in one pass. This replay's set is « what the
-// database proves », which is weaker: a Dashboard refund whose webhook has not landed is invisible. Because
-// every written (re_, type) row FREEZES its delta, a set that grows in the wrong ORDER can settle on a total
-// one point away from §9 — permanently, in either direction. Closing that needs a change to §9 or §16, which
-// is a founder decision. What the code must never do is keep quiet about it.
+// L6 left a named residual: per-event deltas are frozen once written, so a refund set that became provable
+// in the WRONG ORDER settled one point away from §9, permanently. The founder chose option (a) — adjust to
+// the cumulative target — and L6.1 implements it: every pass computes the target for the proven set, reads
+// what is really applied, and writes only the difference. There is no prefix to get wrong any more.
+//
+// These tests are the proof that the residual is gone, and the drift detector STAYS: it is now an
+// independent VERIFIER of the writer (re-read the rows, recompute §9, compare) rather than a report of an
+// accepted gap. A non-null drift after L6.1 is not a residual — it is a bug, and it is alerted as one. The
+// last two tests are negative controls that prove the verifier can still fire.
 
-describe('D′ L6 — the drift the DB-known set can produce is measured and alerted', () => {
-  it('⭐ an EARLIER refund that becomes visible later ⇒ booked 10 where §9 wants 9, and it is reported', async () => {
+describe('D′ L6.1 — the out-of-order case CONVERGES; the detector verifies it', () => {
+  it('⭐⭐ an EARLIER refund becoming visible after a later one ⇒ total 9, second delta 4, NO drift', async () => {
     w.creditEarn()
-    // Round 1 — only the LATER refund is visible. Its delta is priced from a cumulative of zero: −5.
+    // Round 1 — only the LATER refund is provable. Target for 470 refunded: 5.
     w.refunds.push(w.refundRow('re_b', 470, 1_000_100))
     const first = await replayLoyaltyProrata(w.db, ORDER, { via: 'order_delivered' })
     expect(pointsOf('earn_reversal')).toEqual([-5])
-    expect(first.ok && first.replayed && first.drift, 'one refund, one prefix: no drift yet').toBe(null)
+    expect(first.ok && first.replayed && first.drift).toBe(null)
 
-    // Round 2 — the EARLIER refund lands. Sorted, it is now the first of the prefix, so its own delta is
-    // also 5 — and re_b's frozen −5 is never recomputed to the −4 the complete prefix would give it.
+    // Round 2 — the EARLIER refund lands. Under L6 this booked a second 5 (total 10, target 9). Under L6.1
+    // the pass asks what the TOTAL should be — round(14 × 940 / 1410) = 9 — and writes the missing 4.
     w.refunds.push(w.refundRow('re_a', 470, 1_000_000))
     const second = await replayLoyaltyProrata(w.db, ORDER, { via: 'order_delivered' })
     expect(second.ok && second.replayed).toBe(true)
-    expect(pointsOf('earn_reversal')).toEqual([-5, -5])
-    // §9 for the complete set: round(14 × 940 / 1410) = 9. Booked: 10. The residual, measured.
+    expect(pointsOf('earn_reversal'), 'the second write is a 4, not another 5').toEqual([-5, -4])
+    expect(pointsOf('earn_reversal').reduce((a, b) => a + b, 0)).toBe(-9)
     if (second.ok && second.replayed) {
-      expect(second.drift).toEqual({ targetEarnReversal: 9, bookedEarnReversal: 10, knownRefundedCents: 940, chargeAmountCents: T })
+      expect(second.drift, 'nothing to report: the target is reached').toBe(null)
+      expect(second.result.converged).toBe(true)
+      expect(second.result.targetEarnReversal).toBe(9)
+      expect(second.result.appliedEarnReversalBefore).toBe(5)
     }
-    expect(balance(), 'the customer is one point short of the §9 target').toBe(E - 10)
+    expect(balance(), 'exactly the §9 target — not one point short').toBe(E - 9)
+    expect(alertMock, 'a converged reconciliation alerts nobody').not.toHaveBeenCalled()
   })
 
-  it('⭐ the gap raises its OWN alert, with its own dedupe key — not the failure one', async () => {
+  it('⭐ ANY arrival order of three refunds lands on the same state', async () => {
+    const R = { a: () => w.refundRow('re_a', 470, 1_000_000), b: () => w.refundRow('re_b', 470, 1_000_100), c: () => w.refundRow('re_c', 470, 1_000_200) }
+    const run = async (order: Array<keyof typeof R>) => {
+      setWorld()
+      w.creditEarn()
+      for (const k of order) {
+        w.refunds.push(R[k]())
+        await replayLoyaltyProrata(w.db, ORDER, { via: 'order_delivered' })
+      }
+      return { total: pointsOf('earn_reversal').reduce((a, b) => a + b, 0), bal: balance(), off: offset() }
+    }
+    const forward = await run(['a', 'b', 'c'])
+    for (const order of [['c', 'b', 'a'], ['b', 'a', 'c'], ['c', 'a', 'b']] as Array<Array<keyof typeof R>>) {
+      expect(await run(order), order.join('>')).toEqual(forward)
+    }
+    expect(forward).toMatchObject({ total: -14, bal: 0 })
+  })
+
+  it('⭐⭐ an order OVER-APPLIED by the pre-L6.1 code: the DB path HOLDS the give-back, it does not take it', async () => {
+    // Exactly the state L6 could produce: two frozen rows of −5 for a cumulative of 940 (target 9). The
+    // correction is a NEGATIVE difference, and this path's set comes from the DATABASE — which cannot see a
+    // Dashboard refund whose webhook has not landed. So it refuses to hand the point back and reports it. The
+    // guard is about EVIDENCE, not direction: the same state under Stripe's own list IS corrected (the apply
+    // suite proves that). Returning a point that was rightly clawed is not a repair.
     w.creditEarn()
-    w.refunds.push(w.refundRow('re_b', 470, 1_000_100))
+    w.loyaltyTransactions.push(
+      { id: 'lt_old1', customerId: w.customer.id, orderId: ORDER, type: 'earn_reversal', points: -5, sourceEventId: 're_b' },
+      { id: 'lt_old2', customerId: w.customer.id, orderId: ORDER, type: 'earn_reversal', points: -5, sourceEventId: 're_a' },
+    )
+    w.customer.pointsBalance = E - 10
+    w.refunds.push(w.refundRow('re_a', 470, 1_000_000), w.refundRow('re_b', 470, 1_000_100))
+    const out = await replayLoyaltyProrata(w.db, ORDER, { via: 'admin_repair' })
+    expect(out.ok && out.replayed).toBe(true)
+    // The two old rows are UNTOUCHED — the ledger is append-only — and nothing was added.
+    expect(pointsOf('earn_reversal')).toEqual([-5, -5])
+    expect(rowsOf('earn_reversal')[0].sourceEventId).toBe('re_b')
+    expect(balance(), 'not one point moved').toBe(E - 10)
+    if (out.ok && out.replayed) {
+      expect(out.result.heldGiveBack, 'one point, visible and deliberately unwritten').toBe(1)
+      expect(out.result.converged).toBe(false)
+      // The verifier sees the same gap, which is the point: it is REPORTED twice over, never silent.
+      expect(out.drift).toMatchObject({ targetEarnReversal: 9, bookedEarnReversal: 10, sides: 'earn_reversal' })
+    }
+    const held = alertMock.mock.calls.map((c) => c[0]).find((a) => a.kind === 'loyalty_target_unconverged')
+    expect(held).toBeTruthy()
+    expect(held.facts).toMatchObject({ orderId: ORDER, heldGiveBack: 1, proofComplete: false, moneyMoved: false })
+  })
+
+  it('⭐ NEGATIVE CONTROL — the verifier still FIRES when the ledger disagrees with §9', async () => {
+    // A row that no reconciliation wrote (a hand edit, a bad migration): 2 points too many clawed back.
+    // If the detector stayed silent here it would be decoration.
+    w.creditEarn()
+    w.refunds.push(w.refundRow('re_1', 470, 1_000_000))
     await replayLoyaltyProrata(w.db, ORDER, { via: 'order_delivered' })
+    w.loyaltyTransactions.push({ id: 'lt_hand', customerId: w.customer.id, orderId: ORDER, type: 'earn_reversal', points: -2, sourceEventId: 'manual:whoops' })
     alertMock.mockClear()
-    w.refunds.push(w.refundRow('re_a', 470, 1_000_000))
-    await replayLoyaltyProrata(w.db, ORDER, { via: 'order_delivered' })
-    expect(alertMock).toHaveBeenCalledTimes(1)
-    expect(alertMock.mock.calls[0][0]).toMatchObject({ kind: 'loyalty_prorata_incomplete', dedupeKey: `loyalty:${ORDER}:drift` })
-    expect(alertMock.mock.calls[0][0].facts).toMatchObject({
-      targetEarnReversal: 9, bookedEarnReversal: 10, knownRefundedCents: 940, moneyMoved: false,
-    })
+    // Now freeze the writer so it cannot self-correct, and check the verifier notices.
+    w.onLoyaltyCreate = () => { throw Object.assign(new Error('Unique constraint failed'), { code: 'P2002' }) }
+    const out = await replayLoyaltyProrata(w.db, ORDER, { via: 'admin_repair' })
+    expect(out.ok && out.replayed).toBe(true)
+    if (out.ok && out.replayed) {
+      expect(out.drift).toEqual({
+        sides: 'earn_reversal',
+        targetEarnReversal: 5, bookedEarnReversal: 7,
+        // The D2 side is verified in the same pass and agrees, which is what makes `sides` meaningful.
+        targetSpentRestore: 0, bookedSpentRestore: 0,
+        knownRefundedCents: 470, chargeAmountCents: T,
+      })
+    }
+    const drift = alertMock.mock.calls.map((c) => c[0]).find((a) => a.dedupeKey === `loyalty:${ORDER}:drift`)
+    expect(drift, 'the gap is alerted, never left to be found in a balance').toBeTruthy()
   })
 
   it('⭐ NEGATIVE CONTROL — the same three refunds seen in order raise NO drift and NO alert', async () => {
     w.creditEarn()
     w.refunds.push(w.refundRow('re_1', 470, 1_000_000), w.refundRow('re_2', 470, 1_000_100), w.refundRow('re_3', 470, 1_000_200))
     const out = await replayLoyaltyProrata(w.db, ORDER, { via: 'order_delivered' })
-    expect(pointsOf('earn_reversal')).toEqual([-5, -4, -5])
+    expect(pointsOf('earn_reversal'), 'one pass over a complete set ⇒ one adjustment').toEqual([-14])
     expect(out.ok && out.replayed && out.drift).toBe(null)
     expect(alertMock).not.toHaveBeenCalled()
     expect(balance()).toBe(0)
-  })
-
-  it('⭐ NEGATIVE CONTROL — a later refund arriving AFTER a replay telescopes correctly: still no drift', async () => {
-    w.creditEarn()
-    w.refunds.push(w.refundRow('re_1', 470, 1_000_000))
-    await replayLoyaltyProrata(w.db, ORDER, { via: 'order_delivered' })
-    w.refunds.push(w.refundRow('re_2', 470, 1_000_100))
-    const out = await replayLoyaltyProrata(w.db, ORDER, { via: 'order_delivered' })
-    expect(pointsOf('earn_reversal')).toEqual([-5, -4])
-    expect(out.ok && out.replayed && out.drift).toBe(null)
   })
 
   it('a grandfathered order is NOT judged against §9 — it is left exactly as the old code wrote it', async () => {
@@ -511,7 +598,7 @@ describe('D′ L6 — the drift the DB-known set can produce is measured and ale
     expect(alertMock).not.toHaveBeenCalled()
   })
 
-  it('the repair route surfaces the gap to the admin who called it', async () => {
+  it('the repair route reports convergence — and a drift field that is null when there is nothing wrong', async () => {
     w.creditEarn()
     w.refunds.push(w.refundRow('re_b', 470, 1_000_100))
     await replayLoyaltyProrata(w.db, ORDER, { via: 'order_delivered' })
@@ -522,9 +609,9 @@ describe('D′ L6 — the drift the DB-known set can produce is measured and ale
     }))
     const body = await res.json() as Record<string, unknown>
     expect(res.status).toBe(200)
-    expect(body.drift).toMatchObject({ targetEarnReversal: 9, bookedEarnReversal: 10 })
+    expect(body).toMatchObject({ ok: true, replayed: true, drift: null, earnReversed: 4 })
     const audit = auditMock.mock.calls.map((c) => c[0]).find((a) => a.action === 'loyalty.reconcile')
-    expect(String(audit.metadata.drift)).toMatch(/booked 10/)
+    expect(audit.metadata).toMatchObject({ replayed: true, moneyMoved: false, drift: null })
   })
 })
 
@@ -558,13 +645,33 @@ describe('D′ L6 — what the loyalty path may never contain', () => {
     expect(src).toMatch(/resolveAdmin\(\)/)
   })
 
-  it('⭐ the prorata module does not claim the two paths always agree — the residual is NAMED', () => {
+  it('⭐ the prorata module claims neither « the paths always agree » nor an OPEN residual — L6.1 closed it', () => {
     const src = read('lib/loyalty-prorata.ts')
-    // The claim that was there before the review: « Same set, same order, same deltas — whichever path runs
-    // first ». It is false whenever the two paths see DIFFERENT sets, which is the whole residual.
+    // Two claims this file must never carry again. The L6 one: « Same set, same order, same deltas —
+    // whichever path runs first », false whenever the two paths see different sets. And the L6 residual
+    // wording itself: after L6.1 the order does not matter, so describing an accepted one-point gap would
+    // now be describing a defect as if it were the contract.
     expect(src).not.toMatch(/Same set, same order, same deltas/)
-    expect(src).toMatch(/prefix-completeness precondition/)
+    expect(src).not.toMatch(/prefix-completeness precondition/)
+    expect(src).toMatch(/THE ORDER OF THE EVENTS NO LONGER MATTERS/)
+    expect(src).toMatch(/INDEPENDENT VERIFIER/)
     expect(src).toMatch(/detectProrataDrift/)
+  })
+
+  it('⭐ the verifier sums SIGNED points — a give-back must not read as more clawback', () => {
+    const src = read('lib/loyalty-prorata.ts')
+    const fn = src.slice(src.indexOf('async function detectProrataDrift'))
+    const body = fn.slice(0, fn.indexOf('\n}\n') + 1)
+    // Math.abs here would count an L6.1 give-back row (+1 on an earn_reversal) as one MORE point clawed
+    // back, so the verifier would report a gap on exactly the orders it had just corrected.
+    expect(body).not.toMatch(/Math\.abs/)
+    expect(body).toMatch(/sign \* Math\.floor/)
+    // …and it verifies BOTH sides: a wrong spent-restore total is a wrong balance just the same.
+    expect(body).toMatch(/'earn_reversal', -1/)
+    expect(body).toMatch(/'refund', \+1/)
+    // …with the same base the writer uses (the earn ROW, not the order column) and the same high-water floor.
+    expect(body).toMatch(/type: 'earn' \}, select: \{ points: true \}/)
+    expect(body).toMatch(/cumEffectiveCents/)
   })
 
   it('⭐ the earn is credited BEFORE the replay — never the other way round', () => {
