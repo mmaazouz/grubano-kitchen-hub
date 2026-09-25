@@ -140,6 +140,13 @@ export interface ReconcileResult {
   /** L6.1 — the cumulative actually used: the proven Σ raised to this order's high-water (never lowered). */
   cumEffectiveCents: number
   /**
+   * L6.1 — non-null when the high-water floor RAISED a caller's cumulative, i.e. this caller proved LESS than
+   * the order had already been reconciled against. Its value is what the caller proved. Nothing is handed
+   * back — that is what the floor is for — but a proof set that shrank is an anomaly in its own right and is
+   * never reported as a clean pass.
+   */
+  cumFlooredFromCents: number | null
+  /**
    * L6.1 — points a give-back WOULD have returned, held back because the proof set is not known to be
    * complete (see `proofComplete`). Non-zero means a discrepancy is visible and deliberately unwritten: it is
    * reported, never silently applied and never silently dropped.
@@ -210,6 +217,7 @@ async function convergeSide(
   appliedBefore: number; target: number; cumEffective: number
   converged: boolean; blocked: boolean; heldGiveBack: number
   writes: number; skips: number; effects: SideEffects
+  floorEngagedFrom: number | null
 }> {
   let appliedBefore: number | null = null
   let target = 0
@@ -229,6 +237,10 @@ async function convergeSide(
   let lastFailedKey: string | null = null
   let computedTarget: number | null = null
   let computedCumEff: number | null = null
+  /** Set when the high-water floor raised a caller's cumulative — i.e. the proven set SHRANK. */
+  let floorEngagedFrom: number | null = null
+  /** The applied figure the previous pass measured, to notice a write that did not move the ledger. */
+  let previousApplied: number | null = null
 
   for (let attempt = 1; attempt <= CONVERGENCE_ATTEMPTS; attempt++) {
     try {
@@ -276,6 +288,11 @@ async function convergeSide(
         // succeeded, a row is voided) must not quietly hand points back: whether an established clawback
         // should be undone is not a question this writer may answer on its own.
         const cumEff = Math.max(args.cumProvenCents, highWaterCum(rows))
+        // The floor ENGAGED: this caller proved less than the order was already reconciled against. Nothing is
+        // handed back (that is the point), but it must not read as a clean pass either — a proof set that
+        // shrank is itself an anomaly, and `converged: true` with no word about it is exactly the silent
+        // outcome this lot exists to remove.
+        if (cumEff > args.cumProvenCents) floorEngagedFrom = args.cumProvenCents
         const tgt = loyaltyPointsCumulative(base, args.chargeAmountCents, cumEff)
         if (appliedBefore === null) appliedBefore = applied
         computedTarget = tgt
@@ -294,6 +311,16 @@ async function convergeSide(
         // to raise the effect to the target, never to lower it: the missing refund is far likelier than an
         // over-application, and handing back a clawback that was right is money out of the wrong pocket.
         if (delta < 0 && !args.proofComplete) {
+          return { kind: 'held' as const, applied, target: tgt, cumEff, held: -delta }
+        }
+        // AND AN EMPTY PROVEN SET MAY NEVER LOWER ANYTHING, whatever it claims about its completeness. A
+        // cumulative of zero beside an applied effect means « I can see no refund at all on an order that was
+        // demonstrably reconciled » — which is the definition of evidence one cannot act on, not a licence to
+        // give the whole clawback back. This is reachable from the webhook: `charge.refunded` fires at refund
+        // CREATION (contract §9.4), so the succeeded set can legitimately be EMPTY on the first delivery while
+        // the list call itself succeeded. Without this, that event reversed the entire clawback of a legacy
+        // order and reported it as a clean success.
+        if (delta < 0 && cumEff <= 0) {
           return { kind: 'held' as const, applied, target: tgt, cumEff, held: -delta }
         }
 
@@ -315,13 +342,20 @@ async function convergeSide(
             e.offsetAdded = offsetIncrease
             // §24 (8), the case the founder DEFERRED and asked to be alerted: a D-15 clawback meeting a debt.
             // Both shapes count — it created one (the points were spent elsewhere) or it landed on a customer
-            // who already carried one. Neither composition is certified, so neither is silent.
-            e.offsetTouchedT44 = offsetIncrease > 0 || offset > 0
+            // who already carried one. `!== 0` and not `> 0`: a NEGATIVE offset means the debt ledger is
+            // corrupt (nothing floors it, and the waiver route decrements it without the lock), and a
+            // detector that reads a corrupt ledger as « no debt » is a detector that goes quiet exactly when
+            // it is needed. Neither composition is certified, so neither is silent.
+            e.offsetTouchedT44 = offsetIncrease > 0 || offset !== 0
           } else {
             await tx.loyaltyCustomer.update({
               where: { id: args.customerId }, data: { pointsBalance: { increment: delta } },
             })
             e.spentRestored = delta
+            // The D2 side must report the deferred composition too. The CLASSIC D-15 shape is a refund before
+            // delivery: the base is 0, so nothing moves on D1 at all and only this branch runs. Leaving it out
+            // made the detector silent on exactly the ordering D-15 is named after.
+            e.offsetTouchedT44 = offset !== 0
           }
         } else {
           // LESS effect owed than is applied — give exactly the difference back. On the D1 side this is the
@@ -356,6 +390,7 @@ async function convergeSide(
             })
             e.spentRestored = -takeable
             e.heldRemainder = give - takeable
+            e.offsetTouchedT44 = offset !== 0
           }
         }
 
@@ -388,6 +423,12 @@ async function convergeSide(
       effects.offsetTouchedT44 = effects.offsetTouchedT44 || outcome.effects.offsetTouchedT44
       // A take-back that could not take everything leaves the side short of its target, by a known amount.
       if (outcome.effects.heldRemainder > 0) { heldGiveBack += outcome.effects.heldRemainder; break }
+      // A WRITE THAT DID NOT MOVE THE LEDGER is not something to repeat. If two passes measure the same
+      // applied figure after one of them wrote, the row is not readable back — a swallowed write, a replica
+      // that lags — and writing the same delta again would move the balance once per attempt while only one
+      // row is ever claimed. Stop and let the caller report it.
+      if (previousApplied !== null && outcome.applied === previousApplied) break
+      previousApplied = outcome.applied
       // Loop once more: the cheap, honest way to prove the target was reached rather than assume it — and if
       // a concurrent writer moved the state meanwhile, this pass corrects for it.
       continue
@@ -422,6 +463,7 @@ async function convergeSide(
     target:        computedTarget ?? target,
     cumEffective:  computedCumEff ?? cumEffective,
     converged, blocked, heldGiveBack, writes, skips, effects,
+    floorEngagedFrom,
   }
 }
 
@@ -439,7 +481,7 @@ export async function reconcileLoyaltyOnRefund(db: Db, input: ReconcileInput): P
     grandfathered: false, converged: true, blocked: false,
     targetEarnReversal: 0, targetSpentRestore: 0,
     appliedEarnReversalBefore: 0, appliedSpentRestoreBefore: 0,
-    cumRefundedCents: 0, cumEffectiveCents: 0, heldGiveBack: 0, offsetDeferredT44: false,
+    cumRefundedCents: 0, cumEffectiveCents: 0, cumFlooredFromCents: null, heldGiveBack: 0, offsetDeferredT44: false,
   }
 
   const order = await db.order.findUnique({
@@ -500,6 +542,7 @@ export async function reconcileLoyaltyOnRefund(db: Db, input: ReconcileInput): P
     res.converged = res.converged && out.converged
     res.blocked = res.blocked || out.blocked
     res.heldGiveBack += out.heldGiveBack
+    if (out.floorEngagedFrom !== null) res.cumFlooredFromCents = out.floorEngagedFrom
     res.cumEffectiveCents = Math.max(res.cumEffectiveCents, out.cumEffective)
     if (label === 'earn') {
       res.targetEarnReversal = out.target
@@ -513,6 +556,29 @@ export async function reconcileLoyaltyOnRefund(db: Db, input: ReconcileInput): P
   // NO SILENT LOSS. A side that did not reach its target leaves a customer's balance wrong by a known
   // amount; it is reported here, at the one place all three callers go through, rather than at each of them.
   // An alert that cannot be sent never changes what is booked.
+  // A SHRUNKEN PROOF SET is reported even when the floor made the pass write nothing. « Converged » is then
+  // true and correct — the order IS on the target of everything it was ever reconciled against — but a caller
+  // that can no longer prove what it once proved is a fact a human needs, not a silence.
+  if (res.cumFlooredFromCents !== null) {
+    try {
+      await sendAdminMoneyReviewAlert({
+        kind:      'loyalty_proof_set_shrank',
+        dedupeKey: `loyalty:${input.orderId}:shrank:${res.cumFlooredFromCents}:${res.cumEffectiveCents}`,
+        title:     'Ensemble de remboursements prouvé PLUS PETIT que celui déjà réconcilié',
+        facts:     {
+          orderId:            input.orderId,
+          provenCents:        res.cumFlooredFromCents,
+          reconciledAgainst:  res.cumEffectiveCents,
+          proofComplete:      input.proofComplete === true,
+          targetEarnReversal: res.targetEarnReversal,
+          targetSpentRestore: res.targetSpentRestore,
+          note:               'aucun point n’a été rendu (plancher haut) ; un remboursement que Stripe ou la base prouvait a cessé de l’être — décision humaine',
+          moneyMoved:         false,
+        },
+      })
+    } catch { /* the console line inside the sender is the primary channel */ }
+  }
+
   if (!res.converged) {
     try {
       await sendAdminMoneyReviewAlert({

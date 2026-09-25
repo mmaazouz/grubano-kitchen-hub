@@ -828,7 +828,10 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
           // it is the only one allowed to LOWER an applied effect. `!listFailed` and not `true`: on the
           // fallback path the embedded payload carries at most the 10 most recent, and an incomplete list
           // must not be able to hand a customer back points that were rightly clawed.
-          proofComplete: !listFailed,
+          // …and NOT on an empty succeeded set. `charge.refunded` fires at refund CREATION (§9.4), so a
+          // successful list call can legitimately return zero SUCCEEDED refunds — which proves nothing and
+          // must never be read as authority to reverse a clawback that is already applied.
+          proofComplete: !listFailed && refunds.length > 0,
         })
       }
     } catch (e) {

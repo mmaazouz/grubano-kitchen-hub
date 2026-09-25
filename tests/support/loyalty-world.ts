@@ -204,7 +204,10 @@ export function makeLoyaltyWorld(opts: {
      * always returned `pointsBalance` would hide a caller that forgot to select `recoveryOffsetPoints` and
      * then read it as undefined ⇒ 0, i.e. a debt silently treated as absent.
      */
-    $queryRawUnsafe: async (sql: string) => {
+    $queryRawUnsafe: async (sql: string, ...a: unknown[]) => {
+      // The BOUND id is honoured: a lock pointed at the wrong row must not return this customer's numbers,
+      // or the product could lock nothing at all and every test would still be green.
+      if (a.length > 0 && a[0] !== w.customer.id) return []
       const row: Record<string, number> = {}
       if (/pointsBalance/.test(sql)) row.pointsBalance = w.customer.pointsBalance
       if (/recoveryOffsetPoints/.test(sql)) row.recoveryOffsetPoints = w.customer.recoveryOffsetPoints

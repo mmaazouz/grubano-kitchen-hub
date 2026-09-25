@@ -247,6 +247,7 @@ export async function PATCH(
             // the customer row (pointsBalance rises by the remainder, recoveryOffset
             // falls by what was repaid). Interactive tx = the offset read + both writes
             // are atomic. Idempotent via the [orderId,'earn'] guard above.
+            let repaidInThisTx = 0
             await prisma.$transaction(async (tx) => {
               // LOCK the customer row (SELECT … FOR UPDATE) so a concurrent refund
               // clawback (which also locks it) cannot lost-update the offset: an
@@ -263,7 +264,7 @@ export async function PATCH(
               // points out of a balance that was already reduced by that repayment — a composition the
               // contract does not decide. Remembered here, alerted after the replay (which is the only place
               // that knows whether points were actually clawed back).
-              earnRepaidOffset = offsetRepaid
+              repaidInThisTx = offsetRepaid
               await tx.loyaltyCustomer.update({
                 where: { id: lc.id },
                 data:  { pointsBalance: { increment: spendableIncrement }, recoveryOffsetPoints: { decrement: offsetRepaid } },
@@ -272,6 +273,11 @@ export async function PATCH(
                 data: { customerId: lc.id, orderId: order.id, type: 'earn', points: order.pointsEarned },
               })
             })
+            // Assigned only AFTER the transaction resolves. Assigning it inside the callback meant a rollback
+            // (either write failing, swallowed as non-fatal below) left a non-zero figure behind, and the
+            // §24 (8) alert then claimed a debt repayment that had been undone — a false MONEY REVIEW, which
+            // is the failure mode that teaches an operator to ignore the real ones.
+            earnRepaidOffset = repaidInThisTx
           }
         }
       } catch (e) {

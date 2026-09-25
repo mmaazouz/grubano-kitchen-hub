@@ -204,6 +204,10 @@ export type MoneyReviewKind =
   // applied (a customer must never hold points they still owe), but the composition of D-15 with the D3 debt
   // contract is DEFERRED to T-44: a human confirms it, and nothing here claims it is certified.
   | 'loyalty_offset_t44_review'
+  // L6.1 — a caller proved a SMALLER set of refunds than the order was already reconciled against. No point
+  // is handed back (the high-water floor holds), but a refund that Stripe or the database once proved and no
+  // longer does is a fact a human needs rather than a silence.
+  | 'loyalty_proof_set_shrank'
 
 export async function sendAdminMoneyReviewAlert(p: {
   kind:      MoneyReviewKind

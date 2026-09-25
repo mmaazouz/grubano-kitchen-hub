@@ -356,7 +356,14 @@ model LoyaltyTransaction {
   orderId       String? // the consumer Order this movement relates to (null = manual/other)
   type          String // earn | redeem | refund | earn_reversal | offset_repay | offset_waiver
   points        Int // signed
-  sourceEventId String? // Phase 1: the Stripe Refund re_… (refund movements) or a stable op key (waiver). NULL for legacy/earn/redeem.
+  // Phase 1: the Stripe Refund re_… (refund movements) or a stable op key (waiver). NULL for legacy/earn/redeem.
+  // D′ L6.1: a reconciliation movement now carries `prorata:v1:<orderId>:<cumulative refunded cents>` instead
+  // of a re_ — under the cumulative-target model the unit of work is the TARGET, not the event, so one
+  // adjustment exists per (order, side, cumulative) and a key naming a single refund could not express a
+  // total that a later-proven EARLIER refund must move. Rows written by the pre-L6.1 code keep their re_ keys.
+  // NOTHING PARSES THIS COLUMN except lib/loyalty-refund-apply, which reads back its OWN keys for the
+  // high-water floor. It is a uniqueness key, not data.
+  sourceEventId String?
   actorId       String? // Phase 1: Operator.id of the admin, for offset_waiver movements
   createdAt     DateTime @default(now())
 

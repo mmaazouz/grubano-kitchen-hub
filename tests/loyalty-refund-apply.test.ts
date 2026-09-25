@@ -98,8 +98,11 @@ function makeDb(seed: {
     // FOR UPDATE lock read. Returns EXACTLY the columns the SQL names: a fake that always returned
     // pointsBalance would hide a caller that forgot to select recoveryOffsetPoints and then read the
     // customer's DEBT as undefined ⇒ 0.
-    $queryRawUnsafe: async (sql: string, ..._a: unknown[]) => {
+    $queryRawUnsafe: async (sql: string, ...a: unknown[]) => {
       if (!state.customer) return []
+      // The BOUND id is honoured, not ignored: a lock pointed at the wrong row would otherwise return this
+      // customer's numbers and every test would stay green while the product locked nothing.
+      if (a.length > 0 && a[0] !== state.customer.id) return []
       const row: Record<string, number> = {}
       if (/pointsBalance/.test(sql)) row.pointsBalance = state.customer.pointsBalance
       if (/recoveryOffsetPoints/.test(sql)) row.recoveryOffsetPoints = state.customer.recoveryOffsetPoints
@@ -304,15 +307,34 @@ describe('L6.1 — convergence to the cumulative target (founder cases A–I)', 
     expect(reversed(state)).toBe(5)
   })
 
-  it('⭐ H — a pending refund becoming succeeded ⇒ the new target applied exactly ONCE', async () => {
+  it('⭐ H — a PENDING refund is excluded by the set builder, and applied exactly once when it settles', async () => {
+    // Asserted on a real `status: 'pending'` row, through buildDbKnownRefundSet — the function that decides
+    // what « proven » means — and not merely on a one-element set standing in for it.
+    const { buildDbKnownRefundSet } = await import('@/lib/loyalty-refund')
+      .then(() => import('@/lib/loyalty-prorata'))
+    const rows = [
+      { stripeRefundId: 're_ok', amountCents: 470, status: 'succeeded', settledAt: new Date(1_000_000_000), createdAt: new Date(1_000_000_000) },
+      { stripeRefundId: 're_wait', amountCents: 470, status: 'pending', settledAt: null, createdAt: new Date(1_000_100_000) },
+    ]
+    const tiny = {
+      order: { findUnique: async () => ({ id: 'o1', total: 14.1, stripePaymentIntentId: null }) },
+      refund: { findMany: async ({ where }: { where: { status?: string } }) => rows.filter((r) => !where?.status || r.status === where.status) },
+      ledgerEntry: { findMany: async () => [], findFirst: async () => null },
+    } as never
+    const pendingExcluded = await buildDbKnownRefundSet(tiny, 'o1')
+    expect(pendingExcluded!.refunds.map((r) => r.id), 'the pending one is not proven').toEqual(['re_ok'])
+
+    // …and the settle applies its delta exactly once, then nothing however often it is replayed.
     const { db, state } = world()
-    // While it is pending the caller does not prove it: it is not in the set.
     await reconcile(db, [re('re_ok', 470, 10)])
     expect(reversed(state)).toBe(5)
-    // It settles. One delta, then silence however often it is replayed.
-    await reconcile(db, [re('re_ok', 470, 10), re('re_settled', 470, 20)])
+    rows[1].status = 'succeeded'
+    rows[1].settledAt = new Date(1_000_100_000)
+    const nowProven = await buildDbKnownRefundSet(tiny, 'o1')
+    expect(nowProven!.refunds.map((r) => r.id).sort()).toEqual(['re_ok', 're_wait'])
+    await reconcile(db, nowProven!.refunds)
     expect(reversed(state)).toBe(9)
-    const again = await reconcile(db, [re('re_ok', 470, 10), re('re_settled', 470, 20)])
+    const again = await reconcile(db, nowProven!.refunds)
     expect(again.applied).toBe(0)
     expect(state.txns.filter((t) => t.type === 'earn_reversal')).toHaveLength(2)
   })
@@ -335,7 +357,11 @@ describe('L6.1 — convergence to the cumulative target (founder cases A–I)', 
       // So: take each loyaltyTransaction.create( call site and look at the payload that follows it.
       let at = src.indexOf('loyaltyTransaction.create(')
       while (at !== -1) {
-        expect(src.slice(at, at + 400), f + ' creates a reconciliation row of its own').not.toMatch(/earn_reversal/)
+        const payload = src.slice(at, at + 400)
+        // BOTH sides of the reconciliation, not just D1: a second writer of the D2 `refund` row would drift
+        // the spent-restore total apart exactly as a second `earn_reversal` writer would the clawback.
+        expect(payload, f + ' creates a D1 reconciliation row of its own').not.toMatch(/earn_reversal/)
+        expect(payload, f + ' creates a D2 reconciliation row of its own').not.toMatch(/type: 'refund'/)
         at = src.indexOf('loyaltyTransaction.create(', at + 1)
       }
     }
@@ -619,7 +645,13 @@ describe('L6.1 / T-44 — the debt is never invented, and the deferred case is n
     const src = readFileSync('app/api/orders/[id]/status/route.ts', 'utf8').replace(/\r\n/g, '\n')
     // The earning repays a pre-existing debt BEFORE the clawback takes points out of the reduced balance.
     // Neither half knows the other: the earn transaction sees the repayment, the replay sees the clawback.
-    expect(src).toMatch(/earnRepaidOffset = offsetRepaid/)
+    // Captured inside the transaction, published only AFTER it resolves: a rollback must not leave a debt
+    // repayment figure behind for the alert to claim.
+    expect(src).toMatch(/repaidInThisTx = offsetRepaid/)
+    const assignAt = src.indexOf('earnRepaidOffset = repaidInThisTx')
+    const earnWriteAt = src.indexOf("type: 'earn', points: order.pointsEarned")
+    expect(earnWriteAt).toBeGreaterThan(-1)
+    expect(assignAt, 'the publication is after the earn write, outside the callback').toBeGreaterThan(earnWriteAt)
     const at = src.indexOf('earnRepaidOffset > 0')
     expect(at, 'the two halves are joined').toBeGreaterThan(-1)
     const block = src.slice(at, at + 1600)
@@ -633,7 +665,56 @@ describe('L6.1 — the three guards the judge panel demanded', () => {
   // Each of these closes a concrete oscillation or give-away an adversarial panel constructed against an
   // earlier version of this file. They are not hypotheticals: the scenarios are reproduced here.
 
-  it('⭐⭐ STALE BASE — a caller that saw no earn row cannot give back what a concurrent delivery clawed', async () => {
+  it('⭐⭐ STALE BASE, BEHAVIOURALLY — the earn row materialises DURING the call and the base follows it', async () => {
+    // The previous version of this test seeded `earnTx: true` and never changed it, so a base read placed
+    // OUTSIDE the transaction would have passed it too: it guarded the panel's highest-severity finding with
+    // an assertion that could not fail. Here the earn row does NOT exist when the call starts and appears
+    // before the locked read — exactly the interleave (a webhook redelivery beside a courier tapping
+    // delivered). A base captured on the root client would be 0, the target 0, the applied 9, and the pass
+    // would hand nine points back.
+    const { db, state } = makeDb({
+      order: { pointsRedeemed: 0, pointsEarned: 14, consumerId: 'op1' }, operatorEmail: 'c@x.fr',
+      customer: { id: 'lc1', pointsBalance: 5, recoveryOffsetPoints: 0 }, earnTx: false,
+      seedTxns: [{ type: 'earn_reversal', points: -9, sourceEventId: 'prorata:v1:o1:940' }],
+    })
+    // The delivery commits its earn row the moment the reconciliation locks the customer.
+    const table = createHook(db)
+    const origRaw = (db as unknown as { $queryRawUnsafe: (s: string, ...a: unknown[]) => Promise<unknown> }).$queryRawUnsafe
+    ;(db as unknown as { $queryRawUnsafe: (s: string, ...a: unknown[]) => Promise<unknown> }).$queryRawUnsafe =
+      async (sql: string, ...a: unknown[]) => {
+        if (!state.txns.some((t) => t.type === 'earn')) {
+          state.txns.push({ customerId: 'lc1', orderId: 'o1', type: 'earn', points: 14, sourceEventId: null })
+        }
+        return origRaw(sql, ...a)
+      }
+    void table
+    const r = await reconcileLoyaltyOnRefund(db, {
+      orderId: 'o1', chargeAmountCents: 1410,
+      refunds: [re('re_a', 470, 10), re('re_b', 470, 20)], proofComplete: true,
+    })
+    expect(r.targetEarnReversal, 'the base was read AFTER the lock, so it is 14 and the target is 9').toBe(9)
+    expect(r.applied, 'already on target ⇒ nothing written').toBe(0)
+    expect(r.earnReversed, 'and nothing given back').toBe(0)
+    expect(state.customer!.pointsBalance).toBe(5)
+  })
+
+  it('⭐ STALE BASE, AT THE SOURCE — the base is read from the transaction client, after the lock', async () => {
+    const { readFileSync } = await import('node:fs')
+    const src = readFileSync('lib/loyalty-refund-apply.ts', 'utf8').replace(/\r\n/g, '\n')
+    const lockAt = src.indexOf('FOR UPDATE')
+    const orderReadAt = src.indexOf('tx.order.findUnique')
+    const earnReadAt = src.indexOf("type: 'earn' }, select: { points: true }")
+    const appliedReadAt = src.indexOf('tx.loyaltyTransaction.findMany')
+    expect(lockAt).toBeGreaterThan(-1)
+    expect(orderReadAt, 'the order is read through the transaction client').toBeGreaterThan(lockAt)
+    expect(earnReadAt, 'and so is the earn row that decides the base').toBeGreaterThan(lockAt)
+    expect(appliedReadAt, 'and the applied effect, from the same snapshot').toBeGreaterThan(lockAt)
+    // Nothing may read the earn row or the order on the ROOT client inside this module except the
+    // grandfather guard, which is a leave-it-alone check and cannot produce a number.
+    expect(src).not.toMatch(/db\.loyaltyTransaction\.findFirst\(\{\s*\n?\s*where: \{ orderId: input\.orderId, type: 'earn' \}/)
+  })
+
+  it('the earn row present throughout: the ordinary case still converges', async () => {
     // The panel's scenario: a charge.refunded redelivery starts, reads no 'earn' row (base 0, target 0),
     // then the courier taps delivered, the earn commits and the replay converges to 9. If the base were read
     // OUTSIDE the transaction, the redelivery would then measure applied 9 against its stale target of 0 and
@@ -771,6 +852,169 @@ describe('L6.1 — the three guards the judge panel demanded', () => {
   })
 })
 
+describe('L6.1 — what the completeness critic found on the committed code', () => {
+  it('⭐⭐ AN EMPTY SUCCEEDED SET NEVER LOWERS ANYTHING, even when it claims complete proof', async () => {
+    // The critic's P1, and it is reachable from the webhook: charge.refunded fires at refund CREATION, so a
+    // list call that SUCCEEDS can return zero SUCCEEDED refunds while the charge already carries an applied
+    // clawback. Without this guard that event reversed the whole clawback of a legacy order and reported a
+    // clean success.
+    const { db, state } = makeDb({
+      order: { pointsRedeemed: 0, pointsEarned: 14, consumerId: 'op1' }, operatorEmail: 'c@x.fr',
+      customer: { id: 'lc1', pointsBalance: 0, recoveryOffsetPoints: 0 }, earnTx: true,
+      seedTxns: [{ type: 'earn_reversal', points: -14, sourceEventId: 're_old' }],
+    })
+    const r = await reconcileLoyaltyOnRefund(db, {
+      orderId: 'o1', chargeAmountCents: 1410, refunds: [], proofComplete: true,
+    })
+    expect(r.cumRefundedCents).toBe(0)
+    expect(r.appliedEarnReversalBefore).toBe(14)
+    expect(r.heldGiveBack, 'fourteen points it refused to return on an empty set').toBe(14)
+    expect(r.applied).toBe(0)
+    expect(state.customer!.pointsBalance, 'not one point came back').toBe(0)
+    expect(state.txns.filter((t) => t.type === 'earn_reversal')).toHaveLength(1)
+    expect(r.converged).toBe(false)
+    const alert = alertMock.mock.calls.map((c) => c[0]).find((a) => a.kind === 'loyalty_target_unconverged')
+    expect(alert.facts).toMatchObject({ orderId: 'o1', heldGiveBack: 14, moneyMoved: false })
+  })
+
+  it('⭐ the webhook never claims complete proof on an empty succeeded set', async () => {
+    const { readFileSync } = await import('node:fs')
+    const src = readFileSync('app/api/webhooks/stripe/route.ts', 'utf8').replace(/\r\n/g, '\n')
+    expect(src).toMatch(/proofComplete: !listFailed && refunds\.length > 0/)
+  })
+
+  it('⭐⭐ THE FLOOR ENGAGING IS REPORTED — a shrunken proof set is never a clean pass', async () => {
+    // The critic's other P1: the high-water floor is evaluated BEFORE the proofComplete gate, so a genuine
+    // shrink became delta 0 and returned converged:true with no word about it. The floor still holds (nothing
+    // is handed back) but the shrink is now a named fact.
+    const { db, state } = makeDb({
+      order: { pointsRedeemed: 0, pointsEarned: 14, consumerId: 'op1' }, operatorEmail: 'c@x.fr',
+      customer: { id: 'lc1', pointsBalance: 5, recoveryOffsetPoints: 0 }, earnTx: true,
+      seedTxns: [{ type: 'earn_reversal', points: -9, sourceEventId: 'prorata:v1:o1:940' }],
+    })
+    const r = await reconcileLoyaltyOnRefund(db, {
+      orderId: 'o1', chargeAmountCents: 1410, refunds: [re('re_a', 470, 10)], proofComplete: true,
+    })
+    expect(r.cumRefundedCents, 'what this caller proved').toBe(470)
+    expect(r.cumEffectiveCents, 'what was used').toBe(940)
+    expect(r.cumFlooredFromCents, 'and the fact that the floor had to engage').toBe(470)
+    expect(r.applied, 'nothing written — the floor holds').toBe(0)
+    expect(state.customer!.pointsBalance).toBe(5)
+    const alert = alertMock.mock.calls.map((c) => c[0]).find((a) => a.kind === 'loyalty_proof_set_shrank')
+    expect(alert, 'a refund that was once provable and no longer is, is a fact a human needs').toBeTruthy()
+    expect(alert.facts).toMatchObject({ orderId: 'o1', provenCents: 470, reconciledAgainst: 940, moneyMoved: false })
+  })
+
+  it('a cumulative that did NOT shrink reports no floor and raises no shrink alert', async () => {
+    const { db } = makeDb({
+      order: { pointsRedeemed: 0, pointsEarned: 14, consumerId: 'op1' }, operatorEmail: 'c@x.fr',
+      customer: { id: 'lc1', pointsBalance: 5, recoveryOffsetPoints: 0 }, earnTx: true,
+      seedTxns: [{ type: 'earn_reversal', points: -9, sourceEventId: 'prorata:v1:o1:940' }],
+    })
+    const r = await reconcileLoyaltyOnRefund(db, {
+      orderId: 'o1', chargeAmountCents: 1410, refunds: [re('re_a', 470, 10), re('re_b', 470, 20)],
+    })
+    expect(r.cumFlooredFromCents).toBe(null)
+    expect(r.converged).toBe(true)
+    expect(alertMock.mock.calls.map((c) => c[0]).find((a) => a.kind === 'loyalty_proof_set_shrank')).toBeUndefined()
+  })
+
+  it('⭐ a NEGATIVE delta produced by a moved BASE, not by legacy rows — the contract clause nothing pinned', async () => {
+    // The clause: « the target itself moves when the base or the charge amount is corrected ». Every other
+    // negative-delta test gets there through pre-L6.1 rows; this one moves the CREDIT instead. The earn row
+    // says 6 while 9 was clawed back, so the target is round(6 × 940/1410) = 4 and three points are owed back.
+    const { db, state } = makeDb({
+      order: { pointsRedeemed: 0, pointsEarned: 14, consumerId: 'op1' }, operatorEmail: 'c@x.fr',
+      customer: { id: 'lc1', pointsBalance: 0, recoveryOffsetPoints: 0 }, earnTx: false,
+      seedTxns: [
+        { type: 'earn', points: 6, sourceEventId: null },
+        { type: 'earn_reversal', points: -9, sourceEventId: 'prorata:v1:o1:940' },
+      ],
+    })
+    const r = await reconcileLoyaltyOnRefund(db, {
+      orderId: 'o1', chargeAmountCents: 1410,
+      refunds: [re('re_a', 470, 10), re('re_b', 470, 20)], proofComplete: true,
+    })
+    expect(r.targetEarnReversal, 'round(6 × 940 / 1410)').toBe(4)
+    expect(r.appliedEarnReversalBefore).toBe(9)
+    // And here is what the contract clause actually produces, which is worth pinning precisely BECAUSE it is
+    // not what one would guess: the adjustment for cumulative 940 has already been written, so a DIFFERENT
+    // target for the SAME proof state cannot be written without rewriting history. It is refused and
+    // reported — never silently applied, and never silently dropped.
+    expect(r.blocked, 'the key for this cumulative is already used').toBe(true)
+    expect(r.converged).toBe(false)
+    expect(r.earnReversed, 'not one point moved').toBe(0)
+    expect(state.customer!.pointsBalance).toBe(0)
+    expect(state.txns.filter((t) => t.type === 'earn_reversal')).toHaveLength(1)
+    const alert = alertMock.mock.calls.map((c) => c[0]).find((a) => a.kind === 'loyalty_target_unconverged')
+    expect(alert.facts).toMatchObject({ orderId: 'o1', blocked: true, targetEarnReversal: 4, moneyMoved: false })
+  })
+
+  it('⭐ the classic D-15 shape (base 0, only the SPENT side moves) meeting a debt reports T-44', async () => {
+    // The critic's P2: the detector was D1-only, so the ordering D-15 is named after — a refund BEFORE
+    // delivery, where there is no earn row at all — was silent about the deferred composition.
+    const { db } = makeDb({
+      order: { pointsRedeemed: 8, pointsEarned: 14, consumerId: 'op1' }, operatorEmail: 'c@x.fr',
+      customer: { id: 'lc1', pointsBalance: 20, recoveryOffsetPoints: 5 }, earnTx: false,
+    })
+    const r = await reconcileLoyaltyOnRefund(db, { orderId: 'o1', chargeAmountCents: 1410, refunds: [re('re_1', 705, 10)] })
+    expect(r.targetEarnReversal, 'no earn row ⇒ nothing to claw back').toBe(0)
+    expect(r.spentRestored, 'round(8 × 705 / 1410)').toBe(4)
+    expect(r.offsetDeferredT44, 'the debt was in the room and only D2 moved').toBe(true)
+    const alert = alertMock.mock.calls.map((c) => c[0]).find((a) => a.kind === 'loyalty_offset_t44_review')
+    expect(alert).toBeTruthy()
+  })
+
+  it('⭐ a NEGATIVE recoveryOffsetPoints is treated as a corrupt debt ledger, not as « no debt »', async () => {
+    // Nothing floors that column and the waiver route decrements it without the lock, so it can go negative.
+    // A detector that reads a corrupt ledger as « no debt » goes quiet exactly when it is needed.
+    const { db } = makeDb({
+      order: { pointsRedeemed: 0, pointsEarned: 14, consumerId: 'op1' }, operatorEmail: 'c@x.fr',
+      customer: { id: 'lc1', pointsBalance: 14, recoveryOffsetPoints: -3 }, earnTx: true,
+    })
+    const r = await reconcileLoyaltyOnRefund(db, { orderId: 'o1', chargeAmountCents: 1410, refunds: [re('re_1', 470, 10)] })
+    expect(r.offsetDeferredT44).toBe(true)
+    expect(alertMock.mock.calls.map((c) => c[0]).find((a) => a.kind === 'loyalty_offset_t44_review')).toBeTruthy()
+  })
+
+  it('⭐ the key is built from the EFFECTIVE cumulative, not from what the caller proved', async () => {
+    // If the key used cumProvenCents, a floored pass would mint a NEW key for a cumulative the order had
+    // already been reconciled against — the oscillation the key exists to stop.
+    const { db, state } = makeDb({
+      order: { pointsRedeemed: 0, pointsEarned: 14, consumerId: 'op1' }, operatorEmail: 'c@x.fr',
+      customer: { id: 'lc1', pointsBalance: 14, recoveryOffsetPoints: 0 }, earnTx: true,
+      seedTxns: [{ type: 'earn_reversal', points: -1, sourceEventId: 'prorata:v1:o1:940' }],
+    })
+    // Proves only 470 but the order is floored to 940 ⇒ target 9, applied 1 ⇒ +8 at the key for 940.
+    await reconcileLoyaltyOnRefund(db, { orderId: 'o1', chargeAmountCents: 1410, refunds: [re('re_a', 470, 10)] })
+    const keys = state.txns.filter((t) => t.type === 'earn_reversal').map((t) => t.sourceEventId)
+    expect(keys).toContain('prorata:v1:o1:940')
+    expect(keys, 'never a key for the smaller cumulative').not.toContain('prorata:v1:o1:470')
+  })
+
+  it('⭐ past rows are IMMUTABLE — this module never updates or deletes a loyalty row', async () => {
+    const { readFileSync } = await import('node:fs')
+    const src = readFileSync('lib/loyalty-refund-apply.ts', 'utf8').replace(/\r\n/g, '\n')
+    // Pinned at the SOURCE, not by the accident that neither fake implements update/delete.
+    expect(src).not.toMatch(/loyaltyTransaction\.update/)
+    expect(src).not.toMatch(/loyaltyTransaction\.delete/)
+    expect(src).not.toMatch(/loyaltyTransaction\.upsert/)
+    expect(src).not.toMatch(/loyaltyTransaction\.updateMany/)
+    expect(src).not.toMatch(/loyaltyTransaction\.deleteMany/)
+  })
+
+  it('⭐ the L5 rail is untouched by this lot — all five files, not one', async () => {
+    const { readFileSync } = await import('node:fs')
+    for (const f of [
+      'lib/claims-pay-rail.ts', 'lib/claims-pay-token.ts', 'lib/claims-payable-core.js',
+      'app/api/admin/claims/pay-approved/route.ts', 'scripts/server/phase2-claims-pay-window.js',
+    ]) {
+      const src = readFileSync(f, 'utf8')
+      expect(src, f).not.toMatch(/loyalty-refund|loyaltyConvergenceDelta|prorata:v1:|cumulativeRefundedCents/)
+    }
+  })
+})
+
 describe('L6.1 — concurrency and the unreached target', () => {
   it('⭐ a concurrent writer that takes the exact transition ⇒ counted as skipped, then re-converged', async () => {
     const { db, state } = world2()
@@ -801,7 +1045,12 @@ describe('L6.1 — concurrency and the unreached target', () => {
     createHook(db).create = async (args) => ({ ...args.data })
     const r = await reconcileLoyaltyOnRefund(db, { orderId: 'o1', chargeAmountCents: 1410, refunds: [re('re_1', 1410)] })
     expect(r.converged).toBe(false)
-    expect(r.applied).toBe(CONVERGENCE_ATTEMPTS * 2) // both sides tried their full budget
+    // TWO writes per side, not the full budget: a write that does not move the measured applied figure means
+    // the row is not readable back, and repeating the same delta would move the balance once per attempt while
+    // only one row is ever claimed. The loop stops instead — and CONVERGENCE_ATTEMPTS is a ceiling it never
+    // needs to reach here.
+    expect(r.applied).toBe(4)
+    expect(r.applied).toBeLessThan(CONVERGENCE_ATTEMPTS * 2)
     const alert = alertMock.mock.calls.map((c) => c[0]).find((a) => a.kind === 'loyalty_target_unconverged')
     expect(alert).toBeTruthy()
     expect(alert.facts).toMatchObject({ orderId: 'o1', targetEarnReversal: 14, moneyMoved: false })
