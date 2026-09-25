@@ -91,7 +91,15 @@ export async function POST(req: NextRequest) {
     requestedAmountCents: body.requestedAmountCents,
     photoUrl,
   })
-  if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
+  if (!result.ok) {
+    // D′ L6 (spec v2 §7.1): forward the eligibility CODE beside the sentence. The client renders the code in
+    // its own locale (REFUSAL_LABEL on the help page) and falls back to `error` when there is none — so a
+    // refusal that is not an eligibility rule still reads as a sentence rather than as a bare code.
+    return NextResponse.json(
+      result.reason ? { error: result.error, reason: result.reason } : { error: result.error },
+      { status: result.status },
+    )
+  }
   // C2 auto-resolution — INERT BY CONSTRUCTION under D′ (L2, S-13): autoResolveSmallClaim returns
   // { state:'not_eligible' } unconditionally, so no product flag can reach a machine approval through this
   // route. The call is kept so the pin « the route consults it and it approves nothing » stays testable.

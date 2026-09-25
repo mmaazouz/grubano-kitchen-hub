@@ -12,8 +12,12 @@
 //   • AMENDED BY D′ L4: L3b itself shipped NO consumer. L4 wires the first two — the approve branch
 //     of the arbitrate route and the withdraw-approval route answer 503 schema_not_ready rather than
 //     write `approvedAmountCents` through a client that does not know it — and `approvedAmountCents`
-//     is now read and written by the decision path. `selection` and `deliveredAt` stay unconsumed
-//     (L5 owns them), and lib/refund.ts is untouched by both lots. Still no flag, no migration here.
+//     is now read and written by the decision path.
+//   • AMENDED BY D′ L6: `deliveredAt` has its FIRST reader. lib/claims.ts selects it and hands it to the
+//     pure eligibility rules, because the customer's submission window is anchored on the delivery
+//     instant and on nothing else (spec v2 §7.1 E4, D-1); the only WRITER is the status route, which
+//     this file's scan list does not contain. `selection` stays unconsumed (L7 owns it), and
+//     lib/refund.ts is untouched by all three lots. Still no flag, no migration here.
 // Every assertion has a negative control on the pre-L3b shape, on the pre-L4 shape, or on a mutated schema.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
@@ -303,7 +307,7 @@ describe('the census exposes schemaReady; L3b ships no consumer, no gate, no mon
     expect(strip(src('lib/schema-ready.ts'))).not.toMatch(/@\/lib\/(claims|refund|stripe)['"]/)
   })
 
-  it('D′ L4 — approvedAmountCents is now READ AND WRITTEN by the decision path; `selection` and `deliveredAt` are still untouched (L5 owns them), and lib/refund.ts is untouched by BOTH lots', () => {
+  it('D′ L4/L6 — approvedAmountCents is READ AND WRITTEN by the decision path; lib/claims.ts now READS Order.deliveredAt as the eligibility anchor and NEVER writes it; `selection` is still untouched (L7 owns it), and lib/refund.ts is untouched by ALL THREE lots', () => {
     // (a) the column L4 consumes — the state machine selects it, pins it in its CAS and writes it
     const claimsCode = strip(src('lib/claims.ts'))
     expect(claimsCode).toMatch(/approvedAmountCents: true,/)                 // selected
@@ -315,15 +319,39 @@ describe('the census exposes schemaReady; L3b ships no consumer, no gate, no mon
     for (const p of ['lib/claims.ts', 'app/api/admin/claims/[id]/arbitrate/route.ts']) {
       expect(strip(src(p)), p).toMatch(/approvedAmountCents:\s/)
     }
-    // (c) the two OTHER columns are still nobody's business but the probe's — nothing regressed into L5
+    // (c) `selection` is still nobody's business but the probe's — nothing regressed into L7's column
     const scanned = ['lib/claims.ts', 'lib/claim-action-rules.ts', 'lib/claim-scope.ts', 'lib/refund.ts',
       'app/api/claims/route.ts', 'app/api/admin/claims/[id]/arbitrate/route.ts',
       'app/api/admin/claims/[id]/withdraw-approval/route.ts', 'app/api/admin/claims/[id]/ceiling/route.ts']
     for (const p of scanned) {
-      const code = strip(src(p))
-      expect(code, p).not.toMatch(/selection:\s*(true|\{)/)
-      expect(code, p).not.toMatch(/deliveredAt/)
+      expect(strip(src(p)), p).not.toMatch(/selection:\s*(true|\{)/)
     }
+    // (c2) `deliveredAt` — L6 gave the column its first READER and still no writer here. lib/claims.ts is
+    // the ONE exception in this list: it selects the column and hands the value to the pure rules, because
+    // the submission window is anchored on the delivery instant and on nothing else (spec v2 §7.1 E4).
+    // Every other scanned file must still be free of it, and the one reader must still never WRITE it —
+    // the only writer is app/api/orders/[id]/status, which this list deliberately does not contain.
+    for (const p of scanned.filter((p) => p !== 'lib/claims.ts')) {
+      expect(strip(src(p)), p).not.toMatch(/deliveredAt/)
+    }
+    const deliveredLines = claimsCode.split('\n').filter((l) => l.includes('deliveredAt'))
+    // exactly two selections (createClaim + getClaimEligibility) and the two hand-offs that follow them
+    expect(deliveredLines.filter((l) => /deliveredAt: true,/.test(l))).toHaveLength(2)
+    expect(deliveredLines.filter((l) => /deliveredAt:\s+order\.deliveredAt,/.test(l))).toHaveLength(2)
+    expect(deliveredLines).toHaveLength(4)
+    // … and NOTHING else: every other right-hand side is either a write or an anchor computed from
+    // something that moves, and both must still be caught. (The `(?!\s|…)` alternative is what forces
+    // the whitespace to be consumed before the lookahead — without it the guard matches its own reads.)
+    expect(claimsCode).not.toMatch(/deliveredAt:\s*(?!\s|true\b|order\.deliveredAt\b)/)
+    expect(claimsCode).not.toMatch(/deliveredAt\s*=/)
+    // NEGATIVE CONTROL of the two guards above — the shapes a stray write would take ARE caught:
+    expect('data: { status: newStatus, deliveredAt: new Date() }').toMatch(/deliveredAt:\s*(?!\s|true\b|order\.deliveredAt\b)/)
+    expect('data: { deliveredAt: null }').toMatch(/deliveredAt:\s*(?!\s|true\b|order\.deliveredAt\b)/)
+    expect('order.deliveredAt = new Date()').toMatch(/deliveredAt\s*=/)
+    // … and the anchor is the DELIVERY instant, never the row's last write: the pure rules name
+    // `updatedAt` in prose only (comments are stripped), and lib/claims.ts hands them no such field.
+    expect(strip(src('lib/claim-eligibility.ts'))).not.toMatch(/updatedAt/)
+    expect(claimsCode).not.toMatch(/updatedAt/)
     // (d) the frozen engine never learns about any of the three: no amount, no selection, no delivery
     const engine = strip(src('lib/refund.ts'))
     expect(engine).not.toMatch(/approvedAmountCents/)

@@ -35,9 +35,16 @@ vi.mock('@/lib/stripe', () => ({ getStripe: () => stripeMock }))
 import { buildClaimScope, publicClaimScope } from '@/lib/claim-scope'
 import { getClaimEligibility } from '@/lib/claims'
 
+// D′ L6 (spec v2 §7.1) — DELIVERED-ONLY, with the window's own anchor. `deliveredAt` is the ONLY anchor
+// of the 48-hour window (never `updatedAt`) and `createdAt` feeds the 30-day ceiling. These three facts
+// are not decoration: strip them and every order below is refused with `not_delivered` (E3), so this file
+// would pin the delivery rule instead of the ceiling provenance it exists to pin.
 const ORDER = {
   consumerId: 'u1',
   paymentStatus: 'paid',
+  status: 'delivered',
+  deliveredAt: new Date(),
+  createdAt: new Date(),
   total: 20,                    // 2000 c
   updatedAt: new Date(),
   items: [{ itemId: 'i1', name: 'Gnocchi', qty: 2, price: 10 }],
@@ -177,10 +184,16 @@ describe('T-59 — getClaimEligibility reports whether the ceiling is proven', (
   })
 
   // Every exit that carries a scope must report the SOURCE, never the exit reason.
+  const THREE_DAYS_AGO = () => new Date(Date.now() - 1000 * 3600 * 24 * 3)
   const REFUSED_EXITS = [
     { reason: 'not_paid', setup: () => db.order.findUnique.mockResolvedValue({ ...ORDER, paymentStatus: 'authorized' }) },
-    { reason: 'window_expired', setup: () => db.order.findUnique.mockResolvedValue({ ...ORDER, updatedAt: new Date(Date.now() - 1000 * 3600 * 24 * 30) }) },
-    { reason: 'active_claim', setup: () => db.claim.findFirst.mockResolvedValue({ id: 'cl1', status: 'restaurant_review', decidedAt: null, restaurantResponseReason: null, arbitrationReason: null, refundError: null, refundId: null, refundAttempted: false, arbitrationDecision: null, restaurantResponse: null, reason: 'quality' }) },
+    // D′ L6: the order is aged by its DELIVERY instant (3 days > the 48-hour window, and well inside the
+    // 30-day ceiling so E4 is the rule that fires). The fixture used to age `updatedAt`, which the rules
+    // no longer read — it would have exercised the delivered-only refusal instead of the window.
+    { reason: 'window_expired', setup: () => db.order.findUnique.mockResolvedValue({ ...ORDER, deliveredAt: THREE_DAYS_AGO(), createdAt: THREE_DAYS_AGO() }) },
+    // D′ L6: the fact E8 asks for is « who HOLDS the @unique activeOrderKey », so the simulated row
+    // carries it; the order stays delivered, so the active claim is what refuses.
+    { reason: 'active_claim', setup: () => db.claim.findFirst.mockResolvedValue({ id: 'cl1', status: 'restaurant_review', activeOrderKey: 'o1', decidedAt: null, restaurantResponseReason: null, arbitrationReason: null, refundError: null, refundId: null, refundAttempted: false, arbitrationDecision: null, restaurantResponse: null, reason: 'quality' }) },
   ] as const
   for (const exit of REFUSED_EXITS) {
     it(`the ${exit.reason} exit reports the ceiling source in BOTH directions`, async () => {
@@ -215,6 +228,57 @@ describe('T-59 — getClaimEligibility reports whether the ceiling is proven', (
     const notOwner = await getClaimEligibility({ consumerId: 'u1', orderId: 'o1' })
     expect(Object.prototype.hasOwnProperty.call(notOwner, 'ceilingVerified')).toBe(true)
     expect(notOwner.ceilingVerified).toBe(false)
+  })
+})
+
+// ── 2b. D′ L6 (spec v2 §7.1 E4/E5) — THE WINDOW ANCHOR, AND NOTHING ELSE ─────────
+// These are the negative controls of the new edges the lot introduces. The ceiling is fully readable in
+// all three (Stripe answers, nothing refunded), so a refusal here can only come from the time rules —
+// and the claim these tests protect is the honest one: the window is dated by the DELIVERY instant.
+describe("D′ L6 — the 48-hour window is anchored on deliveredAt, never on updatedAt", () => {
+  beforeEach(() => stripeMock.paymentIntents.retrieve.mockResolvedValue({ latest_charge: charge(0) }))
+
+  it('delivered but WITHOUT an anchor (deliveredAt null) → window_expired, no fallback on updatedAt', async () => {
+    // updatedAt is fresh: were the window still measured from it, this order would be offered. There is
+    // no honest way to date a window with no anchor, so it is refused — never back-filled from another column.
+    db.order.findUnique.mockResolvedValue({ ...ORDER, deliveredAt: null, updatedAt: new Date() })
+    const e = await getClaimEligibility({ consumerId: 'u1', orderId: 'o1' })
+    expect(e).toMatchObject({ canClaim: false, reason: 'window_expired' })
+    // the ceiling was still measured and still reported honestly — the refusal is about time, not money
+    expect(e).toMatchObject({ maxRefundableCents: 2000, ceilingVerified: true })
+  })
+
+  it('delivered 1 h ago with updatedAt 3 days old → still eligible (updatedAt is never read)', async () => {
+    // The mirror control: an old updatedAt must not close a window the delivery anchor holds open, or any
+    // later write on the row — a restaurant note, a reconciliation — would silently expire a live claim.
+    db.order.findUnique.mockResolvedValue({
+      ...ORDER,
+      deliveredAt: new Date(Date.now() - 3600 * 1000),
+      updatedAt:   new Date(Date.now() - 1000 * 3600 * 24 * 3),
+    })
+    const e = await getClaimEligibility({ consumerId: 'u1', orderId: 'o1' })
+    expect(e).toMatchObject({ canClaim: true, maxRefundableCents: 2000 })
+    expect(e.reason).toBeUndefined()
+  })
+
+  it('a FRESH anchor on a 31-day-old order is still refused: the createdAt ceiling holds (E5)', async () => {
+    // E5 exists so that a clock, a time zone or a deliveredAt written by a bug cannot re-open a claim on
+    // a year-old order. 31 days > CLAIM_MAX_ORDER_AGE_DAYS (30), so the ceiling refuses what E4 allowed.
+    db.order.findUnique.mockResolvedValue({
+      ...ORDER,
+      deliveredAt: new Date(Date.now() - 3600 * 1000),
+      createdAt:   new Date(Date.now() - 1000 * 3600 * 24 * 31),
+    })
+    expect(await getClaimEligibility({ consumerId: 'u1', orderId: 'o1' }))
+      .toMatchObject({ canClaim: false, reason: 'window_expired' })
+  })
+
+  it('not delivered at all → not_delivered, and the window is never even consulted (E3)', async () => {
+    // A stale anchor AND a non-delivered status: the delivered-only rule is ordered first, so the
+    // customer is told what is actually true — nothing has arrived to be judged yet.
+    db.order.findUnique.mockResolvedValue({ ...ORDER, status: 'preparing', deliveredAt: null })
+    expect(await getClaimEligibility({ consumerId: 'u1', orderId: 'o1' }))
+      .toMatchObject({ canClaim: false, reason: 'not_delivered' })
   })
 })
 

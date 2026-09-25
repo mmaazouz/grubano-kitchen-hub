@@ -27,14 +27,32 @@ vi.mock('@/lib/stripe', () => ({ getStripe: () => stripeMock }))
 import { getClaimEligibility, listConsumerClaims } from '@/lib/claims'
 import { MARKERS, customerClaimStatus } from '@/lib/claim-action-rules'
 
+// D′ L6 (spec v2 §7.1) — DELIVERED-ONLY, and the window is anchored on `deliveredAt` alone (never
+// `updatedAt`), with `createdAt` feeding the 30-day ceiling. The delivered facts are not decoration:
+// without them every order here is refused with `not_delivered` (E3) before a ceiling is even computed,
+// and this file would measure the refusal instead of the ceiling it exists to measure.
 const ORDER = {
   consumerId: 'u1',
   paymentStatus: 'paid',
+  status: 'delivered',
+  deliveredAt: new Date(),
+  createdAt: new Date(),
   total: 20,                       // 2000 c
   updatedAt: new Date(),
   items: [{ itemId: 'i1', name: 'Gnocchi', qty: 2, price: 10 }],
   stripePaymentIntentId: 'pi_test',
 }
+
+/**
+ * D′ L6: `getClaimEligibility` now asks `claim.findFirst` TWO different questions — the newest claim of
+ * the order (history, asked first) and whoever holds the @unique `activeOrderKey` (E8, asked last). A
+ * single `mockResolvedValue` answered both with the same row, so a CLOSED claim was read as an active
+ * one. This routes by the where clause, as the database would: a settled claim holds no key.
+ */
+const wireClaimHistory = (newest: Record<string, unknown> | null, activeHolder: Record<string, unknown> | null = null) =>
+  db.claim.findFirst.mockReset().mockImplementation(
+    async ({ where }: { where: Record<string, unknown> }) => ('activeOrderKey' in where ? activeHolder : newest),
+  )
 
 const charge = (amountRefunded: number) => ({
   id: 'ch_1', amount: 2000, amount_captured: 2000, amount_refunded: amountRefunded,
@@ -63,10 +81,14 @@ describe('AUDIT FIX — the ceiling shown to the customer is the ceiling the ser
     expect(stripeMock.paymentIntents.retrieve).toHaveBeenCalledWith('pi_test', { expand: ['latest_charge'] })
   })
 
-  it('an order refunded IN FULL outside the rail offers nothing at all', async () => {
+  it('an order refunded IN FULL outside the rail offers nothing at all — and says so (E6)', async () => {
     stripeMock.paymentIntents.retrieve.mockResolvedValue({ latest_charge: charge(2000) })
     const e = await getClaimEligibility({ consumerId: 'u1', orderId: 'o1' })
     expect(e.maxRefundableCents).toBe(0)
+    // D′ L6 (E6): a ceiling of 0 € is now a REFUSAL, not a « yes » with nothing behind it. Until this
+    // lot the form answered canClaim:true here and the POST then rejected the submission — a form that
+    // invited what the server refused. Both halves are asserted: the ceiling AND the refusal.
+    expect(e).toMatchObject({ canClaim: false, reason: 'no_refundable_amount' })
   })
 
   it('Stripe unreachable → FAIL-SOFT to the DB ceiling, never a crash and never a 0', async () => {
@@ -155,7 +177,9 @@ describe('J-C05 — getClaimEligibility and listConsumerClaims wire the customer
   })
 
   it('in the REVERTED scenario canClaim is true inside the window; the eligibility select carries restaurantResponse, reason and arbitrationReason', async () => {
-    db.claim.findFirst.mockResolvedValue(EXISTING({ refundError: REVERTED }))
+    // D′ L6: the claim is SETTLED (status 'refunded'), so it holds no activeOrderKey — the second
+    // findFirst must answer null, or E8 would refuse an order whose only claim is closed.
+    wireClaimHistory(EXISTING({ refundError: REVERTED }))
     const e = await getClaimEligibility({ consumerId: 'u1', orderId: 'o1' })
     expect(e.canClaim).toBe(true)
     expect(e.existingClaim?.status).toBe('financial_verification')

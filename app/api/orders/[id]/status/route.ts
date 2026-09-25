@@ -3,6 +3,12 @@ import { orderRef } from '@/lib/order-ref'
 import { getToken } from 'next-auth/jwt'
 import { prisma } from '@/lib/prisma'
 import { applyEarnWithOffsetRepay } from '@/lib/loyalty-refund'
+// D' L6 (D-15): the refund prorata replayed after the earn. It reads the DATABASE, never Stripe — this
+// route runs when a courier taps a button and must not depend on a payment provider being reachable.
+import { replayLoyaltyProrata } from '@/lib/loyalty-prorata'
+// D' L6: the SYNCHRONOUS half of the schema probe — it reads the generated client's own field enums, with no
+// database round trip, so it costs nothing on the delivery path.
+import { clientSchemaReady } from '@/lib/schema-ready'
 import { resolveEstablishmentScope } from '@/lib/establishment-scope'
 import { sendOrderStatusEmail } from '@/lib/transactional-emails'
 import { createSystemClaim } from '@/lib/claims'
@@ -118,6 +124,34 @@ export async function PATCH(
     // table Claim absente pré-db-push casserait l'annulation). Flag ON + table
     // absente = config CASSÉE (contrat docs/ops/flags.md : CLAIMS_ENABLED exige
     // la table) ⇒ échec BRUYANT voulu (rollback + 500), jamais silencieux.
+    // ── D′ L6 (spec v2 §7.1 E4) — THE DELIVERY ANCHOR ────────────────────────────────────────────
+    // `deliveredAt` is the only instant a customer's claim window may be measured from. It is written in
+    // the SAME write as the transition — never a second update, never a later backfill — and only when it
+    // is still null, so it cannot be moved by anything that happens afterwards.
+    //
+    // WHY NOT `updatedAt`: it moves on every later write (a note, a reconciliation, a read-repair), so a
+    // 48-hour window measured from it silently re-opens days after the meal. WHY THE null GUARD even though
+    // the transition matrix already forbids `delivered → delivered` (a second PATCH answers 422 before any
+    // write): the guard costs one comparison and it means the anchor stays true even if that matrix ever
+    // changes. Orders delivered before this lot keep `deliveredAt = null` and are NOT self-service — there
+    // is no honest way to date their window, and inventing one is exactly the defect. No backfill.
+    //
+    // TWO GUARDS, and the second one exists because of the first's failure mode. `order.deliveredAt === null`
+    // is FALSE when the generated Prisma client does not know the column: the field comes back `undefined`,
+    // the strict comparison fails, and the anchor is silently never written — permanently, because there is
+    // no backfill. So the intent is decided with a LOOSE comparison (null or undefined), and whether the
+    // column is usable AT ALL is asked of the synchronous, database-free client probe. A stale client
+    // therefore does not lose the anchor quietly: it is NAMED in the log, and the delivery still goes
+    // through, because a courier must never be blocked by a deploy anomaly.
+    const anchorUsable = clientSchemaReady().ready
+    const needsAnchor = newStatus === 'delivered' && order.deliveredAt == null
+    if (needsAnchor && !anchorUsable) {
+      console.error('[CLAIM ANCHOR MISS] deliveredAt not written: the Prisma client of this process does not know the column — the order stays out of claim self-service until it is repaired',
+        JSON.stringify({ orderId: params.id, missing: clientSchemaReady().missing }))
+    }
+    const deliveredAtWrite = needsAnchor && anchorUsable
+      ? { deliveredAt: new Date() }
+      : {}
     const claimAmountCents = Math.max(0, Math.round(order.total * 100))
     // LOT C — le fait « une commande PAYÉE est annulée » est découplé du flag
     // claims : il gouverne l'alerte admin et le CHOIX d'email ci-dessous, que la
@@ -133,7 +167,7 @@ export async function PATCH(
       updated = await prisma.$transaction(async (tx) => {
         const u = await tx.order.update({
           where: { id: params.id },
-          data:  { status: newStatus },
+          data:  { status: newStatus, ...deliveredAtWrite },
         })
         systemClaim = await createSystemClaim({
           orderId:              order.id,
@@ -156,7 +190,7 @@ export async function PATCH(
     } else {
       updated = await prisma.order.update({
         where: { id: params.id },
-        data:  { status: newStatus },
+        data:  { status: newStatus, ...deliveredAtWrite },
       })
     }
 
@@ -179,14 +213,20 @@ export async function PATCH(
         const already = await prisma.loyaltyTransaction.findFirst({
           where: { orderId: order.id, type: 'earn' }, select: { id: true },
         })
-        // Adversarial review E-P2d — never CREDIT earned points on an order whose
-        // loyalty was already reconciled by a refund (a refund before delivery, then
-        // a later 'delivered'). A 'refund' or 'earn_reversal' row for the order is the
-        // marker; if present, skip the earn (the refund already unwound this order).
-        const refundedMarker = await prisma.loyaltyTransaction.findFirst({
-          where: { orderId: order.id, type: { in: ['refund', 'earn_reversal'] } }, select: { id: true },
+        // ── D′ L6 (D-15, LOYALTY-REFUND-CONTRACT §24) — WHAT SKIPS THE CREDIT, AND WHAT NO LONGER DOES ──
+        // The old rule skipped the earn whenever ANY 'refund' or 'earn_reversal' row existed for the order.
+        // It was a blunt instrument that got the common case wrong in both directions: on a PARTIAL refund
+        // before delivery it credited 0 instead of the prorata, and on a TOTAL refund with no points spent
+        // no marker existed at all, so it credited the FULL earning and nothing ever took it back.
+        //
+        // The rule now: credit the nominal earning, then replay the refund prorata over it (below). Only two
+        // things still skip the credit — an 'earn' row (already credited, the idempotence guard above) and
+        // the LEGACY pre-Phase-1 marker, a 'refund' row carrying NO sourceEventId: that order was reconciled
+        // by code that predates the keyed model, so it is grandfathered and left exactly as it is.
+        const legacyMarker = await prisma.loyaltyTransaction.findFirst({
+          where: { orderId: order.id, type: 'refund', sourceEventId: null }, select: { id: true },
         })
-        if (!already && !refundedMarker) {
+        if (!already && !legacyMarker) {
           const operator = await prisma.operator.findUnique({
             where: { id: order.consumerId }, select: { email: true, name: true },
           })
@@ -230,6 +270,26 @@ export async function PATCH(
         // Non-fatal: a loyalty hiccup or the table being absent pre-db-push never
         // blocks the 'delivered' transition.
         console.error('[LOYALTY MISS] earn credit failed (non-fatal):', order.id, e instanceof Error ? e.message : e)
+      }
+
+      // ── D-15 (§24 (3)) — ALWAYS replay the refund prorata, on the ROOT client, after the earn COMMITTED ──
+      // A refund can land before delivery: the webhook reconciles it at that moment, finds no 'earn' row and
+      // correctly reverses nothing; then this transition credits the whole earning. Without this replay, the
+      // customer keeps every point of a meal they were refunded for.
+      //
+      // It is the SAME reconciliation the refund webhook runs — one rounding rule, one idempotency key (the
+      // Stripe re_), one code path — over the refunds the DATABASE already proves. It is called on the root
+      // client, never inside the transaction above: that function opens its own, and a delivery that already
+      // happened is never rolled back because a points reconciliation failed. A set already applied writes
+      // nothing (the unique (re_, type) makes the replay a no-op), and an order with no known refund is left
+      // whole, which is the correct answer. It never throws; the belt is defence, not a path.
+      //
+      // Only reached when points were earned: with 0 earned there is nothing to prorate, and the SPENT side
+      // was already restored by the refund webhook at the moment of the refund.
+      try {
+        await replayLoyaltyProrata(prisma, order.id, { via: 'order_delivered' })
+      } catch (e) {
+        console.error('[LOYALTY MISS] earn_prorata_incomplete (belt)', order.id, e instanceof Error ? e.message : e)
       }
     }
 

@@ -3023,7 +3023,9 @@
       "signInTitle": "Connectez-vous pour obtenir de l'aide sur cette commande",
       "signInCta": "Se connecter",
       "refundOffTitle": "Remboursements — support humain",
-      "refundOffBody": "Pendant la bêta, les demandes de remboursement sont traitées par notre équipe. Écrivez-nous à contact@grubano.com en précisant votre n° de commande."
+      "refundOffBody": "Pendant la bêta, les demandes de remboursement sont traitées par notre équipe. Écrivez-nous à contact@grubano.com en précisant votre n° de commande.",
+      "claimNotDelivered": "Cette commande n’est pas encore marquée livrée : une réclamation ne peut être déposée qu’après la livraison. Une commande en cours, ou annulée, relève de notre équipe — écrivez-nous.",
+      "claimNoRefundableAmount": "Cette commande n’a plus de montant remboursable : son total est déjà couvert par un remboursement effectué ou en cours de traitement. Écrivez-nous si cela vous semble incorrect."
     },
     "home": {
       "seeAll": "Voir tout",

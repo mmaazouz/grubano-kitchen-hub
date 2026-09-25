@@ -72,7 +72,8 @@ type View = 'help' | 'refund' | 'chat'
 // Mirror of lib/claims.getClaimEligibility's return shape (the only fields the UI reads).
 interface ClaimEligibility {
   canClaim: boolean
-  reason?: 'not_owner' | 'not_paid' | 'window_expired' | 'active_claim' | 'intake_closed'
+  // D' L6 (spec v2 §7.1): 'not_delivered' (E3) and 'no_refundable_amount' (E6) joined the server's union.
+  reason?: 'not_owner' | 'not_paid' | 'not_delivered' | 'window_expired' | 'active_claim' | 'no_refundable_amount' | 'intake_closed'
   maxRefundableCents: number
   /** T-59: true only when the ceiling was proven against live Stripe cash truth. */
   ceilingVerified?: boolean
@@ -233,12 +234,31 @@ export default function OrderHelpScreen() {
         return
       }
       setSubmitState('error')
-      setSubmitError(typeof data?.error === 'string' ? data.error : t('claimError'))
+      // D' L6: an eligibility refusal now carries its CODE, so the customer reads the refusal in their own
+      // language instead of the server's French sentence. Anything without a code keeps the server text.
+      const code = typeof data?.reason === 'string' ? (data.reason as string) : null
+      const localized = code ? REFUSAL_LABEL[code] : null
+      setSubmitError(localized ? t(localized) : typeof data?.error === 'string' ? data.error : t('claimError'))
     } catch {
       setSubmitState('error')
       setSubmitError(t('claimError'))
     }
   }
+
+/**
+ * D' L6 (spec v2 §7.1): the server's refusal CODE → the i18n key the customer reads. The POST and the GET
+ * answer the same codes because they ask the same rules (lib/claim-eligibility), so one map serves both.
+ * A code with no entry falls back to the server's own sentence rather than to silence.
+ */
+const REFUSAL_LABEL: Record<string, string> = {
+  not_owner:            'claimNotEligible',
+  not_paid:             'claimNotPaid',
+  not_delivered:        'claimNotDelivered',
+  window_expired:       'claimWindowExpired',
+  active_claim:         'claimAlreadyFiled',
+  no_refundable_amount: 'claimNoRefundableAmount',
+  intake_closed:        'claimIntakeClosed',
+}
 
   // Eligibility → a human label for the disabled-submit reason (flag ON, not eligible).
   // Mirrors getClaimEligibility's reason union + the active-claim status.
@@ -268,6 +288,11 @@ export default function OrderHelpScreen() {
       case 'intake_closed':  return t('claimIntakeClosed')
       case 'not_owner':      return t('claimNotEligible')
       case 'active_claim':   return t('claimAlreadyFiled')
+      // D' L6 (spec v2 §7.1): the two refusals the server added. Without their own sentence they would fall
+      // to « pas éligible », which tells a customer nothing about what to do next — and what to do differs:
+      // wait for the delivery, or write to support because the money is already back.
+      case 'not_delivered':  return t('claimNotDelivered')
+      case 'no_refundable_amount': return t('claimNoRefundableAmount')
       default:               return t('claimNotEligible')
     }
   }

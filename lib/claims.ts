@@ -34,6 +34,8 @@ import { orderRef } from '@/lib/order-ref'
 // D′ L5 (spec v2 §8.5 / §8.8): the payable selection, shared byte-for-byte with the rail's dryRun and
 // with the server operator (plain CommonJS — the server has no TypeScript build).
 import { PAYABLE_WHERE } from '@/lib/claims-payable-core'
+// D′ L6 (spec v2 §7.1): ONE eligibility list, asked by createClaim AND getClaimEligibility.
+import { claimEligibilityRefusal, CLAIM_REFUSAL_TEXT, type ClaimRefusalReason } from '@/lib/claim-eligibility'
 // ROUND-6 AUDIT FIX: the "is this bound refund actually ours?" predicate lives in ONE place. It
 // used to be re-derived here from `refundId` alone, which is exactly the proxy four rounds removed.
 import { isResumeMismatch } from '@/lib/claim-money-line'
@@ -189,7 +191,9 @@ function envHours(name: string, def: number): number {
   const v = Number.parseInt(process.env[name] ?? '', 10)
   return Number.isFinite(v) && v > 0 ? v : def
 }
-/** Submission window (default 48h), anchored on Order.updatedAt. */
+/** Submission window (default 48h), anchored on Order.deliveredAt — the delivery instant, written once by
+ *  the transition (D′ L6, lib/claim-eligibility E4). NEVER Order.updatedAt: that moves on every later write
+ *  (a note, a reconciliation, a repair) and would silently reopen the window days after the meal. */
 export function claimWindowHours(): number { return envHours('CLAIM_WINDOW_HOURS', 48) }
 /** Restaurant response delay before auto-approval (default 24h). */
 export function claimResponseHours(): number { return envHours('CLAIM_RESPONSE_HOURS', 24) }
@@ -323,7 +327,20 @@ export const TERMINAL_STATUSES: readonly string[] = ['refunded', 'refused_final'
 
 export type ClaimActionResult =
   | { ok: true; claim: unknown; refund?: RefundTriggerResult }
-  | { ok: false; status: 400 | 403 | 404 | 409 | 500; error: string }
+  /**
+   * D′ L6 (spec v2 §7.1): an eligibility refusal carries its CODE beside the sentence, so the route can
+   * render it in the customer's own locale instead of forwarding French prose. Refusals that are not
+   * eligibility rules (an invalid reason, an unreadable order, a ceiling problem) carry no code.
+   */
+  | { ok: false; status: 400 | 403 | 404 | 409 | 500; error: string; reason?: ClaimPostRefusalReason }
+
+/**
+ * The codes a create refusal can carry: the pure eligibility list (E1–E5, E8) plus E6, the ceiling — which
+ * is NOT a pure rule (it needs the order's lines and Stripe's cash truth), which is why it lives here and
+ * not in lib/claim-eligibility. The form's own union is `ClaimEligibility['reason']`, and the two agree on
+ * every code they share.
+ */
+export type ClaimPostRefusalReason = ClaimRefusalReason | 'no_refundable_amount'
 
 export type RefundTriggerResult =
   /** Email truthfulness hotfix (2026-09-06): `amountCents` = the ENGINE's actual succeeded cash
@@ -360,23 +377,46 @@ export async function createClaim(input: {
   if (!reason) return { ok: false, status: 400, error: 'Motif de réclamation invalide.' }
   const order = await prisma.order.findUnique({
     where:  { id: input.orderId },
-    select: { id: true, consumerId: true, restaurantId: true, paymentStatus: true, total: true, updatedAt: true, items: true, stripePaymentIntentId: true },
+    // D' L6: status and deliveredAt are read because the eligibility rules are about them (E3/E4/E5).
+    select: { id: true, consumerId: true, restaurantId: true, paymentStatus: true, status: true, deliveredAt: true, createdAt: true, total: true, items: true, stripePaymentIntentId: true },
   })
   if (!order) return { ok: false, status: 404, error: 'Commande introuvable.' }
-  // OWNER-SCOPING (client): the claimant must OWN the order. Resolved from the session
-  // by the route; never a trusted client id.
-  if (order.consumerId !== input.consumerId) {
-    return { ok: false, status: 403, error: 'Commande non autorisée.' }
-  }
-  if (order.paymentStatus !== 'paid') {
-    return { ok: false, status: 409, error: 'Commande non payée — aucune réclamation possible.' }
-  }
-  // Submission window (server-read), anchored on the delivery/last-activity time.
-  const windowMs = claimWindowHours() * 3600 * 1000
-  if (Date.now() - order.updatedAt.getTime() > windowMs) {
-    return { ok: false, status: 409, error: `Le délai de réclamation (${claimWindowHours()} h) est dépassé.` }
+  // ── D' L6 (spec v2 §7.1) — THE ONE ELIGIBILITY LIST, shared with getClaimEligibility ────────────
+  // Both functions ask lib/claim-eligibility, in that order, with the same reason codes: until this lot
+  // each carried its own copy and the form could invite a claim this function then refused. The reason
+  // code travels to the client, which renders it in the customer's own locale; the sentence here is the
+  // API's own message.
+  const activeHolder = await prisma.claim.findFirst({
+    // The SAME truth the create below enforces: activeOrderKey is @unique, so whoever holds it blocks a
+    // new claim — not merely « the newest claim looks active ». Reading the newest claim instead is how
+    // the form said yes to an order whose older claim still held the key.
+    where:  { activeOrderKey: order.id },
+    select: { id: true },
+  })
+  const refusal = claimEligibilityRefusal({
+    orderConsumerId: order.consumerId,
+    consumerId:      input.consumerId,
+    paymentStatus:   order.paymentStatus,
+    status:          order.status,
+    deliveredAt:     order.deliveredAt,
+    createdAt:       order.createdAt,
+    hasActiveClaim:  !!activeHolder,
+    nowMs:           Date.now(),
+    windowHours:     claimWindowHours(),
+  })
+  if (refusal) {
+    return { ok: false, status: refusal.status, error: CLAIM_REFUSAL_TEXT[refusal.reason], reason: refusal.reason }
   }
   const scope = await buildClaimScopeForOrder({ orderId: order.id, items: order.items, orderTotalEur: order.total, stripePaymentIntentId: order.stripePaymentIntentId })
+  /**
+   * E6, the ceiling, asked HERE and WITH a code — the same fact `getClaimEligibility` reports as
+   * `no_refundable_amount`. `resolveClaimAmount` refuses a zero ceiling too, but only as untranslatable
+   * prose under a 400; and a ceiling of zero is the STATE of the order, not a malformed request, so it is a
+   * 409 and it carries its code. That function's own guard stays where it is: it is its precondition.
+   */
+  if (scope.maxAuthorityCents <= 0) {
+    return { ok: false, status: 409, error: CLAIM_REFUSAL_TEXT.no_refundable_amount, reason: 'no_refundable_amount' }
+  }
   // The REASON decides whether a whole-order ceiling is even available (batch 2).
   const resolved = resolveClaimAmount(scope, input.items ?? null, input.requestedAmountCents ?? null, authorityScope(reason))
   if (!resolved.ok) return { ok: false, status: 400, error: resolved.error }
@@ -454,8 +494,18 @@ const CONSUMER_HIDDEN_CLAIM_FIELDS = ['refundError', 'refundId', 'refundAttempte
 
 export type ClaimEligibility = {
   canClaim: boolean
-  /** 'intake_closed' is a ROUTE overlay (D′ L1, GET /api/claims?orderId): getClaimEligibility never returns it. */
-  reason?: 'not_owner' | 'not_paid' | 'window_expired' | 'active_claim' | 'intake_closed'
+  /**
+   * The refusal, as a CODE rendered in the customer's locale — never a server sentence.
+   * 'intake_closed' is a ROUTE overlay (D′ L1, GET /api/claims?orderId): getClaimEligibility never returns it.
+   * D′ L6 adds 'not_delivered' (E3) and 'no_refundable_amount' (E6, previously a silent yes here and a 400
+   * at the POST).
+   */
+  reason?: ClaimRefusalReason | 'no_refundable_amount' | 'intake_closed'
+  /**
+   * Set only with `reason: 'active_claim'`: the id of the claim that HOLDS `activeOrderKey` — which is not
+   * necessarily `existingClaim`, the newest one. Two claims, two roles; the refusal names the right one.
+   */
+  blockingClaimId?: string
   maxRefundableCents: number
   /**
    * T-59 — is `maxRefundableCents` PROVEN against live Stripe cash truth?
@@ -482,7 +532,8 @@ export async function getClaimEligibility(input: { consumerId: string; orderId: 
   const windowHours = claimWindowHours()
   const order = await prisma.order.findUnique({
     where:  { id: input.orderId },
-    select: { consumerId: true, paymentStatus: true, total: true, updatedAt: true, items: true, stripePaymentIntentId: true },
+    // D' L6: the same fields createClaim reads, because both ask the same rules of them.
+    select: { consumerId: true, paymentStatus: true, status: true, deliveredAt: true, createdAt: true, total: true, items: true, stripePaymentIntentId: true },
   })
   if (!order || order.consumerId !== input.consumerId) {
     // Anti-IDOR: a non-owner learns nothing about the order (no total, no lines).
@@ -539,12 +590,41 @@ export async function getClaimEligibility(input: { consumerId: string; orderId: 
     // ROUND 13 (F08): reasons by who wrote them — no Grubano reason on a declaration, no restaurant reason unless it refused.
     ? { id: existing.id, status: customerClaimStatus(existing, existingBoundConfirmed, existingRefundedRow), canContest, ...customerClaimReasons(existing) }
     : null
-  if (order.paymentStatus !== 'paid') return { canClaim: false, reason: 'not_paid', maxRefundableCents, ceilingVerified, windowHours, existingClaim, scope: publicScope }
-  if (Date.now() - order.updatedAt.getTime() > windowHours * 3600 * 1000) {
-    return { canClaim: false, reason: 'window_expired', maxRefundableCents, ceilingVerified, windowHours, existingClaim, scope: publicScope }
+  // ── D' L6 (spec v2 §7.1) — THE SAME LIST, THE SAME ORDER, THE SAME CODES as createClaim ─────────
+  // The active-claim fact is the one the POST actually enforces: whoever holds the @unique activeOrderKey.
+  // Reading only the newest claim (as this function used to) said yes to an order whose OLDER claim still
+  // held the key — a contested claim, or one parked in financial verification — and the POST then answered
+  // 409. The form and the server now disagree about nothing.
+  const activeHolder = await prisma.claim.findFirst({ where: { activeOrderKey: input.orderId }, select: { id: true } })
+  const refusal = claimEligibilityRefusal({
+    orderConsumerId: order.consumerId,
+    consumerId:      input.consumerId,
+    paymentStatus:   order.paymentStatus,
+    status:          order.status,
+    deliveredAt:     order.deliveredAt,
+    createdAt:       order.createdAt,
+    hasActiveClaim:  !!activeHolder,
+    nowMs:           Date.now(),
+    windowHours,
+  })
+  if (refusal) {
+    /**
+     * `existingClaim` is the NEWEST claim of this order; E8 refuses on whoever holds `activeOrderKey`,
+     * which can be an OLDER one. So an `active_claim` refusal beside a CLOSED `existingClaim` is not a
+     * contradiction — they are two different claims — and `blockingClaimId` names the one that blocks, so
+     * the page never has to imply that the claim it is showing is the reason.
+     */
+    const blockingClaimId = refusal.reason === 'active_claim' && activeHolder ? activeHolder.id : null
+    return {
+      canClaim: false, reason: refusal.reason, maxRefundableCents, ceilingVerified, windowHours, existingClaim, scope: publicScope,
+      ...(blockingClaimId ? { blockingClaimId } : {}),
+    }
   }
-  if (existing && (ACTIVE_STATUSES as readonly string[]).includes(existing.status)) {
-    return { canClaim: false, reason: 'active_claim', maxRefundableCents, ceilingVerified, windowHours, existingClaim, scope: publicScope }
+  // E6 — the financial ceiling, which createClaim enforces through resolveClaimAmount. Until this lot the
+  // form said « you may claim » with a ceiling of 0 € on a fully refunded order and the POST answered 400:
+  // an invitation to fill in a form that could not be submitted.
+  if (maxRefundableCents <= 0) {
+    return { canClaim: false, reason: 'no_refundable_amount', maxRefundableCents, ceilingVerified, windowHours, existingClaim, scope: publicScope }
   }
   return { canClaim: true, maxRefundableCents, ceilingVerified, windowHours, existingClaim, scope: publicScope }
 }

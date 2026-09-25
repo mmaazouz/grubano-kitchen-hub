@@ -56,7 +56,12 @@ const product = (surface: string | undefined, intake: string | undefined) => {
   if (intake !== undefined) process.env.CLAIMS_INTAKE_ENABLED = intake
 }
 
-const ORDER = { id: 'o1', consumerId: 'owner', restaurantId: 'r1', paymentStatus: 'paid', total: 32.5, updatedAt: new Date(), items: [{ itemId: 'm1', name: 'Gnocchi', qty: 1, price: 32.5 }], stripePaymentIntentId: null }
+// D′ L6 (spec v2 §7.1 E3/E4): lib/claims is REAL here (only the list* readers are doubled), so the
+// eligibility rules run for real — `status:'delivered'` and a fresh `deliveredAt` anchor are required or
+// every verdict below is `not_delivered` (E3) and the FLAG pins would be measuring a refusal instead of
+// the gates. Not decoration: with the flag removed, the intake_closed overlay test below would be
+// overlaying a `not_delivered`, and the 201 pins would be 409s.
+const ORDER = { id: 'o1', consumerId: 'owner', restaurantId: 'r1', paymentStatus: 'paid', status: 'delivered', total: 32.5, deliveredAt: new Date(), createdAt: new Date(), updatedAt: new Date(), items: [{ itemId: 'm1', name: 'Gnocchi', qty: 1, price: 32.5 }], stripePaymentIntentId: null }
 const post = (body: unknown) =>
   postClaim(new Request('https://app.grubano.com/api/claims', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }) as never)
 const get = (qs = '') => getClaims(new Request(`https://app.grubano.com/api/claims${qs}`) as never)
@@ -240,6 +245,14 @@ describe('GET /api/claims — surface; ?orderId overlay (S-23)', () => {
     // the engine's own facts are KEPT under the overlay (existingClaim / scope / ceiling)
     expect(body.eligibility).toHaveProperty('existingClaim')
     expect(body.eligibility).toHaveProperty('maxRefundableCents')
+    // D′ L6: the overlay must be proven over a verdict that was genuinely a YES. Open the INTAKE on the
+    // SAME order and the engine answers canClaim:true with no reason — so intake_closed above replaced an
+    // eligible order, not an engine refusal (a non-delivered fixture would make this pin vacuous).
+    process.env.CLAIMS_INTAKE_ENABLED = 'true'
+    const open = await (await get('?orderId=o1')).json()
+    expect(open).toMatchObject({ enabled: true, intakeOpen: true, eligibility: { canClaim: true } })
+    expect(open.eligibility.reason).toBeUndefined()
+    process.env.CLAIMS_INTAKE_ENABLED = 'false'
     const hist = await (await get()).json()
     expect(hist).toEqual({ enabled: true, claims: [] })
   })

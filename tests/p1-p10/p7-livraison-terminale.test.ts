@@ -46,6 +46,13 @@ const { db, getToken, getServerSession, resolveScope, sendEmail, accrual, positi
     order:              { findUnique: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
     loyaltyTransaction: { findFirst: vi.fn(), create: vi.fn() },
     loyaltyCustomer:    { upsert: vi.fn(), update: vi.fn() , findUnique: vi.fn() },
+    // D′ L6 (D-15) — the 'delivered' transition now replays the loyalty prorata (lib/loyalty-prorata),
+    // which reads the DB-known refund set: Refund rows + LedgerEntry refund lines. Without these two
+    // methods the replay throws into a swallowed catch, so the earn assertions below would stay green
+    // while « [LOYALTY MISS] earn_prorata_incomplete » was printed and an admin money alert fired —
+    // a silent failure dressed as a passing test. Declared here so the replay runs as a REAL no-op.
+    refund:             { findMany: vi.fn() },
+    ledgerEntry:        { findMany: vi.fn(), findFirst: vi.fn() },
     operator:           { findUnique: vi.fn() },
     restaurant:         { findUnique: vi.fn() },
     $transaction:       vi.fn(),
@@ -95,9 +102,16 @@ const postDeliver = (id: string) =>
   deliver(new Request(`http://x/api/logistics/missions/${id}/deliver`, { method: 'POST' }), { params: { id } })
 
 // A DELIVERY order owned by the calling restaurant — the P7 subject.
+// `deliveredAt: null` is NOT decoration (delivered-only, D′ L6): the route stamps that column in the SAME
+// write as the 'delivered' transition and ONLY while it is still null, and the customer's claim window is
+// dated from it (spec v2 §7.1 E4). A row that reached this route without the key at all would take the
+// « already stamped » branch by accident, and the write under test would never be exercised.
+// `stripePaymentIntentId` is here for the same reason on the loyalty side: it is the join the prorata
+// replay uses to read the ledger, so the replay reads both of its sources instead of half of them.
 const deliveryOrder = (over: Record<string, unknown> = {}) => ({
   id: 'o1', status: 'ready', restaurantId: 'r1', consumerId: 'c1',
   paymentStatus: 'paid', total: 37.9, pointsEarned: 8, fulfillmentType: 'delivery',
+  deliveredAt: null, stripePaymentIntentId: 'pi_p7',
   ...over,
 })
 
@@ -109,9 +123,14 @@ beforeEach(() => {
     ok: true, operatorId: 'op1', role: 'restaurant', ownedIds: ['r1'], restaurantId: 'r1',
   })
   db.order.findUnique.mockResolvedValue(deliveryOrder())
-  db.order.update.mockImplementation(({ data }: { data: { status: string } }) =>
+  db.order.update.mockImplementation(({ data }: { data: { status: string; deliveredAt?: Date } }) =>
     Promise.resolve({ id: 'o1', status: data.status, updatedAt: new Date('2026-07-27T10:00:00Z') }))
   db.loyaltyTransaction.findFirst.mockResolvedValue(null)
+  // D′ L6 — an order with NO known refund: the prorata replay reads both sources, proves nothing was
+  // refunded and leaves the earn whole. That is the no-op path, not a failure path.
+  db.refund.findMany.mockResolvedValue([])
+  db.ledgerEntry.findMany.mockResolvedValue([])
+  db.ledgerEntry.findFirst.mockResolvedValue(null)
   db.operator.findUnique.mockResolvedValue(null)   // → loyalty + email lookups skip cleanly
   db.restaurant.findUnique.mockResolvedValue(null)
   sendEmail.mockResolvedValue(undefined)
@@ -135,7 +154,10 @@ describe('P7 — machine d’états PATCH /api/orders/[id]/status pour une comma
     const res = await patchStatus('o1', { status: 'picked_up' })
     expect(res.status).toBe(200)
     expect(await res.json()).toMatchObject({ orderId: 'o1', status: 'picked_up' })
+    // D′ L6 — the courier hand-off writes the status and NOTHING else: the deep equality below already
+    // forbids a deliveredAt key, and the explicit key list says so out loud.
     expect(db.order.update).toHaveBeenCalledWith({ where: { id: 'o1' }, data: { status: 'picked_up' } })
+    expect(Object.keys((db.order.update.mock.calls[0][0] as { data: Record<string, unknown> }).data)).toEqual(['status'])
   })
 
   it('[PASS-ACTUEL] picked_up → delivered accepté (200) — delivered EST atteignable côté resto via l’API (écart avec le verdict audit)', async () => {
@@ -160,7 +182,49 @@ describe('P7 — machine d’états PATCH /api/orders/[id]/status pour une comma
     const res = await patchStatus('o1', { status: 'delivered' }) // order is 'ready' + delivery
     expect(res.status).toBe(200)
     expect(await res.json()).toMatchObject({ status: 'delivered' })
+    // D′ L6 (spec v2 §7.1 E4) — the SAME write now also stamps the claim-window anchor. Asserted in
+    // FULL rather than relaxed to objectContaining: the shape of this write is the contract, so a third
+    // field would have to pass under a human's eyes before it shipped. Two facts beyond the shape: the
+    // anchor is a real Date, and there is exactly ONE write — an anchor posted by a second update could
+    // fail on its own and leave a delivered order with no datable claim window.
+    expect(db.order.update).toHaveBeenCalledWith({
+      where: { id: 'o1' },
+      data:  { status: 'delivered', deliveredAt: expect.any(Date) },
+    })
+    expect(db.order.update).toHaveBeenCalledTimes(1)
+    const written = (db.order.update.mock.calls[0][0] as { data: { status: string; deliveredAt?: unknown } }).data
+    expect(written.deliveredAt).toBeInstanceOf(Date)
+    expect(Object.keys(written).sort()).toEqual(['deliveredAt', 'status'])
+  })
+
+  it('[D′ L6] l’ancre deliveredAt n’est posée QUE par delivered — picked_up et cancelled n’écrivent que le statut', async () => {
+    // The anchor dates the customer's 48-hour claim window (spec v2 §7.1 E4). A hand-off to the courier
+    // is not a delivery and a cancellation is not one either: were either to stamp the column, a window
+    // would open on food that never arrived. The cancellation is driven on an UNPAID order on purpose —
+    // a PAID one takes the system-claim branch, whose transaction is another lot's subject, not the
+    // anchor's, and this test must be able to fail for the anchor alone.
+    db.order.findUnique.mockResolvedValue(deliveryOrder({ status: 'ready' }))
+    expect((await patchStatus('o1', { status: 'picked_up' })).status).toBe(200)
+    db.order.findUnique.mockResolvedValue(deliveryOrder({ status: 'ready', paymentStatus: 'pending' }))
+    expect((await patchStatus('o1', { status: 'cancelled' })).status).toBe(200)
+
+    expect(db.order.update).toHaveBeenCalledTimes(2)
+    for (const call of db.order.update.mock.calls) {
+      const data = (call[0] as { data: Record<string, unknown> }).data
+      expect(Object.keys(data)).toEqual(['status'])
+      expect(data.deliveredAt).toBeUndefined()
+    }
+  })
+
+  it('[D′ L6] une commande qui porte DÉJÀ une ancre n’est jamais ré-estampillée', async () => {
+    // The anchor is written once and never again: it is the one instant a claim window can honestly be
+    // measured from, and a second stamp would silently re-open a window that had closed. The transition
+    // matrix already refuses delivered → delivered (422 before any write), so the guard is proven here on
+    // the only kind of row that can reach the write carrying a non-null anchor — one repaired by hand.
+    db.order.findUnique.mockResolvedValue(deliveryOrder({ status: 'picked_up', deliveredAt: new Date('2026-07-20T18:00:00Z') }))
+    expect((await patchStatus('o1', { status: 'delivered' })).status).toBe(200)
     expect(db.order.update).toHaveBeenCalledWith({ where: { id: 'o1' }, data: { status: 'delivered' } })
+    expect(Object.keys((db.order.update.mock.calls[0][0] as { data: Record<string, unknown> }).data)).toEqual(['status'])
   })
 
   it('[PASS-ACTUEL] delivered est terminal — delivered → picked_up/ready/cancelled refusés (422, « aucune transition possible »)', async () => {
@@ -195,8 +259,15 @@ describe('P7 — machine d’états PATCH /api/orders/[id]/status pour une comma
   db.$queryRawUnsafe.mockResolvedValue([{ recoveryOffsetPoints: 0 }])
     const res = await patchStatus('o1', { status: 'delivered' })
     expect(res.status).toBe(200)
-    expect(db.loyaltyTransaction.findFirst).toHaveBeenCalledWith({
+    // D′ L6 (D-15) — TWO probes guard the credit now, in this order: the 'earn' idempotence row, then
+    // the LEGACY pre-Phase-1 marker (a 'refund' row carrying NO sourceEventId). The old rule skipped the
+    // earn on ANY refund row, which credited 0 on a partial refund instead of the prorata.
+    expect(db.loyaltyTransaction.findFirst).toHaveBeenCalledTimes(2)
+    expect(db.loyaltyTransaction.findFirst).toHaveBeenNthCalledWith(1, {
       where: { orderId: 'o1', type: 'earn' }, select: { id: true },
+    })
+    expect(db.loyaltyTransaction.findFirst).toHaveBeenNthCalledWith(2, {
+      where: { orderId: 'o1', type: 'refund', sourceEventId: null }, select: { id: true },
     })
     expect(db.loyaltyCustomer.upsert).toHaveBeenCalledWith(expect.objectContaining({ where: { email: 'lea@x.fr' } }))
     expect(db.loyaltyCustomer.update).toHaveBeenCalledWith({
@@ -206,6 +277,18 @@ describe('P7 — machine d’états PATCH /api/orders/[id]/status pour une comma
       data: { customerId: 'lc1', orderId: 'o1', type: 'earn', points: 8 },
     })
     expect(db.$transaction).toHaveBeenCalledTimes(1)
+    // D′ L6 (D-15) — and the prorata replay ran FOR REAL, as a no-op: both DB sources of the known
+    // refund set were read, they prove no refund, so the earn stands whole and nothing else is written.
+    // The READS are asserted, not merely the absence of extra writes: a replay that threw would also
+    // have written nothing, which is exactly the silent failure this file must not photograph as green.
+    expect(db.refund.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { orderId: 'o1', status: 'succeeded' } }),
+    )
+    expect(db.ledgerEntry.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { type: 'refund', stripePaymentIntentId: 'pi_p7' } }),
+    )
+    expect(db.loyaltyTransaction.create).toHaveBeenCalledTimes(1)
+    expect(db.loyaltyCustomer.update).toHaveBeenCalledTimes(1)
   })
 })
 

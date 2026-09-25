@@ -3023,7 +3023,9 @@
       "signInTitle": "Sign in to get help with this order",
       "signInCta": "Sign in",
       "refundOffTitle": "Refunds — human support",
-      "refundOffBody": "During the beta, refund requests are handled by our team. Email us at contact@grubano.com with your order number."
+      "refundOffBody": "During the beta, refund requests are handled by our team. Email us at contact@grubano.com with your order number.",
+      "claimNotDelivered": "This order is not marked delivered yet: a claim can only be filed after delivery. An order on its way, or cancelled, is handled by our team — write to us.",
+      "claimNoRefundableAmount": "This order has no refundable amount left: its total is already covered by a refund that is either completed or still being processed. Write to us if that looks wrong."
     },
     "home": {
       "seeAll": "See all",

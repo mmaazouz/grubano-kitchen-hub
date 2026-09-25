@@ -132,6 +132,15 @@ describe('GET /api/claims', () => {
     expect(await res.json()).toEqual({ enabled: true, intakeOpen: false, eligibility: { canClaim: false, reason: 'intake_closed', maxRefundableCents: 5000, windowHours: 48, existingClaim: null } })
     // NEGATIVE CONTROL — the engine itself answered canClaim:true: the overlay is the route's, never the engine's.
     expect(await eligMock.mock.results[0].value).toMatchObject({ canClaim: true })
+    // D′ L6 — and the overlay is the ONLY thing that changed: open the INTAKE, ask about the SAME order, and
+    // the route hands back that yes untouched (no reason at all). Without this, the pin above would stay green
+    // over an engine that had quietly started refusing — intake_closed overwrites every verdict but not_owner.
+    // (There is no order fixture to make `delivered` in this file: lib/claims is mocked wholesale here, so the
+    // engine verdict IS eligMock — the delivered-only rule itself is pinned where the lib is real.)
+    process.env.CLAIMS_INTAKE_ENABLED = 'true'
+    const open = await (await LIST(req(undefined, 'https://app.grubano.com/api/claims?orderId=o1'))).json()
+    expect(open).toEqual({ enabled: true, intakeOpen: true, eligibility: { canClaim: true, maxRefundableCents: 5000, windowHours: 48, existingClaim: null } })
+    process.env.CLAIMS_INTAKE_ENABLED = 'false'
     expect(await (await LIST(req(undefined))).json()).toEqual({ enabled: true, claims: [] })
   })
 })

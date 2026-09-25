@@ -3023,7 +3023,9 @@
       "signInTitle": "Inicia sesión para obtener ayuda con este pedido",
       "signInCta": "Iniciar sesión",
       "refundOffTitle": "Reembolsos — soporte humano",
-      "refundOffBody": "Durante la beta, las solicitudes de reembolso las gestiona nuestro equipo. Escríbenos a contact@grubano.com indicando tu número de pedido."
+      "refundOffBody": "Durante la beta, las solicitudes de reembolso las gestiona nuestro equipo. Escríbenos a contact@grubano.com indicando tu número de pedido.",
+      "claimNotDelivered": "Este pedido aún no está marcado como entregado: solo se puede presentar una reclamación después de la entrega. Un pedido en camino, o cancelado, lo gestiona nuestro equipo — escríbenos.",
+      "claimNoRefundableAmount": "Este pedido ya no tiene importe reembolsable: su total ya está cubierto por un reembolso realizado o aún en curso. Escríbenos si te parece incorrecto."
     },
     "home": {
       "seeAll": "Ver todo",

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { NextRequest } from 'next/server'
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -44,6 +44,14 @@ const { db } = vi.hoisted(() => ({
     operator:           { findUnique: vi.fn() },
     loyaltyCustomer:    { upsert: vi.fn(), update: vi.fn(), updateMany: vi.fn(), findUnique: vi.fn() },
     loyaltyTransaction: { findFirst: vi.fn(), create: vi.fn() },
+    // D′ L6 (D-15) — after the earn, the 'delivered' transition ALWAYS replays the refund prorata
+    // (lib/loyalty-prorata), which reads the refund set the DATABASE proves: our Refund rows plus the
+    // LedgerEntry refund lines of the same PaymentIntent. Undeclared, those reads throw into a swallowed
+    // catch — the credit assertions below would stay green while « [LOYALTY MISS]
+    // earn_prorata_incomplete » was printed and an admin money alert fired. Declared so the replay runs
+    // as a REAL no-op, which is what this reference journey is supposed to photograph.
+    refund:             { findMany: vi.fn() },
+    ledgerEntry:        { findMany: vi.fn(), findFirst: vi.fn() },
     $transaction:       vi.fn(),
     $queryRawUnsafe:     vi.fn(),
   },
@@ -93,6 +101,15 @@ const statusReq = (status: string) =>
 
 const patchTo = (status: string) => patchStatus(statusReq(status), { params: { id: 'order1' } })
 
+// The loyalty side of the route swallows its own failures by design (a hiccup never blocks a delivery),
+// so the only trace one leaves is this log line. Spying on it is what lets a test assert « the prorata
+// replay ran and found nothing » rather than « it wrote nothing », which a crash satisfies just as well.
+let errSpy: ReturnType<typeof vi.spyOn>
+
+/** The marker the ops runbook greps for. No healthy delivery may print it. */
+const prorataMisses = () =>
+  errSpy.mock.calls.filter((c) => c.some((a) => String(a).includes('earn_prorata_incomplete')))
+
 const trackReq = () => new NextRequest('https://app.grubano.com/api/orders/order1')
 const track    = () => getOrder(trackReq(), { params: { id: 'order1' } })
 
@@ -108,9 +125,15 @@ const armMenu = (rows: Array<{ id: string; name: string; price: number }>) =>
       .filter((r): r is { id: string; name: string; price: number } => r !== null))
 
 // A pickup order row as stored between transitions (fed to order.findUnique).
+// D′ L6 — the three added fields are NOT decoration. `deliveredAt: null` is the claim window's only
+// honest anchor (spec v2 §7.1 E4): the route stamps it in the SAME write as the 'delivered' transition
+// and only while it is still null, so a row missing the key entirely would take the « already stamped »
+// branch and the pickup hand-off below could not be asserted. `total` + `stripePaymentIntentId` are the
+// facts the prorata replay reads to assemble the DB-known refund set of this CARD order.
 const pickupOrder = (over: Record<string, unknown> = {}) => ({
   id: 'order1', consumerId: 'cust1', restaurantId: 'rest1',
   status: 'received', fulfillmentType: 'pickup', pointsEarned: 0,
+  deliveredAt: null, total: 20, stripePaymentIntentId: 'pi_p1',
   ...over,
 })
 
@@ -158,11 +181,18 @@ beforeEach(() => {
   db.loyaltyCustomer.findUnique.mockResolvedValue({ recoveryOffsetPoints: 0 })
   db.loyaltyCustomer.update.mockResolvedValue({ id: 'lc1' })
   db.loyaltyTransaction.create.mockResolvedValue({ id: 'tx1' })
+  // D′ L6 — no refund is known of this order, from either source → the prorata has nothing to prorate.
+  db.refund.findMany.mockResolvedValue([])
+  db.ledgerEntry.findMany.mockResolvedValue([])
+  db.ledgerEntry.findFirst.mockResolvedValue(null)
     db.$transaction.mockImplementation(async (arg: unknown) =>
     typeof arg === 'function' ? (arg as (tx: unknown) => Promise<unknown>)(db) : Promise.all(arg as Promise<unknown>[]))
   db.$queryRawUnsafe.mockResolvedValue([{ recoveryOffsetPoints: 0 }])
   emailMock.mockResolvedValue({ status: 'sent' })
+  errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 })
+
+afterEach(() => { errSpy.mockRestore() })
 
 // ══════════════════════════════════════════════════════════════════════════════
 // P1 — POST /api/orders — création click & collect (carte)
@@ -375,6 +405,27 @@ describe("P1 — points fidélité au passage 'delivered'", () => {
     expect(db.$transaction).toHaveBeenCalledTimes(1)
     // The CURRENT mechanism never calls updateMany (stale audit/CLAUDE.md claim).
     expect(db.loyaltyCustomer.updateMany).not.toHaveBeenCalled()
+
+    // D′ L6 (D-15) — TWO probes now decide whether to credit, and both are read: the 'earn'
+    // idempotence row, then the LEGACY pre-Phase-1 marker (a 'refund' row carrying NO sourceEventId).
+    // The rule no longer skips the earn on any refund row — it credits the nominal earning and prorates.
+    expect(db.loyaltyTransaction.findFirst).toHaveBeenCalledTimes(2)
+    expect(db.loyaltyTransaction.findFirst).toHaveBeenNthCalledWith(1, {
+      where: { orderId: 'order1', type: 'earn' }, select: { id: true },
+    })
+    expect(db.loyaltyTransaction.findFirst).toHaveBeenNthCalledWith(2, {
+      where: { orderId: 'order1', type: 'refund', sourceEventId: null }, select: { id: true },
+    })
+    // … and the replay RAN over both sources and wrote nothing, because nothing was refunded.
+    expect(db.refund.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { orderId: 'order1', status: 'succeeded' } }),
+    )
+    expect(db.ledgerEntry.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { type: 'refund', stripePaymentIntentId: 'pi_p1' } }),
+    )
+    expect(prorataMisses()).toEqual([])
+    expect(db.loyaltyTransaction.create).toHaveBeenCalledTimes(1)   // the earn, and nothing after it
+    expect(db.loyaltyCustomer.update).toHaveBeenCalledTimes(1)
   })
 
   it('[PASS-ACTUEL] la remise en main propre pickup (ready→delivered) crédite AUSSI les points', async () => {
@@ -385,6 +436,14 @@ describe("P1 — points fidélité au passage 'delivered'", () => {
     expect(db.loyaltyCustomer.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ pointsBalance: { increment: 20 } }) }),
     )
+    // D′ L6 (spec v2 §7.1 E4) — a click & collect hand-off IS the delivery for the claim window too:
+    // the SAME write stamps the anchor, so a pickup customer can date their 48 hours exactly like a
+    // delivery one. One write, both fields — never a second update.
+    expect(db.order.update).toHaveBeenCalledTimes(1)
+    expect(db.order.update).toHaveBeenCalledWith({
+      where: { id: 'order1' },
+      data:  { status: 'delivered', deliveredAt: expect.any(Date) },
+    })
   })
 
   it("[PASS-ACTUEL] idempotent : une ligne 'earn' déjà présente pour la commande → aucun re-crédit", async () => {
@@ -405,6 +464,10 @@ describe("P1 — points fidélité au passage 'delivered'", () => {
     expect((await patchTo('ready')).status).toBe(200)
     expect(db.loyaltyTransaction.findFirst).not.toHaveBeenCalled()
     expect(db.loyaltyCustomer.upsert).not.toHaveBeenCalled()
+    // D′ L6 — and no prorata replay before the earn exists: the whole block is behind 'delivered'.
+    // The write of an intermediate step carries the status alone — no anchor before the hand-off.
+    expect(db.refund.findMany).not.toHaveBeenCalled()
+    expect(db.order.update).toHaveBeenCalledWith({ where: { id: 'order1' }, data: { status: 'ready' } })
   })
 
   it("[PASS-ACTUEL] best-effort : un échec fidélité ne bloque jamais la transition 'delivered'", async () => {

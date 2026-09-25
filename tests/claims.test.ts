@@ -44,8 +44,14 @@ const world = (claim: Record<string, unknown>, chargeCents = 6000) => {
   return w
 }
 
+// D′ L6 (spec v2 §7.1) — DELIVERED-ONLY. A claim is about food that arrived, so the baseline order is
+// `delivered` and carries its own anchor: `deliveredAt` is the ONLY anchor of the 48-hour window (never
+// `updatedAt`, which moves on every later write) and `createdAt` feeds the 30-day ceiling. The delivered
+// flag is not decoration — remove it and every claim below is refused with `not_delivered` (E3), which the
+// negative controls at the end of the createClaim block pin in both directions.
 const paidOrder = (o: Record<string, unknown> = {}) => ({
-  id: 'o1', consumerId: 'c1', restaurantId: 'r1', paymentStatus: 'paid', total: 50, updatedAt: new Date(), ...o,
+  id: 'o1', consumerId: 'c1', restaurantId: 'r1', paymentStatus: 'paid', total: 50,
+  status: 'delivered', deliveredAt: new Date(), createdAt: new Date(), updatedAt: new Date(), ...o,
 })
 const fx = { row: null as Record<string, unknown> | null, updateManyCount: 1 }
 
@@ -102,9 +108,13 @@ describe('createClaim — (a) owner + paid + window + amount', () => {
     expect(await createClaim({ consumerId: 'c1', orderId: 'o1', reason: 'quality' })).toMatchObject({ ok: false, status: 409 })
   })
 
+  // D′ L6: the order is aged by its DELIVERY instant, not by updatedAt — the fixture used to move
+  // updatedAt, which the rules no longer read at all. The reason code is asserted so this test still
+  // measures the WINDOW (E4) and cannot pass on the delivered-only refusal (E3).
   it('outside the 48h window → 409', async () => {
-    db.order.findUnique.mockResolvedValue(paidOrder({ updatedAt: new Date(Date.now() - 49 * 3600 * 1000) }))
-    expect(await createClaim({ consumerId: 'c1', orderId: 'o1', reason: 'quality' })).toMatchObject({ ok: false, status: 409 })
+    db.order.findUnique.mockResolvedValue(paidOrder({ deliveredAt: new Date(Date.now() - 49 * 3600 * 1000) }))
+    expect(await createClaim({ consumerId: 'c1', orderId: 'o1', reason: 'quality' }))
+      .toMatchObject({ ok: false, status: 409, reason: 'window_expired' })
   })
 
   // Claims batch 1 — CONTRACT CHANGE (stricter): the client no longer sends an amount at
@@ -131,6 +141,37 @@ describe('createClaim — (a) owner + paid + window + amount', () => {
   it('duplicate active claim (P2002 on activeOrderKey) → 409', async () => {
     db.claim.create.mockRejectedValue(new Prisma.PrismaClientKnownRequestError('dup', { code: 'P2002', clientVersion: 'x' }))
     expect(await createClaim({ consumerId: 'c1', orderId: 'o1', reason: 'quality' })).toMatchObject({ ok: false, status: 409 })
+  })
+
+  // ── CONTRÔLES NÉGATIFS D′ L6 (spec v2 §7.1 E3/E4) — les deux arêtes neuves ──────────────────────
+  // Each order below is owned, paid and fresh; ONLY the delivery facts differ, so nothing else in the
+  // list can explain the refusal.
+  it("CONTRÔLE NÉGATIF D′ L6 — une commande non livrée (en préparation) → 409 not_delivered, ZÉRO création", async () => {
+    db.order.findUnique.mockResolvedValue(paidOrder({ status: 'preparing', deliveredAt: null }))
+    expect(await createClaim({ consumerId: 'c1', orderId: 'o1', reason: 'quality' }))
+      .toMatchObject({ ok: false, status: 409, reason: 'not_delivered' })
+    expect(db.claim.create).not.toHaveBeenCalled()
+  })
+
+  it("CONTRÔLE NÉGATIF D′ L6 — livrée mais SANS ancre (deliveredAt null) → 409 window_expired, aucun repli sur updatedAt", async () => {
+    // updatedAt is fresh: were the window still measured from it, this order would be accepted. A
+    // missing anchor has no honest date, so it is refused (support handles it) — never back-filled.
+    db.order.findUnique.mockResolvedValue(paidOrder({ deliveredAt: null, updatedAt: new Date() }))
+    expect(await createClaim({ consumerId: 'c1', orderId: 'o1', reason: 'quality' }))
+      .toMatchObject({ ok: false, status: 409, reason: 'window_expired' })
+    expect(db.claim.create).not.toHaveBeenCalled()
+  })
+
+  it("CONTRÔLE D'ANCRE D′ L6 — livrée il y a 1 h, updatedAt vieux de 3 jours → recevable (updatedAt n'est jamais lu)", async () => {
+    // The mirror of the control above: an old updatedAt must not close a window the delivery anchor
+    // holds open, or a reconciliation write would silently expire a live claim.
+    db.order.findUnique.mockResolvedValue(paidOrder({
+      deliveredAt: new Date(Date.now() - 3600 * 1000),
+      updatedAt:   new Date(Date.now() - 3 * 24 * 3600 * 1000),
+    }))
+    const res = await createClaim({ consumerId: 'c1', orderId: 'o1', reason: 'quality' })
+    expect(res.ok).toBe(true)
+    expect(db.claim.create).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -320,13 +361,18 @@ describe('(d) silence sweep (runClaimAutoApproval) — D′ L2 S-13: routes to a
   })
 })
 
+// D′ L6: the fixtures here ride on `paidOrder`, i.e. a DELIVERED order with a fresh deliveredAt —
+// the eligibility list is the same one createClaim asks, so a non-delivered order would be refused
+// with `not_delivered` before any of these rules were reached.
 describe('getClaimEligibility', () => {
-  it('owner + paid + window + no active → canClaim, max = order total cents', async () => {
+  it('owner + paid + delivered + window + no active → canClaim, max = order total cents', async () => {
     const e = await getClaimEligibility({ consumerId: 'c1', orderId: 'o1' })
     expect(e).toMatchObject({ canClaim: true, maxRefundableCents: 5000, existingClaim: null })
   })
   it('an ACTIVE claim already exists → canClaim false (active_claim)', async () => {
-    db.claim.findFirst.mockResolvedValue({ id: 'cl0', status: 'restaurant_review' })
+    // D′ L6: the fact the rules ask for is « who HOLDS the @unique activeOrderKey », so the simulated
+    // row carries it — and the order is delivered, so E8 is the rule that refuses, not E3.
+    db.claim.findFirst.mockResolvedValue({ id: 'cl0', status: 'restaurant_review', activeOrderKey: 'o1' })
     const e = await getClaimEligibility({ consumerId: 'c1', orderId: 'o1' })
     expect(e).toMatchObject({ canClaim: false, reason: 'active_claim' })
   })

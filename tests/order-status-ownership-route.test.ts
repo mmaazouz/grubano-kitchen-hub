@@ -7,20 +7,31 @@ import { NextRequest } from 'next/server'
 // PRE-CONDITION added before the state machine — the 'delivered' loyalty credit
 // and the status email must stay byte-identical, which the last test proves.
 
-const { db, getToken, resolveScope, sendEmail } = vi.hoisted(() => ({
+const { db, getToken, resolveScope, sendEmail, alert } = vi.hoisted(() => ({
   db: {
     order:              { findUnique: vi.fn(), update: vi.fn() },
-    loyaltyTransaction: { findFirst: vi.fn(), create: vi.fn() },
-    loyaltyCustomer:    { upsert: vi.fn(), update: vi.fn() },
+    // D′ L6: the delivered transition replays the refund prorata (lib/loyalty-prorata) right after the earn.
+    // These three delegates are what that replay READS. Without them every call threw a TypeError that the
+    // route's belt swallowed, so this file drove the delivered path with a BROKEN replay and still went
+    // green — and it would have gone green just as happily if the replay had been deleted.
+    loyaltyTransaction: { findFirst: vi.fn(), create: vi.fn(), findMany: vi.fn() },
+    refund:             { findMany: vi.fn() },
+    ledgerEntry:        { findMany: vi.fn(), findFirst: vi.fn() },
+    loyaltyCustomer:    { upsert: vi.fn(), update: vi.fn(), findUnique: vi.fn() },
     operator:           { findUnique: vi.fn() },
     restaurant:         { findUnique: vi.fn() },
     $transaction:       vi.fn(),
+    $queryRawUnsafe:    vi.fn(),
   },
   getToken:     vi.fn(),
   resolveScope: vi.fn(),
   sendEmail:    vi.fn(),
+  alert:        vi.fn(),
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
+// A prorata that cannot run alerts an admin. Mocked so this file can ASSERT that it does not fire, and so
+// no test can reach a real sender.
+vi.mock('@/lib/admin-alerts', () => ({ sendAdminMoneyReviewAlert: alert }))
 vi.mock('next-auth/jwt', () => ({ getToken }))
 vi.mock('@/lib/establishment-scope', () => ({ resolveEstablishmentScope: resolveScope }))
 vi.mock('@/lib/transactional-emails', () => ({ sendOrderStatusEmail: sendEmail }))
@@ -46,6 +57,13 @@ beforeEach(() => {
   db.order.update.mockImplementation(({ data }: { data: { status: string } }) =>
     Promise.resolve({ id: 'o1', status: data.status, updatedAt: new Date('2026-07-03T10:00:00Z') }))
   db.loyaltyTransaction.findFirst.mockResolvedValue(null)
+  db.loyaltyTransaction.findMany.mockResolvedValue([])
+  // No refund, no ledger line ⇒ the D′ L6 replay is a genuine no-op ('no_refunds'), not a swallowed crash.
+  db.refund.findMany.mockResolvedValue([])
+  db.ledgerEntry.findMany.mockResolvedValue([])
+  db.ledgerEntry.findFirst.mockResolvedValue(null)
+  db.loyaltyCustomer.findUnique.mockResolvedValue(null)
+  alert.mockResolvedValue({ status: 'sent' })
   db.operator.findUnique.mockResolvedValue(null)   // → loyalty + email skip cleanly
   db.restaurant.findUnique.mockResolvedValue(null)
   sendEmail.mockResolvedValue(undefined)
@@ -116,4 +134,44 @@ it('BYTE-IDENTICAL — delivered on an owned order still credits loyalty (harden
   expect(res.status).toBe(200)
   expect(db.loyaltyCustomer.upsert).toHaveBeenCalled()
   expect(db.$transaction).toHaveBeenCalled() // increment + 'earn' row, atomic — unchanged
+  // D′ L6: the prorata replay really ran over the order's refunds — and found none, so it wrote nothing
+  // and raised nothing. A replay that had thrown would be invisible here without this assertion.
+  expect(db.refund.findMany).toHaveBeenCalledWith(expect.objectContaining({
+    where: expect.objectContaining({ orderId: 'o1', status: 'succeeded' }),
+  }))
+  expect(alert, 'a healthy no-op replay alerts nobody').not.toHaveBeenCalled()
+})
+
+it('D′ L6 — delivered writes the deliveredAt anchor in the SAME write as the transition', async () => {
+  db.order.findUnique.mockResolvedValue({
+    id: 'o1', status: 'ready', restaurantId: 'r1', pointsEarned: 0, consumerId: 'c1',
+    fulfillmentType: 'delivery', deliveredAt: null,
+  })
+  const res = await patch('o1', { status: 'delivered' })
+  expect(res.status).toBe(200)
+  // One write, carrying both — never a second update, which could land minutes later or not at all.
+  expect(db.order.update).toHaveBeenCalledTimes(1)
+  const arg = db.order.update.mock.calls[0][0] as { data: Record<string, unknown> }
+  expect(arg.data.status).toBe('delivered')
+  expect(arg.data.deliveredAt, 'the claim window is anchored on the delivery instant').toBeInstanceOf(Date)
+})
+
+it('D′ L6 — an anchor already set is never overwritten, and no other status writes one', async () => {
+  const anchored = new Date('2026-09-01T12:00:00Z')
+  db.order.findUnique.mockResolvedValue({
+    id: 'o1', status: 'ready', restaurantId: 'r1', pointsEarned: 0, consumerId: 'c1',
+    fulfillmentType: 'delivery', deliveredAt: anchored,
+  })
+  await patch('o1', { status: 'delivered' })
+  expect((db.order.update.mock.calls[0][0] as { data: Record<string, unknown> }).data)
+    .not.toHaveProperty('deliveredAt')
+
+  db.order.update.mockClear()
+  db.order.findUnique.mockResolvedValue({
+    id: 'o1', status: 'received', restaurantId: 'r1', pointsEarned: 0, consumerId: 'c1',
+    fulfillmentType: 'delivery', deliveredAt: null,
+  })
+  await patch('o1', { status: 'preparing' })
+  expect((db.order.update.mock.calls[0][0] as { data: Record<string, unknown> }).data)
+    .not.toHaveProperty('deliveredAt')
 })

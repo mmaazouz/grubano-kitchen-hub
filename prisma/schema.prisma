@@ -2110,8 +2110,10 @@ model Dispute {
 // within CLAIM_RESPONSE_HOURS (default 24h): ACCEPT or REFUSE (motivated; the client may contest
 // → 'arbitration'). NO restaurant response by responseDeadlineAt → the sweep ROUTES the claim to
 // 'arbitration' where a human decides (D′ L2: a machine never approves and never pays).
-//   • WINDOW ANCHOR: the shipped code still anchors on Order.updatedAt. `Order.deliveredAt`
-//     exists since D′ L3b and becomes the anchor with the delivered-only rules of D′ L6.
+//   • WINDOW ANCHOR (D′ L6, SHIPPED): `Order.deliveredAt`. The claim rules live in ONE place,
+//     lib/claim-eligibility, and both createClaim and getClaimEligibility ask it: E3 delivered-only,
+//     E4 the 48 h window from `deliveredAt`, E5 a hard 30-day cap on `createdAt`. `updatedAt` is no
+//     longer read by any claim rule — it moves on every later write and re-opened a closed window.
 //
 // MONEY (D′ L2 — APPROVING IS NOT REFUNDING): an approval writes a DECISION only. Neither
 // arbitrateClaim nor any machine path calls lib/refund — whatever the REFUNDS lease says. The
@@ -2364,11 +2366,12 @@ model Order {
   // ── D′ L3b (spec v2 §9, additive nullable) — the DELIVERY instant ────────────
   // The moment the order became 'delivered'. It exists because `updatedAt` moves on EVERY
   // later write, which silently re-opened a claim window that should have closed. It will be
-  // the anchor of the claim rules (E3 delivered-only, E4 48 h from deliveredAt) when D′ L6
-  // ships their reader — and THIS field is the subject of decision D-1 (« ancre STRICTE »:
+  // the anchor of the claim rules — and THIS field is the subject of decision D-1 (« ancre STRICTE »:
   // deliveredAt null ⇒ ineligible for self-service, NO updatedAt fallback, manual support).
-  // Until L6 nothing reads this column and the eligibility code still anchors on updatedAt. Nullable, no default, no backfill → orders delivered before this
-  // column stay NULL. Applied on staging 2026-09-22 by dprime-staging-migrate.js (all NULL).
+  // SINCE D′ L6 IT IS READ: lib/claim-eligibility E3/E4 judge on it, and the PATCH …/status writer
+  // stamps it in the SAME write as the transition to 'delivered', once, only while it is still null.
+  // Nullable, no default, no backfill → orders delivered before this column stay NULL, and stay out of
+  // claim self-service by design. Applied on staging 2026-09-22 by dprime-staging-migrate.js (all NULL).
   deliveredAt           DateTime?
 
   @@index([pointOfSaleId])

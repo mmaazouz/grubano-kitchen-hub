@@ -3023,7 +3023,9 @@
       "signInTitle": "Acceda per ricevere assistenza su questo ordine",
       "signInCta": "Acceda",
       "refundOffTitle": "Rimborsi — assistenza umana",
-      "refundOffBody": "Durante la beta, le richieste di rimborso sono gestite dal nostro team. Ci scriva a contact@grubano.com indicando il numero d'ordine."
+      "refundOffBody": "Durante la beta, le richieste di rimborso sono gestite dal nostro team. Ci scriva a contact@grubano.com indicando il numero d'ordine.",
+      "claimNotDelivered": "Questo ordine non è ancora segnato come consegnato: un reclamo può essere presentato solo dopo la consegna. Un ordine in corso, o annullato, è gestito dal nostro team — scrivici.",
+      "claimNoRefundableAmount": "Questo ordine non ha più un importo rimborsabile: il suo totale è già coperto da un rimborso effettuato o ancora in corso. Scrivici se ti sembra sbagliato."
     },
     "home": {
       "seeAll": "Veda tutto",

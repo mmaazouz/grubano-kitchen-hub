@@ -35,7 +35,12 @@ vi.mock('@/lib/claim-emails', () => ({ sendClaimAckEmail: ackMock, sendClaimDeci
 
 import { POST } from '@/app/api/claims/route'
 
-const ORDER = { id: 'o1', consumerId: 'owner', restaurantId: 'r1', paymentStatus: 'paid', total: 32.5, updatedAt: new Date(), items: [{ itemId: 'm1', name: 'Gnocchi', qty: 2, price: 12.5 }] }
+// D′ L6 (spec v2 §7.1 E3/E4/E5) — DELIVERED-ONLY, and the anchor is `deliveredAt`. The fixture carries
+// `status:'delivered'` and a fresh `deliveredAt` because a claim is about food that ARRIVED: without them
+// every POST below stops at E3 (not_delivered) and would prove nothing about ownership, pricing or the
+// machine path. The flag is NOT decoration — the negative controls just below fail if it is
+// removed, or if the window is dated from `updatedAt` (kept here precisely so it can be shown inert).
+const ORDER = { id: 'o1', consumerId: 'owner', restaurantId: 'r1', paymentStatus: 'paid', status: 'delivered', total: 32.5, deliveredAt: new Date(), createdAt: new Date(), updatedAt: new Date(), items: [{ itemId: 'm1', name: 'Gnocchi', qty: 2, price: 12.5 }] }
 const post = (body: unknown) =>
   POST(new Request('https://app.grubano.com/api/claims', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }) as never)
 
@@ -115,6 +120,43 @@ describe('OWNERSHIP before any expensive or side-effecting work', () => {
     // and the client is TOLD its photo was not kept, rather than left to assume it was
     expect(await res.json()).toMatchObject({ photoAccepted: false })
     expect(db.claim.create.mock.calls[0][0].data.photoUrl).toBeNull()
+  })
+})
+
+// ── D′ L6 — THE DELIVERY ANCHOR, SEEN FROM THE ROUTE (spec v2 §7.1 E3/E4) ───────────
+// NEGATIVE CONTROLS for the edges this lot creates, and for the fixture above: if the shipped
+// `delivered` / `deliveredAt` fixture were decoration, these would not be able to fail. They live here
+// because this file drives the REAL route with lib/claims real — what a customer receives is an HTTP
+// status and a sentence, not a return value.
+describe('D′ L6 — delivered-only, and the window is dated from deliveredAt alone', () => {
+  it('an order still on its way → 409 not_delivered, nothing created (E3: nothing has arrived to be judged)', async () => {
+    db.order.findUnique.mockResolvedValue({ ...ORDER, status: 'preparing', deliveredAt: null })
+    const res = await post({ orderId: 'o1', reason: 'quality' })
+    expect(res.status).toBe(409)
+    expect((await res.json()).error).toMatch(/pas encore marquée livrée/)
+    expect(db.claim.create).not.toHaveBeenCalled()
+  })
+
+  it('delivered but with NO anchor (deliveredAt null) → 409, nothing created: there is no honest way to date the window, and neither createdAt nor updatedAt stands in for it', async () => {
+    db.order.findUnique.mockResolvedValue({ ...ORDER, status: 'delivered', deliveredAt: null, createdAt: new Date(), updatedAt: new Date() })
+    const res = await post({ orderId: 'o1', reason: 'quality' })
+    expect(res.status).toBe(409)
+    // E4, not E3: the order IS delivered — what is missing is the instant the window is measured from.
+    expect((await res.json()).error).toMatch(/délai de réclamation est dépassé/)
+    expect(db.claim.create).not.toHaveBeenCalled()
+  })
+
+  it('updatedAt bumped to NOW on an order delivered 3 days ago → still 409; the same order with a fresh anchor → 201 (so the refusal is the anchor’s age, nothing else)', async () => {
+    const threeDaysAgo = new Date(Date.now() - 72 * 3600 * 1000)
+    db.order.findUnique.mockResolvedValue({ ...ORDER, status: 'delivered', deliveredAt: threeDaysAgo, createdAt: threeDaysAgo, updatedAt: new Date() })
+    const stale = await post({ orderId: 'o1', reason: 'quality' })
+    expect(stale.status).toBe(409)
+    expect((await stale.json()).error).toMatch(/délai de réclamation est dépassé/)
+    expect(db.claim.create).not.toHaveBeenCalled()
+    // Same row, same (old) updatedAt, anchor moved inside the 48 h window → accepted.
+    db.order.findUnique.mockResolvedValue({ ...ORDER, status: 'delivered', deliveredAt: new Date(Date.now() - 3600 * 1000), createdAt: threeDaysAgo, updatedAt: threeDaysAgo })
+    expect((await post({ orderId: 'o1', reason: 'quality' })).status).toBe(201)
+    expect(db.claim.create).toHaveBeenCalledTimes(1)
   })
 })
 

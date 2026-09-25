@@ -193,6 +193,10 @@ export type MoneyReviewKind =
   | 'claim_refunded_row_unfinalized'    // T-49 round 11: a claim was concluded from Stripe while its Refund row stays pending (engine row-side work not done)
   | 'claim_payment_blocked'             // T-49 round 13 (I-01): a write left a claim unpaid by the rail; its only exits are gated, time-based or human
   | 'claim_attempt_superseded'          // T-49 round 13 (I-03): an engine attempt returned after its claim changed state; the claim does not reflect it
+  // D' L6 (D-15): the earn WAS credited at the delivered transition but its refund prorata could not be
+  // replayed. Points are over-credited until it is repaired — the amount is known and the repair is one
+  // admin call (POST /api/admin/loyalty/reconcile), so the alert names the order rather than guessing it.
+  | 'loyalty_prorata_incomplete'
 
 export async function sendAdminMoneyReviewAlert(p: {
   kind:      MoneyReviewKind

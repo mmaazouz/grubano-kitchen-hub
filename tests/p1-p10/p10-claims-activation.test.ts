@@ -68,8 +68,14 @@ import { isConsumerAbuseFlagged } from '@/lib/claims'
 const req = (body?: unknown, url = 'https://app.grubano.com/api/claims') =>
   ({ url, json: async () => body ?? {} }) as never
 
+// D′ L6 (spec v2 §7.1 E3/E4/E5) — LIVRÉE SEULEMENT, ancre `deliveredAt`. La photographie de
+// l'activation porte sur une réclamation d'une commande RÉELLEMENT LIVRÉE : sans `status:'delivered'`
+// ni ancre fraîche, chaque POST ci-dessous s'arrête à E3 (not_delivered) et le cliché serait celui du
+// refus, pas celui du chemin d'activation. Le drapeau n'est pas décoratif — le bloc D′ L6
+// ci-dessous échoue s'il disparaît, ou si la fenêtre est datée depuis `updatedAt`.
 const paidOrder = (o: Record<string, unknown> = {}) => ({
-  id: 'o1', consumerId: 'c1', restaurantId: 'r1', paymentStatus: 'paid', total: 50, updatedAt: new Date(), ...o,
+  id: 'o1', consumerId: 'c1', restaurantId: 'r1', paymentStatus: 'paid', status: 'delivered', total: 50,
+  deliveredAt: new Date(), createdAt: new Date(), updatedAt: new Date(), ...o,
 })
 
 // Stripe TEST keys are absent in CI — presence check ONLY, the value is never read.
@@ -190,6 +196,39 @@ describe('P10 — activation (CLAIMS_ENABLED=true) : la route tient, contraireme
       enabled: true,
       eligibility: { canClaim: true, maxRefundableCents: 5000, windowHours: 48, existingClaim: null },
     })
+  })
+})
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// D′ L6 (spec v2 §7.1 E3/E4) — CONTRÔLES NÉGATIFS de l'ancre de livraison, côté GET.
+// Ils tiennent ici parce que ce fichier interroge la lib RÉELLE : seul le GET rend le CODE de refus
+// (le POST ne rend qu'un statut + une phrase). Ils prouvent aussi que le drapeau `delivered` du
+// fixture ci-dessus porte quelque chose : sans lui, ces trois cas ne pourraient pas échouer.
+describe("P10 — D′ L6 : l'ancre de livraison décide, jamais updatedAt", () => {
+  beforeEach(() => { vi.stubEnv('CLAIMS_ENABLED', 'true'); vi.stubEnv('CLAIMS_WINDOW_UNTIL', new Date(Date.now() + 15 * 60 * 1000).toISOString()) })
+
+  it("[PASS-ACTUEL D′ L6] commande NON livrée → canClaim:false, reason:'not_delivered' (E3 : rien n'est arrivé à juger ; une annulation payée relève de la réclamation SYSTÈME)", async () => {
+    db.order.findUnique.mockResolvedValue(paidOrder({ status: 'preparing', deliveredAt: null }))
+    const body = await (await LIST(req(undefined, 'https://app.grubano.com/api/claims?orderId=o1'))).json()
+    expect(body).toMatchObject({ enabled: true, eligibility: { canClaim: false, reason: 'not_delivered' } })
+  })
+
+  it("[PASS-ACTUEL D′ L6] livrée SANS ancre (deliveredAt null) → canClaim:false, reason:'window_expired' : aucun repli sur createdAt ni updatedAt, le support prend la main (D-1)", async () => {
+    db.order.findUnique.mockResolvedValue(paidOrder({ status: 'delivered', deliveredAt: null }))
+    const body = await (await LIST(req(undefined, 'https://app.grubano.com/api/claims?orderId=o1'))).json()
+    expect(body.eligibility).toMatchObject({ canClaim: false, reason: 'window_expired' })
+  })
+
+  it("[PASS-ACTUEL D′ L6] updatedAt remis à MAINTENANT sur une commande livrée il y a 3 jours → toujours window_expired ; la même commande avec une ancre fraîche → canClaim:true", async () => {
+    const troisJours = new Date(Date.now() - 72 * 3600 * 1000)
+    db.order.findUnique.mockResolvedValue(paidOrder({ deliveredAt: troisJours, createdAt: troisJours, updatedAt: new Date() }))
+    const perime = await (await LIST(req(undefined, 'https://app.grubano.com/api/claims?orderId=o1'))).json()
+    expect(perime.eligibility).toMatchObject({ canClaim: false, reason: 'window_expired' })
+    // Même ligne, même updatedAt ancien : seule l'ancre bouge → le refus ci-dessus est bien son âge.
+    db.order.findUnique.mockResolvedValue(paidOrder({ deliveredAt: new Date(Date.now() - 3600 * 1000), createdAt: troisJours, updatedAt: troisJours }))
+    const frais = await (await LIST(req(undefined, 'https://app.grubano.com/api/claims?orderId=o1'))).json()
+    expect(frais.eligibility).toMatchObject({ canClaim: true, maxRefundableCents: 5000 })
+    expect(frais.eligibility.reason).toBeUndefined()
   })
 })
 
