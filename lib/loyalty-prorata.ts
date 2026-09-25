@@ -226,14 +226,21 @@ export async function replayLoyaltyProrata(
 ): Promise<ProrataOutcome> {
   let set: DbKnownRefundSet | null = null
   let lastError = ''
-  // Measured BEFORE the first attempt, so a failure can state what this call itself wrote.
-  const before = await countLoyaltyRows(db, orderId)
+  /**
+   * The row count BEFORE anything was written, so a failure can state what THIS call applied. Read lazily,
+   * once, and only once we know there IS something to reconcile: this function runs on every delivery, and
+   * the overwhelming majority of deliveries have no refund at all. An order that returns `no_refunds` costs
+   * exactly what it cost before this measurement existed.
+   */
+  let before: LoyaltyRowCount | null = null
+  let beforeRead = false
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
       set = set ?? (await buildDbKnownRefundSet(db, orderId))
       if (!set) return { ok: true, replayed: false, reason: 'no_order' }
       // No known refund ⇒ nothing to prorate. The earn stands whole, which is the correct answer.
       if (set.refunds.length === 0) return { ok: true, replayed: false, reason: 'no_refunds' }
+      if (!beforeRead) { before = await countLoyaltyRows(db, orderId); beforeRead = true }
       const result = await reconcileLoyaltyOnRefund(db, {
         orderId,
         chargeAmountCents: set.chargeAmountCents,

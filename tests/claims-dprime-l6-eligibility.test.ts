@@ -314,6 +314,18 @@ describe('D′ L6 — both functions ask the ONE list, and nothing anchors on up
     }
   })
 
+  it('⭐ the page prefers « une réclamation est en cours » when the BLOCKING claim is not the one it shows', () => {
+    const page = read('app/[locale]/eat/order/[orderId]/help/page.tsx')
+    // An OLDER claim can hold the key while the newest claim of the order is closed. Describing that closed
+    // claim (« refusée ») beside a refusal that means « one is still open » contradicted itself.
+    expect(page).toContain("eligibility.blockingClaimId !== ex?.id")
+    const label = page.slice(page.indexOf('const eligibilityLabel'))
+    const guard = label.indexOf('blockingClaimId')
+    const exStatus = label.indexOf("ex.status === 'restaurant_review'")
+    expect(guard, 'the guard is in the label function').toBeGreaterThan(-1)
+    expect(guard, 'and it is asked BEFORE the existing claim is described').toBeLessThan(exStatus)
+  })
+
   it('the SYSTEM claim still bypasses the list (S-17): a paid cancellation is never « not delivered »', () => {
     const src = read('lib/claims.ts')
     const sys = src.slice(src.indexOf('export async function createSystemClaim'))

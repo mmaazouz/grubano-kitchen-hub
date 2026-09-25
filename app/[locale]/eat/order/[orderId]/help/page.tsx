@@ -74,6 +74,11 @@ interface ClaimEligibility {
   canClaim: boolean
   // D' L6 (spec v2 §7.1): 'not_delivered' (E3) and 'no_refundable_amount' (E6) joined the server's union.
   reason?: 'not_owner' | 'not_paid' | 'not_delivered' | 'window_expired' | 'active_claim' | 'no_refundable_amount' | 'intake_closed'
+  /**
+   * D′ L6: with `reason: 'active_claim'`, the id of the claim that HOLDS the key — which is not always
+   * `existingClaim`, the NEWEST one. When they differ, the claim shown below is not the one that blocks.
+   */
+  blockingClaimId?: string
   maxRefundableCents: number
   /** T-59: true only when the ceiling was proven against live Stripe cash truth. */
   ceilingVerified?: boolean
@@ -264,6 +269,13 @@ const REFUSAL_LABEL: Record<string, string> = {
   // Mirrors getClaimEligibility's reason union + the active-claim status.
   const eligibilityLabel = (): string => {
     const ex = eligibility?.existingClaim
+    // D′ L6: an OLDER claim can hold the @unique activeOrderKey while the newest claim of the order is
+    // closed. Showing that closed claim's status (« refusée ») next to a refusal that means « one is still
+    // in progress » read as a contradiction, and told the customer to do the wrong thing. When the blocking
+    // claim is not the one we are about to describe, say what actually blocks.
+    if (eligibility?.reason === 'active_claim' && eligibility.blockingClaimId && eligibility.blockingClaimId !== ex?.id) {
+      return t('claimAlreadyFiled')
+    }
     if (ex && (eligibility?.reason === 'active_claim' || !eligibility?.canClaim)) {
       // an existing claim takes precedence — show its review/decision status
       if (ex.status === 'restaurant_review') return t('claimAlreadyFiled')
