@@ -89,7 +89,7 @@ beforeEach(() => {
 
 describe('createClaim — (a) owner + paid + window + amount', () => {
   it('creates a restaurant_review claim (whole order when no amount), deadline set', async () => {
-    const res = await createClaim({ consumerId: 'c1', orderId: 'o1', reason: 'quality' })
+    const res = await createClaim({ consumerId: 'c1', orderId: 'o1', reason: 'quality', scope: 'whole' })
     expect(res.ok).toBe(true)
     const data = db.claim.create.mock.calls[0][0].data
     expect(data).toMatchObject({ orderId: 'o1', consumerId: 'c1', restaurantId: 'r1', reason: 'quality', requestedAmountCents: 5000, status: 'restaurant_review', activeOrderKey: 'o1' })
@@ -98,14 +98,14 @@ describe('createClaim — (a) owner + paid + window + amount', () => {
 
   it('non-owner → 403, no create', async () => {
     db.order.findUnique.mockResolvedValue(paidOrder({ consumerId: 'someone_else' }))
-    const res = await createClaim({ consumerId: 'c1', orderId: 'o1', reason: 'quality' })
+    const res = await createClaim({ consumerId: 'c1', orderId: 'o1', reason: 'quality', scope: 'whole' })
     expect(res).toMatchObject({ ok: false, status: 403 })
     expect(db.claim.create).not.toHaveBeenCalled()
   })
 
   it('not paid → 409', async () => {
     db.order.findUnique.mockResolvedValue(paidOrder({ paymentStatus: 'pending' }))
-    expect(await createClaim({ consumerId: 'c1', orderId: 'o1', reason: 'quality' })).toMatchObject({ ok: false, status: 409 })
+    expect(await createClaim({ consumerId: 'c1', orderId: 'o1', reason: 'quality', scope: 'whole' })).toMatchObject({ ok: false, status: 409 })
   })
 
   // D′ L6: the order is aged by its DELIVERY instant, not by updatedAt — the fixture used to move
@@ -113,25 +113,37 @@ describe('createClaim — (a) owner + paid + window + amount', () => {
   // measures the WINDOW (E4) and cannot pass on the delivered-only refusal (E3).
   it('outside the 48h window → 409', async () => {
     db.order.findUnique.mockResolvedValue(paidOrder({ deliveredAt: new Date(Date.now() - 49 * 3600 * 1000) }))
-    expect(await createClaim({ consumerId: 'c1', orderId: 'o1', reason: 'quality' }))
+    expect(await createClaim({ consumerId: 'c1', orderId: 'o1', reason: 'quality', scope: 'whole' }))
       .toMatchObject({ ok: false, status: 409, reason: 'window_expired' })
   })
 
   // Claims batch 1 — CONTRACT CHANGE (stricter): the client no longer sends an amount at
   // all, so 'amount over the total' cannot even be expressed. The old test asserted that an
-  // over-cap amount was REJECTED. The new contract is stronger: a requested amount can only
+  // over-cap amount was REJECTED. The contract then became: a requested amount can only
   // REDUCE the claim below the server-derived ceiling, and can never raise it.
-  it('a client amount ABOVE the ceiling is capped at the server value, not granted', async () => {
-    const res = await createClaim({ consumerId: 'c1', orderId: 'o1', reason: 'quality', requestedAmountCents: 6000 })
+  //
+  // D′ L7 (T-50) — CONTRACT CHANGE AGAIN, stricter still, and the assertion below is INVERTED.
+  // Capping honoured the invariant (the client never widens authority) but lied about the outcome: the
+  // customer typed 60,00 €, the row said 50,00 €, and the acknowledgement called that « le montant que
+  // vous avez demandé ». An amount that cannot be honoured is now REFUSED with a code the client renders
+  // in the customer's own language, so they can ask for something the order can actually pay.
+  it('a client amount ABOVE the ceiling is REFUSED with its code, not silently capped', async () => {
+    const res = await createClaim({ consumerId: 'c1', orderId: 'o1', reason: 'quality', scope: 'amount', requestedAmountCents: 6000 })
+    expect(res).toMatchObject({ ok: false, status: 400, reason: 'amount_over_ceiling' })
+    expect(db.claim.create).not.toHaveBeenCalled()
+  })
+
+  it('…and the ceiling is still reachable, deliberately, through its own scope', async () => {
+    const res = await createClaim({ consumerId: 'c1', orderId: 'o1', reason: 'quality', scope: 'whole' })
     expect(res.ok).toBe(true)
-    // 5000 = the server-derived whole-order authority, NOT the 6000 the client asked for
     expect(db.claim.create.mock.calls[0][0].data.requestedAmountCents).toBe(5000)
   })
 
   it('a client amount BELOW the ceiling is honoured verbatim (a partial claim stays partial)', async () => {
-    const res = await createClaim({ consumerId: 'c1', orderId: 'o1', reason: 'quality', requestedAmountCents: 500 })
+    const res = await createClaim({ consumerId: 'c1', orderId: 'o1', reason: 'quality', scope: 'amount', requestedAmountCents: 500 })
     expect(res.ok).toBe(true)
     expect(db.claim.create.mock.calls[0][0].data.requestedAmountCents).toBe(500)
+    expect(db.claim.create.mock.calls[0][0].data.selection).toMatchObject({ v: 1, mode: 'amount', requestedCents: 500 })
   })
 
   it('invalid reason → 400', async () => {
@@ -140,7 +152,7 @@ describe('createClaim — (a) owner + paid + window + amount', () => {
 
   it('duplicate active claim (P2002 on activeOrderKey) → 409', async () => {
     db.claim.create.mockRejectedValue(new Prisma.PrismaClientKnownRequestError('dup', { code: 'P2002', clientVersion: 'x' }))
-    expect(await createClaim({ consumerId: 'c1', orderId: 'o1', reason: 'quality' })).toMatchObject({ ok: false, status: 409 })
+    expect(await createClaim({ consumerId: 'c1', orderId: 'o1', reason: 'quality', scope: 'whole' })).toMatchObject({ ok: false, status: 409 })
   })
 
   // ── CONTRÔLES NÉGATIFS D′ L6 (spec v2 §7.1 E3/E4) — les deux arêtes neuves ──────────────────────
@@ -148,7 +160,7 @@ describe('createClaim — (a) owner + paid + window + amount', () => {
   // list can explain the refusal.
   it("CONTRÔLE NÉGATIF D′ L6 — une commande non livrée (en préparation) → 409 not_delivered, ZÉRO création", async () => {
     db.order.findUnique.mockResolvedValue(paidOrder({ status: 'preparing', deliveredAt: null }))
-    expect(await createClaim({ consumerId: 'c1', orderId: 'o1', reason: 'quality' }))
+    expect(await createClaim({ consumerId: 'c1', orderId: 'o1', reason: 'quality', scope: 'whole' }))
       .toMatchObject({ ok: false, status: 409, reason: 'not_delivered' })
     expect(db.claim.create).not.toHaveBeenCalled()
   })
@@ -157,7 +169,7 @@ describe('createClaim — (a) owner + paid + window + amount', () => {
     // updatedAt is fresh: were the window still measured from it, this order would be accepted. A
     // missing anchor has no honest date, so it is refused (support handles it) — never back-filled.
     db.order.findUnique.mockResolvedValue(paidOrder({ deliveredAt: null, updatedAt: new Date() }))
-    expect(await createClaim({ consumerId: 'c1', orderId: 'o1', reason: 'quality' }))
+    expect(await createClaim({ consumerId: 'c1', orderId: 'o1', reason: 'quality', scope: 'whole' }))
       .toMatchObject({ ok: false, status: 409, reason: 'window_expired' })
     expect(db.claim.create).not.toHaveBeenCalled()
   })
@@ -169,7 +181,7 @@ describe('createClaim — (a) owner + paid + window + amount', () => {
       deliveredAt: new Date(Date.now() - 3600 * 1000),
       updatedAt:   new Date(Date.now() - 3 * 24 * 3600 * 1000),
     }))
-    const res = await createClaim({ consumerId: 'c1', orderId: 'o1', reason: 'quality' })
+    const res = await createClaim({ consumerId: 'c1', orderId: 'o1', reason: 'quality', scope: 'whole' })
     expect(res.ok).toBe(true)
     expect(db.claim.create).toHaveBeenCalledTimes(1)
   })

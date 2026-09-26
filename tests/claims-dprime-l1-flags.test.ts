@@ -185,7 +185,7 @@ describe('lib/claim-flags — the matrix (spec v2 §3.1)', () => {
 // ── the routes ───────────────────────────────────────────────────────────────────────────────────────────────────
 describe('POST /api/claims — surface, then intake (S-23)', () => {
   it('kill-switch (no flag, no lease) → 403 {gated:true}, no token read, no DB work', async () => {
-    const res = await post({ orderId: 'o1', reason: 'quality' })
+    const res = await post({ orderId: 'o1', reason: 'quality', scope: 'whole' })
     expect(res.status).toBe(403)
     expect(await res.json()).toMatchObject({ gated: true })
     expect(tokenMock).not.toHaveBeenCalled()
@@ -194,7 +194,7 @@ describe('POST /api/claims — surface, then intake (S-23)', () => {
 
   it("SURFACE=true · INTAKE=false → 403 {gated:false, enabled:true, intakeOpen:false, reason:'intake_closed'} before auth; a probe never reads CLOSED", async () => {
     product('true', 'false')
-    const res = await post({ orderId: 'o1', reason: 'quality' })
+    const res = await post({ orderId: 'o1', reason: 'quality', scope: 'whole' })
     expect(res.status).toBe(403)
     const body = await res.json()
     expect(body).toEqual({ error: 'Dépôt de réclamation suspendu', gated: false, enabled: true, intakeOpen: false, reason: 'intake_closed' })
@@ -207,7 +207,7 @@ describe('POST /api/claims — surface, then intake (S-23)', () => {
 
   it('SURFACE=true · INTAKE=true → 201, the ack e-mail carries claimsOpen from the pre_money gate (true)', async () => {
     product('true', 'true')
-    const res = await post({ orderId: 'o1', reason: 'quality' })
+    const res = await post({ orderId: 'o1', reason: 'quality', scope: 'whole' })
     expect(res.status).toBe(201)
     expect(db.claim.create).toHaveBeenCalledTimes(1)
     expect(ackMock).toHaveBeenCalledWith(expect.objectContaining({ claimsOpen: true }))
@@ -215,16 +215,16 @@ describe('POST /api/claims — surface, then intake (S-23)', () => {
 
   it('S-12 — legacy lease alone (Mode A shape): 201 exactly as before; expired lease: 403 gated', async () => {
     lease()
-    expect((await post({ orderId: 'o1', reason: 'quality' })).status).toBe(201)
+    expect((await post({ orderId: 'o1', reason: 'quality', scope: 'whole' })).status).toBe(201)
     clearFlags(); lease(-1000)
-    const res = await post({ orderId: 'o1', reason: 'quality' })
+    const res = await post({ orderId: 'o1', reason: 'quality', scope: 'whole' })
     expect(res.status).toBe(403)
     expect(await res.json()).toMatchObject({ gated: true })
   })
 
   it('INTAKE=true without SURFACE opens nothing: 403 {gated:true} (fail-closed)', async () => {
     product(undefined, 'true')
-    const res = await post({ orderId: 'o1', reason: 'quality' })
+    const res = await post({ orderId: 'o1', reason: 'quality', scope: 'whole' })
     expect(res.status).toBe(403)
     expect(await res.json()).toMatchObject({ gated: true })
   })

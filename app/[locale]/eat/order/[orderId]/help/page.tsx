@@ -73,6 +73,10 @@ type View = 'help' | 'refund' | 'chat'
 interface ClaimEligibility {
   canClaim: boolean
   // D' L6 (spec v2 §7.1): 'not_delivered' (E3) and 'no_refundable_amount' (E6) joined the server's union.
+  // L7 (T-50): this union is the ELIGIBILITY codes — the ones GET /api/claims can answer about the order.
+  // The POST answers those too, plus a second family about WHAT was claimed (items_required,
+  // qty_over_purchased, …). Those never appear here because they are not properties of the order; they
+  // arrive on the POST response and are rendered through the same REFUSAL_LABEL map below.
   reason?: 'not_owner' | 'not_paid' | 'not_delivered' | 'window_expired' | 'active_claim' | 'no_refundable_amount' | 'intake_closed'
   /**
    * D′ L6: with `reason: 'active_claim'`, the id of the claim that HOLDS the key — which is not always
@@ -107,7 +111,15 @@ export default function OrderHelpScreen() {
   const [loading, setLoading] = useState(true)
   const [view, setView] = useState<View>('help')
   // refund view local state — which REAL items are flagged + the description.
-  const [selected, setSelected] = useState<Record<number, boolean>>({})
+  /**
+   * L7 (T-50) — index → the QUANTITY the customer disputes on that line. 0 (or absent) = not selected.
+   *
+   * It was a boolean, and the claim then sent the FULL purchased quantity for every ticked line: a
+   * customer who received three gnocchi and had a problem with one could only say « the gnocchi », and
+   * the claim recorded three. The snapshot must hold the quantity actually contested, so the customer
+   * has to be able to say it.
+   */
+  const [picked, setPicked] = useState<Record<number, number>>({})
   const [desc, setDesc] = useState('')
   // INERT (flag OFF) fallback flag — exactly the prior behaviour, kept byte-identical.
   const [submitted, setSubmitted] = useState(false)
@@ -168,14 +180,22 @@ export default function OrderHelpScreen() {
   // already fetched here; the displayed figure is now clamped to it, so the page cannot promise
   // money the server will not grant. It can only ever shrink — never inflate.
   const rawEstimate = useMemo(
-    () => items.reduce((s, it, i) => (selected[i] ? s + it.price * (it.qty ?? 1) : s), 0),
-    [items, selected],
+    () => items.reduce((s, it, i) => s + it.price * Math.min(picked[i] ?? 0, it.qty ?? 1), 0),
+    [items, picked],
   )
   const ceilingEuros = (eligibility?.maxRefundableCents ?? 0) / 100
   const estimate = eligibility ? Math.min(rawEstimate, ceilingEuros) : rawEstimate
   /** True when the server ceiling, not the selection, is what caps the figure shown. */
   const estimateCapped = !!eligibility && rawEstimate > ceilingEuros
-  const anySelected = Object.values(selected).some(Boolean)
+  /**
+   * L7 — only a selection that still POINTS AT SOMETHING counts.
+   *
+   * It was `Object.values(selected).some(Boolean)`, true for any truthy key — including an index past
+   * the end of the list after the order reloaded shorter. The button was then enabled while the body
+   * built an EMPTY items array, so the customer pressed « envoyer » and got a 400 they could not act
+   * on. A stale index is not a selection.
+   */
+  const anySelected = items.some((it, i) => (picked[i] ?? 0) > 0 && (picked[i] ?? 0) <= Math.max(1, Math.floor(it.qty ?? 1)))
 
   // P0-19 — on a pickup order, 'picked_up'/'delivered' mean "collected by the
   // client": never « En route »/« Livrée » (delivery vocabulary). Display only.
@@ -197,6 +217,11 @@ export default function OrderHelpScreen() {
       setView('help'); setSubmitted(false); setSubmitState('idle'); setSubmitError(null)
       return
     }
+    // L7 — leaving the form CLEARS it. `selected` and `desc` used to survive both a goBack and a
+    // successful submit, so the next visit opened with the previous visit's ticks and description
+    // already in place, ready to be filed again without the customer having chosen anything.
+    setPicked({})
+    setDesc('')
     router.back()
   }
 
@@ -221,14 +246,21 @@ export default function OrderHelpScreen() {
           // ALREADY tracks which lines the customer ticked, so it sends that SELECTION
           // (index + purchased quantity). The server prices it from the stored order; no price
           // or total from this client is ever read.
+          // L7 — the scope is STATED, not inferred. 'missing_item' is items-only, so there is nothing for
+          // the customer to choose here; saying it anyway means the server never has to guess, and a future
+          // change of reason on this page cannot silently become a whole-order claim.
+          scope: 'items',
           items: items
-            .map((it, i) => ({ index: i, qty: it.qty ?? 1, picked: !!selected[i] }))
-            .filter((x) => x.picked)
-            .map(({ index, qty }) => ({ index, qty })),
+            .map((it, i) => ({ index: i, qty: Math.min(picked[i] ?? 0, it.qty ?? 1) }))
+            .filter((x) => x.qty > 0),
         }),
       })
       if (res.status === 201) {
         setSubmitState('done')
+        // The claim is filed: the form's content is spent. Leaving it in place invited a second,
+        // identical claim built from state the customer had already used.
+        setPicked({})
+        setDesc('')
         await refetchEligibility() // reflect the filed claim (active / auto-resolved)
         return
       }
@@ -263,6 +295,26 @@ const REFUSAL_LABEL: Record<string, string> = {
   active_claim:         'claimAlreadyFiled',
   no_refundable_amount: 'claimNoRefundableAmount',
   intake_closed:        'claimIntakeClosed',
+  // L7 (T-50) — the refusals about WHAT WAS CLAIMED, as opposed to whether the order is claimable.
+  //
+  // This page files ONE reason (`missing_item`, items-only) and always states `scope: 'items'`, so the
+  // codes it can actually meet are the selection ones: a quantity above what was purchased, an index the
+  // order no longer has after a reload, a duplicate, or an order whose lines are unreadable. The rest of
+  // the family is mapped anyway — the same map serves any surface that reuses it, and a code with no
+  // label falls back to the server's French sentence, which is exactly what should not happen twice.
+  // Left UNMAPPED on purpose: `items_not_allowed`, `amount_not_allowed`, `invalid_scope` and
+  // `reason_not_selectable`. Those require a client that contradicts itself or offers a withdrawn reason;
+  // writing five translations for a state no working client can reach is noise in five locales.
+  scope_required:         'claimScopeRequired',
+  scope_not_allowed:      'claimItemsRequired',
+  items_required:         'claimItemsRequired',
+  item_lines_unavailable: 'claimItemLinesUnavailable',
+  invalid_selection:      'claimInvalidSelection',
+  duplicate_selection:    'claimDuplicateSelection',
+  invalid_qty:            'claimInvalidQty',
+  qty_over_purchased:     'claimQtyOverPurchased',
+  amount_required:        'claimAmountRequired',
+  amount_over_ceiling:    'claimAmountOverCeiling',
 }
 
   // Eligibility → a human label for the disabled-submit reason (flag ON, not eligible).
@@ -381,21 +433,43 @@ const REFUSAL_LABEL: Record<string, string> = {
               {loading ? (
                 [0, 1].map((i) => <div key={i} className="sk" style={{ height: 22 }} />)
               ) : items.length ? (
-                items.map((it, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    className="it"
-                    aria-pressed={!!selected[i]}
-                    onClick={() => setSelected((s) => ({ ...s, [i]: !s[i] }))}
-                  >
-                    <span className={`cb${selected[i] ? ' on' : ''}`}>
-                      {selected[i] && <span className="ms" aria-hidden="true">check</span>}
-                    </span>
-                    <span className="nm">{it.qty > 1 ? `${it.qty}× ${it.name}` : it.name}</span>
-                    <span className="pr">{formatEuros(it.price * (it.qty ?? 1), locale)}</span>
-                  </button>
-                ))
+                items.map((it, i) => {
+                  const maxQty = Math.max(1, Math.floor(it.qty ?? 1))
+                  const qty = Math.min(picked[i] ?? 0, maxQty)
+                  const on = qty > 0
+                  return (
+                    <div key={i} className="it" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      {/* Tapping the line selects it (qty 1) or clears it — the same gesture as before. */}
+                      <button
+                        type="button"
+                        aria-pressed={on}
+                        onClick={() => setPicked((p) => ({ ...p, [i]: on ? 0 : 1 }))}
+                        style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, background: 'none', border: 0, padding: 0, textAlign: 'start' }}
+                      >
+                        <span className={`cb${on ? ' on' : ''}`}>
+                          {on && <span className="ms" aria-hidden="true">check</span>}
+                        </span>
+                        <span className="nm">{maxQty > 1 ? `${maxQty}× ${it.name}` : it.name}</span>
+                      </button>
+                      {/* L7 — HOW MANY of them. Shown only when more than one was bought: a stepper on a
+                          single item would be a control with one position. Min 1 on a selected line; the
+                          maximum is what was purchased, and the server re-checks both. */}
+                      {on && maxQty > 1 && (
+                        <select
+                          aria-label={t('claimQtyLabel', { name: it.name })}
+                          value={qty}
+                          onChange={(e) => setPicked((p) => ({ ...p, [i]: Number(e.target.value) }))}
+                          style={{ borderRadius: 8, border: '1px solid var(--gb-border)', padding: '2px 6px', background: 'var(--gb-surface)', color: 'inherit' }}
+                        >
+                          {Array.from({ length: maxQty }, (_, k) => k + 1).map((q) => (
+                            <option key={q} value={q}>{q}</option>
+                          ))}
+                        </select>
+                      )}
+                      <span className="pr">{formatEuros(it.price * (on ? qty : maxQty), locale)}</span>
+                    </div>
+                  )
+                })
               ) : (
                 <span className="nm" style={{ color: 'var(--gb-muted)' }}>{t('refundNoItems')}</span>
               )}

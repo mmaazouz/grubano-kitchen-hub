@@ -63,7 +63,7 @@ beforeEach(() => {
 describe('gate & authentication come first', () => {
   it('CLAIMS_ENABLED=false → 403 gated, no token read, no DB work, no image work', async () => {
     process.env.CLAIMS_ENABLED = 'false'
-    const res = await post({ orderId: 'o1', reason: 'quality' })
+    const res = await post({ orderId: 'o1', reason: 'quality', scope: 'whole' })
     expect(res.status).toBe(403)
     expect(await res.json()).toMatchObject({ gated: true })
     expect(tokenMock).not.toHaveBeenCalled()
@@ -73,7 +73,7 @@ describe('gate & authentication come first', () => {
 
   it('unauthenticated → 401 with NO DB work and NO image work', async () => {
     tokenMock.mockResolvedValue(null)
-    const res = await post({ orderId: 'o1', reason: 'quality', imageBase64: BIG_IMAGE })
+    const res = await post({ orderId: 'o1', reason: 'quality', scope: 'whole', imageBase64: BIG_IMAGE })
     expect(res.status).toBe(401)
     expect(db.order.findUnique).not.toHaveBeenCalled()
     expect(db.claim.create).not.toHaveBeenCalled()
@@ -83,14 +83,14 @@ describe('gate & authentication come first', () => {
   it('rate limited → 429 before any parsing or DB work', async () => {
     const { NextResponse } = await import('next/server')
     rateLimitMock.mockReturnValue(NextResponse.json({ error: 'Trop de requêtes' }, { status: 429 }))
-    const res = await post({ orderId: 'o1', reason: 'quality', imageBase64: BIG_IMAGE })
+    const res = await post({ orderId: 'o1', reason: 'quality', scope: 'whole', imageBase64: BIG_IMAGE })
     expect(res.status).toBe(429)
     expect(db.order.findUnique).not.toHaveBeenCalled()
     expect(processDishImageMock).not.toHaveBeenCalled()
   })
 
   it('the create path IS rate limited (the limiter is actually consulted)', async () => {
-    await post({ orderId: 'o1', reason: 'quality' })
+    await post({ orderId: 'o1', reason: 'quality', scope: 'whole' })
     expect(rateLimitMock).toHaveBeenCalledTimes(1)
     expect(rateLimitMock.mock.calls[0][1]).toBe('claims:create')
   })
@@ -99,7 +99,7 @@ describe('gate & authentication come first', () => {
 describe('OWNERSHIP before any expensive or side-effecting work', () => {
   it('a claim on ANOTHER customer’s order → 403 and NOTHING is uploaded, moderated or created', async () => {
     tokenMock.mockResolvedValue({ sub: 'attacker' })
-    const res = await post({ orderId: 'o1', reason: 'quality', imageBase64: BIG_IMAGE, mediaType: 'image/jpeg' })
+    const res = await post({ orderId: 'o1', reason: 'quality', scope: 'whole', imageBase64: BIG_IMAGE, mediaType: 'image/jpeg' })
     expect(res.status).toBe(403)
     expect(processDishImageMock).not.toHaveBeenCalled()
     expect(db.claim.create).not.toHaveBeenCalled()
@@ -107,14 +107,14 @@ describe('OWNERSHIP before any expensive or side-effecting work', () => {
 
   it('an unknown order → 404, no image work, no create', async () => {
     db.order.findUnique.mockResolvedValue(null)
-    const res = await post({ orderId: 'nope', reason: 'quality', imageBase64: BIG_IMAGE })
+    const res = await post({ orderId: 'nope', reason: 'quality', scope: 'whole', imageBase64: BIG_IMAGE })
     expect(res.status).toBe(404)
     expect(processDishImageMock).not.toHaveBeenCalled()
     expect(db.claim.create).not.toHaveBeenCalled()
   })
 
   it('even for the LEGITIMATE owner, no photo is ever uploaded or moderated in beta', async () => {
-    const res = await post({ orderId: 'o1', reason: 'quality', imageBase64: BIG_IMAGE, mediaType: 'image/jpeg' })
+    const res = await post({ orderId: 'o1', reason: 'quality', scope: 'whole', imageBase64: BIG_IMAGE, mediaType: 'image/jpeg' })
     expect(res.status).toBe(201)
     expect(processDishImageMock).not.toHaveBeenCalled()
     // and the client is TOLD its photo was not kept, rather than left to assume it was
@@ -131,7 +131,7 @@ describe('OWNERSHIP before any expensive or side-effecting work', () => {
 describe('D′ L6 — delivered-only, and the window is dated from deliveredAt alone', () => {
   it('an order still on its way → 409 not_delivered, nothing created (E3: nothing has arrived to be judged)', async () => {
     db.order.findUnique.mockResolvedValue({ ...ORDER, status: 'preparing', deliveredAt: null })
-    const res = await post({ orderId: 'o1', reason: 'quality' })
+    const res = await post({ orderId: 'o1', reason: 'quality', scope: 'whole' })
     expect(res.status).toBe(409)
     expect((await res.json()).error).toMatch(/pas encore marquée livrée/)
     expect(db.claim.create).not.toHaveBeenCalled()
@@ -139,7 +139,7 @@ describe('D′ L6 — delivered-only, and the window is dated from deliveredAt a
 
   it('delivered but with NO anchor (deliveredAt null) → 409, nothing created: there is no honest way to date the window, and neither createdAt nor updatedAt stands in for it', async () => {
     db.order.findUnique.mockResolvedValue({ ...ORDER, status: 'delivered', deliveredAt: null, createdAt: new Date(), updatedAt: new Date() })
-    const res = await post({ orderId: 'o1', reason: 'quality' })
+    const res = await post({ orderId: 'o1', reason: 'quality', scope: 'whole' })
     expect(res.status).toBe(409)
     // E4, not E3: the order IS delivered — what is missing is the instant the window is measured from.
     expect((await res.json()).error).toMatch(/délai de réclamation est dépassé/)
@@ -149,32 +149,65 @@ describe('D′ L6 — delivered-only, and the window is dated from deliveredAt a
   it('updatedAt bumped to NOW on an order delivered 3 days ago → still 409; the same order with a fresh anchor → 201 (so the refusal is the anchor’s age, nothing else)', async () => {
     const threeDaysAgo = new Date(Date.now() - 72 * 3600 * 1000)
     db.order.findUnique.mockResolvedValue({ ...ORDER, status: 'delivered', deliveredAt: threeDaysAgo, createdAt: threeDaysAgo, updatedAt: new Date() })
-    const stale = await post({ orderId: 'o1', reason: 'quality' })
+    const stale = await post({ orderId: 'o1', reason: 'quality', scope: 'whole' })
     expect(stale.status).toBe(409)
     expect((await stale.json()).error).toMatch(/délai de réclamation est dépassé/)
     expect(db.claim.create).not.toHaveBeenCalled()
     // Same row, same (old) updatedAt, anchor moved inside the 48 h window → accepted.
     db.order.findUnique.mockResolvedValue({ ...ORDER, status: 'delivered', deliveredAt: new Date(Date.now() - 3600 * 1000), createdAt: threeDaysAgo, updatedAt: threeDaysAgo })
-    expect((await post({ orderId: 'o1', reason: 'quality' })).status).toBe(201)
+    expect((await post({ orderId: 'o1', reason: 'quality', scope: 'whole' })).status).toBe(201)
     expect(db.claim.create).toHaveBeenCalledTimes(1)
   })
 })
 
 describe('FINANCIAL AUTHORITY is server-derived at the route boundary', () => {
-  it('a forged requestedAmountCents is ignored — the server derives the whole-order value', async () => {
-    const res = await post({ orderId: 'o1', reason: 'quality', requestedAmountCents: 999999 })
+  // L7 (T-50): this used to assert the forged figure was IGNORED and the whole-order value derived
+  // silently. A figure ignored without a word is the same defect facing the other way — the customer is
+  // then shown « the amount you requested » and it is not what they sent. A scope that takes no amount
+  // now REFUSES one. The invariant is unchanged and stronger: no client number reaches the row.
+  it('a forged requestedAmountCents beside a whole-order scope → 400, nothing created', async () => {
+    const res = await post({ orderId: 'o1', reason: 'quality', scope: 'whole', requestedAmountCents: 999999 })
+    expect(res.status).toBe(400)
+    expect((await res.json()).reason).toBe('amount_not_allowed')
+    expect(db.claim.create).not.toHaveBeenCalled()
+  })
+
+  it('the same whole-order claim WITHOUT a figure is accepted, and the amount is the SERVER ceiling', async () => {
+    const res = await post({ orderId: 'o1', reason: 'quality', scope: 'whole' })
     expect(res.status).toBe(201)
     expect(db.claim.create.mock.calls[0][0].data.requestedAmountCents).toBe(3250)
   })
 
+  it('an amount ABOVE the ceiling in its own scope is refused, never capped in silence', async () => {
+    const res = await post({ orderId: 'o1', reason: 'quality', scope: 'amount', requestedAmountCents: 999999 })
+    expect(res.status).toBe(400)
+    expect((await res.json()).reason).toBe('amount_over_ceiling')
+    expect(db.claim.create).not.toHaveBeenCalled()
+  })
+
+  it('an amount WITHIN the ceiling is honoured exactly — the figure the customer chose, not a derived one', async () => {
+    const res = await post({ orderId: 'o1', reason: 'quality', scope: 'amount', requestedAmountCents: 500 })
+    expect(res.status).toBe(201)
+    expect(db.claim.create.mock.calls[0][0].data.requestedAmountCents).toBe(500)
+  })
+
   it('a line SELECTION is priced from server values, not from anything the client sent', async () => {
     const res = await post({
-      orderId: 'o1', reason: 'missing_item',
+      orderId: 'o1', reason: 'missing_item', scope: 'items',
       items: [{ index: 0, qty: 1, price: 9999, lineCents: 9999 }],
-      requestedAmountCents: 999999,
     })
     expect(res.status).toBe(201)
     expect(db.claim.create.mock.calls[0][0].data.requestedAmountCents).toBe(1250)
+  })
+
+  it('a selection AND a figure is a contradiction → 400: two fields cannot both set the amount', async () => {
+    const res = await post({
+      orderId: 'o1', reason: 'missing_item', scope: 'items',
+      items: [{ index: 0, qty: 1 }], requestedAmountCents: 400,
+    })
+    expect(res.status).toBe(400)
+    expect((await res.json()).reason).toBe('amount_not_allowed')
+    expect(db.claim.create).not.toHaveBeenCalled()
   })
 
   it('a forged quantity above what was purchased → 400, nothing created', async () => {
@@ -215,7 +248,7 @@ describe('negative control — upload-before-ownership would be caught', () => {
 
     processDishImageMock.mockClear()
     tokenMock.mockResolvedValue({ sub: 'attacker' })
-    const res = await post({ orderId: 'o1', reason: 'quality', imageBase64: BIG_IMAGE })
+    const res = await post({ orderId: 'o1', reason: 'quality', scope: 'whole', imageBase64: BIG_IMAGE })
     expect(res.status).toBe(403)
     expect(processDishImageMock).not.toHaveBeenCalled() // shipped route: zero expensive work
   })
@@ -250,13 +283,51 @@ describe('BATCH 2 — an item-specific reason cannot claim the whole order throu
   })
 
   it('an order-level reason keeps the whole-order ceiling', async () => {
-    const res = await post({ orderId: 'o1', reason: 'restaurant_closed' })
+    const res = await post({ orderId: 'o1', reason: 'not_received', scope: 'whole' })
     expect(res.status).toBe(201)
     expect(db.claim.create.mock.calls[0][0].data.requestedAmountCents).toBe(3250)
   })
 
+  // L7 (T-50) — `restaurant_closed` is WITHDRAWN from the customer's list. It described a paid order the
+  // restaurant never took, which is Grubano's own question about a cancellation, not a complaint about
+  // food: the customer has nothing to describe and nothing to select, and letting them file it produced a
+  // whole-order claim no one could arbitrate against evidence. It is refused at the ROUTE, not merely
+  // hidden in the UI — a stale client that still offers it is told why (the UI is never the authority).
+  // The question itself did not disappear: createSystemClaim still raises it, and the pin below is what
+  // stops this refusal from silently deleting a real case.
+  it('restaurant_closed from a CUSTOMER → 400 reason_not_selectable, nothing created', async () => {
+    const res = await post({ orderId: 'o1', reason: 'restaurant_closed' })
+    expect(res.status).toBe(400)
+    expect((await res.json()).reason).toBe('reason_not_selectable')
+    expect(db.claim.create).not.toHaveBeenCalled()
+  })
+
+  it('…and naming a scope does not buy it: the refusal is about WHO files it, not about the scope', async () => {
+    for (const scope of ['items', 'amount', 'whole'] as const) {
+      const res = await post({ orderId: 'o1', reason: 'restaurant_closed', scope, requestedAmountCents: scope === 'amount' ? 100 : undefined })
+      expect(res.status).toBe(400)
+      expect((await res.json()).reason).toBe('reason_not_selectable')
+    }
+    expect(db.claim.create).not.toHaveBeenCalled()
+  })
+
+  it('PIN — withdrawing the reason from the CUSTOMER removes nothing from the product', async () => {
+    // Two distinct things must survive this refusal, and a static read is the honest way to check them
+    // here (driving createSystemClaim would need the cancellation path's whole fixture):
+    //  1. the SYSTEM's own paid-cancellation question — a different reason entirely
+    //     (`system_order_cancelled`), raised by Grubano and never by a form ;
+    //  2. `restaurant_closed` itself, which must stay a KNOWN reason: rows already filed with it are
+    //     still displayed, translated and arbitrated. Deleting it would orphan them.
+    const fs = await import('node:fs')
+    const claims = fs.readFileSync('lib/claims.ts', 'utf8')
+    expect(claims).toContain('createSystemClaim')
+    expect(claims).toContain('SYSTEM_CLAIM_REASON_ORDER_CANCELLED')
+    expect(claims).toContain('system_order_cancelled')
+    expect(fs.readFileSync('lib/claim-reasons.ts', 'utf8')).toContain('restaurant_closed')
+  })
+
   it('a safety claim is accepted, stored as allergen_safety, and triggers NO refund', async () => {
-    const res = await post({ orderId: 'o1', reason: 'allergen_safety', description: 'réaction allergique' })
+    const res = await post({ orderId: 'o1', reason: 'allergen_safety', scope: 'whole', description: 'réaction allergique' })
     expect(res.status).toBe(201)
     const data = db.claim.create.mock.calls[0][0].data
     expect(data.reason).toBe('allergen_safety')
@@ -299,7 +370,7 @@ describe('AUDIT FIX → D′ L2 — no claim takes the machine path through the 
   })
 
   it('an allergen claim is created but NEVER approved by the machine; the route still reaches the ack (liveness) and sends no decision e-mail', async () => {
-    const res = await post({ orderId: 'o1', reason: 'allergen_safety', description: 'réaction' })
+    const res = await post({ orderId: 'o1', reason: 'allergen_safety', scope: 'whole', description: 'réaction' })
     expect(res.status).toBe(201)
     expect(db.claim.create).toHaveBeenCalled()          // the claim is filed…
     expect(db.claim.updateMany).not.toHaveBeenCalled()  // …and no approval transition happens
@@ -310,10 +381,12 @@ describe('AUDIT FIX → D′ L2 — no claim takes the machine path through the 
   })
 
   it('INVERTED — a comparable NON-safety claim does NOT take the machine path either: same 201, same zero writes, same ack, no decision e-mail (D′ L2: the path is inert by construction, not a reason filter)', async () => {
-    const res = await post({ orderId: 'o1', reason: 'quality', description: 'froid' })
+    const res = await post({ orderId: 'o1', reason: 'quality', scope: 'whole', description: 'froid' })
     expect(res.status).toBe(201)
     expect(db.claim.create).toHaveBeenCalledTimes(1)
     expect(db.claim.create.mock.calls[0][0].data).toMatchObject({ reason: 'quality', status: 'restaurant_review' })
+    // L7 — the SNAPSHOT is written in the same create, so a claim can never exist without one.
+    expect(db.claim.create.mock.calls[0][0].data.selection).toMatchObject({ v: 1, mode: 'whole', modeSource: 'client', lines: [], requestedCents: 3250 })
     expect(db.claim.updateMany).not.toHaveBeenCalled()
     expect(db.claim.update).not.toHaveBeenCalled()
     expect(db.claim.count).not.toHaveBeenCalled()
@@ -324,7 +397,7 @@ describe('AUDIT FIX → D′ L2 — no claim takes the machine path through the 
 
   it('with auto-resolve OFF neither reason is auto-approved (the config is not what carries this: ON or OFF, the same nothing)', async () => {
     delete process.env.CLAIM_AUTO_RESOLVE_ENABLED
-    await post({ orderId: 'o1', reason: 'quality', description: 'froid' })
+    await post({ orderId: 'o1', reason: 'quality', scope: 'whole', description: 'froid' })
     expect(db.claim.updateMany).not.toHaveBeenCalled()
     expect(decisionMock).not.toHaveBeenCalled()
   })

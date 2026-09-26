@@ -105,7 +105,7 @@ afterEach(() => { vi.unstubAllEnvs() })
 describe('P10 — flag OFF (défaut production) : le gate', () => {
   it("[PASS-ACTUEL] POST /api/claims flag OFF → 403 { gated:true }, sans consulter ni l'auth ni la DB (écart audit : 403, pas 404)", async () => {
     vi.stubEnv('CLAIMS_ENABLED', '')
-    const res = await CREATE(req({ orderId: 'o1', reason: 'quality' }))
+    const res = await CREATE(req({ orderId: 'o1', reason: 'quality', scope: 'whole' }))
     expect(res.status).toBe(403)
     expect(await res.json()).toMatchObject({ gated: true })
     // Gate first: neither the session nor the DB is ever touched when OFF.
@@ -121,7 +121,7 @@ describe('P10 — activation (CLAIMS_ENABLED=true) : la route tient, contraireme
 
   it('[PASS-ACTUEL] flag ON sans session → 401 (le canal devient réel mais reste derrière auth)', async () => {
     tokenMock.mockResolvedValue(null)
-    const res = await CREATE(req({ orderId: 'o1', reason: 'quality' }))
+    const res = await CREATE(req({ orderId: 'o1', reason: 'quality', scope: 'whole' }))
     expect(res.status).toBe(401)
     expect(db.claim.create).not.toHaveBeenCalled()
   })
@@ -136,7 +136,7 @@ describe('P10 — activation (CLAIMS_ENABLED=true) : la route tient, contraireme
     // Deviation from the raw audit verdict, encoded honestly: with the DB reachable
     // (mocked here) the activation path completes. The observed staging crash was
     // therefore NOT in the route logic — see the FAIL-ATTENDU block below.
-    const res = await CREATE(req({ orderId: 'o1', reason: 'quality' }))
+    const res = await CREATE(req({ orderId: 'o1', reason: 'quality', scope: 'whole' }))
     expect(res.status).toBe(201)
     const data = db.claim.create.mock.calls[0][0].data
     // total 50 € → whole-order default 5000 cents, above the 1000-cent C2 ceiling
@@ -159,7 +159,7 @@ describe('P10 — activation (CLAIMS_ENABLED=true) : la route tient, contraireme
     vi.stubEnv('CLAIM_AUTO_APPROVE_MAX_CENTS', '')
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     db.order.findUnique.mockResolvedValue(paidOrder({ total: 5 })) // 500 cents — sous l'ANCIEN plafond
-    const res = await CREATE(req({ orderId: 'o1', reason: 'quality' })) // batch 2: ITEM_REQUIRED reasons need a selection; this case is about the ceiling
+    const res = await CREATE(req({ orderId: 'o1', reason: 'quality', scope: 'whole' })) // batch 2: ITEM_REQUIRED reasons need a selection; this case is about the ceiling
     expect(res.status).toBe(201)
     // AUCUNE approbation machine : aucun updateMany du tout, moteur jamais appelé, anti-abus jamais lu.
     expect(db.claim.updateMany).not.toHaveBeenCalled()
@@ -176,7 +176,7 @@ describe('P10 — activation (CLAIMS_ENABLED=true) : la route tient, contraireme
     vi.stubEnv('CLAIM_AUTO_RESOLVE_ENABLED', 'true')
     vi.stubEnv('CLAIM_AUTO_APPROVE_MAX_CENTS', '1000')
     db.order.findUnique.mockResolvedValue(paidOrder({ total: 8 })) // 800 cents ≤ 1000 ceiling — the OLD trigger condition
-    const res = await CREATE(req({ orderId: 'o1', reason: 'quality' })) // batch 2: ITEM_REQUIRED reasons need a selection; this case is about the ceiling
+    const res = await CREATE(req({ orderId: 'o1', reason: 'quality', scope: 'whole' })) // batch 2: ITEM_REQUIRED reasons need a selection; this case is about the ceiling
     expect(res.status).toBe(201)
     expect(db.claim.create).toHaveBeenCalledTimes(1)
     expect(db.claim.create.mock.calls[0][0].data).toMatchObject({ requestedAmountCents: 800, status: 'restaurant_review' })
@@ -246,7 +246,7 @@ describe("P10 — activation : le crash (aucune frontière d'erreur dans la rout
     db.claim.create.mockRejectedValue(
       new Prisma.PrismaClientKnownRequestError('table `Claim` does not exist', { code: 'P2021', clientVersion: 'x' }),
     )
-    await expect(CREATE(req({ orderId: 'o1', reason: 'quality' }))).rejects.toHaveProperty('code', 'P2021')
+    await expect(CREATE(req({ orderId: 'o1', reason: 'quality', scope: 'whole' }))).rejects.toHaveProperty('code', 'P2021')
   })
 
   it("[PASS-ACTUEL P0-27] défaut fail-safe : l'anti-abus n'est PLUS ATTEINT (gate flag AVANT) → une erreur DB dans claim.count ne crashe plus le handler, 201 propre", async () => {
@@ -256,7 +256,7 @@ describe("P10 — activation : le crash (aucune frontière d'erreur dans la rout
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     db.order.findUnique.mockResolvedValue(paidOrder({ total: 8 }))
     db.claim.count.mockRejectedValue(new Error('db_down'))
-    const res = await CREATE(req({ orderId: 'o1', reason: 'quality' })) // batch 2: ITEM_REQUIRED reasons need a selection; this case is about the ceiling
+    const res = await CREATE(req({ orderId: 'o1', reason: 'quality', scope: 'whole' })) // batch 2: ITEM_REQUIRED reasons need a selection; this case is about the ceiling
     expect(res.status).toBe(201)
     expect(db.claim.create).toHaveBeenCalledTimes(1)
     warnSpy.mockRestore()
@@ -275,7 +275,7 @@ describe("P10 — activation : le crash (aucune frontière d'erreur dans la rout
     // NEGATIVE CONTROL — the failure IS armed: the real anti-abuse read would throw if anything reached it.
     await expect(isConsumerAbuseFlagged('c1')).rejects.toThrow('db_down')
     db.claim.count.mockClear()
-    const res = await CREATE(req({ orderId: 'o1', reason: 'quality' })) // batch 2: order-level reason — this case is about the post-create path, not item authority
+    const res = await CREATE(req({ orderId: 'o1', reason: 'quality', scope: 'whole' })) // batch 2: order-level reason — this case is about the post-create path, not item authority
     expect(res.status).toBe(201)
     expect(db.claim.create).toHaveBeenCalledTimes(1)
     expect(db.claim.count).not.toHaveBeenCalled()      // the armed failure was never reached

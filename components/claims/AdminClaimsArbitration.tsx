@@ -24,10 +24,13 @@ import { amountLineKind, identityUnreadText, BOUND_REVERTED_TEXT } from '@/lib/c
 // preflight causes and the batch counters. TYPE-ONLY, so none of the rail's server code is bundled
 // here; the console names what the route answers instead of keeping a second copy of the list.
 import type { RailOutcome, PreflightHold, RailCounts } from '@/lib/claims-pay-rail'
+import { readClaimSelection, selectionLineSummary } from '@/lib/claim-selection'
 
 type Stats = { recent?: number; approvalRate?: number; flagged?: boolean; refused?: number; overturned?: number }
 type Claim = {
   id: string; orderId: string; reason: string; requestedAmountCents: number
+  /** L7 (T-50): the frozen snapshot of what the customer chose. `null`/absent = not recorded. */
+  selection?: unknown
   description?: string | null; restaurantResponseReason?: string | null; contestReason?: string | null; photoUrl?: string | null
   /** ROUND 13 (F08): whether the restaurant accepted or refused — its note is labelled accordingly. */
   restaurantResponse?: string | null
@@ -42,6 +45,7 @@ type Claim = {
 // aucune action possible — Q3 interdit de se substituer au restaurant).
 type PendingClaim = {
   id: string; orderId: string; reason: string; requestedAmountCents: number
+  selection?: unknown
   description?: string | null; createdAt: string; responseDeadlineAt: string
   /** Batch 2: the server triages safety reports to the top and says which they are. */
   safety?: boolean
@@ -97,7 +101,7 @@ type AwaitingPaymentRow = {
 }
 
 /** What the mandatory approval dialog is deciding: a first decision, or the ratification of a legacy approval. */
-type ApproveTarget = { id: string; orderLabel: string; requestedAmountCents: number; mode: 'approve' | 'ratify' }
+type ApproveTarget = { id: string; orderLabel: string; requestedAmountCents: number; mode: 'approve' | 'ratify'; selection?: unknown }
 
 /** The read-only ceiling of GET /api/admin/claims/[id]/ceiling. It DECIDES nothing — it is displayed. */
 type Ceiling = {
@@ -268,6 +272,35 @@ function parseCents(raw: string): number | null {
 // lists themselves come from GET /api/admin/claims, split server-side; the money list is returned either way.
 export default function AdminClaimsArbitration({ initial, surfaceOpen = true }: { initial?: { claims?: Claim[]; pending?: PendingClaim[]; actionableRefunds?: ActionableRefundClaim[]; awaitingPayment?: AwaitingPaymentRow[]; awaitingRatification?: AwaitingPaymentRow[] }; surfaceOpen?: boolean } = {}) {
   const t = useTranslations('claims')
+  /**
+   * L7 (T-50) — WHAT THE CUSTOMER CHOSE, shown where the decision is taken.
+   *
+   * `null` is rendered as « Sélection non enregistrée » and never as « toute la commande »: the nine
+   * claims filed before L7 carry no snapshot, and giving them a scope on screen would invent a fact.
+   * The mode words are the customer's own (client.scope_*), deliberately: the admin should read what
+   * the customer was shown, not a second vocabulary for the same three choices.
+   *
+   * `undefined` IS NOT `null`, AND THE DIFFERENCE IS THE WHOLE VALUE OF THIS COMPONENT. `null` means the
+   * ROW has no snapshot; `undefined` means THIS LIST did not fetch the column. Two of the admin lists
+   * carry it (the arbitration queue returns the whole row, the pending list selects it explicitly) and
+   * the two D′ L4 money queues do NOT — their `select` is the one the financial rail shares byte for
+   * byte, and widening it is an L8/L5 decision, not a display convenience. Rendering « non enregistrée »
+   * there would state, on the screen where an admin approves money, that a claim recorded nothing when in
+   * fact it recorded everything. So an absent field renders NOTHING, and the day that query opens the
+   * column, this view starts showing it with no further change.
+   */
+  const SelectionView = ({ value }: { value: unknown }) => {
+    if (value === undefined) return null
+    const snap = readClaimSelection(value)
+    if (!snap) return <p className="text-grubano-ink-muted">{t('admin.selectionNotRecorded')}</p>
+    const lines = selectionLineSummary(snap)
+    return (
+      <p>
+        <span className="font-semibold">{t('admin.scope')}:</span> {t(`client.scope_${snap.mode}`)}
+        {lines.length > 0 && <> — {lines.join(', ')}</>}
+      </p>
+    )
+  }
   const locale = useLocale()
   const toast = useToast()
   const [claims, setClaims] = useState<Claim[]>(initial?.claims ?? [])
@@ -579,6 +612,9 @@ export default function AdminClaimsArbitration({ initial, surfaceOpen = true }: 
         <dl className="space-y-1 text-[13px] text-grubano-ink-muted">
           <p><span className="font-semibold">{t('admin.order')}:</span> {approveTarget.orderLabel}</p>
           <p><span className="font-semibold">{t('admin.approveDialog.requested')}:</span> {formatEuros(requested / 100, locale)}</p>
+          {/* L7 — the persisted selection, beside the figure it explains. A request for one dish and a
+              request for the whole meal used to be the same number on this screen. */}
+          <SelectionView value={approveTarget.selection} />
           {ceilingLoading && <p>{t('admin.approveDialog.ceilingLoading')}</p>}
           {ceilingError && <p className="text-red-700">{ceilingError}</p>}
           {ceilingShown && (
@@ -999,7 +1035,7 @@ export default function AdminClaimsArbitration({ initial, surfaceOpen = true }: 
                 {approveTarget?.id === r.id ? approveDialog() : (
                   <Button
                     size="sm" variant="primary" className="mt-3" disabled={busyId === r.id}
-                    onClick={() => openApprove({ id: r.id, orderLabel: r.orderRef, requestedAmountCents: r.requestedAmountCents, mode: 'ratify' })}
+                    onClick={() => openApprove({ id: r.id, orderLabel: r.orderRef, requestedAmountCents: r.requestedAmountCents, mode: 'ratify', selection: (r as { selection?: unknown }).selection })}
                   >
                     {t('admin.awaitingRatification.ratify')}
                   </Button>
@@ -1178,6 +1214,7 @@ export default function AdminClaimsArbitration({ initial, surfaceOpen = true }: 
                 </div>
                 <dl className="mt-2 space-y-1 text-[13px] text-grubano-ink-muted">
                   <p><span className="font-semibold">{t(isSystemClaim(p.reason) ? 'admin.reasonSystem' : 'admin.reason')}:</span> {t(`reason.${p.reason}`)}</p>
+                  <SelectionView value={p.selection} />
                   {p.description && <p><span className="font-semibold">{t(isSystemClaim(p.reason) ? 'admin.systemDetails' : 'admin.clientDetails')}:</span> {p.description}</p>}
                 </dl>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -1219,6 +1256,7 @@ export default function AdminClaimsArbitration({ initial, surfaceOpen = true }: 
 
             <dl className="mt-2 space-y-1 text-[13px] text-grubano-ink-muted">
               <p><span className="font-semibold">{t(isSystemClaim(c.reason) ? 'admin.reasonSystem' : 'admin.reason')}:</span> {t(`reason.${c.reason}`)}</p>
+              <SelectionView value={c.selection} />
               {c.description && <p><span className="font-semibold">{t(isSystemClaim(c.reason) ? 'admin.systemDetails' : 'admin.clientDetails')}:</span> {c.description}</p>}
               {/* ROUND 13 (F08): a note written while ACCEPTING is not a refusal reason. */}
               {c.restaurantResponseReason && <p><span className="font-semibold">{t(c.restaurantResponse === 'accepted' ? 'admin.restaurantNote' : 'admin.refusalReason')}:</span> {c.restaurantResponseReason}</p>}
@@ -1264,7 +1302,7 @@ export default function AdminClaimsArbitration({ initial, surfaceOpen = true }: 
                     rail-locked claim and left « Refuser » live — which arbitrateClaim always refused there. */}
                 {/* D′ L4 (T-07): « Approuver » no longer decides — it OPENS the approval dialog, where the
                     amount, the motive of a reduction and the typed confirmation are collected. */}
-                <Button size="sm" variant="primary" loading={busyId === c.id} disabled={c.approveRefusal != null} onClick={() => openApprove({ id: c.id, orderLabel: `#${c.orderId.slice(-6)}`, requestedAmountCents: c.requestedAmountCents, mode: 'approve' })}>{t('admin.approve')}</Button>
+                <Button size="sm" variant="primary" loading={busyId === c.id} disabled={c.approveRefusal != null} onClick={() => openApprove({ id: c.id, orderLabel: `#${c.orderId.slice(-6)}`, requestedAmountCents: c.requestedAmountCents, mode: 'approve', selection: c.selection })}>{t('admin.approve')}</Button>
                 <Button size="sm" variant="secondary" disabled={busyId === c.id || c.refuseFinalRefusal != null} onClick={() => setRefusingId(c.id)}>{t('admin.refuseFinal')}</Button>
                 {(c.approveRefusal || c.refuseFinalRefusal) && (
                   <span className="text-[12px] text-red-700">

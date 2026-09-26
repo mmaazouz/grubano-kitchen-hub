@@ -41,6 +41,7 @@ import { getTranslations } from 'next-intl/server'
 import { prisma } from '@/lib/prisma'
 import { sendTransactional, logEmailSkipped, type SendStatus } from '@/lib/transactional-emails'
 import { resolveNudgeLocale } from '@/lib/onboarding-nudge'
+import { readClaimSelection, selectionLineSummary } from '@/lib/claim-selection'
 import {
   claimClosureKind, refusalEmailKind, refundedRowProven, CLOSURE_TRIGGER, CLOSURE_RECORD_TRIGGER, closureRecordKey,
   type ClaimFacts, type ClosureKind,
@@ -126,6 +127,13 @@ export async function sendClaimAckEmail(p: {
   consumerId:           string
   orderId:              string
   requestedAmountCents: number
+  /**
+   * L7 (T-50) — the persisted selection snapshot, as stored on the claim. The acknowledgement then
+   * tells the customer WHICH articles they claimed and in what quantity, instead of only a figure.
+   * Absent, legacy or unreadable ⇒ NOTHING extra is rendered: a claim with no recorded selection must
+   * not acquire one in an e-mail, and « toute la commande » is never inferred from silence.
+   */
+  selection?:           unknown
   /** H02: isClaimsEnabled() read by the caller immediately before this call. */
   claimsOpen:           boolean
 }): Promise<ClaimEmailResult> {
@@ -151,6 +159,17 @@ export async function sendClaimAckEmail(p: {
           // Revue : pas de « Bonjour , » orphelin quand Operator.name est vide.
           (consumer.name ? `<p>${esc(t('greeting', { name: consumer.name }))}</p>` : '')
           + `<p>${esc(t('ack.body', { ref, euros: euros(consumer.locale, p.requestedAmountCents) }))}</p>`
+          // L7 — the articles and quantities, when the claim recorded any. No PRICE per line, deliberately:
+          // a figure beside an article reads as « this is what you will get back », and nothing here is a
+          // promise about money. PRE-MONEY only, like the rest of this message.
+          + ((): string => {
+              const lines = selectionLineSummary(readClaimSelection(p.selection))
+              if (lines.length === 0) return ''
+              return `<p style="font-size:14px">${esc(t('ack.items'))}</p>`
+                + `<ul style="font-size:14px;margin:4px 0 0;padding-inline-start:18px">`
+                + lines.map((l) => `<li>${esc(l)}</li>`).join('')
+                + `</ul>`
+            })()
           // H12: ack.next promises no later e-mail and carries the reference.
           + `<p style="font-size:13px;color:#6b7280">${esc(t('ack.next', { ref }))}</p>`,
       }),

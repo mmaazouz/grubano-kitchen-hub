@@ -12,15 +12,22 @@ import { AlertCircle } from 'lucide-react'
 import { Button, Modal, useToast } from '@/components/design-system'
 import { formatEuros } from '@/lib/format-money'
 
-// CLAIMS BATCH 2 — canonical taxonomy. The three ITEM_REQUIRED reasons name specific lines:
-// the server refuses a whole-order ceiling for them, so the form must let the customer say
-// WHICH article is concerned instead of silently claiming the entire order.
-const REASONS = [
-  'missing_item', 'wrong_item', 'wrong_quantity', 'quality', 'restaurant_closed',
-  'excessive_wait', 'not_received', 'payment_issue', 'allergen_safety', 'other',
-] as const
-const ITEM_REQUIRED_REASONS: readonly string[] = ['missing_item', 'wrong_item', 'wrong_quantity']
+// L7 (T-50) — THE REASONS A CUSTOMER MAY FILE, and what each one requires them to SAY.
+//
+// Both lists come from lib/claim-reasons, the one owner of the per-reason decision, so this form
+// cannot offer a reason the server refuses or demand a gesture the server does not ask for. Two
+// things changed here in L7:
+//   • `restaurant_closed` is GONE from the customer's choices. A paid order the restaurant cancelled
+//     is Grubano's own question, answered by the SYSTEM claim the status route raises — asking the
+//     customer to file a claim about it was asking them to do our work.
+//   • there is NO preselected scope. The form used to open on « toute la commande », so an entire
+//     order could be claimed without one deliberate gesture; the submit button now stays disabled
+//     until the customer says what they are claiming.
+import { CUSTOMER_SELECTABLE_REASONS, scopeRequirement, type ClaimScopeMode } from '@/lib/claim-reasons'
+
 const ALLOWED = ['image/jpeg', 'image/png', 'image/webp']
+/** '' = nothing chosen yet. It is a real state, not a placeholder: submit stays disabled on it. */
+type ScopeChoice = '' | ClaimScopeMode
 
 type ExistingClaim = { id: string; status: string; canContest: boolean; restaurantResponseReason: string | null; arbitrationReason: string | null }
 /** Server-derived line scope. Values come from the stored order — never from this client. */
@@ -54,11 +61,42 @@ export default function ClaimSection({ orderId }: { orderId: string }) {
   const [open, setOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
-  const [reason, setReason] = useState<(typeof REASONS)[number]>('quality')
+  const [reason, setReason] = useState<string>('quality')
   // index → quantity, pointing INTO the server-derived scope lines (never a price or a total)
   const [picked, setPicked] = useState<Record<number, number>>({})
-  const [wholeOrder, setWholeOrder] = useState(true)
+  const [scope, setScope] = useState<ScopeChoice>('')
   const [amountEuros, setAmountEuros] = useState('')
+
+  /**
+   * L7 — CHANGING YOUR MIND CLEARS WHAT NO LONGER APPLIES.
+   *
+   * The defect this closes: `picked` survived a change of reason, and the body sent
+   * `items: itemSelection.length ? itemSelection : undefined` with the amount suppressed whenever
+   * items existed. So a customer who ticked two dishes, then switched to a reason where items are not
+   * asked for and typed an amount, silently filed the OLD selection and not the amount they had just
+   * entered. Nothing invisible may reach the POST.
+   */
+  const changeReason = (next: string) => {
+    setReason(next)
+    setScope('')          // the matrix may differ for the new reason — say it again
+    setPicked({})
+    setAmountEuros('')
+  }
+  const changeScope = (next: ScopeChoice) => {
+    setScope(next)
+    if (next !== 'items') setPicked({})        // items → amount/whole: the picked lines go
+    if (next !== 'amount') setAmountEuros('')  // amount → whole/items: the free amount goes
+  }
+  /**
+   * Closing the form CLEARS it, for the same reason changing the reason does. A customer who opens the
+   * modal, ticks two dishes, thinks better of it and closes must not find those ticks waiting the next
+   * time — reopening would then file a selection they had abandoned, and the state is invisible until the
+   * POST. Success clears it too (below); this is the other way out.
+   */
+  const closeForm = () => {
+    setOpen(false)
+    setScope(''); setPicked({}); setAmountEuros(''); setDescription(''); setFile(null)
+  }
   const [description, setDescription] = useState('')
   const [file, setFile] = useState<File | null>(null)
   // C2 contest
@@ -144,10 +182,30 @@ export default function ClaimSection({ orderId }: { orderId: string }) {
 
   // Lines the customer may point at, straight from the server-derived scope.
   const scopeLines: ScopeLine[] = el.scope?.lines ?? []
-  const needsItems = ITEM_REQUIRED_REASONS.includes(reason)
-  const itemSelection = Object.entries(picked)
-    .map(([index, qty]) => ({ index: Number(index), qty }))
-    .filter((x) => x.qty > 0)
+  const requirement = scopeRequirement(reason)
+  /** Only one scope is possible ⇒ there is nothing to choose, and the lines must be named. */
+  const itemsOnly = requirement === 'items_only'
+  /** Several scopes are possible ⇒ the customer chooses, and nothing is preselected. */
+  const showScopeChoice = requirement === 'explicit' || requirement === 'whole_derived'
+  /** The mode this form will actually send. Never guessed: '' until the customer has spoken. */
+  const effectiveScope: ScopeChoice = itemsOnly ? 'items' : scope
+  const itemSelection = effectiveScope === 'items'
+    ? Object.entries(picked)
+        .map(([index, qty]) => ({ index: Number(index), qty }))
+        .filter((x) => x.qty > 0)
+    : []
+  const amountCents = effectiveScope === 'amount'
+    ? Math.round(Number.parseFloat(amountEuros.replace(',', '.')) * 100)
+    : NaN
+  const amountValid = Number.isInteger(amountCents) && amountCents > 0 && amountCents <= el.maxRefundableCents
+  /**
+   * L7 — THE BUTTON IS DISABLED UNTIL THE REQUIRED GESTURE EXISTS. Not merely validated on submit:
+   * a customer should not be able to press a button that cannot succeed.
+   */
+  const canSubmit =
+    effectiveScope === 'items'  ? itemSelection.length > 0 :
+    effectiveScope === 'amount' ? amountValid :
+    effectiveScope === 'whole'  ? true : false
   // Indicative only: the SERVER prices the claim. Shown so the customer is not surprised.
   // T-59 (same family): the figure is clamped to the server ceiling exactly as resolveClaimAmount
   // does (Math.min(total, maxAuthorityCents)), so a partially refunded order can never show an
@@ -166,24 +224,18 @@ export default function ClaimSection({ orderId }: { orderId: string }) {
         imageBase64 = await fileToBase64(file)
         mediaType = file.type
       }
-      const requestedAmountCents = wholeOrder
-        ? undefined
-        : Math.round(Number.parseFloat(amountEuros.replace(',', '.')) * 100)
-      // An item-required reason must name at least one line — the server refuses it otherwise.
-      if (needsItems && itemSelection.length === 0) {
-        toast.error("Sélectionnez le ou les articles concernés."); setSubmitting(false); return
-      }
-      if (!needsItems && !wholeOrder && (!requestedAmountCents || requestedAmountCents <= 0)) {
-        toast.error(t('client.errorGeneric')); setSubmitting(false); return
-      }
+      // The button is already disabled unless the required gesture exists; this is the belt.
+      if (!canSubmit || effectiveScope === '') { setSubmitting(false); return }
       const res = await fetch('/api/claims', {
         method:  'POST',
         headers: { 'content-type': 'application/json' },
         body:    JSON.stringify({
           orderId, reason, description: description || undefined,
-          // A SELECTION, never money: the server prices it from the stored order.
-          items: itemSelection.length ? itemSelection : undefined,
-          requestedAmountCents: itemSelection.length ? undefined : requestedAmountCents,
+          // L7 — the scope is STATED, and each field is sent only in the scope that uses it. Nothing
+          // left over from an earlier choice can travel: the state was cleared when it changed.
+          scope: effectiveScope,
+          items: effectiveScope === 'items' ? itemSelection : undefined,
+          requestedAmountCents: effectiveScope === 'amount' ? amountCents : undefined,
           imageBase64, mediaType,
         }),
       })
@@ -191,7 +243,7 @@ export default function ClaimSection({ orderId }: { orderId: string }) {
       if (!res.ok) { toast.error(data.error || t('client.errorGeneric')); return }
       toast.success(t('client.success'))
       setOpen(false)
-      setFile(null); setDescription(''); setAmountEuros(''); setWholeOrder(true); setPicked({})
+      setFile(null); setDescription(''); setAmountEuros(''); setScope(''); setPicked({})
       await load()
     } catch {
       toast.error(t('client.errorGeneric'))
@@ -206,17 +258,17 @@ export default function ClaimSection({ orderId }: { orderId: string }) {
         {t('client.reportProblem')}
       </Button>
 
-      <Modal open={open} onClose={() => setOpen(false)} title={t('client.title')} description={t('client.description')}>
+      <Modal open={open} onClose={closeForm} title={t('client.title')} description={t('client.description')}>
         <div className="space-y-4">
           {/* Reason */}
           <div>
             <label className="mb-1 block text-[13px] font-semibold text-[#1a1a1a]">{t('client.reasonLabel')}</label>
             <select
               value={reason}
-              onChange={(e) => setReason(e.target.value as (typeof REASONS)[number])}
+              onChange={(e) => changeReason(e.target.value)}
               className="w-full rounded-grubano-lg border border-grubano-border-strong bg-white px-3 py-2.5 text-[14px] text-[#1a1a1a]"
             >
-              {REASONS.map((r) => <option key={r} value={r}>{t(`reason.${r}`)}</option>)}
+              {CUSTOMER_SELECTABLE_REASONS.map((r) => <option key={r} value={r}>{t(`reason.${r}`)}</option>)}
             </select>
           </div>
 
@@ -224,14 +276,32 @@ export default function ClaimSection({ orderId }: { orderId: string }) {
               For "article manquant", "mauvais article" and "mauvaise quantité" the server
               refuses a whole-order ceiling, so the customer names the lines concerned. Only
               an index and a quantity are sent: prices come from the stored order. */}
-          {needsItems && (
+          {/* ── L7 — WHAT ARE YOU CLAIMING? Nothing is preselected. ─────────────────────────── */}
+          {showScopeChoice && (
             <div>
-              <label className="mb-1 block text-[13px] font-semibold text-[#1a1a1a]">Articles concernés</label>
+              <label className="mb-1 block text-[13px] font-semibold text-[#1a1a1a]">{t('client.scopeLabel')}</label>
+              <div className="flex flex-col gap-2">
+                {(['items', 'amount', 'whole'] as const).map((m) => (
+                  <label key={m} className="flex items-center gap-2 text-[14px] text-[#1a1a1a]">
+                    <input
+                      type="radio" name="claim-scope" value={m}
+                      checked={scope === m}
+                      disabled={m === 'items' && scopeLines.length === 0}
+                      onChange={() => changeScope(m)}
+                    />
+                    {t(`client.scope_${m}`)}
+                  </label>
+                ))}
+              </div>
+              {scope === '' && <p className="mt-1 text-xs text-[#888]">{t('client.scopeRequired')}</p>}
+            </div>
+          )}
+
+          {effectiveScope === 'items' && (
+            <div>
+              <label className="mb-1 block text-[13px] font-semibold text-[#1a1a1a]">{t('client.itemsLabel')}</label>
               {scopeLines.length === 0 ? (
-                <p className="text-[13px] text-[#888]">
-                  Le détail des articles de cette commande est indisponible : choisissez un autre motif
-                  ou contactez le support.
-                </p>
+                <p className="text-[13px] text-[#888]">{t('client.itemsUnavailable')}</p>
               ) : (
                 <div className="space-y-2">
                   {scopeLines.map((line) => (
@@ -243,7 +313,7 @@ export default function ClaimSection({ orderId }: { orderId: string }) {
                         </span>
                       </span>
                       <select
-                        aria-label={`Quantité concernée pour ${line.name}`}
+                        aria-label={t('client.itemQtyLabel', { name: line.name })}
                         value={picked[line.index] ?? 0}
                         onChange={(e) => setPicked((p) => ({ ...p, [line.index]: Number(e.target.value) }))}
                         className="rounded-grubano-lg border border-grubano-border-strong bg-white px-2 py-1 text-[14px]"
@@ -256,16 +326,16 @@ export default function ClaimSection({ orderId }: { orderId: string }) {
                   ))}
                   <p className="text-xs text-[#888]">
                     {itemSelection.length === 0
-                      ? 'Sélectionnez au moins un article : ce motif ne permet pas de réclamer la commande entière.'
-                      : `Montant indicatif : ${formatEuros(selectionEstimateCents / 100, locale)} — le montant définitif est calculé par Grubano à partir de votre commande.`}
+                      ? t('client.itemsRequiredHint')
+                      : t('client.itemsEstimate', { amount: formatEuros(selectionEstimateCents / 100, locale) })}
                   </p>
                 </div>
               )}
             </div>
           )}
 
-          {/* Amount — only for reasons where the whole order can legitimately be in scope. */}
-          {!needsItems && (
+          {/* L7 — the amount block appears only for the scope that USES an amount. */}
+          {effectiveScope === 'amount' && (
           <div>
             <label className="mb-1 block text-[13px] font-semibold text-[#1a1a1a]">{t('client.amountLabel')}</label>
             {/* T-59 — « Maximum remboursable » is a claim about CASH and may only be made when the
@@ -275,22 +345,15 @@ export default function ClaimSection({ orderId }: { orderId: string }) {
             <p className="mb-2 text-xs text-[#888]">
               {t(el.ceilingVerified === true ? 'client.maxRefundable' : 'client.maxRequestUnverified', { amount: formatEuros(el.maxRefundableCents / 100, locale) })}
             </p>
-            <div className="flex flex-col gap-2">
-              <label className="flex items-center gap-2 text-[14px] text-[#1a1a1a]">
-                <input type="radio" checked={wholeOrder} onChange={() => setWholeOrder(true)} /> {t('client.wholeOrder')}
-              </label>
-              <label className="flex items-center gap-2 text-[14px] text-[#1a1a1a]">
-                <input type="radio" checked={!wholeOrder} onChange={() => setWholeOrder(false)} /> {t('client.customAmount')}
-              </label>
-              {!wholeOrder && (
-                <input
-                  type="number" inputMode="decimal" min="0" step="0.01" value={amountEuros}
-                  onChange={(e) => setAmountEuros(e.target.value)}
-                  className="mt-1 w-full rounded-grubano-lg border border-grubano-border-strong bg-white px-3 py-2.5 text-[14px]"
-                  placeholder="0,00"
-                />
-              )}
-            </div>
+            <input
+              type="number" inputMode="decimal" min="0" step="0.01" value={amountEuros}
+              onChange={(e) => setAmountEuros(e.target.value)}
+              className="mt-1 w-full rounded-grubano-lg border border-grubano-border-strong bg-white px-3 py-2.5 text-[14px]"
+              placeholder="0,00"
+            />
+            {amountEuros !== '' && !amountValid && (
+              <p className="mt-1 text-xs text-[#dc2626]">{t('client.amountInvalid')}</p>
+            )}
           </div>
           )}
 
@@ -313,7 +376,7 @@ export default function ClaimSection({ orderId }: { orderId: string }) {
 
           <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
             <Button variant="ghost" onClick={() => setOpen(false)} disabled={submitting}>{t('client.cancel')}</Button>
-            <Button variant="primary" loading={submitting} onClick={submit}>{t('client.submit')}</Button>
+            <Button variant="primary" loading={submitting} disabled={!canSubmit} onClick={submit}>{t('client.submit')}</Button>
           </div>
         </div>
       </Modal>

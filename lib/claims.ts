@@ -24,7 +24,11 @@ import { prisma } from '@/lib/prisma'
 import { Prisma } from '@prisma/client'
 import type Stripe from 'stripe'
 import { executeRefund, isRefundsEnabled, RESUME_CREATE_WINDOW_MS } from '@/lib/refund'
-import { buildClaimScope, resolveClaimAmount, publicClaimScope, type ClaimScope, type ClaimSelection, type StripeCashTruth } from '@/lib/claim-scope'
+import { buildClaimScope, resolveClaimAmount, publicClaimScope, ceilingVerifiedOf, type ClaimScope, type ClaimSelection, type StripeCashTruth, type ClaimAmountRefusalCode } from '@/lib/claim-scope'
+import {
+  resolveScopeMode, buildClaimSelection, systemClaimSelection,
+  type ClaimSelectionSnapshot, type ScopeModeRefusalCode,
+} from '@/lib/claim-selection'
 import { getStripe } from '@/lib/stripe'
 import { canonicalReason, authorityScope, isSafetyReason } from '@/lib/claim-reasons'
 import { sendAdminMoneyReviewAlert } from '@/lib/admin-alerts'
@@ -340,7 +344,12 @@ export type ClaimActionResult =
  * not in lib/claim-eligibility. The form's own union is `ClaimEligibility['reason']`, and the two agree on
  * every code they share.
  */
-export type ClaimPostRefusalReason = ClaimRefusalReason | 'no_refundable_amount'
+export type ClaimPostRefusalReason =
+  | ClaimRefusalReason
+  | 'no_refundable_amount'
+  /** L7 (T-50): what the request said about its SCOPE, and what the selection said about the order. */
+  | ScopeModeRefusalCode
+  | ClaimAmountRefusalCode
 
 export type RefundTriggerResult =
   /** Email truthfulness hotfix (2026-09-06): `amountCents` = the ENGINE's actual succeeded cash
@@ -369,7 +378,14 @@ export async function createClaim(input: {
   reason: string
   description?: string | null
   items?: ClaimSelection[] | null
-  /** What the consumer ASKED FOR. Honoured ONLY as a reduction below the server ceiling. */
+  /**
+   * L7 (T-50) — WHAT THE CUSTOMER SAID THEY WERE CLAIMING: 'items' | 'amount' | 'whole'.
+   * There is NO default where several scopes are possible. Absent on such a reason ⇒ 400
+   * `scope_required`, because silence used to become « the whole order » and a claim for one dish
+   * then looked exactly like a claim for the entire meal.
+   */
+  scope?: string | null
+  /** What the consumer ASKED FOR. Authority only in 'amount' mode, and only downward. */
   requestedAmountCents?: number | null
   photoUrl?: string | null
 }): Promise<ClaimActionResult> {
@@ -417,10 +433,52 @@ export async function createClaim(input: {
   if (scope.maxAuthorityCents <= 0) {
     return { ok: false, status: 409, error: CLAIM_REFUSAL_TEXT.no_refundable_amount, reason: 'no_refundable_amount' }
   }
-  // The REASON decides whether a whole-order ceiling is even available (batch 2).
-  const resolved = resolveClaimAmount(scope, input.items ?? null, input.requestedAmountCents ?? null, authorityScope(reason))
-  if (!resolved.ok) return { ok: false, status: 400, error: resolved.error }
+  /**
+   * L7 (T-50) — THE SCOPE IS RESOLVED HERE, AFTER ELIGIBILITY, AND THAT ORDER IS THE POINT.
+   *
+   * The first version of this lot resolved the mode at the top of the function, before the order was even
+   * read — cheaper, and wrong. It broke the D′ L6 invariant that `createClaim` and `getClaimEligibility`
+   * answer the SAME code for the same order (tests/claims-dprime-l6-eligibility): a customer whose order
+   * was never delivered, or whose 48 h had run out, was told « indiquez ce que vous réclamez » — a
+   * question they could answer perfectly and still be refused. The eligibility of the ORDER is the first
+   * fact about a claim; the shape of the REQUEST is the second. E1–E6 above therefore all speak before
+   * this does, and the codes the form promised are the codes the POST returns.
+   *
+   * A reason the customer may not file at all (`reason_not_selectable`) belongs to the same family and
+   * moved with it, for the same reason: on an ineligible order, the answer is why the ORDER cannot be
+   * claimed, not which reason was picked.
+   */
+  const modeResolution = resolveScopeMode({ reason, scope: input.scope ?? null })
+  if (!modeResolution.ok) {
+    return { ok: false, status: 400, error: modeResolution.error, reason: modeResolution.code }
+  }
+  // The MODE decides the shape of the request; the SERVER prices it (L7 — batch 2's scopeKind
+  // inference is gone: the mode is explicit, so silence can no longer mean « the whole order »).
+  const resolved = resolveClaimAmount(scope, {
+    mode:           modeResolution.mode,
+    selection:      input.items ?? null,
+    requestedCents: input.requestedAmountCents ?? null,
+  })
+  if (!resolved.ok) return { ok: false, status: 400, error: resolved.error, reason: resolved.code }
   const requested = resolved.amountCents
+  /**
+   * L7 (T-50) — THE FROZEN SNAPSHOT. Written once, here, and never rewritten by any later route
+   * (pinned by a test). Every value in it is the SERVER's: line names, unit prices and the purchased
+   * quantity come from the stored order, and only the index and the disputed quantity come from the
+   * request. It records what was asked; it grants nothing. A quantity in it is never subtracted from
+   * a later claim (S-26).
+   */
+  const selectionSnapshot: ClaimSelectionSnapshot = buildClaimSelection({
+    mode:            resolved.mode,
+    modeSource:      modeResolution.modeSource,
+    selection:       resolved.mode === 'items' ? resolved.breakdown.map((b) => ({ index: b.index, qty: b.qty })) : null,
+    scopeLines:      scope.lines,
+    requestedCents:  requested,
+    // T-59, through the SAME function the client's label uses (lib/claim-scope.ceilingVerifiedOf). The
+    // expression was copied here first; a money rule in two copies eventually disagrees with itself, and
+    // this one decides whether the word « remboursable » may be said at all.
+    ceilingVerified: ceilingVerifiedOf(scope),
+  })
 
   const responseDeadlineAt = new Date(Date.now() + claimResponseHours() * 3600 * 1000)
   try {
@@ -432,6 +490,7 @@ export async function createClaim(input: {
         reason:               reason, // canonical value (legacy aliases normalised)
         description:          input.description ?? null,
         requestedAmountCents: requested,
+        selection:            selectionSnapshot as unknown as Prisma.InputJsonValue,
         photoUrl:             input.photoUrl ?? null,
         status:               'restaurant_review',
         responseDeadlineAt,
@@ -547,9 +606,13 @@ export async function getClaimEligibility(input: { consumerId: string; orderId: 
   // the form offers an amount the server will refuse.
   const scope = await buildClaimScopeForOrder({ orderId: input.orderId, items: order.items, orderTotalEur: order.total, stripePaymentIntentId: order.stripePaymentIntentId })
   const maxRefundableCents = scope.maxAuthorityCents
-  // T-59: the ceiling travels with its own provenance, so the form can word it honestly.
-  // Proven = live Stripe truth read AND the charge not disputed (see publicClaimScope).
-  const ceilingVerified = scope.ceilingSource === 'stripe' && !scope.ceilingContested
+  // T-59: the ceiling travels with its own provenance, so the form can word it honestly. Proven = live
+  // Stripe truth read AND the charge not disputed. L7: through the SHARED function rather than a third
+  // copy of the expression — this line used to say « see publicClaimScope », which is an admission that
+  // the rule lived in two places at once. It now lives in one (lib/claim-scope.ceilingVerifiedOf) and a
+  // test counts the copies, because this rule decides whether the word « remboursable » is said to a
+  // customer about money that may not be there.
+  const ceilingVerified = ceilingVerifiedOf(scope)
   const publicScope = publicClaimScope(scope)
   const existing = await prisma.claim.findFirst({
     where:   { orderId: input.orderId, consumerId: input.consumerId },
@@ -650,7 +713,28 @@ export async function listRestaurantClaims(restaurantIds: string[], opts?: { sta
     orderBy: { createdAt: 'asc' },
     take:    200,
   })
-  return triageBySafety(rows)
+  /**
+   * L7 (T-50) — THE SELECTION DOES NOT GO TO THE RESTAURANT IN THIS LOT, and it takes a line of code
+   * to keep it that way.
+   *
+   * This query has no `select`, so it serialises the WHOLE Claim row. `selection` has been in that
+   * payload since L3b, as null — which means the moment createClaim starts writing the snapshot, the
+   * restaurant's response would gain mode, modeSource and every line (index, itemId, qty, unitCents,
+   * name) with a zero-line diff and no review. « Not adding it » is not the default here; removing it
+   * is. The restaurant display is L8's contract (S-19); L7's job is to STORE the selection correctly
+   * and leave the exposure decision to the lot that designs it.
+   *
+   * The pre-existing over-projection of this query — consumerId, decidedBy, refundAttempted, refundId,
+   * refundError, activeOrderKey, contestReason, arbitratedBy all reach the restaurant today — is NOT
+   * fixed here: curating this select is exactly the L8 work the founder deferred, and doing it halfway
+   * would break a panel this lot never reads. It is recorded as a finding instead.
+   */
+  const withoutSelection = rows.map((r) => {
+    const pub = { ...r } as Record<string, unknown>
+    delete pub.selection
+    return pub as typeof r
+  })
+  return triageBySafety(withoutSelection)
 }
 
 // ── REFUND TRIGGER — executeRefund at most once per claim ─────────────────────────
@@ -1853,6 +1937,14 @@ export async function createSystemClaim(input: {
         reason:               SYSTEM_CLAIM_REASON_ORDER_CANCELLED,
         description:          input.description ?? null,
         requestedAmountCents: input.requestedAmountCents,
+        /**
+         * L7 (T-50) — a system claim records its own scope: Grubano asked the whole-order question
+         * itself, so `modeSource: 'system'` and no lines. `ceilingVerified: false` because nothing
+         * read live Stripe truth on this path — the claim is raised from the cancellation, not from a
+         * form. It is a snapshot like any other, so an admin never sees « Sélection non enregistrée »
+         * on a claim this build created.
+         */
+        selection:            systemClaimSelection(input.requestedAmountCents) as unknown as Prisma.InputJsonValue,
         status:               'arbitration', // directement la file admin — pas de revue resto
         // Champ NOT NULL du modèle ; sans objet en arbitration (la sonde P0-39
         // ne regarde que 'restaurant_review') — posé à maintenant.
@@ -4402,6 +4494,10 @@ export async function listPendingRestaurantClaims() {
     select: {
       id: true, orderId: true, reason: true, requestedAmountCents: true,
       description: true, createdAt: true, responseDeadlineAt: true,
+      // L7 (T-50): the persisted selection, on an ADMIN-ONLY list (GET /api/admin/claims). An admin who
+      // is reading a claim must see what the customer chose; without it this row would render
+      // « Sélection non enregistrée » on a claim that has one, which is worse than showing nothing.
+      selection: true,
     },
     orderBy: { createdAt: 'asc' },
     take:    200,

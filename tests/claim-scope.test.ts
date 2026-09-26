@@ -1,9 +1,28 @@
-// tests/claim-scope.test.ts — SERVER-AUTHORITATIVE CLAIM FINANCIAL SCOPE (Claims batch 1)
+// tests/claim-scope.test.ts — SERVER-AUTHORITATIVE CLAIM FINANCIAL SCOPE (Claims batch 1 → D′ L7)
 //
 // Baseline defect (BETA-CLAIMS-REFUND-FACTUAL-INVENTORY §3, reconfirmed 2026-09-07):
 // the consumer CHOSE `requestedAmountCents` and the server merely capped it at the order
-// total. These tests pin the new contract: the client may send a line SELECTION, never
+// total. These tests pin the contract: the client may send a line SELECTION, never
 // money, and no client-supplied value can widen server authority.
+//
+// ── L7 (T-50): WHY EVERY CALL IN THIS FILE NOW NAMES A MODE ───────────────────────────────────────
+// `resolveClaimAmount` used to infer the scope from ABSENCE: no selection meant « the whole remaining
+// authority », and a `scopeKind` derived from the reason decided whether that fallback was allowed. The
+// mode is now an explicit parameter, so the implicit path is not expressible — which is exactly why the
+// old call shapes no longer compile. The translation used here, stated once so it can be checked:
+//     resolveClaimAmount(s)                            → { mode: 'whole' }
+//     resolveClaimAmount(s, sel)                       → { mode: 'items',  selection: sel }
+//     resolveClaimAmount(s, null, cents)               → { mode: 'amount', requestedCents: cents }
+//     …, 'ITEM_REQUIRED'  with no selection            → { mode: 'items' }  (refused: items_required)
+//     …, 'ORDER_LEVEL' / 'ITEM_OPTIONAL' with no sel   → { mode: 'whole' }
+// Two behaviours CHANGED with the spec, and the tests below assert the new one rather than hiding the
+// difference:
+//   • an amount ABOVE the ceiling is now REFUSED (`amount_over_ceiling`) instead of silently capped —
+//     capping told the customer their figure was accepted when a different one was used ;
+//   • a selection AND an amount together is now REFUSED (`amount_not_allowed`) instead of resolving to
+//     the lower of the two — two fields claiming to set the amount is a contradiction only the customer
+//     can resolve.
+// Neither change can widen authority: both replace a silent value with a refusal.
 import { describe, it, expect } from 'vitest'
 import { buildClaimScope, resolveClaimAmount, publicClaimScope } from '@/lib/claim-scope'
 
@@ -29,14 +48,17 @@ describe('buildClaimScope — authority comes from the ORDER, never from the req
   it('an already-refunded amount SHRINKS the ceiling (a second claim cannot re-ask the whole order)', () => {
     const s = scope({ alreadyRefundedCents: 1000 })
     expect(s.maxAuthorityCents).toBe(2250)
-    expect(resolveClaimAmount(s)).toMatchObject({ ok: true, amountCents: 2250, wholeOrder: true })
+    expect(resolveClaimAmount(s, { mode: 'whole' })).toMatchObject({ ok: true, amountCents: 2250, mode: 'whole' })
   })
 
   it('a fully refunded order has ZERO authority left', () => {
     const s = scope({ alreadyRefundedCents: 3250 })
     expect(s.maxAuthorityCents).toBe(0)
-    expect(resolveClaimAmount(s)).toMatchObject({ ok: false })
-    expect(resolveClaimAmount(s, [{ index: 0, qty: 1 }])).toMatchObject({ ok: false })
+    expect(resolveClaimAmount(s, { mode: 'whole' })).toMatchObject({ ok: false, code: 'no_refundable_amount' })
+    expect(resolveClaimAmount(s, { mode: 'items', selection: [{ index: 0, qty: 1 }] }))
+      .toMatchObject({ ok: false, code: 'no_refundable_amount' })
+    // …and the empty ceiling is checked BEFORE the mode, so no mode can buy its way past it.
+    expect(resolveClaimAmount(s, { mode: 'amount', requestedCents: 1 })).toMatchObject({ ok: false, code: 'no_refundable_amount' })
   })
 
   it('malformed or legacy items are DROPPED, never guessed (they can only shrink the surface)', () => {
@@ -51,63 +73,73 @@ describe('buildClaimScope — authority comes from the ORDER, never from the req
   it('non-array items (legacy rows) → no lines, whole-order authority still works', () => {
     const s = buildClaimScope({ items: null, orderTotalEur: 20, alreadyRefundedCents: 0 })
     expect(s.linesUnavailable).toBe(true)
-    expect(resolveClaimAmount(s)).toMatchObject({ ok: true, amountCents: 2000, wholeOrder: true })
+    expect(resolveClaimAmount(s, { mode: 'whole' })).toMatchObject({ ok: true, amountCents: 2000, mode: 'whole' })
   })
 })
 
 describe('resolveClaimAmount — the client selection can only ever REDUCE', () => {
-  it('no selection → the whole remaining authority', () => {
-    expect(resolveClaimAmount(scope())).toMatchObject({ ok: true, amountCents: 3250, wholeOrder: true })
+  it('mode whole → the whole remaining authority, derived by the server', () => {
+    expect(resolveClaimAmount(scope(), { mode: 'whole' })).toMatchObject({ ok: true, amountCents: 3250, mode: 'whole' })
   })
 
   it('a partial selection is priced from SERVER line values', () => {
-    const r = resolveClaimAmount(scope(), [{ index: 0, qty: 1 }])
-    expect(r).toMatchObject({ ok: true, amountCents: 1250, wholeOrder: false })
+    const r = resolveClaimAmount(scope(), { mode: 'items', selection: [{ index: 0, qty: 1 }] })
+    expect(r).toMatchObject({ ok: true, amountCents: 1250, mode: 'items' })
   })
 
   it('selecting everything still cannot exceed the ceiling', () => {
     // lines sum to 3100 < total 3250 (fees) → selection is the lower number, never the higher
-    const r = resolveClaimAmount(scope(), [{ index: 0, qty: 2 }, { index: 1, qty: 1 }])
+    const r = resolveClaimAmount(scope(), { mode: 'items', selection: [{ index: 0, qty: 2 }, { index: 1, qty: 1 }] })
     expect(r).toMatchObject({ ok: true, amountCents: 3100 })
   })
 
   it('a selection is capped by the ceiling when the order is partly refunded', () => {
-    const r = resolveClaimAmount(scope({ alreadyRefundedCents: 3000 }), [{ index: 0, qty: 2 }])
+    const r = resolveClaimAmount(scope({ alreadyRefundedCents: 3000 }), { mode: 'items', selection: [{ index: 0, qty: 2 }] })
     expect(r).toMatchObject({ ok: true, amountCents: 250 }) // 2500 requested, 250 left
+  })
+
+  it('the resolved MODE is reported, so the snapshot records what was actually priced', () => {
+    expect(resolveClaimAmount(scope(), { mode: 'items', selection: [{ index: 1, qty: 1 }] })).toMatchObject({ mode: 'items' })
+    expect(resolveClaimAmount(scope(), { mode: 'amount', requestedCents: 600 })).toMatchObject({ mode: 'amount' })
+    expect(resolveClaimAmount(scope(), { mode: 'whole' })).toMatchObject({ mode: 'whole' })
   })
 })
 
 describe('FORGERY — every hostile input class is rejected, none expands authority', () => {
+  const items = (selection: Array<{ index: number; qty: number }>) =>
+    resolveClaimAmount(scope(), { mode: 'items', selection })
+
   it('forged item INDEX (not a line of this order) → rejected', () => {
-    expect(resolveClaimAmount(scope(), [{ index: 99, qty: 1 }])).toMatchObject({ ok: false })
-    expect(resolveClaimAmount(scope(), [{ index: -1, qty: 1 }])).toMatchObject({ ok: false })
+    expect(items([{ index: 99, qty: 1 }])).toMatchObject({ ok: false, code: 'invalid_selection' })
+    expect(items([{ index: -1, qty: 1 }])).toMatchObject({ ok: false, code: 'invalid_selection' })
   })
 
   it('forged QUANTITY above what was purchased → rejected, never clamped upward', () => {
-    const r = resolveClaimAmount(scope(), [{ index: 1, qty: 99 }]) // only 1 tiramisu bought
-    expect(r).toMatchObject({ ok: false })
+    const r = items([{ index: 1, qty: 99 }]) // only 1 tiramisu bought
+    expect(r).toMatchObject({ ok: false, code: 'qty_over_purchased' })
     if (!r.ok) expect(r.error).toMatch(/Quantité supérieure/)
   })
 
   it('DUPLICATED line → rejected (no stacking the same item twice)', () => {
-    expect(resolveClaimAmount(scope(), [{ index: 0, qty: 1 }, { index: 0, qty: 1 }])).toMatchObject({ ok: false })
+    expect(items([{ index: 0, qty: 1 }, { index: 0, qty: 1 }])).toMatchObject({ ok: false, code: 'duplicate_selection' })
   })
 
   it('non-integer / zero / negative quantity → rejected', () => {
     for (const qty of [0, -3, 1.5, NaN]) {
-      expect(resolveClaimAmount(scope(), [{ index: 0, qty }])).toMatchObject({ ok: false })
+      expect(items([{ index: 0, qty }])).toMatchObject({ ok: false, code: 'invalid_qty' })
     }
   })
 
   it('a forged unit PRICE or line TOTAL in the payload is structurally unreadable', () => {
     // The resolver's only inputs are index+qty. Extra fields cannot be consumed.
     const hostile = [{ index: 0, qty: 1, price: 9999, unitCents: 9999, lineCents: 9999, amountCents: 9999, itemId: 'forged' }]
-    const r = resolveClaimAmount(scope(), hostile as unknown as Array<{ index: number; qty: number }>)
+    const r = resolveClaimAmount(scope(), { mode: 'items', selection: hostile as unknown as Array<{ index: number; qty: number }> })
     expect(r).toMatchObject({ ok: true, amountCents: 1250 }) // the SERVER price, not 9999
   })
 
   it('more selection entries than the order has lines → rejected before pricing', () => {
-    expect(resolveClaimAmount(scope(), [{ index: 0, qty: 1 }, { index: 1, qty: 1 }, { index: 0, qty: 1 }])).toMatchObject({ ok: false })
+    expect(items([{ index: 0, qty: 1 }, { index: 1, qty: 1 }, { index: 0, qty: 1 }]))
+      .toMatchObject({ ok: false, code: 'invalid_selection' })
   })
 })
 
@@ -134,99 +166,128 @@ describe('negative control — the OLD client-amount rule would have been caught
   it('the old rule lets a client claim 32.50 € on an order where only one 12.50 € item was wrong', () => {
     expect(vulnerableResolve(3250, 3250)).toMatchObject({ ok: true, amountCents: 3250 })
     // the new derivation, given the same honest selection, yields the item value only
-    expect(resolveClaimAmount(scope(), [{ index: 0, qty: 1 }])).toMatchObject({ ok: true, amountCents: 1250 })
+    expect(resolveClaimAmount(scope(), { mode: 'items', selection: [{ index: 0, qty: 1 }] }))
+      .toMatchObject({ ok: true, amountCents: 1250 })
   })
 
   it('the old rule ignores what was ALREADY refunded — the new one cannot', () => {
     // order already refunded 3000 c; the old rule still accepts a 3250 c claim
     expect(vulnerableResolve(3250, 3250)).toMatchObject({ ok: true, amountCents: 3250 })
-    expect(resolveClaimAmount(scope({ alreadyRefundedCents: 3000 }))).toMatchObject({ ok: true, amountCents: 250 })
+    expect(resolveClaimAmount(scope({ alreadyRefundedCents: 3000 }), { mode: 'whole' }))
+      .toMatchObject({ ok: true, amountCents: 250 })
   })
 })
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// AUDIT FIX (P0) — found by the independent adversarial audit of THIS batch.
+// AUDIT FIX (P0) — found by the independent adversarial audit of batch 1.
 // Dropping `requestedAmountCents` outright meant the SHIPPED client (which sends an
 // amount and no `items`) had every claim silently re-written to the WHOLE order: the
 // change made authority WIDER, not narrower, and the inflated figure was then shown to
 // the restaurant, the admin and the customer as "the amount you requested".
+// L7 keeps the invariant and hardens its edges: the figure is honoured in mode 'amount',
+// and every case where it CANNOT be honoured is now a refusal with a code.
 // ═══════════════════════════════════════════════════════════════════════════════
-describe('AUDIT FIX P0 — a requested amount REDUCES, never expands, and is never ignored', () => {
-  it('the shipped client (amount, no selection) gets the amount it asked for — NOT the whole order', () => {
-    expect(resolveClaimAmount(scope(), null, 500)).toMatchObject({ ok: true, amountCents: 500, wholeOrder: false })
+describe('AUDIT FIX P0 — a requested amount REDUCES, never expands, and is never silently ignored', () => {
+  it('a client asking for a precise amount gets that amount — NOT the whole order', () => {
+    expect(resolveClaimAmount(scope(), { mode: 'amount', requestedCents: 500 }))
+      .toMatchObject({ ok: true, amountCents: 500, mode: 'amount' })
   })
 
-  it('an amount ABOVE the ceiling is capped at the ceiling, never granted', () => {
-    expect(resolveClaimAmount(scope(), null, 999999)).toMatchObject({ ok: true, amountCents: 3250 })
+  it('an amount ABOVE the ceiling is REFUSED, never granted and no longer silently capped', () => {
+    const r = resolveClaimAmount(scope(), { mode: 'amount', requestedCents: 999999 })
+    expect(r).toMatchObject({ ok: false, code: 'amount_over_ceiling' })
+    // the ceiling itself is unchanged and still reachable — deliberately, via its own mode
+    expect(resolveClaimAmount(scope(), { mode: 'whole' })).toMatchObject({ ok: true, amountCents: 3250 })
   })
 
-  it('an amount above the ceiling of a PARTLY refunded order is capped at what remains', () => {
-    expect(resolveClaimAmount(scope({ alreadyRefundedCents: 3000 }), null, 999999)).toMatchObject({ ok: true, amountCents: 250 })
+  it('an amount above the ceiling of a PARTLY refunded order is refused against what REMAINS', () => {
+    const partly = scope({ alreadyRefundedCents: 3000 })
+    expect(resolveClaimAmount(partly, { mode: 'amount', requestedCents: 999999 }))
+      .toMatchObject({ ok: false, code: 'amount_over_ceiling' })
+    expect(resolveClaimAmount(partly, { mode: 'amount', requestedCents: 250 }))
+      .toMatchObject({ ok: true, amountCents: 250 })
+    expect(resolveClaimAmount(partly, { mode: 'amount', requestedCents: 251 }))
+      .toMatchObject({ ok: false, code: 'amount_over_ceiling' })
   })
 
-  it('a selection AND an amount → the lower of the two, never the higher', () => {
-    // selection prices at 1250; asking for 400 reduces it; asking for 9999 cannot raise it
-    expect(resolveClaimAmount(scope(), [{ index: 0, qty: 1 }], 400)).toMatchObject({ ok: true, amountCents: 400 })
-    expect(resolveClaimAmount(scope(), [{ index: 0, qty: 1 }], 9999)).toMatchObject({ ok: true, amountCents: 1250 })
+  it('a selection AND an amount → REFUSED, so the customer is never told a figure they did not get', () => {
+    // Before L7 this resolved to the lower of the two, silently. 1250 (the selection) vs 400 (the typed
+    // figure): whichever the server picked, the other was discarded without a word.
+    expect(resolveClaimAmount(scope(), { mode: 'items', selection: [{ index: 0, qty: 1 }], requestedCents: 400 }))
+      .toMatchObject({ ok: false, code: 'amount_not_allowed' })
+    expect(resolveClaimAmount(scope(), { mode: 'amount', requestedCents: 400, selection: [{ index: 0, qty: 1 }] }))
+      .toMatchObject({ ok: false, code: 'items_not_allowed' })
   })
 
-  it('a junk amount (0, negative, float, NaN) falls back to the derived value, never to an error or an inflation', () => {
+  it('a junk amount (0, negative, float, NaN) is REFUSED, never turned into the whole order', () => {
     for (const bad of [0, -100, 12.5, NaN]) {
-      expect(resolveClaimAmount(scope(), null, bad)).toMatchObject({ ok: true, amountCents: 3250 })
+      expect(resolveClaimAmount(scope(), { mode: 'amount', requestedCents: bad }))
+        .toMatchObject({ ok: false, code: 'amount_required' })
     }
+    // …and the old fallback value is no longer reachable by accident: 3250 requires mode 'whole'.
+    expect(resolveClaimAmount(scope(), { mode: 'amount', requestedCents: null }))
+      .toMatchObject({ ok: false, code: 'amount_required' })
   })
 
-  it('no amount and no selection still means the whole remaining authority (an explicit whole-order claim)', () => {
-    expect(resolveClaimAmount(scope(), null, null)).toMatchObject({ ok: true, amountCents: 3250, wholeOrder: true })
+  it('mode whole takes no amount at all — a figure beside it is a contradiction, not a cap', () => {
+    expect(resolveClaimAmount(scope(), { mode: 'whole', requestedCents: 500 }))
+      .toMatchObject({ ok: false, code: 'amount_not_allowed' })
+    expect(resolveClaimAmount(scope(), { mode: 'whole', selection: [{ index: 0, qty: 1 }] }))
+      .toMatchObject({ ok: false, code: 'items_not_allowed' })
   })
 })
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // BATCH 2 — ITEM-LEVEL AUTHORITY. Batch 1 derived the ceiling from the order alone with
 // no branching on the reason, so "article manquant" obtained authority over the WHOLE
-// order simply because the shipped client sent no selection. The reason now decides
-// whether a whole-order ceiling is available at all.
+// order simply because the shipped client sent no selection. Batch 2 made the reason
+// decide; L7 made the resulting MODE explicit (lib/claim-selection.resolveScopeMode),
+// so this file pins what each mode PRICES and its companion pins which reason may use it.
 // ═══════════════════════════════════════════════════════════════════════════════
 describe('BATCH 2 — an item-specific reason cannot reach a whole-order ceiling', () => {
-  it('ITEM_REQUIRED with no selection → REJECTED, with an actionable message', () => {
-    const r = resolveClaimAmount(scope(), null, null, 'ITEM_REQUIRED')
-    expect(r).toMatchObject({ ok: false })
+  it('mode items with no selection → REJECTED, with an actionable message and a code', () => {
+    const r = resolveClaimAmount(scope(), { mode: 'items' })
+    expect(r).toMatchObject({ ok: false, code: 'items_required' })
     if (!r.ok) expect(r.error).toMatch(/articles concernés/)
   })
 
-  it('ITEM_REQUIRED with a selection → priced from the SERVER lines only', () => {
-    expect(resolveClaimAmount(scope(), [{ index: 0, qty: 1 }], null, 'ITEM_REQUIRED'))
-      .toMatchObject({ ok: true, amountCents: 1250, wholeOrder: false })
+  it('mode items with a selection → priced from the SERVER lines only', () => {
+    expect(resolveClaimAmount(scope(), { mode: 'items', selection: [{ index: 0, qty: 1 }] }))
+      .toMatchObject({ ok: true, amountCents: 1250, mode: 'items' })
   })
 
   it('a requested amount CANNOT substitute for the missing selection', () => {
-    expect(resolveClaimAmount(scope(), null, 3250, 'ITEM_REQUIRED')).toMatchObject({ ok: false })
-    expect(resolveClaimAmount(scope(), null, 100, 'ITEM_REQUIRED')).toMatchObject({ ok: false })
+    // Neither a large figure nor a small one buys its way out of naming the articles.
+    expect(resolveClaimAmount(scope(), { mode: 'items', requestedCents: 3250 })).toMatchObject({ ok: false })
+    expect(resolveClaimAmount(scope(), { mode: 'items', requestedCents: 100 })).toMatchObject({ ok: false })
   })
 
-  it('ITEM_REQUIRED on an order whose lines are unreadable fails CLOSED (no whole-order fallback)', () => {
+  it('mode items on an order whose lines are unreadable fails CLOSED (no whole-order fallback)', () => {
     const legacy = buildClaimScope({ items: null, orderTotalEur: 32.5, alreadyRefundedCents: 0 })
-    const r = resolveClaimAmount(legacy, null, null, 'ITEM_REQUIRED')
-    expect(r).toMatchObject({ ok: false })
+    const r = resolveClaimAmount(legacy, { mode: 'items' })
+    expect(r).toMatchObject({ ok: false, code: 'item_lines_unavailable' })
     if (!r.ok) expect(r.error).toMatch(/indisponible/)
   })
 
-  it('ORDER_LEVEL reasons keep a legitimate whole-order ceiling', () => {
-    expect(resolveClaimAmount(scope(), null, null, 'ORDER_LEVEL'))
-      .toMatchObject({ ok: true, amountCents: 3250, wholeOrder: true })
+  it('order-level reasons keep a legitimate whole-order ceiling', () => {
+    expect(resolveClaimAmount(scope(), { mode: 'whole' }))
+      .toMatchObject({ ok: true, amountCents: 3250, mode: 'whole' })
   })
 
-  it('ITEM_OPTIONAL narrows with a selection and allows the whole order without one', () => {
-    expect(resolveClaimAmount(scope(), null, null, 'ITEM_OPTIONAL')).toMatchObject({ ok: true, amountCents: 3250 })
-    expect(resolveClaimAmount(scope(), [{ index: 1, qty: 1 }], null, 'ITEM_OPTIONAL')).toMatchObject({ ok: true, amountCents: 600 })
+  it('an optional-item reason narrows with a selection and reaches the whole order only by saying so', () => {
+    expect(resolveClaimAmount(scope(), { mode: 'whole' })).toMatchObject({ ok: true, amountCents: 3250 })
+    expect(resolveClaimAmount(scope(), { mode: 'items', selection: [{ index: 1, qty: 1 }] })).toMatchObject({ ok: true, amountCents: 600 })
   })
 
-  it('forgery is still rejected under every scope kind', () => {
-    for (const kind of ['ITEM_REQUIRED', 'ITEM_OPTIONAL', 'ORDER_LEVEL'] as const) {
-      expect(resolveClaimAmount(scope(), [{ index: 0, qty: 99 }], null, kind)).toMatchObject({ ok: false })
-      expect(resolveClaimAmount(scope(), [{ index: 42, qty: 1 }], null, kind)).toMatchObject({ ok: false })
-      expect(resolveClaimAmount(scope(), [{ index: 0, qty: 1 }, { index: 0, qty: 1 }], null, kind)).toMatchObject({ ok: false })
-    }
+  it('forgery is still rejected under every mode, priced or not', () => {
+    expect(resolveClaimAmount(scope(), { mode: 'items', selection: [{ index: 0, qty: 99 }] })).toMatchObject({ ok: false })
+    expect(resolveClaimAmount(scope(), { mode: 'items', selection: [{ index: 42, qty: 1 }] })).toMatchObject({ ok: false })
+    expect(resolveClaimAmount(scope(), { mode: 'items', selection: [{ index: 0, qty: 1 }, { index: 0, qty: 1 }] })).toMatchObject({ ok: false })
+    // …and the modes that accept NO selection reject a forged one on sight, before pricing it.
+    expect(resolveClaimAmount(scope(), { mode: 'amount', requestedCents: 100, selection: [{ index: 42, qty: 1 }] }))
+      .toMatchObject({ ok: false, code: 'items_not_allowed' })
+    expect(resolveClaimAmount(scope(), { mode: 'whole', selection: [{ index: 42, qty: 1 }] }))
+      .toMatchObject({ ok: false, code: 'items_not_allowed' })
   })
 })
 
@@ -243,11 +304,12 @@ describe('BATCH 2 — the ceiling never exceeds real Stripe cash', () => {
     stripe: { capturedCents: 1000, refundedCents: 400, pendingCents: 0 },
   })
 
-  it('a Dashboard refund of 400 caps a 1000 claim at 600, not 1000', () => {
+  it('a Dashboard refund of 400 keeps a 1000 claim out of reach — the ceiling is 600', () => {
     const s = dashboardCase()
     expect(s.maxAuthorityCents).toBe(600)
     expect(s.ceilingSource).toBe('stripe')
-    expect(resolveClaimAmount(s, null, 1000, 'ORDER_LEVEL')).toMatchObject({ ok: true, amountCents: 600 })
+    expect(resolveClaimAmount(s, { mode: 'amount', requestedCents: 1000 })).toMatchObject({ ok: false, code: 'amount_over_ceiling' })
+    expect(resolveClaimAmount(s, { mode: 'whole' })).toMatchObject({ ok: true, amountCents: 600 })
   })
 
   it('the DB-only view would have allowed the full 1000 — the divergence is the whole point', () => {
@@ -295,7 +357,8 @@ describe('BATCH 2 — the ceiling never exceeds real Stripe cash', () => {
       stripe: { capturedCents: 1000, refundedCents: 1000, pendingCents: 0 },
     })
     expect(s.maxAuthorityCents).toBe(0)
-    expect(resolveClaimAmount(s, null, 500, 'ORDER_LEVEL')).toMatchObject({ ok: false })
+    expect(resolveClaimAmount(s, { mode: 'amount', requestedCents: 500 })).toMatchObject({ ok: false, code: 'no_refundable_amount' })
+    expect(resolveClaimAmount(s, { mode: 'whole' })).toMatchObject({ ok: false, code: 'no_refundable_amount' })
   })
 
   it('the SMALLER of DB and Stripe always wins (a DB row Stripe has not seen still counts)', () => {
@@ -318,7 +381,7 @@ describe('negative controls — batch 2 defect classes are detectable', () => {
   it('a whole-order fallback reintroduced for a missing-item claim would be caught', () => {
     const vulnerable = (sc: ReturnType<typeof scope>) => ({ ok: true as const, amountCents: sc.maxAuthorityCents })
     expect(vulnerable(scope()).amountCents).toBe(3250)                                  // the defect
-    expect(resolveClaimAmount(scope(), null, null, 'ITEM_REQUIRED')).toMatchObject({ ok: false }) // fixed
+    expect(resolveClaimAmount(scope(), { mode: 'items' })).toMatchObject({ ok: false })  // fixed
   })
 
   it('ignoring the Dashboard refund would be caught', () => {
@@ -351,12 +414,12 @@ describe('AUDIT FIX P1 — a discounted order cannot turn one item into the whol
   })
 
   it('ONE of the two portions claims HALF the order, not all of it', () => {
-    const r = resolveClaimAmount(promo(), [{ index: 0, qty: 1 }], null, 'ITEM_REQUIRED')
+    const r = resolveClaimAmount(promo(), { mode: 'items', selection: [{ index: 0, qty: 1 }] })
     expect(r).toMatchObject({ ok: true, amountCents: 750 })
   })
 
   it('both portions claim the whole order — the ceiling is still respected', () => {
-    expect(resolveClaimAmount(promo(), [{ index: 0, qty: 2 }], null, 'ITEM_REQUIRED'))
+    expect(resolveClaimAmount(promo(), { mode: 'items', selection: [{ index: 0, qty: 2 }] }))
       .toMatchObject({ ok: true, amountCents: 1500 })
   })
 
@@ -385,8 +448,8 @@ describe('AUDIT FIX P1 — a discounted order cannot turn one item into the whol
     })
     expect(s.lines).toHaveLength(1)
     expect(s.lines[0].index).toBe(1) // position in Order.items, NOT 0
-    expect(resolveClaimAmount(s, [{ index: 1, qty: 1 }], null, 'ITEM_REQUIRED')).toMatchObject({ ok: true, amountCents: 1000 })
-    expect(resolveClaimAmount(s, [{ index: 0, qty: 1 }], null, 'ITEM_REQUIRED')).toMatchObject({ ok: false })
+    expect(resolveClaimAmount(s, { mode: 'items', selection: [{ index: 1, qty: 1 }] })).toMatchObject({ ok: true, amountCents: 1000 })
+    expect(resolveClaimAmount(s, { mode: 'items', selection: [{ index: 0, qty: 1 }] })).toMatchObject({ ok: false, code: 'invalid_selection' })
   })
 })
 
@@ -397,6 +460,68 @@ describe('negative control — list-price pricing on a discounted order would be
     const orderTotalCents = 1500                      // what was actually paid
     expect(Math.min(unscaledUnitCents * 1, orderTotalCents)).toBe(1500) // ← the defect
     const fixed = buildClaimScope({ items: [{ name: 'x', qty: 2, price: 15 }], orderTotalEur: 15, alreadyRefundedCents: 0 })
-    expect(resolveClaimAmount(fixed, [{ index: 0, qty: 1 }], null, 'ITEM_REQUIRED')).toMatchObject({ amountCents: 750 })
+    expect(resolveClaimAmount(fixed, { mode: 'items', selection: [{ index: 0, qty: 1 }] })).toMatchObject({ amountCents: 750 })
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// L7 (T-50) — THE IMPLICIT WHOLE-ORDER PATH IS GONE, STRUCTURALLY
+// The batch-2 defect was not that the fallback was wrong in every case; it was that it
+// happened WITHOUT ANYONE ASKING. These tests pin that no call shape reaches the ceiling
+// by accident, and that every refusal names a code the client can localise.
+// ═══════════════════════════════════════════════════════════════════════════════
+describe('L7 — no amount is ever resolved without a mode, and every refusal carries a code', () => {
+  it('a call with no input object at all cannot fall through to the whole-order ceiling', () => {
+    // The mode is required at compile time. This asserts the RUNTIME behaviour too, so that making it
+    // optional later « for convenience » fails a test and not only a review.
+    const fn = resolveClaimAmount as unknown as (s: unknown, i?: unknown) => { ok?: boolean; amountCents?: number }
+    let reachedCeiling = false
+    try {
+      const r = fn(scope())
+      reachedCeiling = r?.ok === true && r?.amountCents === 3250
+    } catch { reachedCeiling = false } // a throw is acceptable; a silent whole-order grant is not
+    expect(reachedCeiling).toBe(false)
+  })
+
+  it('every refusal this module can produce carries a machine code AND a sentence', () => {
+    const refusals = [
+      resolveClaimAmount(scope({ alreadyRefundedCents: 3250 }), { mode: 'whole' }),
+      resolveClaimAmount(scope(), { mode: 'items' }),
+      resolveClaimAmount(buildClaimScope({ items: null, orderTotalEur: 10, alreadyRefundedCents: 0 }), { mode: 'items' }),
+      resolveClaimAmount(scope(), { mode: 'items', selection: [{ index: 99, qty: 1 }] }),
+      resolveClaimAmount(scope(), { mode: 'items', selection: [{ index: 0, qty: 1 }, { index: 0, qty: 1 }] }),
+      resolveClaimAmount(scope(), { mode: 'items', selection: [{ index: 0, qty: 0 }] }),
+      resolveClaimAmount(scope(), { mode: 'items', selection: [{ index: 1, qty: 9 }] }),
+      resolveClaimAmount(scope(), { mode: 'amount' }),
+      resolveClaimAmount(scope(), { mode: 'amount', requestedCents: 999999 }),
+      resolveClaimAmount(scope(), { mode: 'whole', selection: [{ index: 0, qty: 1 }] }),
+      resolveClaimAmount(scope(), { mode: 'whole', requestedCents: 10 }),
+    ]
+    const codes = new Set<string>()
+    for (const r of refusals) {
+      expect(r.ok).toBe(false)
+      if (!r.ok) {
+        expect(typeof r.code).toBe('string')
+        expect(r.error.length).toBeGreaterThan(10)
+        codes.add(r.code)
+      }
+    }
+    // All eleven distinct refusal codes are reachable — none is dead text in the table.
+    expect(codes).toEqual(new Set([
+      'no_refundable_amount', 'items_required', 'item_lines_unavailable', 'invalid_selection',
+      'duplicate_selection', 'invalid_qty', 'qty_over_purchased', 'amount_required',
+      'amount_over_ceiling', 'items_not_allowed', 'amount_not_allowed',
+    ]))
+  })
+
+  it('NEGATIVE CONTROL — a resolver that defaulted an unknown mode to whole would be caught', () => {
+    const vulnerable = (mode: string, ceiling: number) =>
+      mode === 'items' ? { ok: false as const } : { ok: true as const, amountCents: ceiling }
+    expect(vulnerable('', 3250)).toMatchObject({ ok: true, amountCents: 3250 }) // ← the defect: silence = whole
+    // The real resolver has no such branch: an empty mode matches none of the three and falls through
+    // to the items path, which refuses for want of a selection rather than granting the ceiling.
+    const r = resolveClaimAmount(scope(), { mode: '' as unknown as 'items' })
+    expect(r).toMatchObject({ ok: false })
+    expect(r.ok === false && r.code !== 'no_refundable_amount').toBe(true)
   })
 })

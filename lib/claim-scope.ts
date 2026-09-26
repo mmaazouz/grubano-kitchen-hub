@@ -19,6 +19,8 @@
 // The refund engine remains the final authority at refund time (it re-reads live Stripe
 // truth and its own cumulative cursor); this module decides what the CLAIM may ask for.
 
+import type { ClaimScopeMode } from '@/lib/claim-reasons'
+
 /** One line of `Order.items` as persisted (unit price in EUR, server-re-priced). */
 type RawOrderItem = { itemId?: unknown; name?: unknown; qty?: unknown; price?: unknown }
 
@@ -75,9 +77,47 @@ export type StripeCashTruth = {
 
 export type ClaimSelection = { index: number; qty: number }
 
+/**
+ * L7 (T-50) — why every refusal carries a CODE. The client renders the refusal in the customer's own
+ * language; a French sentence forwarded from the server is not a translation. The sentence travels
+ * too, for a caller that cannot localise the code.
+ */
+export type ClaimAmountRefusalCode =
+  | 'no_refundable_amount'
+  | 'items_required'
+  | 'item_lines_unavailable'
+  | 'invalid_selection'
+  | 'duplicate_selection'
+  | 'invalid_qty'
+  | 'qty_over_purchased'
+  | 'amount_required'
+  | 'amount_over_ceiling'
+  | 'items_not_allowed'
+  | 'amount_not_allowed'
+
+export const CLAIM_AMOUNT_REFUSAL_TEXT: Record<ClaimAmountRefusalCode, string> = {
+  no_refundable_amount:   'Cette commande n’a plus de montant remboursable.',
+  items_required:         'Indiquez le ou les articles concernés : ce motif ne permet pas de réclamer la commande entière.',
+  item_lines_unavailable: 'Le détail des articles de cette commande est indisponible : ce motif ne peut pas être traité automatiquement, contactez le support.',
+  invalid_selection:      'Sélection d’articles invalide.',
+  duplicate_selection:    'Un même article est sélectionné plusieurs fois.',
+  invalid_qty:            'Quantité invalide.',
+  qty_over_purchased:     'Quantité supérieure à la quantité commandée.',
+  amount_required:        'Indiquez le montant que vous réclamez.',
+  amount_over_ceiling:    'Le montant demandé dépasse ce qui peut encore être remboursé sur cette commande.',
+  items_not_allowed:      'Cette portée ne porte pas sur des articles : retirez la sélection d’articles.',
+  amount_not_allowed:     'Cette portée ne prend pas de montant libre : choisissez « un montant précis » pour en saisir un.',
+}
+
 export type ScopeResolution =
-  | { ok: true; amountCents: number; breakdown: Array<{ index: number; qty: number; cents: number }>; wholeOrder: boolean }
-  | { ok: false; error: string }
+  | {
+      ok: true
+      amountCents: number
+      breakdown: Array<{ index: number; qty: number; cents: number }>
+      /** The mode this amount was resolved under — what the snapshot records. */
+      mode: ClaimScopeMode
+    }
+  | { ok: false; code: ClaimAmountRefusalCode; error: string }
 
 const toCents = (eur: number) => Math.round(eur * 100)
 
@@ -166,87 +206,113 @@ export function buildClaimScope(input: {
 }
 
 /**
- * Turn a CLIENT SELECTION into a server-derived amount.
- *  • no selection            → the whole remaining authority (a full-order claim);
- *  • selection               → Σ unitCents × qty over the named lines, capped at the ceiling.
- * Every failure mode is a REJECTION, never a silent clamp upward:
- *  • an index that is not a line of THIS order;
- *  • a qty above what was actually purchased;
- *  • a duplicated line;
- *  • a non-integer / non-positive qty.
- * Client-sent prices, totals or amounts are not parameters here — they cannot be read.
+ * Turn a MODE plus what the request carried into a server-derived amount.
+ *
+ * ── L7 (T-50): THE MODE IS A PARAMETER, AND THAT IS THE POINT ─────────────────────────────
+ * Until L7 this function inferred the scope from what the request did NOT contain: an empty
+ * selection meant « the whole remaining authority ». So a customer who sent nothing — including one
+ * whose form had silently preselected « toute la commande » — obtained a whole-order claim without
+ * a single deliberate gesture, and the inferred scope was then thrown away, leaving a bare figure
+ * that the restaurant, the admin and the customer each explained to themselves differently.
+ *
+ * The mode is now REQUIRED, so the implicit path is not expressible. lib/claim-selection decides the
+ * mode from the reason and from what the customer explicitly said (refusing silence where several
+ * scopes are possible); this function only prices it. Each mode admits exactly one shape of request,
+ * and anything else is a REFUSAL with a code — never a silent narrowing, because narrowing answers a
+ * question the customer did not ask:
+ *   'items'  → at least one line, validated against the order; the amount is the priced selection,
+ *              capped at the ceiling. A client amount beside it is REFUSED, never dropped: the
+ *              selection IS the amount, and two fields setting it is a contradiction to report.
+ *   'amount' → an explicit positive amount at or below the ceiling; a line selection is REFUSED,
+ *              because then two things would claim to set the figure.
+ *   'whole'  → the amount is the ceiling, derived by the server; both a client amount and a line
+ *              selection are REFUSED (« a precise amount » is its own mode).
+ * Client-sent prices, totals and line values are not parameters here — they cannot be read.
  */
 export function resolveClaimAmount(
   scope: ClaimScope,
-  selection?: ClaimSelection[] | null,
-  /**
-   * What the consumer ASKED FOR, in cents, if their client sent an amount.
-   *
-   * P0 found by the adversarial audit of this batch: dropping the field outright meant that
-   * every claim from the SHIPPED client (which sends an amount and no `items`) silently became
-   * a claim for the WHOLE order — the change made authority WIDER, not narrower, and then
-   * showed the inflated figure to the restaurant, the admin and the customer as "the amount you
-   * requested". A requested amount is therefore honoured as a CAP REQUEST: it can only ever
-   * LOWER the claim below the server ceiling. It can never raise it, and it is never the
-   * source of authority — `maxAuthorityCents` is.
-   */
-  requestedCents?: number | null,
-  /**
-   * Authority scope of the REASON (batch 2). `ITEM_REQUIRED` means a whole-order ceiling is
-   * not available for this reason: the claim must name the disputed lines. Without this, an
-   * "article manquant" claim obtained authority over the entire order simply because the
-   * client sent no selection — the remaining authority defect batch 1 left open.
-   */
-  scopeKind?: 'ITEM_REQUIRED' | 'ITEM_OPTIONAL' | 'ORDER_LEVEL' | null,
+  input: {
+    mode: ClaimScopeMode
+    selection?: ClaimSelection[] | null
+    /** What the consumer ASKED FOR, in cents. Authority only in 'amount' mode, and only downward. */
+    requestedCents?: number | null
+  },
 ): ScopeResolution {
-  if (scope.maxAuthorityCents <= 0) {
-    return { ok: false, error: 'Cette commande n’a plus de montant remboursable.' }
+  const refuse = (code: ClaimAmountRefusalCode, error?: string): ScopeResolution =>
+    ({ ok: false, code, error: error ?? CLAIM_AMOUNT_REFUSAL_TEXT[code] })
+
+  if (scope.maxAuthorityCents <= 0) return refuse('no_refundable_amount')
+  const selection = input.selection ?? null
+  const hasSelection = Array.isArray(selection) && selection.length > 0
+  const asked = input.requestedCents
+
+  // ── 'whole' — the server's own figure, and nothing else may speak ────────────────────────
+  if (input.mode === 'whole') {
+    if (hasSelection) return refuse('items_not_allowed')
+    if (asked != null) return refuse('amount_not_allowed')
+    return { ok: true, amountCents: scope.maxAuthorityCents, breakdown: [], mode: 'whole' }
   }
-  if (scopeKind === 'ITEM_REQUIRED' && (!selection || selection.length === 0)) {
-    if (!scope.lines.length) {
-      // No readable lines ⇒ we cannot bound the claim to items, and we refuse to fall back to
-      // the whole order for an item-level reason. Fail closed and say why.
-      return { ok: false, error: 'Le détail des articles de cette commande est indisponible : ce motif ne peut pas être traité automatiquement, contactez le support.' }
-    }
-    return { ok: false, error: 'Indiquez le ou les articles concernés : ce motif ne permet pas de réclamer la commande entière.' }
+
+  // ── 'amount' — an explicit figure, capped, with nothing else competing to set it ─────────
+  if (input.mode === 'amount') {
+    if (hasSelection) return refuse('items_not_allowed')
+    if (asked == null || !Number.isInteger(asked) || asked <= 0) return refuse('amount_required')
+    if (asked > scope.maxAuthorityCents) return refuse('amount_over_ceiling')
+    return { ok: true, amountCents: asked, breakdown: [], mode: 'amount' }
   }
-  const askedDown = (base: number) => {
-    if (requestedCents == null) return base
-    if (!Number.isInteger(requestedCents) || requestedCents <= 0) return base
-    return Math.min(base, requestedCents) // REDUCTION ONLY — never an expansion
+
+  // ── 'items' — the named lines, priced by the server ──────────────────────────────────────
+  // An amount sent alongside a line selection is REFUSED, not dropped. Dropping it was the first
+  // version of this branch, and it re-created in one line the defect L7 exists to close: the customer
+  // had typed a figure, the server used a different one, and nothing said so. Two fields both claiming
+  // to set the amount is a contradiction only the customer can resolve. (Deliberate strengthening of
+  // spec v2 §5, which says such a field is « ignoré » — see the L7 log.)
+  if (asked != null) return refuse('amount_not_allowed')
+  if (!hasSelection) {
+    // Say which gesture is missing, and why. A reason that names lines cannot fall back to the
+    // whole order — that is the authority defect this whole family of checks exists to close.
+    return refuse(scope.lines.length ? 'items_required' : 'item_lines_unavailable')
   }
-  if (!selection || selection.length === 0) {
-    const amountCents = askedDown(scope.maxAuthorityCents)
-    return { ok: true, amountCents, breakdown: [], wholeOrder: amountCents === scope.maxAuthorityCents }
-  }
-  if (selection.length > scope.lines.length) {
-    return { ok: false, error: 'Sélection d’articles invalide.' }
-  }
+  if (selection!.length > scope.lines.length) return refuse('invalid_selection')
+
   const seen = new Set<number>()
   const breakdown: Array<{ index: number; qty: number; cents: number }> = []
   let total = 0
-  for (const sel of selection) {
+  for (const sel of selection!) {
     const index = Number(sel?.index)
     const qty = Number(sel?.qty)
     const line = scope.lines.find((l) => l.index === index)
-    if (!Number.isInteger(index) || index < 0 || !line) {
-      return { ok: false, error: 'Sélection d’articles invalide.' }
-    }
-    if (seen.has(index)) return { ok: false, error: 'Un même article est sélectionné plusieurs fois.' }
+    if (!Number.isInteger(index) || index < 0 || !line) return refuse('invalid_selection')
+    if (seen.has(index)) return refuse('duplicate_selection')
     seen.add(index)
-    if (!Number.isInteger(qty) || qty <= 0) return { ok: false, error: 'Quantité invalide.' }
+    if (!Number.isInteger(qty) || qty <= 0) return refuse('invalid_qty')
     if (qty > line.maxQty) {
-      return { ok: false, error: `Quantité supérieure à la quantité commandée pour « ${line.name} » (maximum ${line.maxQty}).` }
+      return refuse('qty_over_purchased', `Quantité supérieure à la quantité commandée pour « ${line.name} » (maximum ${line.maxQty}).`)
     }
     const cents = line.unitCents * qty
     total += cents
     breakdown.push({ index, qty, cents })
   }
-  if (total <= 0) return { ok: false, error: 'Sélection d’articles invalide.' }
-  // The ceiling still applies: item lines are pre-discount/pre-fee, so a selection can
-  // never exceed what remains refundable on the order.
-  const amountCents = askedDown(Math.min(total, scope.maxAuthorityCents))
-  return { ok: true, amountCents, breakdown, wholeOrder: false }
+  if (total <= 0) return refuse('invalid_selection')
+  // The ceiling still applies: item lines are pre-discount/pre-fee, so a selection can never
+  // exceed what remains refundable on the order.
+  return { ok: true, amountCents: Math.min(total, scope.maxAuthorityCents), breakdown, mode: 'items' }
+}
+
+/**
+ * T-59 — IS THIS CEILING PROVEN REFUNDABLE CASH? One definition, because there are now two readers.
+ *
+ * It is proven only when live Stripe truth was read (`db_only` means it was not: the ceiling then
+ * ignores refunds issued outside the rail and can be TOO HIGH) AND the charge is not disputed (a
+ * chargeback removes cash on a rail neither ceiling sees, and Stripe refuses a refund on it).
+ *
+ * L7 added the second reader: the persisted selection records the provenance of the ceiling that was
+ * known at filing time. Writing the same expression there would have been a copy of a money rule, and a
+ * money rule in two copies eventually disagrees with itself — one reader would keep saying « remboursable »
+ * after the other had stopped.
+ */
+export function ceilingVerifiedOf(scope: Pick<ClaimScope, 'ceilingSource' | 'ceilingContested'>): boolean {
+  return scope.ceilingSource === 'stripe' && !scope.ceilingContested
 }
 
 /** Public, client-safe view of the scope (what the claim form may render). */
@@ -263,6 +329,6 @@ export function publicClaimScope(scope: ClaimScope) {
     // The number is still the server's cap either way — the engine re-reads Stripe at refund
     // time — but nothing may present an unproven cap as verified refundable cash. A boolean only:
     // no Stripe amount, id or error ever crosses to the client.
-    ceilingVerified: scope.ceilingSource === 'stripe' && !scope.ceilingContested,
+    ceilingVerified: ceilingVerifiedOf(scope),
   }
 }

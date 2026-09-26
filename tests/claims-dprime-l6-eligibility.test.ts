@@ -356,7 +356,13 @@ describe('D′ L6 — createClaim and getClaimEligibility agree on every order',
     db.claim.findFirst.mockImplementation(async (args: { where: Record<string, unknown> }) =>
       ('activeOrderKey' in args.where ? (opts.activeClaim ? { id: 'cl_old' } : null) : null))
     const claims = await import('@/lib/claims')
-    const post = await claims.createClaim({ consumerId: CONSUMER, orderId: ORDER, reason: 'other', requestedAmountCents: 500 })
+    // L7 (T-50): `other` is a reason where several scopes are possible, so the request must NAME one —
+    // silence is refused rather than becoming « toute la commande ». This fixture asks for a precise
+    // amount, which is what `requestedAmountCents: 500` always meant. The scope is stated here so that
+    // what these cases measure stays the ELIGIBILITY of the order and nothing else; that the eligibility
+    // codes come FIRST, before any complaint about the shape of the request, is the invariant this whole
+    // describe block exists to hold (and L7's first draft broke it by resolving the scope too early).
+    const post = await claims.createClaim({ consumerId: CONSUMER, orderId: ORDER, reason: 'other', scope: 'amount', requestedAmountCents: 500 })
     const get = await claims.getClaimEligibility({ consumerId: CONSUMER, orderId: ORDER })
     return { post, get }
   }

@@ -29,18 +29,26 @@ export const dynamic = 'force-dynamic'
 // nothing is uploaded, moderated or stored. GET = my claims, OR (with ?orderId) the
 // eligibility + server-derived scope for one order (drives the client button).
 
-// The request carries a DESCRIPTION of what happened and, optionally, a line SELECTION.
-// It carries NO money: `requestedAmountCents` is accepted by the parser for backward
-// compatibility and then DELIBERATELY IGNORED (see below) so an old client cannot widen
-// financial authority. `imageBase64` is likewise accepted and ignored — beta has no photo
-// requirement, and processing one before ownership was established was a real hole.
+// The request carries a DESCRIPTION of what happened, a SCOPE, and — depending on the scope — a line
+// SELECTION or an amount.
+//
+// L7 (T-50) — `scope` is the customer's own statement of what they are claiming, and there is NO
+// default where several scopes are possible: a reason like « qualité » with no scope is refused
+// (400, `scope_required`) instead of becoming a whole-order claim by silence. `requestedAmountCents`
+// is no longer ignored — it is the figure for scope 'amount', validated against the server ceiling
+// and refused above it; in every other scope it is refused outright rather than quietly dropped, so
+// two things can never claim to set the amount. `imageBase64` stays accepted and ignored: beta has no
+// photo requirement, and processing one before ownership was established was a real hole.
 const createSchema = z.object({
   orderId:              z.string().min(1),
   // Canonical taxonomy plus the two legacy aliases (wrong_order / not_delivered), so an older
-  // client keeps working; the server normalises to the canonical value before storing it.
+  // client keeps working; the server normalises to the canonical value before storing it. Whether a
+  // reason may be FILED at all is lib/claim-reasons' business (restaurant_closed no longer may) —
+  // kept out of the parser so an existing row's value stays readable for ever.
   reason:              z.string().refine((r) => ACCEPTED_REASONS.includes(r), 'Motif de réclamation invalide.'),
   description:         z.string().max(1000).optional(),
-  requestedAmountCents: z.number().int().positive().optional(), // IGNORED — see below
+  scope:               z.enum(['items', 'amount', 'whole']).optional(),
+  requestedAmountCents: z.number().int().positive().optional(),
   items:               z.array(z.object({ index: z.number().int(), qty: z.number().int() })).max(50).optional(),
   imageBase64:         z.string().min(1).optional(),            // IGNORED in beta — see below
   mediaType:           z.enum(ALLOWED_IMAGE_TYPES).optional(),
@@ -82,12 +90,15 @@ export async function POST(req: NextRequest) {
     orderId:     body.orderId,
     reason:      body.reason,
     description: body.description,
-    // NOTE: body.requestedAmountCents is intentionally NOT forwarded. The amount is
-    // derived server-side from the order's own line values (lib/claim-scope).
+    // L7 — the customer's own statement of scope. No default is supplied here: a missing scope on a
+    // reason that offers a choice must reach createClaim as missing, so it can be REFUSED rather
+    // than guessed. Supplying 'whole' here would restore exactly the silence L7 removes.
+    scope:       body.scope,
     items:       body.items,
-    // A requested amount is a REDUCTION REQUEST, never authority: the server ceiling still caps
-    // it. Dropping it entirely silently inflated every claim from the shipped client (which
-    // sends an amount and no selection) to the whole order — the P0 this batch's audit caught.
+    // Authority only in scope 'amount', and only downward (the server ceiling caps it). In 'items'
+    // the priced selection is the amount; in 'whole' the ceiling is. createClaim refuses the
+    // combinations rather than dropping the field, so a client never believes an amount was used
+    // when it was not.
     requestedAmountCents: body.requestedAmountCents,
     photoUrl,
   })
@@ -113,12 +124,17 @@ export async function POST(req: NextRequest) {
   // d'email ne casse jamais le 201 (les senders sont intégralement try/catch'és
   // et idempotents — dedupeKey claim:<id>).
   {
-    const c = result.claim as { id: string; consumerId: string; orderId: string; requestedAmountCents: number }
+    const c = result.claim as { id: string; consumerId: string; orderId: string; requestedAmountCents: number; selection?: unknown }
     await sendClaimAckEmail({
       claimId:              c.id,
       consumerId:           c.consumerId,
       orderId:              c.orderId,
       requestedAmountCents: c.requestedAmountCents,
+      // L7 (T-50) — the snapshot as PERSISTED, read back off the created row rather than rebuilt from
+      // the request body. The e-mail then describes what the claim actually holds; if the write stored
+      // something different from what the client sent, the customer sees the stored version, which is
+      // the one that will be arbitrated. A legacy or absent snapshot renders nothing extra.
+      selection:            c.selection,
       // ROUND 13 (H02, R-D7) + D′ L1 (FIN-EMAIL-01): the PRE-MONEY gate read at send time — a surface that
       // closed since the entry gate skips the e-mail.
       claimsOpen:           claimNoticeGate('pre_money'),

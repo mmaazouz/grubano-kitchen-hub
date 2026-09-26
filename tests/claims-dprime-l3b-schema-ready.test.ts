@@ -307,7 +307,7 @@ describe('the census exposes schemaReady; L3b ships no consumer, no gate, no mon
     expect(strip(src('lib/schema-ready.ts'))).not.toMatch(/@\/lib\/(claims|refund|stripe)['"]/)
   })
 
-  it('D′ L4/L6 — approvedAmountCents is READ AND WRITTEN by the decision path; lib/claims.ts now READS Order.deliveredAt as the eligibility anchor and NEVER writes it; `selection` is still untouched (L7 owns it), and lib/refund.ts is untouched by ALL THREE lots', () => {
+  it('D′ L4/L6/L7 — approvedAmountCents is READ AND WRITTEN by the decision path; lib/claims.ts now READS Order.deliveredAt as the eligibility anchor and NEVER writes it; `selection` is now WRITTEN on create and SELECTED admin-only (L7); lib/refund.ts is untouched by ALL FOUR lots', () => {
     // (a) the column L4 consumes — the state machine selects it, pins it in its CAS and writes it
     const claimsCode = strip(src('lib/claims.ts'))
     expect(claimsCode).toMatch(/approvedAmountCents: true,/)                 // selected
@@ -319,13 +319,32 @@ describe('the census exposes schemaReady; L3b ships no consumer, no gate, no mon
     for (const p of ['lib/claims.ts', 'app/api/admin/claims/[id]/arbitrate/route.ts']) {
       expect(strip(src(p)), p).toMatch(/approvedAmountCents:\s/)
     }
-    // (c) `selection` is still nobody's business but the probe's — nothing regressed into L7's column
     const scanned = ['lib/claims.ts', 'lib/claim-action-rules.ts', 'lib/claim-scope.ts', 'lib/refund.ts',
       'app/api/claims/route.ts', 'app/api/admin/claims/[id]/arbitrate/route.ts',
       'app/api/admin/claims/[id]/withdraw-approval/route.ts', 'app/api/admin/claims/[id]/ceiling/route.ts']
-    for (const p of scanned) {
-      expect(strip(src(p)), p).not.toMatch(/selection:\s*(true|\{)/)
+    // (c) INVERTED BY L7 (T-50), on the same pattern as (a)/(b) above. The L3b assertion was
+    // `not.toMatch(/selection:\s*(true|\{)/)` across this whole list: `selection` existed as a column and
+    // nothing but the schema probe touched it. L7 is the lot that gave it writers and readers, so the old
+    // assertion is now FALSE for lib/claims.ts — which is precisely what this lot changed. Four distinct
+    // facts, each one a decision that would be silent if it regressed:
+    expect(claimsCode).toMatch(/selection:\s+selectionSnapshot/)          // written in the create, once
+    expect(claimsCode).toMatch(/selection:\s+systemClaimSelection\(/)     // and on the system claim too
+    expect(claimsCode).toMatch(/selection: true,/)                        // selected on the ADMIN-only list
+    expect(claimsCode).toMatch(/delete pub\.selection/)                   // and REMOVED from the restaurant's
+    // …and every surface L7 deliberately did NOT open still has no idea the column exists. The restaurant
+    // display is L8's contract (S-19); the frozen engine and the pure decision rules never see a selection
+    // at all, because WHAT was claimed is not an input to WHETHER money may move.
+    for (const p of ['lib/refund.ts', 'lib/claim-action-rules.ts',
+      'app/api/admin/claims/[id]/arbitrate/route.ts',
+      'app/api/admin/claims/[id]/withdraw-approval/route.ts',
+      'app/api/admin/claims/[id]/ceiling/route.ts']) {
+      expect(strip(src(p)), p).not.toMatch(/selection/)
     }
+    // lib/claim-scope.ts and app/api/claims/route.ts DO name a selection — as a request INPUT, and as a
+    // value forwarded to the ack e-mail. Neither may read or write the COLUMN: one is a pure module with
+    // no database at all, the other never selects it back out of Prisma.
+    expect(strip(src('lib/claim-scope.ts'))).not.toMatch(/prisma/i)
+    expect(strip(src('app/api/claims/route.ts'))).not.toMatch(/selection:\s*(true|\{)/)
     // (c2) `deliveredAt` — L6 gave the column its first READER and still no writer here. lib/claims.ts is
     // the ONE exception in this list: it selects the column and hands the value to the pure rules, because
     // the submission window is anchored on the delivery instant and on nothing else (spec v2 §7.1 E4).
