@@ -891,7 +891,12 @@ describe('T-46 — /api/finance/summary exposes the refunds it used to ignore', 
     expect(src).toContain('caBrut - commissionGrubano - verseAuxCreateurs - remisesFinancees - refundedCents / 100')
   })
 
-  it('the two candidate remediations really differ — and the gross is the one that lands on zero', () => {
+  it('WORKED EXAMPLE (not a route pin) — the two candidates differ, and the gross lands on zero', () => {
+    // NAMED LIMIT: the three lines below are arithmetic on LOCAL CONSTANTS, so no mutation of the route can
+    // fail them. They document WHY the gross is the right term; they prove nothing about the shipped code.
+    // The route-driven controls live in tests/finance-summary-ledger.test.ts (three negative controls, a
+    // d/dF measurement, the atomicity matrix and the equation invariant), and a commit that says a control
+    // rebuilt from constants proves nothing must not leave one of them wearing the word « control ».
     // 5,00 € refunded, 0,40 € of Grubano fee returned, transfer fully reversed.
     const caBrut = 5.0, commissionAfter = 0.0, netReversed = 4.6, refunded = 5.0
     expect(caBrut - commissionAfter - netReversed).toBeCloseTo(0.4, 5) // spec v2 §7.3's ORIGINAL formula

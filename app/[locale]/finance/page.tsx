@@ -159,11 +159,17 @@ export default function FinancePage() {
   // (and every window under the closed gates) rendering exactly the strings it rendered before.
   const feesTermKey   = refundedEur > 0 ? 'fin.feesRefundsLabel'  : 'fin.feesLabel'
   const feesLegendKey = refundedEur > 0 ? 'fin.legendFeesRefunds' : 'fin.legendFees'
+  // A DEDUCTED amount is printed « −12,00 € ». But commissionGrubano is refund-NET, and on a refund where
+  // Grubano absorbed more than it had charged (`refund_without_reverse_transfer`, the shape the money rails
+  // already alert on) it is NEGATIVE — Grubano gave back more than it kept. Hardcoding the minus printed
+  // « −-100,00 € », and the rate label printed « (-100.0%) ». The sign now comes from the value, and the
+  // rate is shown only when there IS a rate: a negative ratio is not a commission rate.
+  const signed = (v: number) => (v < 0 ? `+${eur(-v)}` : `−${eur(v)}`)
   const netPct      = caBrut > 0 ? Math.max(0, Math.min(100, (netResto / caBrut) * 100)) : 0
   const feesPct     = 100 - netPct
   // Real commission rate from the API amounts — NOT hardcoded. Shown only when meaningful.
   const commissionRatePct =
-    caBrut > 0 ? (commissionGrubano / caBrut) * 100 : null
+    caBrut > 0 && commissionGrubano > 0 ? (commissionGrubano / caBrut) * 100 : null
   const rateLabel =
     commissionRatePct == null
       ? ''
@@ -202,12 +208,13 @@ export default function FinancePage() {
               informational line: what was actually pulled from this restaurant, which is not itself
               a term of the equation and therefore carries no minus sign. */}
           <div className="op-fin__lines">
-            <div className="op-fin__line minus"><span>{t('fin.commissionLine') + rateLabel}</span><b>−{eur(commissionGrubano)}</b></div>
+            <div className={`op-fin__line${commissionGrubano < 0 ? '' : ' minus'}`}><span>{t('fin.commissionLine') + rateLabel}</span><b>{signed(commissionGrubano)}</b></div>
             {verseAuxCreateurs > 0 && <div className="op-fin__line minus"><span>{t('fin.creatorsLine')}</span><b>−{eur(verseAuxCreateurs)}</b></div>}
             {remisesFinancees > 0 && <div className="op-fin__line minus"><span>{t('fin.discountsLine')}</span><b>−{eur(remisesFinancees)}</b></div>}
             {/* T-46: what went back to customers, and — beside it — what was actually pulled from this
-                restaurant. The two differ by the Grubano fees returned with the refund, and printing only
-                the gross would leave a restaurateur unable to tell the two apart. */}
+                restaurant. The two differ by whatever Grubano gave back or absorbed on the refund, which is
+                not a fixed relationship, and printing only the gross would leave a restaurateur unable to
+                tell what the refund cost THEM from what it returned to the customer. */}
             {refundedEur > 0 && (
               <div className="op-fin__line minus">
                 <span>{t('fin.refundsLine', { count: refundsCount ?? 0 })}</span>
@@ -221,8 +228,11 @@ export default function FinancePage() {
               </div>
             )}
             {/* Not decoration: without this sentence the commission line reads as if commission had been
-                charged on refunded money. It was not — the API's commissionGrubano already SUBTRACTS the
-                returned fees, which is exactly why the deducted term above is the refund's GROSS. */}
+                charged on refunded money. It was not — the API's commissionGrubano is already NET of the
+                refund line's fee half, which is exactly why the deducted term above is the refund's GROSS.
+                The copy says « what Grubano gave back », not « the fees returned »: that half is
+                −applicationFeeAmount = returned fee PLUS any principal Grubano absorbed, so naming it after
+                one of its parts would be the same falsehood as « commission restituée ». */}
             {refundedEur > 0 && (
               <p className="op-fin__note">{t('fin.refundsFeeNote')}</p>
             )}

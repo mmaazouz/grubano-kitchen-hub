@@ -119,13 +119,22 @@ describe('T-46 — netResto subtracts the GROSS refund, because the returned fee
       - j.refundedCents,
     ).toBe(cents(j.netResto))
 
-  it('the writer’s own arithmetic is what these fixtures assume', () => {
+  it('the writer’s own arithmetic is what these fixtures assume — pinned ON lib/ledger, not only locally', () => {
     expect(modeB).toEqual({
       type: 'refund', grossAmount: -500, applicationFeeAmount: -40, netToRestaurant: -460,
       stripePaymentIntentId: PI,
     })
     expect(modeB.grossAmount).toBe(modeB.applicationFeeAmount + modeB.netToRestaurant) // gross = fee + net
     expect(-modeB.netToRestaurant).toBe(NET_REVERSED)
+    // `refundLineOf` above is a LOCAL re-implementation, so on its own it pins nothing about the row the
+    // rail really writes: dropping the `- reversal` term in lib/ledger would leave this whole file green
+    // while every real refund row changed shape. So the writer's three expressions are pinned on the
+    // writer's own source. Named by the review that found the gap.
+    const ledger = require('node:fs').readFileSync('lib/ledger.ts', 'utf8') as string
+    expect(ledger).toContain('const netToRestaurant      = -(reversal - input.applicationFeeRefundCents)')
+    expect(ledger).toContain('const applicationFeeAmount = -(input.refundedCents - reversal + input.applicationFeeRefundCents)')
+    expect(ledger).toContain('grossAmount:           z(-input.refundedCents)')
+    expect(ledger).toContain('const reversal = input.reversalCents ?? input.refundedCents')
   })
 
   it('WITHOUT a refund: commission 1200 c, netResto 8800 c', async () => {
@@ -176,7 +185,12 @@ describe('T-46 — netResto subtracts the GROSS refund, because the returned fee
     // The route-driven form of « never add grubanoFeeReturnedCents back ». netResto is
     //     caBrut − (feeCharged − F) − R = 8300 + F
     // so raising the fee returned by δ must raise netResto by δ. If the fee were re-added anywhere it
-    // would move by 2δ, and this is the only reading that distinguishes the two.
+    // would move by 2δ.
+    //   HONEST LIMIT, named by the adversarial review: the per-F LOOP alone is invariant to deleting the
+    //   `− refundedCents/100` term — under that revert `base` becomes 8800 and each delta is still F. What
+    //   catches the revert is the `expect(base).toBe(8300)` line below (and equationBalances). The loop's
+    //   job is narrower and still worth having: it is what distinguishes « the fee enters once » from
+    //   « the fee was added a second time », which no single-world assertion can do.
     const base = cents((await summary([paymentLine, refundLineOf(GROSS, REVERSAL, 0)])).netResto)
     expect(base).toBe(8300)
     for (const F of [1, 40, 250, 500]) {
@@ -273,46 +287,67 @@ describe('T-46 — netResto subtracts the GROSS refund, because the returned fee
     equationBalances(j)
   })
 
-  // ── THE POPULATION SCOPE — the phantom loss this change would otherwise have created ────────────
-  // Found by the adversarial review OF THIS CHANGE: caBrut counts ORDERS only, while the ledger carries
-  // every rail (dine-in tickets, captured deposits, orders that have aged out of the window). Subtracting
-  // « all refund lines » from an order-only base invents a loss out of money the screen never counted.
-  it('a refund on a DINE-IN ticket (no order, other PaymentIntent) is NOT subtracted', async () => {
+  // ── THE POPULATION SCOPE, APPLIED TO THE WHOLE REFUND LINE ──────────────────────────────────────
+  // caBrut counts ORDERS only, while the ledger carries every rail (dine-in tickets, captured deposits,
+  // orders that have aged out of the window). Subtracting « all refund lines » from an order-only base
+  // invents a loss out of money the screen never counted — and scoping only the GROSS invents a GAIN,
+  // which is what the first attempt at this fix did and what these tests once pinned as correct.
+  //
+  // MEASURED on the route before the atomicity fix: an aged-out 500 c refund → netResto 8840 (+40, the
+  // T-46 defect verbatim); a 5000 c refund with no transfer reversal → netResto 14400 on a caBrut of
+  // 10000 with a commission of −4400; a fully refunded 50 € dine-in bill → +500. A refund line is now
+  // either IN (both halves count) or OUT (neither does).
+  it('ATOMICITY — an out-of-scope refund moves NEITHER half: not the gross, not the commission', async () => {
+    const base = await summary([paymentLine])
+    expect(cents(base.commissionGrubano)).toBe(1200)
+    expect(cents(base.netResto)).toBe(8800)
+    for (const [label, line] of [
+      ['aged-out order',    refundLineOf(500, 500, 40, 'pi_old_order')],
+      ['no PaymentIntent',  refundLineOf(500, 500, 40, null)],
+      ['no reversal, 5000', refundLineOf(5000, 0, 600, 'pi_old_order')],
+      ['absorbed, partial', refundLineOf(500, 300, 20, 'pi_other')],
+    ] as const) {
+      const j = await summary([paymentLine, line])
+      expect(j.refundsCount, label).toBe(0)
+      expect(j.refundedCents, label).toBe(0)
+      expect(j.netReversedCents, label).toBe(0)
+      // the commission is NOT netted by it either — this is the half the first attempt left in
+      expect(cents(j.commissionGrubano), label).toBe(1200)
+      expect(cents(j.netResto), label).toBe(8800)
+      equationBalances(j)
+    }
+    // and the numbers the broken form produced are not produced by this one
+    const aged = await summary([paymentLine, refundLineOf(500, 500, 40, 'pi_old_order')])
+    expect(cents(aged.netResto)).not.toBe(8840)
+    const noRev = await summary([paymentLine, refundLineOf(5000, 0, 600, 'pi_old_order')])
+    expect(cents(noRev.netResto)).not.toBe(14400)
+    expect(cents(noRev.commissionGrubano)).not.toBe(-4400)
+  })
+
+  it('a fully refunded DINE-IN bill is a NON-EVENT: the same figures as the bill alone', async () => {
+    // The strongest form of the scope rule, and the comparison is against the SAME world WITHOUT the
+    // refund rather than against a constant — the only way to see the asymmetry this test describes.
     const dineIn = {
       type: 'payment', applicationFeeAmount: 500, grossAmount: 5000, netToRestaurant: 4500,
       stripePaymentIntentId: 'pi_ticket_77',
     }
-    const dineInRefund = refundLineOf(5000, 5000, 500, 'pi_ticket_77')
-    const j = await summary([paymentLine, dineIn, dineInRefund])
-    // the refund figures ignore it entirely…
-    expect(j.refundsCount).toBe(0)
-    expect(j.refundedCents).toBe(0)
-    expect(j.netReversedCents).toBe(0)
-    // …caBrut never counted the 50 € either, so nothing is missing…
-    expect(cents(j.caBrut)).toBe(BASKET_CENTS)
-    // …and netResto is NOT the −4750 c phantom loss an unscoped subtraction produced.
-    expect(cents(j.netResto)).not.toBe(8800 - 4500)
-    // 10000 − 1200: the dine-in fee (+500) and the fee given back with its refund (−500) cancel in the
-    // commission, so the order-only net is exactly what it was before the ticket existed.
-    expect(cents(j.netResto)).toBe(8800)
-    equationBalances(j)
-  })
-
-  it('a refund line with NO PaymentIntent is not attributed to this window', async () => {
-    const j = await summary([paymentLine, refundLineOf(500, 500, 40, null)])
-    expect(j.refundsCount).toBe(0)
-    expect(j.refundedCents).toBe(0)
-    expect(cents(j.netResto)).toBe(8800 + FEE_RETURNED)         // only the commission netting is visible
-    equationBalances(j)
-  })
-
-  it('a refund whose order has AGED OUT of the window is excluded — its revenue is out too', async () => {
-    // The ledger read is windowed by createdAt, but a refund settled inside the window can belong to an
-    // order placed before it. Its subtotal is not in caBrut, so its refund must not be in the deduction.
-    const j = await summary([paymentLine, refundLineOf(500, 500, 40, 'pi_old_order')])
-    expect(j.refundsCount).toBe(0)
-    expect(cents(j.netResto)).toBe(8840)                        // the commission netting only
-    equationBalances(j)
+    const billOnly = await summary([paymentLine, dineIn])
+    const billPlus = await summary([paymentLine, dineIn, refundLineOf(5000, 5000, 500, 'pi_ticket_77')])
+    expect(cents(billPlus.commissionGrubano)).toBe(cents(billOnly.commissionGrubano))
+    expect(cents(billPlus.netResto)).toBe(cents(billOnly.netResto))
+    expect(billPlus.refundsCount).toBe(0)
+    expect(billPlus.refundedCents).toBe(0)
+    expect(cents(billPlus.caBrut)).toBe(BASKET_CENTS)
+    // neither the −4750 c phantom loss of an unscoped subtraction, nor the +500 c the half-scoped form
+    // produced by letting the fee half through
+    expect(cents(billPlus.netResto)).not.toBe(8800 - 4500)
+    expect(cents(billPlus.netResto)).not.toBe(8800)
+    // RECORDED, PRE-EXISTING (POST-BETA-CLAIMS-BACKLOG): the dine-in FEE does sit in commissionGrubano
+    // while the dine-in REVENUE is not in caBrut, so both worlds read 8300 rather than 8800. That basis
+    // gap predates T-46 and is a spec question, not a defect of this change — pinned here so it stays
+    // visible and can never be mistaken for the refund having moved something.
+    expect(cents(billOnly.netResto)).toBe(8300)
+    equationBalances(billPlus)
   })
 
   it('an EMPTY window carries the three figures at zero, not a dropped subtraction', async () => {
@@ -369,11 +404,13 @@ describe('T-46 — netResto subtracts the GROSS refund, because the returned fee
 
   it('CONTRACT PIN — the formula subtracts refundedCents and nothing else was added back', () => {
     const src = require('node:fs').readFileSync('app/api/finance/summary/route.ts', 'utf8') as string
-    expect(src).toContain('caBrut - commissionGrubano - verseAuxCreateurs - remisesFinancees - refundedCents / 100')
-    // Asserted on the CODE with comments stripped: the route's own comment writes out the algebra
-    // (« … − feeCharged + feeReturned − … ») to explain why the gross is the right term, and explaining a
-    // formula is not applying it. Naming the forbidden shapes in prose must stay possible.
+    // Asserted on the CODE with comments stripped — BOTH directions. The route's own comment writes out
+    // the algebra (« … − feeCharged + feeReturned − … ») to explain why the gross is the right term, and
+    // explaining a formula is not applying it, so the forbidden shapes must be judged on code only. The
+    // POSITIVE pin has to be judged on code too, or deleting the term while leaving the sentence in a
+    // comment would keep this green — named by the adversarial review.
     const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
+    expect(code).toContain('caBrut - commissionGrubano - verseAuxCreateurs - remisesFinancees - refundedCents / 100')
     expect(code).not.toMatch(/-\s*netReversedCents\s*\/\s*100/)
     expect(code).not.toMatch(/\+\s*grubanoFeeReturned/)
     expect(code).not.toMatch(/\+\s*feeReturned/)
@@ -381,6 +418,11 @@ describe('T-46 — netResto subtracts the GROSS refund, because the returned fee
     expect(code).not.toMatch(/netResto\s*[-+*\/%]=/)
     // and the commission stays refund-aware — the reason the gross is the correct term
     expect(src).toContain("type:         { in: ['payment', 'deposit_capture', 'refund'] }")
+    // THE ATOMICITY PIN: one scope predicate, applied to the commission sum AND to the refund figures.
+    // Two independently-written filters are exactly how the halves came apart the first time.
+    expect(code).toContain("l.type === 'refund' && !refundInScope(l) ? s : s + l.applicationFeeAmount")
+    expect(code).toContain("feeLines.filter((l) => l.type === 'refund' && refundInScope(l))")
+    expect(code.match(/windowOrderPis\.has/g) ?? []).toHaveLength(1)
   })
 
   it('THE SCREEN PIN — /finance folds the refunded gross into the total it prints', () => {

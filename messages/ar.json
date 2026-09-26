@@ -736,7 +736,7 @@
       "legendFeesRefunds": "الرسوم والمبالغ المُستردة ({pct} %)",
       "refundsLine": "مبالغ مُستردة للعملاء ({count})",
       "refundsNetLine": "منها ما خُصم فعليًا من حصتك",
-      "refundsFeeNote": "العمولة أعلاه صافية بالفعل من رسوم Grubano المُعادة مع هذه المبالغ المُستردة.",
+      "refundsFeeNote": "العمولة أعلاه صافية بالفعل مما أعادته Grubano على هذه المبالغ المُستردة.",
       "nextPayoutTitle": "الدفعة القادمة",
       "nextPayoutSoon": "حساب التحويل القادم — متاح قريبًا",
       "nextPayoutAcct": "تحويل SEPA — حساب مصرفي بانتظار الربط",

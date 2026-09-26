@@ -736,7 +736,7 @@
       "legendFeesRefunds": "Fees & refunds ({pct} %)",
       "refundsLine": "Customer refunds ({count})",
       "refundsNetLine": "Of which actually taken from you",
-      "refundsFeeNote": "The commission above is already net of the Grubano fees returned with these refunds.",
+      "refundsFeeNote": "The commission above is already net of what Grubano gave back on these refunds.",
       "nextPayoutTitle": "Next payout",
       "nextPayoutSoon": "Next transfer calculation — coming soon",
       "nextPayoutAcct": "SEPA transfer — bank account to connect",

@@ -736,7 +736,7 @@
       "legendFeesRefunds": "Commissioni e rimborsi ({pct} %)",
       "refundsLine": "Rimborsi ai clienti ({count})",
       "refundsNetLine": "Di cui effettivamente prelevato dalla tua parte",
-      "refundsFeeNote": "La commissione sopra è già al netto delle commissioni Grubano restituite con questi rimborsi.",
+      "refundsFeeNote": "La commissione sopra è già al netto di quanto Grubano ha restituito su questi rimborsi.",
       "nextPayoutTitle": "Prossimo versamento",
       "nextPayoutSoon": "Calcolo del prossimo bonifico — presto disponibile",
       "nextPayoutAcct": "Bonifico SEPA — conto bancario da collegare",

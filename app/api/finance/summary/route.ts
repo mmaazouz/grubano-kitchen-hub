@@ -98,6 +98,37 @@ export async function GET() {
     // they are pass-through to the courier, not restaurateur revenue).
     const caBrut = round2(orders.reduce((s, o) => s + o.subtotal, 0))
 
+    // ── T-46 — WHICH REFUNDS THIS SCREEN MAY SPEAK ABOUT AT ALL ─────────────────────────────────────
+    //
+    // `caBrut` above is ORDER revenue. The ledger, by contrast, carries every rail this restaurant is
+    // paid on: a DINE-IN bill (`payment` with a `ticketId` and no Order), a captured no-show DEPOSIT
+    // (`deposit_capture`), and refunds of orders placed BEFORE this window. So the set of refunds this
+    // screen is entitled to reason about is the refunds of the orders it actually counted — identified by
+    // their PaymentIntent, which is the join the rest of the codebase already uses for this exact
+    // question (`/api/restaurants/[id]/finance/operations`, `lib/admin-reconciliation`,
+    // `lib/creator-earnings`, `lib/loyalty-prorata`).
+    //
+    // AND THE SCOPE IS APPLIED TO THE WHOLE REFUND LINE, not to one half of it. This is the load-bearing
+    // part, and getting it wrong is exactly how the first attempt at T-46 stayed broken: a refund line
+    // carries BOTH a negative `applicationFeeAmount` (the fee Grubano gave back) AND a negative
+    // `grossAmount` (what the customer got back). Scoping only the gross left the fee half applying to
+    // every refund line in the window, so an out-of-scope refund still shrank the commission while
+    // nothing was subtracted — and `netResto` went UP by the returned fee, which is verbatim the defect
+    // T-46 exists to close. MEASURED on the real route before the fix: a 500 c refund of an order that
+    // had aged out of the window moved netResto 8800 → 8840, and a 5000 c refund with no transfer
+    // reversal moved it to 14400 on a caBrut of 10000 with a commission of −4400.
+    //
+    // So: a refund line is either IN (both halves count) or OUT (neither counts). Nothing else keeps the
+    // two halves of one event together. Payment and deposit_capture lines are NOT scoped — they are the
+    // V3-2 stamped-fee semantics this screen has always shown, and changing them would be a spec change
+    // rather than a defect fix (the resulting basis gap is recorded in POST-BETA-CLAIMS-BACKLOG).
+    const windowOrderPis = new Set(
+      orders.map((o) => o.stripePaymentIntentId).filter((x): x is string => !!x),
+    )
+    /** A refund line whose money belongs to an order this screen counted. */
+    const refundInScope = (l: { type: string; stripePaymentIntentId: string | null }) =>
+      !!l.stripePaymentIntentId && windowOrderPis.has(l.stripePaymentIntentId)
+
     // commissionGrubano — the commission Grubano ACTUALLY kept over the window,
     // READ from the stamped ledger (V3-2). LedgerEntry.applicationFeeAmount is
     // frozen per transaction by the payment rail (per-channel 12/8/5/0 grid,
@@ -108,6 +139,13 @@ export async function GET() {
     // amounts, so summing payment + deposit_capture + refund yields the NET fee
     // kept. A flow with no ledger line (e.g. cash) shows no fee — because none
     // was taken.
+    //   NAMED LIMIT (adversarial review, 2026-09-26): « the commission ACTUALLY kept » is the right
+    //   reading in the ordinary case, but a refund line's fee half is `−(R − V + F)` — the fee returned
+    //   PLUS any refund principal Grubano absorbed — so on a refund with little or no transfer reversal
+    //   this figure can fall below what was charged and even go NEGATIVE (measured: −100,00 € when
+    //   Grubano charged 12,00 €, returned it and bore a 100,00 € refund). That is why the page renders
+    //   its sign from the value rather than hardcoding a minus, why it shows no rate when there is no
+    //   rate, and why the copy beside it says « what Grubano gave back » and never « the fees returned ».
     const feeLines = await prisma.ledgerEntry.findMany({
       where: {
         restaurantId: { in: restaurantIds },
@@ -115,12 +153,16 @@ export async function GET() {
         type:         { in: ['payment', 'deposit_capture', 'refund'] },
       },
       // D′ L8 (T-46): `type`, `grossAmount`, `netToRestaurant` and the PaymentIntent are read in the SAME
-      // query so the refund figures below cost no extra round-trip. The commission sum is unchanged — it
-      // still adds `applicationFeeAmount` over all three types, refund lines included.
+      // query so the refund figures below cost no extra round-trip.
       select: { type: true, applicationFeeAmount: true, grossAmount: true, netToRestaurant: true, stripePaymentIntentId: true },
     })
+    // One sum, one division — the rounding is byte-for-byte what V3-2 shipped. The only change is that a
+    // refund line outside the scope above contributes NOTHING, instead of contributing its fee half alone.
     const commissionGrubano = round2(
-      feeLines.reduce((s, l) => s + l.applicationFeeAmount, 0) / 100,
+      feeLines.reduce(
+        (s, l) => (l.type === 'refund' && !refundInScope(l) ? s : s + l.applicationFeeAmount),
+        0,
+      ) / 100,
     )
 
     // ── T-46 — THE REFUNDS THIS SCREEN USED TO BE BLIND TO ───────────────────────────────────────
@@ -149,25 +191,19 @@ export async function GET() {
     // that the gross is the term which makes the total variation equal `netToRestaurant`, the same integer
     // the per-claim block shows the restaurant. `netReversedCents` is EXPOSED for reading and is never
     // subtracted — doing so would credit the restaurant with the returned fee twice.
-    // ── THE SAME POPULATION ON BOTH SIDES, and this is the load-bearing part ────────────────────────
+    // The SAME predicate the commission above uses — declared once, applied to both halves of every refund
+    // line. A refund of a dine-in bill or of an order that has aged out is invisible to this screen in
+    // BOTH directions: nothing subtracted here, nothing netted off the commission there. That is what
+    // makes a refund of money the screen never counted a non-event instead of a phantom loss (measured:
+    // an unscoped subtraction showed −47,50 € for a fully refunded 50 € dine-in bill) and what makes a
+    // refund of a counted order move the net by exactly `netToRestaurant`.
     //
-    // `caBrut` is ORDER revenue: `Σ Order.subtotal` over this window's non-cancelled orders. The ledger,
-    // by contrast, carries every rail this restaurant is paid on — a DINE-IN bill (`TableTicket`, a
-    // `payment` line with a `ticketId` and no Order) and a captured no-show DEPOSIT (`deposit_capture`)
-    // both belong to it. Summing « all refund lines of the window » and subtracting that from an
-    // order-only revenue base produces a PHANTOM LOSS: refunding a 50 € dine-in bill in full is a
-    // net-zero event for the restaurant, and an unscoped subtraction would have shown −47,50 € on a
-    // screen that never counted the 50 €. Found by the adversarial review OF THIS CHANGE.
-    //
-    // So the refund figures are restricted to the PaymentIntents of the orders this screen counts. Both
-    // sides of the P&L then describe one population, and two edges follow for free: a refund whose order
-    // has aged out of the window is excluded (its revenue is out too), and a window with no orders has no
-    // in-scope refunds rather than a silently dropped subtraction.
-    const windowOrderPis = new Set(
-      orders.map((o) => o.stripePaymentIntentId).filter((x): x is string => !!x),
-    )
-    const refundLines = feeLines.filter((l) => l.type === 'refund'
-      && !!l.stripePaymentIntentId && windowOrderPis.has(l.stripePaymentIntentId))
+    // WHAT THIS DOES **NOT** FIX, and it is a basis gap rather than an arithmetic one: the dine-in bill's
+    // own FEE (`payment` with a `ticketId`) and a captured deposit's fee stay in `commissionGrubano` while
+    // their revenue is not in `caBrut`. That predates T-46 — a dine-in bill with no refund already lowered
+    // the displayed net — and putting it right means changing which rails this screen reports on, which is
+    // a spec decision, not a defect fix. Measured and recorded in POST-BETA-CLAIMS-BACKLOG.
+    const refundLines = feeLines.filter((l) => l.type === 'refund' && refundInScope(l))
     const refundsCount = refundLines.length
     const refundedCents = refundLines.reduce((s, l) => s + Math.max(0, -l.grossAmount), 0)
     // Σ of what was actually pulled FROM the restaurant. `max(0, …)` because a refund issued with no

@@ -736,7 +736,7 @@
       "legendFeesRefunds": "Frais & remboursements ({pct} %)",
       "refundsLine": "Remboursements clients ({count})",
       "refundsNetLine": "Dont réellement retiré de votre part",
-      "refundsFeeNote": "La commission ci-dessus est déjà nette des frais Grubano restitués avec ces remboursements.",
+      "refundsFeeNote": "La commission ci-dessus est déjà nette de ce que Grubano a rendu sur ces remboursements.",
       "nextPayoutTitle": "Prochain versement",
       "nextPayoutSoon": "Calcul du prochain virement — bientôt disponible",
       "nextPayoutAcct": "Virement SEPA — compte bancaire à connecter",
