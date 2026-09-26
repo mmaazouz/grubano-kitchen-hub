@@ -655,5 +655,30 @@ Le monde 3 s'imprimait sur `/finance` : « BRUT 100,00 € − **Frais Grubano**
 
 **Deux constats de plus enregistrés, non corrigés** (backlog §4 et §5) : les frais d'un ticket sur place / d'un acompte capturé sont dans la commission alors que leur revenu n'est pas dans `caBrut` (antérieur ; mesuré 8 300 au lieu de 8 800 ; le correctif le rend seulement VISIBLE, l'ancien hasard de compensation le masquait) ; et les pourcentages barre/légende, bornés à [0,100], mentent dès que `netResto` sort de `[0, caBrut]` (mesuré : « Net (0 %) » pour un net de −5,00 €) — la ligne d'équation reste juste, et le comportement voulu est une décision de design CD.
 
+### L8 follow-up — déploiement staging vérifié (2026-09-26)
+
+Deux commits poussés sur `develop` : **`1b3d1d6e`** (application de l'arbitrage option 1 + les deux défauts du premier tour) puis **`e9bd0051`** (le correctif d'ATOMICITÉ du périmètre — le P0 trouvé DANS `1b3d1d6e`). Les deux ont été déployés ; c'est le second qui compte, et c'est celui que staging sert.
+
+| | mesuré |
+|---|---|
+| CI « Deploy → Staging » run **36263260452** (`1b3d1d6e`) | `test` success · `deploy` success |
+| CI « Deploy → Staging » run **36266181621** (`e9bd0051`) | `test` success · `deploy` success — dont « Verify deployed build (version.json) », « Health check (staging @ expected SHA) » et « Client bundle integrity (served HTML → every `_next/static` asset 200) » |
+| `GET https://app.grubano.com/version.json` | `commit` **`e9bd0051cba554eb838d54bce8f9f66768b06f92`** · `branch` develop · `buildDate` 2026-09-26T19:36:39Z · `ciRunId` 36266181621 |
+
+**⚠️ Fenêtre d'exposition, dite explicitement.** `1b3d1d6e` a été déployé et servi pendant ~50 minutes AVEC le P0 (une ligne `refund` hors périmètre nettait encore la commission sans que rien ne soit soustrait). Aucun effet : `/api/finance/summary` exige une session opérateur (401 mesuré ci-dessous), les gates réclamations et remboursements étaient et restent fermées, la population de réclamations est inchangée, et aucun remboursement n'a été créé pendant la fenêtre. Le défaut était de RESTITUTION sur un écran que personne n'a ouvert — mais il a bel et bien été livré, et le taire serait pire que le mesurer.
+
+**Recensement read-only `claims-census.yml` run 36267451140**, mesuré 2026-09-26T19:50:50Z sur le build déployé :
+- `schema` = `{ready:true, clientReady:true, dbReady:true, missingClient:[], missingDb:[], why:null}` — **aucune migration, aucun regen**, et il n'en fallait aucun : ce follow-up n'ajoute aucune colonne (il lit `Order.stripePaymentIntentId` et les lignes `LedgerEntry` existantes).
+- `gates` = `{claimsEnabled:false, claimsGate:"CLOSED (flag_off)", claimsSurfaceEnabled:false, claimsIntakeEnabled:false, claimsSurfaceOpen:false, claimsIntakeOpen:false, refundsEnabled:false}` — **toutes fermées**.
+- **Population réclamations INCHANGÉE** depuis L0 (`dab754d`), L5, L6, L6.1, L7 et L8 : total **9**, `{refunded:4, refused:3, refused_final:2}`, `active:0`, `nonTerminal:3`, `approvedUnpaid:0`, `closure.terminalWithoutRecord:4`, **tous les compteurs d'anomalie héritée à 0** (dont `voidedRefundRows:0`, `rowsBoundToMultipleClaims:0`, `refundedRowUnproven:0`).
+
+**Sondes externes NON AUTHENTIFIÉES du build déployé** — la surface T-46 d'abord, puisque c'est ce que ce follow-up touche :
+- `GET /api/finance/summary` → **401 « Non autorisé »**. C'est la sonde qui compte : les trois champs T-46 et la formule `netResto` vivent derrière la session opérateur, donc la formule n'est atteignable par personne sans session.
+- `GET /api/claims/restaurant` → **200 `{enabled:false}`** · `?view=history` → **200 `{enabled:false}`** · `?status=all` (le paramètre que L8 RETIRE) → **200 `{enabled:false}`**.
+- `GET /api/admin/claims/financial-verification` → **403 « Accès refusé »**.
+- Portes d'argent, intouchées par ce follow-up : `POST /api/claims` → **403 `{gated:true}`** · `POST /api/admin/refunds/run` → **403 `{gated:true}`** · `POST /api/admin/claims/pay-approved {"dryRun":true}` → **403 « Accès refusé »**.
+
+**AUCUN EFFET ARGENT, et voici par quoi.** (1) Un déploiement n'exécute par lui-même ni migration ni script serveur, et le recensement confirme `schema.ready` sans qu'aucune colonne ait été ajoutée. (2) Toutes les sondes se sont arrêtées au garde AVANT toute logique — 401 sur la seule route que ce follow-up modifie. (3) Aucun appel AUTHENTIFIÉ n'a été fait contre staging : aucune réclamation créée ni transitionnée, aucun avis envoyé, aucun remboursement déclenché. (4) `lib/refund.ts` reste byte-identique (blob `e2dc42b8eb89cd3249a4497682b8bc94080ef725`) et `lib/ledger.ts` est byte-identique à `1b3d1d6e` — vérifié APRÈS le mutation testing qui l'avait temporairement muté, par son absence du diff. (5) Le BLOQUEUR PRE-L11 `scripts/server/phase2-refund-gate.js` est inchangé et reste OUVERT, exprès.
+
 ## Lots suivants
 (complété lot par lot : SHA, preuves, CI, SHA déployé)
