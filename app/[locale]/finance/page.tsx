@@ -37,6 +37,15 @@ type FinanceSummary = {
   caAmeneParCreateurs: number
   ordersFromCreators:  number
   ordersTotal:         number
+  // ── T-46 — THE REFUNDS THIS PAGE USED TO BE BLIND TO ───────────────────────────────────────────
+  // The API subtracts `refundedCents/100` from `netResto`. This page renders the literal equation
+  // « BRUT − FRAIS = NET », so a deduction it does not know about makes the screen contradict ITSELF:
+  // a restaurateur adding 100,00 − 11,60 with their eyes would get 88,40 while the page printed 83,40.
+  // Declared here, summed into the deducted total below, and given its own line in the decomposition —
+  // the equation stays checkable by hand, which is the only reason it is printed that way.
+  refundedCents:       number
+  netReversedCents:    number
+  refundsCount:        number
 }
 
 export default function FinancePage() {
@@ -113,6 +122,9 @@ export default function FinancePage() {
   const {
     caBrut, commissionGrubano, verseAuxCreateurs, remisesFinancees, netResto,
     ordersTotal,
+    // T-46: read with `?? 0` at the use sites — a cached older payload has none of these, and the page
+    // must render rather than print NaN into the equation.
+    refundedCents, netReversedCents, refundsCount,
   } = data
 
   // ── empty (no transaction in the window) ──
@@ -136,7 +148,17 @@ export default function FinancePage() {
   // Bar / legend proportion straight from the API figures. commissionShare covers
   // EVERY fee the API deducted (commission + creator cost + funded discounts), so the
   // green «net» segment matches the API's netResto proportion exactly.
-  const totalFees   = commissionGrubano + verseAuxCreateurs + remisesFinancees
+  // T-46: the refunded gross is a DEDUCTED term of netResto, so it belongs in the total the equation
+  // shows. Without it « BRUT − FRAIS » no longer equals the NET printed beside it.
+  const refundedEur = (refundedCents ?? 0) / 100
+  const totalFees   = commissionGrubano + verseAuxCreateurs + remisesFinancees + refundedEur
+  // …and once a refund is in that total, « Frais Grubano » is no longer a true name for it: money
+  // returned to a CUSTOMER is not a Grubano fee. Same rule the founder set for « commission
+  // restituée » — never label a composed figure with the name of one of its parts. The labels below
+  // therefore switch only when there IS a refund in the window, which leaves the ordinary screen
+  // (and every window under the closed gates) rendering exactly the strings it rendered before.
+  const feesTermKey   = refundedEur > 0 ? 'fin.feesRefundsLabel'  : 'fin.feesLabel'
+  const feesLegendKey = refundedEur > 0 ? 'fin.legendFeesRefunds' : 'fin.legendFees'
   const netPct      = caBrut > 0 ? Math.max(0, Math.min(100, (netResto / caBrut) * 100)) : 0
   const feesPct     = 100 - netPct
   // Real commission rate from the API amounts — NOT hardcoded. Shown only when meaningful.
@@ -167,20 +189,43 @@ export default function FinancePage() {
           <div className="op-fin__formula">
             <div className="term gross"><span className="lbl">{t('fin.brutLabel')}</span><b>{eur(caBrut)}</b></div>
             <span className="op-fin__eq">−</span>
-            <div className="term comm"><span className="lbl">{t('fin.feesLabel')}</span><b>{eur(totalFees)}</b></div>
+            <div className="term comm"><span className="lbl">{t(feesTermKey)}</span><b>{eur(totalFees)}</b></div>
             <span className="op-fin__eq">=</span>
             <div className="term net"><span className="lbl">{t('fin.netLabel')}</span><b>{eur(netResto)}</b></div>
           </div>
           <div className="op-fin__bar"><i className="net" style={{ width: `${netPct}%` }} /><i className="comm" style={{ width: `${feesPct}%` }} /></div>
           <div className="op-fin__legend">
             <span><i className="sw net" />{t('fin.legendNet', { pct: netPct.toLocaleString(locale, { maximumFractionDigits: 0 }) })}</span>
-            <span><i className="sw comm" />{t('fin.legendFees', { pct: feesPct.toLocaleString(locale, { maximumFractionDigits: 0 }) })}</span>
+            <span><i className="sw comm" />{t(feesLegendKey, { pct: feesPct.toLocaleString(locale, { maximumFractionDigits: 0 }) })}</span>
           </div>
-          {/* full decomposition — every deducted term, byte-identical from the API */}
+          {/* full decomposition — every DEDUCTED term, byte-identical from the API, plus (T-46) one
+              informational line: what was actually pulled from this restaurant, which is not itself
+              a term of the equation and therefore carries no minus sign. */}
           <div className="op-fin__lines">
             <div className="op-fin__line minus"><span>{t('fin.commissionLine') + rateLabel}</span><b>−{eur(commissionGrubano)}</b></div>
             {verseAuxCreateurs > 0 && <div className="op-fin__line minus"><span>{t('fin.creatorsLine')}</span><b>−{eur(verseAuxCreateurs)}</b></div>}
             {remisesFinancees > 0 && <div className="op-fin__line minus"><span>{t('fin.discountsLine')}</span><b>−{eur(remisesFinancees)}</b></div>}
+            {/* T-46: what went back to customers, and — beside it — what was actually pulled from this
+                restaurant. The two differ by the Grubano fees returned with the refund, and printing only
+                the gross would leave a restaurateur unable to tell the two apart. */}
+            {refundedEur > 0 && (
+              <div className="op-fin__line minus">
+                <span>{t('fin.refundsLine', { count: refundsCount ?? 0 })}</span>
+                <b>−{eur(refundedEur)}</b>
+              </div>
+            )}
+            {refundedEur > 0 && (
+              <div className="op-fin__line">
+                <span>{t('fin.refundsNetLine')}</span>
+                <b>{eur((netReversedCents ?? 0) / 100)}</b>
+              </div>
+            )}
+            {/* Not decoration: without this sentence the commission line reads as if commission had been
+                charged on refunded money. It was not — the API's commissionGrubano already SUBTRACTS the
+                returned fees, which is exactly why the deducted term above is the refund's GROSS. */}
+            {refundedEur > 0 && (
+              <p className="op-fin__note">{t('fin.refundsFeeNote')}</p>
+            )}
           </div>
         </div>
 

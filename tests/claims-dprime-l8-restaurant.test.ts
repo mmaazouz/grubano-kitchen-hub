@@ -874,7 +874,7 @@ describe('P/Q/R/S/T — the restaurant is told about money only once, and only w
 // T-46 — THE FINANCE SUMMARY NOW SEES REFUNDS (additive; no existing figure moves)
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════
 describe('T-46 — /api/finance/summary exposes the refunds it used to ignore', () => {
-  it('the three measured fields come from the ledger refund lines, and caBrut/netResto are untouched', () => {
+  it('the three measured fields come from the ledger refund lines, and netResto subtracts the GROSS', () => {
     const fs = require('node:fs') as typeof import('node:fs')
     const src = fs.readFileSync('app/api/finance/summary/route.ts', 'utf8')
     expect(src).toContain('refundedCents')
@@ -883,17 +883,21 @@ describe('T-46 — /api/finance/summary exposes the refunds it used to ignore', 
     // derived from the ledger, never from a Refund row
     expect(src).not.toContain('prisma.refund')
     expect(src).not.toContain('applicationFeeRefundCents')
-    // the unchanged arithmetic, asserted so a later edit to netResto is a deliberate act
+    // The revenue base is unchanged — a refund is not a sale that did not happen — and the deduction is
+    // the refund's GROSS (founder arbitration of 2026-09-26, option 1). The full numeric proof, the three
+    // negative controls and the sweep live in tests/finance-summary-ledger.test.ts; this is the
+    // cross-lot pin, so an edit to either term stays a deliberate act.
     expect(src).toContain('const caBrut = round2(orders.reduce((s, o) => s + o.subtotal, 0))')
-    expect(src).toContain('caBrut - commissionGrubano - verseAuxCreateurs - remisesFinancees')
+    expect(src).toContain('caBrut - commissionGrubano - verseAuxCreateurs - remisesFinancees - refundedCents / 100')
   })
 
-  it('the arithmetic of the two candidate remediations really differs — which is why netResto is left alone', () => {
-    // 5,00 € refunded, 0,40 € of commission returned, transfer fully reversed.
+  it('the two candidate remediations really differ — and the gross is the one that lands on zero', () => {
+    // 5,00 € refunded, 0,40 € of Grubano fee returned, transfer fully reversed.
     const caBrut = 5.0, commissionAfter = 0.0, netReversed = 4.6, refunded = 5.0
-    expect(caBrut - commissionAfter - netReversed).toBeCloseTo(0.4, 5) // spec v2 §7.3's literal formula
+    expect(caBrut - commissionAfter - netReversed).toBeCloseTo(0.4, 5) // spec v2 §7.3's ORIGINAL formula
     expect(caBrut - commissionAfter - refunded).toBeCloseTo(0.0, 5)    // the ticket's other candidate
-    // The residue is exactly the commission Grubano returned to the CUSTOMER, and choosing between the two
-    // moves a restaurateur's net. GO-LIVE-TICKETS T-46 says that choice is « à trancher » by the founder.
+    // The 0,40 € residue is exactly the fee Grubano gave back, counted a second time: the commission is
+    // already refund-net, so subtracting the net reversal on top credits it twice. The founder chose the
+    // gross on 2026-09-26 (option 1) precisely because it lands on the truth — nothing left over.
   })
 })

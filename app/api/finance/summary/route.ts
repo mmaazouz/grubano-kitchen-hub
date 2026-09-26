@@ -82,6 +82,8 @@ export async function GET() {
         subtotal:      true,
         deliveryFee:   true,
         total:         true,
+        // T-46: the join between this screen's REVENUE population and the ledger's refund lines.
+        stripePaymentIntentId: true,
         referralOrder: { select: { id: true } },
       },
     })
@@ -112,9 +114,10 @@ export async function GET() {
         createdAt:    { gte: windowStart, lte: now },
         type:         { in: ['payment', 'deposit_capture', 'refund'] },
       },
-      // D′ L8 (T-46): `type`, `grossAmount` and `netToRestaurant` are read in the SAME query so the refund
-      // figures below cost no extra round-trip. The commission sum is unchanged.
-      select: { type: true, applicationFeeAmount: true, grossAmount: true, netToRestaurant: true },
+      // D′ L8 (T-46): `type`, `grossAmount`, `netToRestaurant` and the PaymentIntent are read in the SAME
+      // query so the refund figures below cost no extra round-trip. The commission sum is unchanged — it
+      // still adds `applicationFeeAmount` over all three types, refund lines included.
+      select: { type: true, applicationFeeAmount: true, grossAmount: true, netToRestaurant: true, stripePaymentIntentId: true },
     })
     const commissionGrubano = round2(
       feeLines.reduce((s, l) => s + l.applicationFeeAmount, 0) / 100,
@@ -140,17 +143,36 @@ export async function GET() {
     // and counting it as one would understate what the restaurant gave back. It is the shape the money
     // rails already alert on (`refund_without_reverse_transfer`).
     //
-    // WHAT IS **NOT** CHANGED, DELIBERATELY: `netResto`. The ticket says the remediation — derive `caBrut`
-    // from the ledger, or subtract the refund lines — is « à trancher » by the founder, and the two
-    // candidates do not give the same number. Worked example, 5,00 € refunded with 0,40 € of commission
-    // returned: `caBrut` still counts 5,00 and the commission kept falls to 0, so subtracting the 4,60
-    // actually reversed leaves a residue of exactly the returned commission (net 0,40 instead of 0), while
-    // subtracting the full 5,00 lands on 0. Moving a restaurateur's net on that choice is not a decision to
-    // make inside a projection lot, so the figures are EXPOSED and the arithmetic is left alone until the
-    // founder rules. The screen can now show the refunds; it no longer has to imply they did not happen.
-    const refundLines = feeLines.filter((l) => l.type === 'refund')
+    // AND `netResto` SUBTRACTS `refundedCents` — founder arbitration of 2026-09-26, after the mandatory
+    // double-count guard MEASURED that the returned fee already re-enters through the refund-net
+    // commission. The full reasoning and the algebra sit on the `netResto` line below; the short version is
+    // that the gross is the term which makes the total variation equal `netToRestaurant`, the same integer
+    // the per-claim block shows the restaurant. `netReversedCents` is EXPOSED for reading and is never
+    // subtracted — doing so would credit the restaurant with the returned fee twice.
+    // ── THE SAME POPULATION ON BOTH SIDES, and this is the load-bearing part ────────────────────────
+    //
+    // `caBrut` is ORDER revenue: `Σ Order.subtotal` over this window's non-cancelled orders. The ledger,
+    // by contrast, carries every rail this restaurant is paid on — a DINE-IN bill (`TableTicket`, a
+    // `payment` line with a `ticketId` and no Order) and a captured no-show DEPOSIT (`deposit_capture`)
+    // both belong to it. Summing « all refund lines of the window » and subtracting that from an
+    // order-only revenue base produces a PHANTOM LOSS: refunding a 50 € dine-in bill in full is a
+    // net-zero event for the restaurant, and an unscoped subtraction would have shown −47,50 € on a
+    // screen that never counted the 50 €. Found by the adversarial review OF THIS CHANGE.
+    //
+    // So the refund figures are restricted to the PaymentIntents of the orders this screen counts. Both
+    // sides of the P&L then describe one population, and two edges follow for free: a refund whose order
+    // has aged out of the window is excluded (its revenue is out too), and a window with no orders has no
+    // in-scope refunds rather than a silently dropped subtraction.
+    const windowOrderPis = new Set(
+      orders.map((o) => o.stripePaymentIntentId).filter((x): x is string => !!x),
+    )
+    const refundLines = feeLines.filter((l) => l.type === 'refund'
+      && !!l.stripePaymentIntentId && windowOrderPis.has(l.stripePaymentIntentId))
     const refundsCount = refundLines.length
     const refundedCents = refundLines.reduce((s, l) => s + Math.max(0, -l.grossAmount), 0)
+    // Σ of what was actually pulled FROM the restaurant. `max(0, …)` because a refund issued with no
+    // transfer reversal leaves `netToRestaurant` POSITIVE — nothing was reversed, so nothing is counted
+    // here; that shape is owned by the `refund_without_reverse_transfer` money-review alert.
     const netReversedCents = refundLines.reduce((s, l) => s + Math.max(0, -l.netToRestaurant), 0)
 
     // verseAuxCreateurs — the REAL recipe cost paid to creators: the sum of the
@@ -176,8 +198,33 @@ export async function GET() {
 
     // netResto — what the restaurateur actually keeps after Grubano's
     // commission, the creator recipe cost, and the discounts they funded.
+    //
+    // ── T-46 (arbitrage fondateur, 2026-09-26) — POURQUOI LE BRUT ET NON LE NET REPRIS ──────────────
+    //
+    // LE DÉFAUT. `caBrut` est `Σ Order.subtotal` sur les commandes non annulées : un remboursement ne le
+    // diminue JAMAIS. `commissionGrubano` ci-dessus somme en revanche les lignes ledger `refund`, dont
+    // l'`applicationFeeAmount` est NÉGATIF — elle est donc refund-nette (épingle spec v2 §7.3). Les deux
+    // moitiés du même P&L ne décrivaient plus la même réalité, et `netResto` bougeait dans le MAUVAIS
+    // SENS : le chiffre d'affaires restait, la commission baissait, donc le net du restaurateur MONTAIT
+    // après un départ d'argent. Mesuré : 88,00 → 88,40 sur un remboursement de 5,00 €.
+    //
+    // POURQUOI `refundedCents` ET NON `netReversedCents`. Parce que soustraire une commission PLUS PETITE
+    // rajoute déjà les frais restitués :
+    //     netResto = caBrut − (feeCharged − feeReturned) − … = caBrut − feeCharged + feeReturned − …
+    // Soustraire `netReversedCents` (= reprise − frais restitués) PAR-DESSUS créditerait le restaurant des
+    // frais restitués DEUX FOIS : 88,40 − 4,60 = 83,80, soit 0,40 € au-dessus de la vérité. Le brut donne
+    // 88,40 − 5,00 = 83,40, et la variation totale vaut alors :
+    //     +(R − V + F)/100 − R/100 = (F − V)/100 = netToRestaurant/100
+    // c'est-à-dire EXACTEMENT l'impact net de la ligne ledger — `restaurantNetImpactCents`, le même entier
+    // que le bloc par réclamation montre au restaurant. L'identité est ALGÉBRIQUE : elle ne dépend pas du
+    // montant de la reprise (elle tient aussi quand Grubano a absorbé une partie), et le sweep du test la
+    // vérifie sur plusieurs couples.
+    //
+    // À NE JAMAIS FAIRE (contrat figé) : soustraire `netReversedCents` une seconde fois, ou réintroduire
+    // `grubanoFeeReturnedCents` ailleurs dans ce calcul. Trois contrôles négatifs le tiennent dans
+    // tests/finance-summary-ledger.test.ts.
     const netResto = round2(
-      caBrut - commissionGrubano - verseAuxCreateurs - remisesFinancees,
+      caBrut - commissionGrubano - verseAuxCreateurs - remisesFinancees - refundedCents / 100,
     )
 
     // ── VALUE side: CA brought IN by creators ───────────────────────────────
@@ -200,7 +247,10 @@ export async function GET() {
       caAmeneParCreateurs,
       ordersFromCreators,
       ordersTotal,
-      // T-46: measured, additive, and no existing figure moves because of them.
+      // T-46: measured from the ledger. `netResto` above DOES move because of `refundedCents` — that is the
+      // whole point of the ticket — and the /finance page folds the same term into the « FRAIS » total it
+      // prints, so the equation on screen stays checkable by hand. `netReversedCents` and `refundsCount`
+      // are read-only: nothing is computed from them here.
       refundedCents,
       netReversedCents,
       refundsCount,

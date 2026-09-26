@@ -69,6 +69,9 @@
 .gb-op .op-fin__line{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 0;font-size:12px;color:var(--op-muted)}
 .gb-op .op-fin__line b{font-family:var(--op-font-mono);font-weight:700;font-size:12.5px;color:var(--op-text);direction:ltr;unicode-bidi:isolate}
 .gb-op .op-fin__line.minus b{color:var(--op-danger)}
+/* T-46 — the sentence that stops the commission line reading as « commission charged on refunded
+   money ». A note, not a figure: no mono font, no colour of its own, never inside the equation. */
+.gb-op .op-fin__note{margin:8px 0 0;font-size:11.5px;line-height:1.45;color:var(--op-muted-2)}
 
 /* ═══════════ Prochain versement (no backend → honest « bientôt ») ═══════════ */
 .gb-op .op-fin__next{background:linear-gradient(155deg,var(--op-zest-bg),var(--op-surface) 62%);border-color:#F5C2A0}
