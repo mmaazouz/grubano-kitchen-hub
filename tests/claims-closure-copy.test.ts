@@ -160,7 +160,12 @@ describe('J-C13 — provenance and money-truth guards on the new templates and s
     walkKeys(M.fr, '')
     // the customer status refused_final and the refusedFinal e-mail (decision refused_final). ROUND 13 (F17, slice W7): the
     // operator's toast claims.admin.refusedFinalDone now reads « Réclamation refusée définitivement. » — no longer a hit.
-    expect(fr.sort()).toEqual(['claimEmails.refusedFinal.body', 'claimEmails.refusedFinal.title', 'claims.status.refused_final'])
+    // D′ L8: a FOURTH hit, and it is a different audience. `claims.restaurant.status.refusal_confirmed`
+    // (« Refus confirmé par Grubano ») is the RESTAURANT's lifecycle label; this test is about what the
+    // CUSTOMER may read, and the restaurant's own namespace is derived by `restaurantClaimStatus`, whose
+    // provenance is pinned in tests/claims-dprime-l8-restaurant.test.ts. Listing it here keeps the sweep
+    // exhaustive — a fifth hit would still fail — without pretending the two audiences share copy.
+    expect(fr.sort()).toEqual(['claimEmails.refusedFinal.body', 'claimEmails.refusedFinal.title', 'claims.restaurant.status.refusal_confirmed', 'claims.status.refused_final'])
     const grid: ClaimFacts[] = []
     for (const status of ['refused_final', 'refunded', 'approved', 'arbitration']) for (const arbitrationDecision of ['refused_final', 'approved', null]) for (const restaurantResponse of ['refused', 'accepted', null]) {
       for (const refundError of [null, 'engine_failed: x', `${MARKERS.REVERTED_AFTER_REFUND} x`]) grid.push({ status, arbitrationDecision, restaurantResponse, refundError })

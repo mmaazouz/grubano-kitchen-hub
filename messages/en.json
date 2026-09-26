@@ -7241,7 +7241,43 @@
       "refused": "Claim refused.",
       "refundPending": "Accepted — refund pending activation.",
       "processing": "Processing…",
-      "responseNote": "An unanswered claim stays pending: respond as soon as possible. The customer sees your decision from their order and can contest a refusal with Grubano."
+      "responseNote": "An unanswered claim stays pending: respond as soon as possible. The customer sees your decision from their order and can contest a refusal with Grubano.",
+      "status": {
+        "received": "Received — awaiting your answer",
+        "answered_refused": "You refused this claim",
+        "grubano_deciding": "Under arbitration by Grubano",
+        "approved_awaiting_refund": "Approved by Grubano — refund pending",
+        "refunding": "Refund in progress",
+        "refunded": "Refunded to the customer",
+        "refusal_confirmed": "Refusal confirmed by Grubano",
+        "refused_by_grubano": "Refused by Grubano",
+        "closed": "Closed by Grubano",
+        "under_review": "Being verified by Grubano"
+      },
+      "statusLabel": "Status",
+      "tabPending": "To answer",
+      "tabHistory": "History",
+      "historyEmpty": "No closed or arbitrated claim.",
+      "selectionLabel": "What the customer asked for",
+      "selectionItems": "Items concerned",
+      "selectionAmount": "A precise amount",
+      "selectionWhole": "The whole order",
+      "selectionNotRecorded": "Selection not recorded",
+      "approvedLabel": "Amount approved by Grubano",
+      "yourAnswer": "Your answer",
+      "yourAnswerAccepted": "Accepted",
+      "yourAnswerRefused": "Refused",
+      "previouslyClaimed": "Already covered by an earlier claim",
+      "previouslyClaimedLine": "{name} — claim {ref} ({status}) — {qty} unit(s)",
+      "previouslyClaimedOther": "{count} earlier claim(s) on this order with no items specified.",
+      "previouslyClaimedNote": "Information only: it limits neither the customer’s right nor the quantities that can be claimed.",
+      "financeTitle": "Confirmed financial effect",
+      "financeRefund": "Refunded to the customer",
+      "financeNet": "Net impact for your restaurant",
+      "financeNote": "Amounts taken from our confirmed accounting entries. Grubano fees returned cover the commission and, where applicable, the other fees withheld on the order.",
+      "financeUnconfirmed": "No confirmed financial effect yet.",
+      "financeFee": "Grubano fees returned",
+      "previouslyClaimedIncomplete": "The list of earlier claims is incomplete: a missing line does not mean there is none."
     },
     "admin": {
       "title": "Claim arbitration",
@@ -7280,8 +7316,8 @@
       "pendingOverdue": "Response deadline exceeded",
       "arbitrationTitle": "In arbitration — to decide",
       "reasonSystem": "Reason (system)",
-        "scope": "Scope",
-        "selectionNotRecorded": "Selection not recorded",
+      "scope": "Scope",
+      "selectionNotRecorded": "Selection not recorded",
       "systemDetails": "Details (system)",
       "customerEmail": {
         "sent": "Customer email handed to the mail server.",
@@ -8838,6 +8874,15 @@
       "title": "Refund linked",
       "body": "The claim concerning your order {ref} has been closed: it is linked to a refund recorded in our records.",
       "next": "If this refund does not appear on your statement, reply to this email quoting reference {ref}."
+    },
+    "restaurantRefunded": {
+      "subject": "Refund confirmed on order {ref}",
+      "title": "Refund confirmed",
+      "body": "A refund has been confirmed for order {ref} at {resto}.",
+      "lineRefund": "Refunded to the customer",
+      "lineNet": "Confirmed net impact for your restaurant",
+      "next": "These amounts come from our confirmed accounting entries; Grubano fees returned cover the commission and, where applicable, the other fees withheld on the order. For any question, reply to this e-mail quoting reference {ref}.",
+      "lineFee": "Grubano fees returned"
     }
   }
 }

@@ -504,7 +504,9 @@ describe('J-C47 — a non-terminal e-mail skipped as claims_disabled when the le
     expect(res.status).toBe(200)
     expect(closureMock).toHaveBeenCalledTimes(1)
     expect(closureMock).toHaveBeenCalledWith({ claimId: 'cl1', evidence: undefined, claimsOpen: true }) // ← was false (skipped claims_disabled) before D′ L1
-    expect(await res.json()).toEqual({ customerEmail: { status: 'sent', kind: 'refused_by_grubano' } })
+    // D′ L8: `restaurantEmail` is null — this is a REFUSAL, so no money moved and no financial notice was
+    // due. The restaurant notice's own kill-switch independence is pinned in the L8 suite (§19).
+    expect(await res.json()).toEqual({ customerEmail: { status: 'sent', kind: 'refused_by_grubano' }, restaurantEmail: null })
     // NEGATIVE CONTROL — the pre-money senders in the SAME state: the routes are gated at entry (403), and a lease that
     // closes mid-request still hands them claimsOpen false (the J-C47 pins above). Here, the entry gate itself:
     claims.createClaim.mockResolvedValue({ ok: true, claim: CLAIM })

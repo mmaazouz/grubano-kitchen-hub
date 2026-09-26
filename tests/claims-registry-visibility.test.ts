@@ -189,7 +189,12 @@ describe('J-M50 / J-C45 — every E entry is in its bucket and count', () => {
     expect(ids(p.refundedUnproven.items)).toEqual(['E-13'])
     expect(p.closureNotices.items.map((n: Row) => n.claimId)).toEqual(['E-16'])
     expect(p.counts).toEqual({
-      financialVerification: 5, reconcileRequired: 1, otherUnsettled: 7, total: 13, unfinalizedRefundRows: 1, refundedUnproven: 1, closureNoticesMissing: 1,
+      // D′ L8 (§18): `restaurantNoticesPending` joins the counts — outside `total`, like the two lists
+      // beside it. NULL here, and that is the assertion worth making: this fixture's Prisma double does not
+      // carry the tables the new list reads, so its read rejects — and the route answers 200 with a null
+      // count for THAT list while every other figure stands. A section that cannot be read never costs the
+      // operator the money queue (the same contract as refundedUnproven / closureNotices).
+      financialVerification: 5, reconcileRequired: 1, otherUnsettled: 7, total: 13, unfinalizedRefundRows: 1, refundedUnproven: 1, closureNoticesMissing: 1, restaurantNoticesPending: null,
     })
   })
 

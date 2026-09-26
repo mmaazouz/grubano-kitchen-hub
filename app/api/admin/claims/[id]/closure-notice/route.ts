@@ -2,9 +2,9 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { resolveAdmin } from '@/lib/admin-guard'
 import { rateLimit } from '@/lib/rate-limit'
-import { reconcileClaimEvidence } from '@/lib/claims'
+import { reconcileClaimEvidence, readClaimFinancialEffect } from '@/lib/claims'
 import { claimNoticeGate } from '@/lib/claim-flags'
-import { sendClaimClosureEmail, type ClosureEmailResult, type ClosureEvidence } from '@/lib/claim-emails'
+import { sendClaimClosureEmail, sendRestaurantRefundedEmail, type ClaimEmailResult, type ClosureEmailResult, type ClosureEvidence } from '@/lib/claim-emails'
 import { claimClosureKind, type ClaimFacts } from '@/lib/claim-action-rules'
 import { recordAdminAudit } from '@/lib/admin-audit'
 import { prisma } from '@/lib/prisma'
@@ -102,6 +102,49 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     customerEmail = { status: 'failed', kind, why: 'sender_error' }
   }
 
+  // ── (5b) D′ L8 (T-46, resto notice (3)) — THE RESTAURANT'S POST-MONEY NOTICE ─────────────────────
+  //
+  // WHY HERE AND NOT IN THE RAIL OR THE WEBHOOK. The webhook may send nothing (H15 — it is ingestion and
+  // reconciliation, and the pins forbid it reaching a sender module at all). The L5 rail is frozen by this
+  // lot's own instruction. This route is the support mechanism the spec designates (§6.3): admin-guarded,
+  // idempotent, and it has ALREADY re-read the Stripe refund object read-only, in this request, which is
+  // exactly the re-check §13 requires before a post-money notice.
+  //
+  // THREE CONDITIONS, ALL NECESSARY. The claim must be a `refunded` closure; Stripe must have answered
+  // SUCCEEDED in this request (`evidence`, never a Refund row's own status); and the ledger must be able to
+  // STATE the figures. The third is the one that is easy to skip: §16 says a settled refund whose ledger
+  // line is missing gets NO financial e-mail, because the alternative is inventing the numbers from a
+  // prediction. When that happens the skip is traced with `ledger_incomplete` and the claim keeps showing up
+  // in the admin's « avis non envoyés » list — silence here is visible, not lost.
+  let restaurantEmail: ClaimEmailResult | null = null
+  if (kind === 'refunded' && evidence) {
+    try {
+      const fin = await readClaimFinancialEffect(params.id)
+      if (fin.claim && fin.stripeRefundId) {
+        restaurantEmail = await sendRestaurantRefundedEmail({
+          claimId:        params.id,
+          restaurantId:   fin.claim.restaurantId,
+          orderId:        fin.claim.orderId,
+          stripeRefundId: fin.stripeRefundId,
+          effect:         fin.effect,
+          // D′ L1 (FIN-EMAIL-01, S-25) + §11: an explicit closure is always sendable. A Claims kill-switch
+          // never hides money that has already moved.
+          claimsOpen:     claimNoticeGate('closure'),
+        })
+      } else if (!fin.claim) {
+        // The claim could not be read at all — that is not « the ledger is incomplete », and saying so
+        // would send an admin looking for an accounting line that may exist.
+        restaurantEmail = { status: 'failed', why: 'claim_not_found' }
+      } else {
+        // No `re_…` on the bound row (or no binding): Stripe's own identifier is missing, so the ledger
+        // line cannot even be looked up. Named as the missing STRIPE confirmation, not as a ledger gap.
+        restaurantEmail = { status: 'skipped', why: 'stripe_not_confirmed' }
+      }
+    } catch {
+      restaurantEmail = { status: 'failed', why: 'sender_error' }
+    }
+  }
+
   // (6) the trail.
   try {
     await recordAdminAudit({
@@ -110,11 +153,16 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       action:     'claim.closure_notice',
       targetType: 'claim',
       targetId:   params.id,
-      metadata:   { status: customerEmail.status, why: customerEmail.why ?? null, kind: customerEmail.kind, moneyMoved: false },
+      metadata:   {
+        status: customerEmail.status, why: customerEmail.why ?? null, kind: customerEmail.kind, moneyMoved: false,
+        // D′ L8: the restaurant notice's own outcome, so « was the restaurant told? » is answerable from
+        // the trail and not only from the e-mail tables.
+        restaurantStatus: restaurantEmail?.status ?? null, restaurantWhy: restaurantEmail?.why ?? null,
+      },
       req,
     })
   } catch { /* audit is best-effort */ }
 
   // (7)
-  return NextResponse.json({ customerEmail })
+  return NextResponse.json({ customerEmail, restaurantEmail })
 }

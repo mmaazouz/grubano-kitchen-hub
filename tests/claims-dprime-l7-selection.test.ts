@@ -504,9 +504,15 @@ describe('L — no later route can rewrite what the customer asked for', () => {
 
   it('the arbitration and ceiling routes — the two that DO write to a claim — never touch it', () => {
     const fs = require('node:fs') as typeof import('node:fs')
+    // AMENDED BY D′ L8: the bare `not.toContain('selection')` was a SUBSTRING check over the raw file,
+    // comments included, so the moment a route's comment explained why it does not write the column, the
+    // pin failed on the explanation rather than on a write. What must hold is that these routes never READ
+    // or WRITE it — asserted on the code with comments stripped, which is also what the L3b pin does.
+    const code = (p: string) => fs.readFileSync(p, 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
     for (const p of ['app/api/admin/claims/[id]/arbitrate/route.ts', 'app/api/admin/claims/[id]/ceiling/route.ts',
       'app/api/admin/claims/[id]/withdraw-approval/route.ts', 'app/api/claims/[id]/respond/route.ts']) {
-      expect(fs.readFileSync(p, 'utf8'), p).not.toContain('selection')
+      expect(code(p), p).not.toContain('selection')
     }
   })
 })
@@ -620,10 +626,32 @@ describe('O — « not recorded » is a state, and no code turns it into a scope
 // P — WHO SEES IT: THE ADMIN, AND NOT THE RESTAURANT (THAT IS L8'S CONTRACT)
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════
 describe('P — the selection reaches the admin surface and is stripped from the restaurant’s', () => {
-  it('the restaurant projection REMOVES it, deliberately and visibly', () => {
+  it('INVERTED BY D′ L8 — the restaurant now READS the selection, and the raw column still never crosses', () => {
+    // L7's assertion here was `toContain('delete pub.selection')`: the restaurant got nothing, because the
+    // projection was a whole-row spread and the only way to keep the snapshot back was to delete it after
+    // the read. L8 is the lot that designed the restaurant contract (S-19), so that assertion is now FALSE
+    // — which is exactly what changed. What replaces it is stronger than a delete:
+    //   • the column is SELECTED (the restaurant is told what the customer chose — §5), and
+    //   • the response is built key by key by lib/claim-restaurant-view, so the STORED shape (modeSource,
+    //     itemId, unitCents, v) cannot travel even though the column is read.
     const src = require('node:fs').readFileSync('lib/claims.ts', 'utf8') as string
     const fn = src.slice(src.indexOf('export async function listRestaurantClaims'))
-    expect(fn.slice(0, fn.indexOf('\n}'))).toContain('delete pub.selection')
+    const body = fn.slice(0, fn.indexOf('\n}'))
+    expect(body).toContain('selection: true')                    // read, deliberately
+    expect(body).toContain('buildRestaurantClaimView')            // and rendered through the builder
+    // Never a spread INTO AN OBJECT — that is what would carry a row into the payload. A spread into an
+    // ARRAY (`[...claims, ...priorRows]`, D′ L8's batched reads) copies references and reaches no response.
+    expect(body).not.toContain('{ ...c')
+    expect(body).not.toContain('{...c')
+    expect(body).not.toContain('delete pub.selection')            // the L7 mechanism is gone with its cause
+    // The builder's own output keys are the contract, and `selection` there is the RENDERED view.
+    const view = require('node:fs').readFileSync('lib/claim-restaurant-view.ts', 'utf8') as string
+    expect(view).toContain('readClaimSelection')
+    expect(view).toContain('selectionLineSummary')
+    for (const internal of ['modeSource', 'itemId', 'unitCents']) {
+      // named only in the FORBIDDEN list and in prose — never assigned into the view
+      expect(view).not.toMatch(new RegExp(internal + ':\\s'))
+    }
   })
 
   it('the ADMIN list selects it explicitly', () => {
@@ -657,11 +685,13 @@ describe('P — the selection reaches the admin surface and is stripped from the
     }
   })
 
-  it('the restaurant-facing route and component never name the column', () => {
+  it('the RESPOND route still never names the column — reading it is the LIST’s business, not an answer’s', () => {
+    // Unchanged in substance by L8: the restaurant reads the selection when it reads the claim, and
+    // answering one neither reads nor writes it. Comments stripped, for the reason given in section L.
     const fs = require('node:fs') as typeof import('node:fs')
-    for (const p of ['app/api/claims/[id]/respond/route.ts']) {
-      expect(fs.readFileSync(p, 'utf8'), p).not.toContain('selection')
-    }
+    const code = fs.readFileSync('app/api/claims/[id]/respond/route.ts', 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
+    expect(code).not.toContain('selection')
   })
 })
 

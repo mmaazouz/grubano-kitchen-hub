@@ -150,7 +150,7 @@ describe('J-C29 — import topology (H15)', () => {
     expect(SENDER_MODULES.filter((m) => reached.has(m)).map((m) => reached.get(m)!.join(' → '))).toEqual([])
   })
 
-  it('lib/claims.ts never names the senders; lib/claim-emails.ts imports exactly the seven H15 modules and never reaches lib/claims, lib/refund or lib/stripe', () => {
+  it('lib/claims.ts never names the senders; lib/claim-emails.ts imports exactly the eight H15 modules and never reaches lib/claims, lib/refund or lib/stripe', () => {
     expect(read('lib/claims.ts')).not.toMatch(/claim-emails|claim-email-toast/)
     // D′ L7 (T-50) — SIX BECAME SEVEN, and the seventh is named here so the addition is a decision and
     // not a drift. The acknowledgement now tells the customer WHICH articles they claimed, so it reads the
@@ -158,8 +158,15 @@ describe('J-C29 — import topology (H15)', () => {
     // lib/claims — which is why the reach assertions below are unchanged and still meaningful: what H15
     // protects is that a sender can never pull the claim state machine, the refund engine or Stripe into
     // the e-mail path, not that the list has six entries.
+    //
+    // D′ L8 (T-46) — SEVEN BECAME EIGHT. The restaurant's post-money notice states the CONFIRMED figures
+    // of a refund, whose type lives in `@/lib/claim-financial-effect`. That module is a LEAF: it imports
+    // NOTHING AT ALL, and the assertion two lines below proves it (an empty specifier list). So the sender
+    // can name the type without gaining any reach, and the FIGURES are still computed by the caller and
+    // passed in — the same discipline as ClosureEvidence, and the reason a sender never reads a ledger.
+    expect(Array.from(new Set(specifiers(read('lib/claim-financial-effect.ts'))))).toEqual([])
     expect(Array.from(new Set(specifiers(read('lib/claim-emails.ts')))).sort()).toEqual(
-      ['@/lib/claim-action-rules', '@/lib/claim-selection', '@/lib/onboarding-nudge', '@/lib/order-ref', '@/lib/prisma', '@/lib/transactional-emails', 'next-intl/server'])
+      ['@/lib/claim-action-rules', '@/lib/claim-financial-effect', '@/lib/claim-selection', '@/lib/onboarding-nudge', '@/lib/order-ref', '@/lib/prisma', '@/lib/transactional-emails', 'next-intl/server'])
     for (const m of SENDER_MODULES) expect(read(m), m).not.toMatch(/@\/lib\/(refund|stripe|claims)['"]/)
     const fromSenders = reach(SENDER_MODULES, fsReader)
     expect(['lib/claims.ts', 'lib/refund.ts', 'lib/stripe.ts'].filter((f) => fromSenders.has(f))).toEqual([])

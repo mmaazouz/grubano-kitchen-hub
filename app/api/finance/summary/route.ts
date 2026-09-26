@@ -27,6 +27,10 @@ export async function GET() {
     caAmeneParCreateurs: 0,
     ordersFromCreators:  0,
     ordersTotal:         0,
+    // D′ L8 (T-46) — see below. Zero-filled like the rest so the page never reads `undefined`.
+    refundedCents:       0,
+    netReversedCents:    0,
+    refundsCount:        0,
   }
 
   try {
@@ -108,11 +112,46 @@ export async function GET() {
         createdAt:    { gte: windowStart, lte: now },
         type:         { in: ['payment', 'deposit_capture', 'refund'] },
       },
-      select: { applicationFeeAmount: true },
+      // D′ L8 (T-46): `type`, `grossAmount` and `netToRestaurant` are read in the SAME query so the refund
+      // figures below cost no extra round-trip. The commission sum is unchanged.
+      select: { type: true, applicationFeeAmount: true, grossAmount: true, netToRestaurant: true },
     })
     const commissionGrubano = round2(
       feeLines.reduce((s, l) => s + l.applicationFeeAmount, 0) / 100,
     )
+
+    // ── T-46 — THE REFUNDS THIS SCREEN USED TO BE BLIND TO ───────────────────────────────────────
+    //
+    // THE DEFECT (GO-LIVE-TICKETS T-46, found by the closeout's adversarial review). `caBrut` above is
+    // `Σ Order.subtotal` over non-cancelled orders, so a refund NEVER reduces it. `commissionGrubano`, on
+    // the other hand, sums ledger lines — and a refund line carries a NEGATIVE `applicationFeeAmount`, so
+    // it IS refund-aware. The two halves of the same P&L therefore stopped describing the same reality,
+    // and `netResto = caBrut − commission − …` moved the WRONG WAY when a refund arrived: the revenue
+    // stayed, the commission fell, and the restaurateur's net went UP after money left their account.
+    //
+    // WHAT IS ADDED: the three measured figures spec v2 §7.3 names, all from the ledger `refund` lines of
+    // the window — the same source as the per-claim block (S-19), never `Refund` fields (predictions).
+    //   refundedCents    Σ what customers actually got back        (= Σ −grossAmount)
+    //   netReversedCents Σ what was actually pulled FROM this restaurant (= Σ max(0, −netToRestaurant))
+    //   refundsCount     how many refund lines the window carries
+    //
+    // WHY `max(0, …)`: on a refund issued with no transfer reversal, `netToRestaurant` is POSITIVE (the
+    // platform bore the refund and the fee refund landed on the connected account). That is not a reversal,
+    // and counting it as one would understate what the restaurant gave back. It is the shape the money
+    // rails already alert on (`refund_without_reverse_transfer`).
+    //
+    // WHAT IS **NOT** CHANGED, DELIBERATELY: `netResto`. The ticket says the remediation — derive `caBrut`
+    // from the ledger, or subtract the refund lines — is « à trancher » by the founder, and the two
+    // candidates do not give the same number. Worked example, 5,00 € refunded with 0,40 € of commission
+    // returned: `caBrut` still counts 5,00 and the commission kept falls to 0, so subtracting the 4,60
+    // actually reversed leaves a residue of exactly the returned commission (net 0,40 instead of 0), while
+    // subtracting the full 5,00 lands on 0. Moving a restaurateur's net on that choice is not a decision to
+    // make inside a projection lot, so the figures are EXPOSED and the arithmetic is left alone until the
+    // founder rules. The screen can now show the refunds; it no longer has to imply they did not happen.
+    const refundLines = feeLines.filter((l) => l.type === 'refund')
+    const refundsCount = refundLines.length
+    const refundedCents = refundLines.reduce((s, l) => s + Math.max(0, -l.grossAmount), 0)
+    const netReversedCents = refundLines.reduce((s, l) => s + Math.max(0, -l.netToRestaurant), 0)
 
     // verseAuxCreateurs — the REAL recipe cost paid to creators: the sum of the
     // FROZEN DishSale.creatorEarning for sales tied to these orders (4 % or 1 %
@@ -161,6 +200,10 @@ export async function GET() {
       caAmeneParCreateurs,
       ordersFromCreators,
       ordersTotal,
+      // T-46: measured, additive, and no existing figure moves because of them.
+      refundedCents,
+      netReversedCents,
+      refundsCount,
     })
   } catch (err) {
     // Never 500 the page: log and degrade to a clean zero-filled summary.

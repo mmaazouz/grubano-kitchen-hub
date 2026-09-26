@@ -5,6 +5,8 @@ import { respondToClaim } from '@/lib/claims'
 import { claimsSurfaceOpen, claimNoticeGate } from '@/lib/claim-flags'
 import { prisma } from '@/lib/prisma'
 import { sendClaimDecisionEmail } from '@/lib/claim-emails'
+import { restaurantClaimStatus, type ClaimFacts } from '@/lib/claim-action-rules'
+import { orderRef } from '@/lib/order-ref'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -64,8 +66,35 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     })
   }
 
+  // ── D′ L8 (S-19) — WHAT COMES BACK IS BUILT, NOT FORWARDED ──────────────────────────────────────
+  //
+  // This line used to be `claim: result.claim`, and `respondToClaim` returns
+  // `prisma.claim.findUnique({ where: { id } })` with no `select` — so answering a claim handed the
+  // restaurant the WHOLE row: `consumerId`, `refundError`, `refundId`, `activeOrderKey`, `arbitratedBy`,
+  // `contestReason`, `Claim.selection`, every arbitration field. It was the same leak as the list, on the
+  // one endpoint a restaurant hits deliberately, and the panel never read any of it.
+  //
+  // Four fields, each assigned by name. The derived status uses UNREAD row facts (`null, null`) on
+  // purpose: a claim that has just been answered has no refund bound, and a response is not the place to
+  // assert anything about money. `refund` stays in the shape and stays null — P0-24 means accepting a
+  // claim triggers NOTHING, and the panel's « remboursement en attente » branch has been unreachable
+  // since (recorded as T-65); removing the key would be a silent contract change for no gain.
+  // Defensive on the two derivations, because this block runs AFTER the write has succeeded: a throw here
+  // would answer 500 on a response that WAS recorded, and the restaurant would answer again (and get 409).
+  const answered = result.claim as { id: string; orderId?: string | null; status?: string; restaurantResponse?: string | null; decidedAt?: Date | string | null; refundError?: string | null; refundId?: string | null; refundAttempted?: boolean; arbitrationDecision?: string | null }
+  const decidedAt = answered.decidedAt instanceof Date ? answered.decidedAt.toISOString()
+    : typeof answered.decidedAt === 'string' ? answered.decidedAt : null
   return NextResponse.json({
-    claim:  result.claim,
+    claim: {
+      id:                 answered.id,
+      orderRef:           typeof answered.orderId === 'string' ? orderRef(answered.orderId) : null,
+      status:             restaurantClaimStatus(answered as ClaimFacts, null, null),
+      restaurantResponse: answered.restaurantResponse === 'accepted' || answered.restaurantResponse === 'refused'
+        ? answered.restaurantResponse : null,
+      decidedAt,
+      // The respond route has just consumed the only state it accepts, so it would refuse a second answer.
+      canRespond:         false,
+    },
     refund: result.refund ?? null,
   })
 }

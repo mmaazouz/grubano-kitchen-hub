@@ -42,8 +42,14 @@ import { prisma } from '@/lib/prisma'
 import { sendTransactional, logEmailSkipped, type SendStatus } from '@/lib/transactional-emails'
 import { resolveNudgeLocale } from '@/lib/onboarding-nudge'
 import { readClaimSelection, selectionLineSummary } from '@/lib/claim-selection'
+// D′ L8 (T-46): the confirmed financial block, as a TYPE only. lib/claim-financial-effect is a LEAF — it
+// imports nothing at all — so the H15 reachability ban (no lib/claims, lib/refund or lib/stripe from a
+// sender module) is untouched by naming it here. The figures are computed by the CALLER and passed in,
+// exactly like ClosureEvidence: a sender never reads a ledger, a row or Stripe for itself.
+import type { ClaimFinancialEffect } from '@/lib/claim-financial-effect'
 import {
   claimClosureKind, refusalEmailKind, refundedRowProven, CLOSURE_TRIGGER, CLOSURE_RECORD_TRIGGER, closureRecordKey,
+  RESTAURANT_REFUNDED_TRIGGER, restaurantRefundedKey,
   type ClaimFacts, type ClosureKind,
 } from '@/lib/claim-action-rules'
 
@@ -67,6 +73,8 @@ export type ClaimEmailWhy =
   | 'claim_not_found'
   | 'no_closure_record'
   | 'not_a_closure'
+  /** D′ L8 (§16): Stripe settled the refund, but the ledger cannot state the figures — no financial e-mail. */
+  | 'ledger_incomplete'
   | 'sender_error'
 /** H03: what a claim sender returns. */
 export type ClaimEmailResult = { status: SendStatus | 'not_applicable'; why?: ClaimEmailWhy }
@@ -119,6 +127,106 @@ async function resolveConsumer(consumerId: string) {
   })
   if (!consumer?.email) return null
   return { to: consumer.email, name: consumer.name ?? '', locale: resolveNudgeLocale(consumer.locale) }
+}
+
+/** D′ L8: the OWNING restaurant's recipient — its operator's address, name and e-mail locale. */
+async function resolveRestaurantRecipient(restaurantId: string) {
+  const resto = await prisma.restaurant.findUnique({
+    where:  { id: restaurantId },
+    select: { name: true, operator: { select: { email: true, name: true, locale: true } } },
+  })
+  const email = resto?.operator?.email
+  if (!email) return null
+  return {
+    to: email,
+    restaurantName: resto?.name ?? '',
+    locale: resolveNudgeLocale(resto?.operator?.locale ?? null),
+  }
+}
+
+/**
+ * ── D′ L8 (T-46, spec v2 §6.5, resto notice (3)) — THE RESTAURANT IS TOLD WHAT A REFUND COST IT ──
+ *
+ * POST-MONEY, AND THAT IS THE WHOLE POINT. This is not a workflow notification: the money has already
+ * left. So no product flag may suppress it — `claimNoticeGate('post_money'|'closure')` is literally `true`
+ * (lib/claim-flags), and a Claims kill-switch that hid a debit a restaurateur can see on their Stripe
+ * statement would make the product less truthful than the bank. The parameter is kept, and checked, so the
+ * per-file notice-class pin stays meaningful and so this sender behaves like every other one.
+ *
+ * WHAT IT WILL NOT SAY. The figures are the caller's CONFIRMED block, derived from the ledger line of the
+ * Stripe refund (lib/claim-financial-effect). An unconfirmed block sends NOTHING and returns
+ * `ledger_incomplete` (§16): a mail saying « environ » or reconstructing a probable commission is worse
+ * than no mail, because the restaurateur would reconcile their accounts against it. The body carries no
+ * Stripe id, no refund id, no charge or PaymentIntent — a restaurateur has no use for them and they are
+ * ours, not theirs.
+ *
+ * IDEMPOTENCY is anchored on the PROVEN refund, not on the claim: `claim:<id>:resto_refunded:<re_>`. A
+ * claim can carry more than one refund over its life, and each one is its own financial event; anchoring
+ * on the claim alone would send once and then go quiet on the second debit. The trigger is distinct from
+ * every consumer trigger, so the two audiences never share a dedupe slot.
+ */
+// The trigger and the dedupe key live in lib/claim-action-rules (beside CLOSURE_TRIGGER), because the
+// admin's « was the restaurant told? » list needs the SAME key and must not import a sender module.
+// Re-exported here so callers that already import this module find them where they look.
+export { RESTAURANT_REFUNDED_TRIGGER, restaurantRefundedKey } from '@/lib/claim-action-rules'
+
+export async function sendRestaurantRefundedEmail(p: {
+  claimId:        string
+  restaurantId:   string
+  orderId:        string
+  /** The Stripe refund PROVEN succeeded by the caller. Used as the dedupe anchor, never printed. */
+  stripeRefundId: string
+  /** The T-46 block. Only `confirmed: true` sends. */
+  effect:         ClaimFinancialEffect
+  /** The notice class read at send time by the calling file — `true` for post-money and closure. */
+  claimsOpen:     boolean
+}): Promise<ClaimEmailResult> {
+  const trigger = RESTAURANT_REFUNDED_TRIGGER
+  if (!p.claimsOpen) return claimsClosedSkip(trigger, p.claimId)
+  // §16 — Stripe saying succeeded is not sufficient. Without the ledger there are no numbers, and a
+  // financial e-mail without numbers is not a lighter version of this one, it is a different message.
+  if (!p.effect.confirmed) {
+    await traceMiss(trigger, p.claimId, 'ledger_incomplete')
+    return { status: 'skipped', why: 'ledger_incomplete' }
+  }
+  if (typeof p.stripeRefundId !== 'string' || p.stripeRefundId === '') {
+    await traceMiss(trigger, p.claimId, 'stripe_not_confirmed')
+    return { status: 'skipped', why: 'stripe_not_confirmed' }
+  }
+  const resto = await resolveRestaurantRecipient(p.restaurantId)
+  if (!resto) {
+    await traceMiss(trigger, p.claimId, 'no_recipient')
+    return { status: 'skipped', why: 'no_recipient' }
+  }
+  const t = await getTranslations({ locale: resto.locale, namespace: 'claimEmails' })
+  const ref = orderRef(p.orderId)
+  const e = p.effect
+  // The net impact is stored SIGNED and negative; it is printed as the signed figure so « −4,60 € » reads
+  // as a debit and cannot be mistaken for something received.
+  const rows = [
+    [t('restaurantRefunded.lineRefund'), euros(resto.locale, e.customerRefundCents)],
+    [t('restaurantRefunded.lineFee'), euros(resto.locale, e.grubanoFeeReturnedCents)],
+    [t('restaurantRefunded.lineNet'), euros(resto.locale, e.restaurantNetImpactCents)],
+  ]
+  const bodyHtml =
+    `<p>${esc(t('restaurantRefunded.body', { ref, resto: resto.restaurantName || t('theRestaurant') }))}</p>`
+    + '<table style="font-size:14px;border-collapse:collapse;margin:8px 0">'
+    + rows.map(([k, v]) => `<tr><td style="padding:2px 12px 2px 0;color:#6b7280">${esc(k)}</td><td style="padding:2px 0;font-weight:600">${esc(v)}</td></tr>`).join('')
+    + '</table>'
+    + `<p style="font-size:13px;color:#6b7280">${esc(t('restaurantRefunded.next', { ref }))}</p>`
+  const r = await sendTransactional({
+    to:        resto.to,
+    subject:   t('restaurantRefunded.subject', { ref }),
+    html:      claimShell({
+      title:    t('restaurantRefunded.title'),
+      bodyHtml,
+      footer:   t('footer'),
+      rtl:      resto.locale === 'ar',
+    }),
+    trigger,
+    dedupeKey: restaurantRefundedKey(p.claimId, p.stripeRefundId),
+  })
+  return transportResult(trigger, p.claimId, r)
 }
 
 // ── (1) Accusé de réception — à l'OUVERTURE d'une réclamation ──────────────────

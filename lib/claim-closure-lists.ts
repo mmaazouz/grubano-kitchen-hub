@@ -6,7 +6,8 @@
 // F03 is restated here (lib/claim-emails restates it too) so this module never imports lib/claims.
 import { prisma } from '@/lib/prisma'
 import {
-  claimClosureKind, CLOSURE_TRIGGER, CLOSURE_RECORD_TRIGGER, closureRecordKey, refundedRowProven, type ClosureKind,
+  claimClosureKind, CLOSURE_TRIGGER, CLOSURE_RECORD_TRIGGER, closureRecordKey, refundedRowProven,
+  RESTAURANT_REFUNDED_TRIGGER, restaurantRefundedKey, type ClosureKind,
 } from '@/lib/claim-action-rules'
 import type { ClosureNoticeBlocker } from '@/lib/claim-console-copy'
 
@@ -17,12 +18,34 @@ export const CLOSURE_SCAN_PAGE = 500
 export const CLOSURE_SCAN_CAP = 5000
 export const CLOSURE_ITEMS_CAP = 200
 
+/**
+ * D′ L8 (§18) — WAS THE RESTAURANT TOLD, AND IF NOT, WHY. Read from EmailDispatch and the ledger; this
+ * module writes nothing and calls no sender.
+ *   'not_due'              the closure is not a refund — no money moved, so no financial notice exists
+ *   'refund_not_succeeded' a refunded closure whose bound row is not settled, or carries no `re_…`
+ *   'ledger_incomplete'    settled at Stripe, but no ledger line for that `re_…`: §16 forbids the mail
+ *   'already_sent'         a dispatch exists under the restaurant trigger for this exact refund
+ *   'pending'              due, sendable, and not yet sent
+ *   'unknown'              a probe could not be read — NOT reported as sendable and NOT as blocked
+ * There is deliberately no 'failed': sendTransactional RELEASES its dispatch claim when a send does not
+ * succeed, so a failed attempt comes back here as 'pending' — which is the truth, because it will be
+ * retried. The attempt itself is in EmailLog.
+ *
+ * WHY THESE TWO READS DO NOT TAKE THE LIST DOWN. This list exists for the CUSTOMER notice; the restaurant
+ * state is an extra column on it. A ledger or dispatch read that fails must not hide the customer rows,
+ * and it must not silently become 'pending' either — claiming sendability we did not verify is how an
+ * admin presses a button that then refuses. So it degrades to 'unknown', visibly.
+ */
+export type RestaurantNoticeState = 'not_due' | 'refund_not_succeeded' | 'ledger_incomplete' | 'already_sent' | 'pending' | 'unknown'
+
 export type MissingClosureNotice = {
   claimId: string
   orderId: string
   kind: ClosureKind
   decidedAt: Date | null
   blocker: ClosureNoticeBlocker | null
+  /** D′ L8 (§18): the state of the RESTAURANT's post-money notice for this claim. */
+  restaurantNotice: RestaurantNoticeState
 }
 export type MissingClosureNotices = { items: MissingClosureNotice[]; total: number; scanTruncated: boolean }
 
@@ -81,15 +104,133 @@ async function missingAmong(ids: string[]): Promise<MissingClosureNotice[]> {
     ? await prisma.claim.groupBy({ by: ['refundId'], where: { refundId: { in: rowIds }, OR: BINDER_OR }, _count: { _all: true } })
     : []
   const binders = new Map(groups.map((g) => [g.refundId as string, g._count._all] as const))
-  return notSent.map(({ c, kind }) => ({
-    claimId:   c.id,
-    orderId:   c.orderId,
-    kind,
-    decidedAt: c.decidedAt ?? null,
-    blocker:   kind === 'refunded'
-      ? closureNoticeBlocker(c.refundId ? rowById.get(c.refundId) ?? null : null, c.refundId ? binders.get(c.refundId) ?? 0 : 0, c.orderId)
-      : null,
-  }))
+
+  // ── D′ L8 (§18) — the RESTAURANT notice state, per claim ────────────────────────────────────────
+  // Two extra reads, both batched: the dispatches under the restaurant trigger (keyed on the proven
+  // `re_…`, so the state is per REFUND, not per claim), and whether a ledger line exists for that `re_…`.
+  // The second is what distinguishes « not sent yet » from « cannot be sent » (§16): a settled refund with
+  // no ledger line will never produce a financial e-mail, and an admin must be able to see that without
+  // pressing the button to find out.
+  const reByClaim = new Map<string, string>()
+  for (const x of notSent) {
+    if (x.kind !== 'refunded' || !x.c.refundId) continue
+    const row = rowById.get(x.c.refundId)
+    if (row && row.status === 'succeeded' && row.stripeRefundId) reByClaim.set(x.c.id, row.stripeRefundId)
+  }
+  const reIds = Array.from(new Set(Array.from(reByClaim.values())))
+  const restoKeys = Array.from(reByClaim.entries()).map(([claimId, re]) => restaurantRefundedKey(claimId, re))
+  let restoSent: Set<string> | null = new Set<string>()
+  let ledgered: Set<string> | null = new Set<string>()
+  if (reIds.length) {
+    try {
+      const ds = await prisma.emailDispatch.findMany({
+        where:  { trigger: RESTAURANT_REFUNDED_TRIGGER, dedupeKey: { in: restoKeys } },
+        select: { dedupeKey: true },
+      })
+      restoSent = new Set(ds.map((d) => d.dedupeKey))
+    } catch { restoSent = null }
+    try {
+      const ls = await prisma.ledgerEntry.findMany({
+        where:  { type: 'refund', sourceEventId: { in: reIds } },
+        select: { sourceEventId: true },
+      })
+      ledgered = new Set(ls.map((l) => l.sourceEventId))
+    } catch { ledgered = null }
+  }
+
+  return notSent.map(({ c, kind }) => {
+    let restaurantNotice: RestaurantNoticeState = 'not_due'
+    if (kind === 'refunded') {
+      const re = reByClaim.get(c.id) ?? null
+      restaurantNotice = !re ? 'refund_not_succeeded'
+        : restoSent === null || ledgered === null ? 'unknown'
+          : restoSent.has(restaurantRefundedKey(c.id, re)) ? 'already_sent'
+            : !ledgered.has(re) ? 'ledger_incomplete'
+              : 'pending'
+    }
+    return {
+      claimId:   c.id,
+      orderId:   c.orderId,
+      kind,
+      decidedAt: c.decidedAt ?? null,
+      blocker:   kind === 'refunded'
+        ? closureNoticeBlocker(c.refundId ? rowById.get(c.refundId) ?? null : null, c.refundId ? binders.get(c.refundId) ?? 0 : 0, c.orderId)
+        : null,
+      restaurantNotice,
+    }
+  })
+}
+
+/**
+ * D′ L8 (§18) — « LE RESTAURANT N'A PAS ÉTÉ PRÉVENU » : SA PROPRE POPULATION.
+ *
+ * WHY THIS LIST EXISTS AT ALL — found by the adversarial review, and it was a P1. The restaurant notice was
+ * first surfaced as one COLUMN on `listMissingClaimClosureNotices`, whose population is « claims whose
+ * CUSTOMER closure notice was never dispatched ». On the ORDINARY settlement path the customer's notice IS
+ * dispatched by the rail, so the claim never appears in that list — no admin would ever see a pending
+ * restaurant notice, and the whole §11 feature would have been unreachable in exactly the case it was built
+ * for. §16's withheld case disappeared the same way.
+ *
+ * So the restaurant notice gets its own question, asked independently: which SETTLED refunds, whose figures
+ * the ledger can state, have no restaurant dispatch yet? Read-only, Prisma only, no sender imported.
+ */
+export type PendingRestaurantNotice = {
+  claimId: string
+  orderId: string
+  decidedAt: Date | null
+  /** 'pending' = sendable now · 'ledger_incomplete' = settled at Stripe, no accounting line (§16). */
+  state: Extract<RestaurantNoticeState, 'pending' | 'ledger_incomplete'>
+}
+export type PendingRestaurantNotices = { items: PendingRestaurantNotice[]; total: number }
+
+export async function listPendingRestaurantRefundNotices(): Promise<PendingRestaurantNotices> {
+  // Candidates: a claim whose closure is a REFUND. `refundError` must be null — a set marker is our own
+  // record that the money truth is open (a disowned binding, a reversal after settlement), and such a
+  // claim is not a case to notify anyone about.
+  const claims = await prisma.claim.findMany({
+    where:  { status: 'refunded', refundError: null, refundId: { not: null } },
+    select: { id: true, orderId: true, refundId: true, decidedAt: true },
+    orderBy: { decidedAt: 'desc' },
+    take:   CLOSURE_ITEMS_CAP,
+  })
+  if (claims.length === 0) return { items: [], total: 0 }
+  const rowIds = Array.from(new Set(claims.map((c) => c.refundId as string)))
+  const rows = await prisma.refund.findMany({
+    where:  { id: { in: rowIds } },
+    select: { id: true, orderId: true, status: true, stripeRefundId: true },
+  })
+  const rowById = new Map(rows.map((r) => [r.id, r] as const))
+  // A-S43: a row bound by two claims settles neither — nothing is announced for either.
+  const groups = await prisma.claim.groupBy({ by: ['refundId'], where: { refundId: { in: rowIds }, OR: BINDER_OR }, _count: { _all: true } })
+  const binders = new Map(groups.map((g) => [g.refundId as string, g._count._all] as const))
+
+  const settled = claims
+    .map((c) => ({ c, row: rowById.get(c.refundId as string) ?? null }))
+    .filter((x) => !!x.row && x.row.status === 'succeeded' && !!x.row.stripeRefundId
+      && x.row.orderId === x.c.orderId && (binders.get(x.c.refundId as string) ?? 0) < 2)
+  if (settled.length === 0) return { items: [], total: 0 }
+
+  const keys = settled.map((x) => restaurantRefundedKey(x.c.id, x.row!.stripeRefundId as string))
+  const sent = new Set((await prisma.emailDispatch.findMany({
+    where:  { trigger: RESTAURANT_REFUNDED_TRIGGER, dedupeKey: { in: keys } },
+    select: { dedupeKey: true },
+  })).map((d) => d.dedupeKey))
+  const reIds = Array.from(new Set(settled.map((x) => x.row!.stripeRefundId as string)))
+  const ledgered = new Set((await prisma.ledgerEntry.findMany({
+    where:  { type: 'refund', sourceEventId: { in: reIds } },
+    select: { sourceEventId: true },
+  })).map((l) => l.sourceEventId))
+
+  const items = settled
+    .filter((x) => !sent.has(restaurantRefundedKey(x.c.id, x.row!.stripeRefundId as string)))
+    .map((x) => ({
+      claimId:   x.c.id,
+      orderId:   x.c.orderId,
+      decidedAt: x.c.decidedAt ?? null,
+      // The §16 split, made visible: sendable, or blocked for want of an accounting line.
+      state:     (ledgered.has(x.row!.stripeRefundId as string) ? 'pending' : 'ledger_incomplete') as 'pending' | 'ledger_incomplete',
+    }))
+  return { items, total: items.length }
 }
 
 /**

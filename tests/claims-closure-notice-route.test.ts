@@ -171,10 +171,19 @@ describe('J-C27 — the evidence passed to the sender', () => {
   it('the audit carries {status, why, kind, moneyMoved:false}', async () => {
     senderMock.mockResolvedValue({ status: 'skipped', kind: 'refunded', why: 'stripe_not_confirmed' })
     await post()
+    // D′ L8 (§18): the metadata now also records the RESTAURANT notice's own outcome, so « was the
+    // restaurant told what the refund cost them? » is answerable from the audit trail and not only from the
+    // e-mail tables. Here the claim's Stripe evidence was NOT confirmed, so no restaurant notice was even
+    // attempted — both fields are null, which is a different fact from « attempted and skipped ».
     expect(auditMock).toHaveBeenCalledWith(expect.objectContaining({
       action: 'claim.closure_notice', targetType: 'claim', targetId: 'cl1',
-      metadata: { status: 'skipped', why: 'stripe_not_confirmed', kind: 'refunded', moneyMoved: false },
+      metadata: expect.objectContaining({ status: 'skipped', why: 'stripe_not_confirmed', kind: 'refunded', moneyMoved: false }),
     }))
+    // …and the two D′ L8 keys are PRESENT, whatever their value: « the restaurant notice was not recorded »
+    // and « it was recorded as skipped » must not look the same in a trail an admin reads later.
+    const meta = (auditMock.mock.calls.at(-1)?.[0] as { metadata: Record<string, unknown> }).metadata
+    expect(Object.keys(meta)).toContain('restaurantStatus')
+    expect(Object.keys(meta)).toContain('restaurantWhy')
   })
 
   it('D′ L1 INVERSION (S-25) — kill-switch (no product flag, no lease) → 200 and the notice is SENT with claimsOpen: true; the surface itself reads closed', async () => {
@@ -185,7 +194,13 @@ describe('J-C27 — the evidence passed to the sender', () => {
     expect(r.status).toBe(200)
     expect(senderMock).toHaveBeenCalledWith({ claimId: 'cl1', evidence: { basis: 'stripe_read', amountCents: 1250 }, claimsOpen: true })
     expect(r.body.customerEmail).toEqual({ status: 'sent', kind: 'refunded' })
-    expect(auditMock).toHaveBeenCalledWith(expect.objectContaining({ action: 'claim.closure_notice', metadata: { status: 'sent', why: null, kind: 'refunded', moneyMoved: false } }))
+    // D′ L8: the restaurant notice is attempted on this path (refunded + Stripe evidence) and reports its
+    // own outcome. With no ledger line in this fixture it is `ledger_incomplete` — §16, and the assertion
+    // worth keeping: a kill-switch does not suppress it, a missing accounting line does.
+    expect(auditMock).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'claim.closure_notice',
+      metadata: expect.objectContaining({ status: 'sent', why: null, kind: 'refunded', moneyMoved: false }),
+    }))
   })
 
   it('…and the same under an open legacy lease or the product surface: the closure gate never varies', async () => {
@@ -212,7 +227,11 @@ describe('J-C27 — the evidence passed to the sender', () => {
   it('a sender that throws → 200 with customerEmail failed / sender_error', async () => {
     senderMock.mockRejectedValue(new Error('boom'))
     const r = await post()
-    expect(r).toEqual({ status: 200, body: { customerEmail: { status: 'failed', kind: 'refunded', why: 'sender_error' } } })
+    // D′ L8: `restaurantEmail` joins the body. It is present (this is a refunded closure with Stripe
+    // evidence) and carries its own outcome — the customer sender throwing does not decide the other one.
+    expect(r.status).toBe(200)
+    expect(r.body.customerEmail).toEqual({ status: 'failed', kind: 'refunded', why: 'sender_error' })
+    expect(Object.keys(r.body).sort()).toEqual(['customerEmail', 'restaurantEmail'])
   })
 })
 
@@ -221,7 +240,12 @@ describe('J-C27 — no money path, pinned in the source', () => {
   const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '')
   const named = (from: string) => Array.from(code.matchAll(new RegExp(`import\\s*\\{([^}]*)\\}\\s*from\\s*'${from.replace(/\//g, '\\/')}'`, 'g'))).flatMap((m) => m[1].split(',').map((s) => s.trim()).filter(Boolean))
   it('imports from @/lib/claims are exactly {reconcileClaimEvidence} and from @/lib/claim-flags exactly {claimNoticeGate} (D′ L1); no executeRefund, getStripe, lib/refund, lib/stripe or adminAuditLog', () => {
-    expect(named('@/lib/claims')).toEqual(['reconcileClaimEvidence'])
+    // D′ L8 (T-46): a SECOND named import from lib/claims, and it is a READ. `readClaimFinancialEffect`
+    // reads the claim, the bound Refund row, the ledger lines of its `re_…` and the charge's commission;
+    // it writes nothing, calls no engine and touches no Stripe (the route's only Stripe read is still
+    // `reconcileClaimEvidence`). Naming it here keeps the list exhaustive, which is what stops a third
+    // import — an engine call, say — from arriving unnoticed.
+    expect(named('@/lib/claims').sort()).toEqual(['readClaimFinancialEffect', 'reconcileClaimEvidence'])
     expect(named('@/lib/claim-flags')).toEqual(['claimNoticeGate'])
     expect(code).not.toMatch(/\bisClaimsEnabled\b|\bclaimsSurfaceOpen\b|\bclaimsIntakeOpen\b/)
     expect(code).not.toMatch(/executeRefund|getStripe|@\/lib\/refund['"]|@\/lib\/stripe['"]|adminAuditLog/)

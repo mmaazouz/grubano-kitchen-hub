@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { resolveAdmin } from '@/lib/admin-guard'
 import { listFinancialVerificationClaims, listReconcileRequiredClaims, listActionableRefundClaims, listUnfinalizedClaimRefundRows, listRefundedClaimsWithUnprovenRow } from '@/lib/claims'
 // ROUND 13 (H10, slice W7): the « Avis client non envoyés » list — read-only, outside lib/claim-emails (H15).
-import { listMissingClaimClosureNotices } from '@/lib/claim-closure-lists'
+import { listPendingRestaurantRefundNotices, listMissingClaimClosureNotices } from '@/lib/claim-closure-lists'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -45,13 +45,21 @@ export async function GET() {
   // ROUND 13 (H10 / I-09, slice W7): the two sections kept out of `total`, read AFTER the money lists and each in its own
   // catch — a failure of one of them never costs the operator the money queue above ({ error: 'unreadable' }, count null).
   const unreadable = { error: 'unreadable' as const }
-  const [refundedUnproven, closureNotices] = await Promise.all([
+  // D′ L8 (§18): a THIRD section, in its own catch like the other two. It answers a question the closure
+  // list cannot: « which settled refunds has the RESTAURANT not been told about? » On the ordinary path the
+  // customer's notice IS dispatched, so those claims never appear in `closureNotices` — surfacing the
+  // restaurant notice only there would have left it unreachable in exactly the normal case.
+  const [refundedUnproven, closureNotices, restaurantNotices] = await Promise.all([
     listRefundedClaimsWithUnprovenRow().catch((e: unknown) => {
       console.error('[claims financial-verification] refundedUnproven NOT READ —', e instanceof Error ? e.message : e)
       return unreadable
     }),
     listMissingClaimClosureNotices().catch((e: unknown) => {
       console.error('[claims financial-verification] closureNotices NOT READ —', e instanceof Error ? e.message : e)
+      return unreadable
+    }),
+    listPendingRestaurantRefundNotices().catch((e: unknown) => {
+      console.error('[claims financial-verification] restaurantNotices NOT READ —', e instanceof Error ? e.message : e)
       return unreadable
     }),
   ])
@@ -66,6 +74,7 @@ export async function GET() {
     unfinalizedRefundRows,
     refundedUnproven,
     closureNotices,
+    restaurantNotices,
     counts: {
       financialVerification: financialVerification.length,
       reconcileRequired:     reconcileRequired.length,
@@ -78,6 +87,8 @@ export async function GET() {
       refundedUnproven:      countOf(refundedUnproven),
       /** H10 / E-16: closures of this build without a dispatched notice — outside `total`; null when unreadable. */
       closureNoticesMissing: countOf(closureNotices),
+      /** D′ L8 (§18): settled refunds the RESTAURANT has not been told about — outside `total`; null when unreadable. */
+      restaurantNoticesPending: countOf(restaurantNotices),
     },
   })
 }

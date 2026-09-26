@@ -173,6 +173,37 @@ export const CLOSURE_KIND_LABEL: Record<ClosureKind, string> = {
 /** H10 blockers. IMPLEMENTATION NOTE (W7) on H10 / ER-C22: refunded_row_ambiguous (two or more binders, A-S43) is listed in
  *  neither section, so its line names no section. */
 export type ClosureNoticeBlocker = 'refunded_row_failed' | 'refunded_row_unproven' | 'refunded_row_ambiguous'
+/**
+ * D′ L8 (§18) — THE RESTAURANT'S POST-MONEY NOTICE, AS THE ADMIN READS IT.
+ *
+ * The customer's closure notice and the restaurant's financial notice are DIFFERENT messages with
+ * different conditions, and until now the console only knew about the first. An admin pressing « Envoyer
+ * l'avis au client » had no way to see whether the restaurant had been told what the refund cost them —
+ * which is the one notice a restaurateur will ask about.
+ *
+ * Each line says WHY, not just THAT. `ledger_incomplete` is the one worth wording carefully: the refund
+ * really settled at Stripe, so « rien n'a bougé » would be false; what is missing is the accounting line
+ * the figures come from, and until it exists the mail cannot state them (§16).
+ */
+export const RESTAURANT_NOTICE_LINE: Record<string, string> = {
+  not_due:              'Aucun avis financier au restaurant : cette clôture n’est pas un remboursement.',
+  refund_not_succeeded: 'Avis financier au restaurant non dû pour l’instant : le remboursement lié n’est pas réglé chez Stripe.',
+  ledger_incomplete:    'Avis financier au restaurant NON envoyable : le remboursement est réglé chez Stripe mais aucune écriture comptable ne permet d’en énoncer les montants. Aucun chiffre ne sera envoyé tant que la ligne manque.',
+  already_sent:         'Avis financier au restaurant : déjà envoyé.',
+  pending:              'Avis financier au restaurant : à envoyer (les montants sont établis).',
+  unknown:              'Avis financier au restaurant : état indéterminé (une lecture a échoué) — rien n’est affirmé.',
+}
+
+/** D′ L8 (§18): the heading and intro of « Avis financier au restaurant non envoyé ». */
+export const RESTAURANT_NOTICES_HEADING = (n: number | null) =>
+  `Avis financier au restaurant non envoyé${n === null ? '' : ` (${n})`}`
+export const RESTAURANT_NOTICES_INTRO =
+  'Remboursements ABOUTIS chez Stripe dont le restaurant n’a pas encore reçu l’avis financier. C’est une vérité APRÈS argent : aucun réglage produit ne la masque, et l’avis est envoyé par le même bouton que l’avis client. Une ligne « preuve comptable manquante » n’est pas envoyable : le remboursement est bien réglé, mais aucune écriture ne permet d’en énoncer les montants, et aucun chiffre n’est communiqué tant qu’elle manque.'
+export const RESTAURANT_NOTICE_STATE_LINE: Record<'pending' | 'ledger_incomplete', string> = {
+  pending:           'À envoyer : les montants sont établis.',
+  ledger_incomplete: 'NON envoyable : preuve comptable manquante pour ce remboursement.',
+}
+
 export const CLOSURE_BLOCKER_LINE: Record<ClosureNoticeBlocker, string> = {
   refunded_row_unproven:  'Non envoyable : la ligne de remboursement liée n’est pas établie (voir « Réclamations remboursées dont la ligne liée n’est pas établie »).',
   refunded_row_failed:    'Non envoyable : la ligne de remboursement liée est ÉCHOUÉE (voir « Vérification financière requise », où « Réconcilier d’après la preuve » la relit).',

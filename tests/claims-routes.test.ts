@@ -50,7 +50,11 @@ beforeEach(() => {
   autoMock.mockResolvedValue({ state: 'not_eligible' })
   listMock.mockResolvedValue([])
   eligMock.mockResolvedValue({ canClaim: true, maxRefundableCents: 5000, windowHours: 48, existingClaim: null })
-  respondMock.mockResolvedValue({ ok: true, claim: { id: 'cl1', status: 'refunded' }, refund: { state: 'refunded', refundId: 'rf1' } })
+  // D′ L8: the route now PROJECTS the answered claim instead of forwarding the row, so the double must
+  // carry what a real `respondToClaim` return carries — an orderId to derive the public reference from,
+  // and the state the derived status is read out of. `status:'refunded'` is deliberately kept: it proves
+  // the projection derives a label from whatever the lib hands back rather than echoing a raw value.
+  respondMock.mockResolvedValue({ ok: true, claim: { id: 'cl1', orderId: 'o1', status: 'refunded', restaurantResponse: 'accepted', decidedAt: null }, refund: { state: 'refunded', refundId: 'rf1' } })
   scopeMock.mockResolvedValue({ ok: true, ownedIds: ['r1'], operatorId: 'op1' })
   photoMock.mockResolvedValue({ ok: true, url: 'https://cdn/x.jpg', warnings: [] })
 })

@@ -174,7 +174,12 @@ export async function PATCH(
           consumerId:           order.consumerId,
           restaurantId:         order.restaurantId,
           requestedAmountCents: claimAmountCents,
-          description:          `Annulation par le restaurant d'une commande payée (${order.id}).`,
+          // D′ L8: the PUBLIC reference, not the internal id. This description is the claim's
+          // `description`, which the restaurant projection surfaces as the customer message — an internal
+          // cuid reaching a restaurant screen was the one raw identifier the L8 contract had missed. The
+          // reference is the same one the e-mails and the client's own pass print, so it is also the one an
+          // operator can match against.
+          description:          `Annulation par le restaurant d'une commande payée (${orderRef(order.id)}).`,
           tx,
         })
         return u

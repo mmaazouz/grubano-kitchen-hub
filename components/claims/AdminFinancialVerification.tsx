@@ -11,6 +11,7 @@ import {
   reconcileToast, settledReverifyToast, SETTLED_REVERIFY_BUTTON, SETTLED_REVERIFY_CAPTION, NO_MONEY_HERE, D4_PRECLICK_CAPTION,
   refundedUnprovenHeading, REFUNDED_UNPROVEN_TEXT, REFUNDED_UNPROVEN_RECONCILE_CAPTION, REFUNDED_UNPROVEN_NO_ACTION, REFUNDED_UNPROVEN_TRUNCATED,
   closureNoticesHeading, CLOSURE_NOTICES_INTRO, CLOSURE_NOTICE_BUTTON, CLOSURE_NOTICES_TRUNCATED, CLOSURE_KIND_LABEL, CLOSURE_BLOCKER_LINE,
+  RESTAURANT_NOTICE_LINE, RESTAURANT_NOTICES_HEADING, RESTAURANT_NOTICES_INTRO, RESTAURANT_NOTICE_STATE_LINE,
   LIST_UNREADABLE_TEXT, itemsCappedText, type ClosureNoticeBlocker,
 } from '@/lib/claim-console-copy'
 // ROUND 13 (G12, B10): the attribution success copy and the pending-row legend come from the shared pure module.
@@ -82,7 +83,9 @@ type Payload = {
     reconcilable: boolean
   }>
   /** ROUND 13 (H10 / E-16, slice W7): this build's closures without a dispatched notice — outside `total`. */
-  closureNotices?: SectionList<{ claimId: string; orderId: string; kind: ClosureKind; decidedAt: string | null; blocker: ClosureNoticeBlocker | null }>
+  closureNotices?: SectionList<{ claimId: string; orderId: string; kind: ClosureKind; decidedAt: string | null; blocker: ClosureNoticeBlocker | null; restaurantNotice?: string }>
+  /** D′ L8 (§18): settled refunds the RESTAURANT has not been told about — its own population. */
+  restaurantNotices?: SectionList<{ claimId: string; orderId: string; decidedAt: string | null; state: 'pending' | 'ledger_incomplete' }>
   counts: {
     financialVerification: number; reconcileRequired: number; otherUnsettled: number; total: number; unfinalizedRefundRows?: number
     refundedUnproven?: number | null; closureNoticesMissing?: number | null
@@ -355,6 +358,7 @@ export default function AdminFinancialVerification({ initialData }: { initialDat
   const unfinalized = data?.unfinalizedRefundRows ?? []
   const refundedList = data?.refundedUnproven
   const noticesList = data?.closureNotices
+  const restoNoticesList = data?.restaurantNotices
   // ROUND 13 (AMF-1, slice W7): the re-verification control renders whatever the queue holds — an E-09 claim is in no list.
   const settledReverifyControl = (
     <div className="mb-3 rounded-grubano-xl border border-grubano-border bg-grubano-surface p-3" data-section="settled-reverify">
@@ -733,10 +737,46 @@ export default function AdminFinancialVerification({ initialData }: { initialDat
                       {CLOSURE_NOTICE_BUTTON}
                     </Button>
                     {n.blocker && <p className="mt-1 text-[12px] text-red-700">{CLOSURE_BLOCKER_LINE[n.blocker]}</p>}
+                    {/* D′ L8 (§18): whether the RESTAURANT was told what the refund cost it, and if not, why.
+                        A different message with different conditions from the customer's notice above. */}
+                    {n.restaurantNotice && RESTAURANT_NOTICE_LINE[n.restaurantNotice] && (
+                      <p className={`mt-1 text-[12px] ${n.restaurantNotice === 'ledger_incomplete' ? 'text-red-700' : 'text-grubano-ink-muted'}`}>
+                        {RESTAURANT_NOTICE_LINE[n.restaurantNotice]}
+                      </p>
+                    )}
                   </li>
                 ))}
               </ul>
             </>
+          )}
+        </div>
+      )}
+      {restoNoticesList && sectionWeight(restoNoticesList) > 0 && (
+        <div className="mt-4 rounded-grubano-xl border border-grubano-border bg-grubano-surface p-4" data-section="restaurant-notices">
+          <h3 className="text-sm font-bold text-grubano-ink">
+            {RESTAURANT_NOTICES_HEADING('error' in restoNoticesList ? null : restoNoticesList.total)}
+          </h3>
+          <p className="mt-1 text-[13px] text-grubano-ink-muted">{RESTAURANT_NOTICES_INTRO}</p>
+          {'error' in restoNoticesList ? (
+            <p className="mt-2 text-[13px] text-red-700">{LIST_UNREADABLE_TEXT}</p>
+          ) : (
+            <ul className="mt-2 space-y-2 text-[13px] text-grubano-ink">
+              {restoNoticesList.items.map((n) => (
+                <li key={n.claimId}>
+                  Commande #{n.orderId.slice(-6)} — réclamation <code>{n.claimId}</code>
+                  {n.decidedAt ? ` — clôturée le ${new Date(n.decidedAt).toLocaleString(locale)}` : ''}
+                  {' '}
+                  {/* Same button as the customer notice: the route sends BOTH, each on its own conditions.
+                      Disabled when the accounting proof is missing — never a silent disabled control. */}
+                  <Button size="sm" variant="secondary" disabled={busyId === n.claimId || n.state !== 'pending'} onClick={() => sendClosureNotice(n.claimId)}>
+                    {CLOSURE_NOTICE_BUTTON}
+                  </Button>
+                  <p className={`mt-1 text-[12px] ${n.state === 'pending' ? 'text-grubano-ink-muted' : 'text-red-700'}`}>
+                    {RESTAURANT_NOTICE_STATE_LINE[n.state]}
+                  </p>
+                </li>
+              ))}
+            </ul>
           )}
         </div>
       )}

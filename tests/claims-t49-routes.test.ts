@@ -13,12 +13,17 @@ const readFileSync = (p: string, enc: 'utf8') => readRaw(p, enc).replace(/\r\n/g
 const { adminMock } = vi.hoisted(() => ({ adminMock: vi.fn() }))
 vi.mock('@/lib/admin-guard', () => ({ resolveAdmin: adminMock }))
 
-const { reconcileMock, attributeMock, adoptMock, fvMock, rrMock, actionableMock, unfinalizedMock, unprovenMock, noticesMock } = vi.hoisted(() => ({
+const { reconcileMock, attributeMock, adoptMock, fvMock, rrMock, actionableMock, unfinalizedMock, unprovenMock, noticesMock, restoNoticesMock } = vi.hoisted(() => ({
   reconcileMock: vi.fn(), attributeMock: vi.fn(), adoptMock: vi.fn(), fvMock: vi.fn(), rrMock: vi.fn(), actionableMock: vi.fn(), unfinalizedMock: vi.fn(),
-  unprovenMock: vi.fn(), noticesMock: vi.fn(),
+  unprovenMock: vi.fn(), noticesMock: vi.fn(), restoNoticesMock: vi.fn(),
 }))
 // ROUND 13 (H10, slice W7): the « Avis client non envoyés » list the financial-verification route reads.
-vi.mock('@/lib/claim-closure-lists', () => ({ listMissingClaimClosureNotices: noticesMock }))
+// D′ L8 (§18): the route now also reads the RESTAURANT notice population — its own question, because the
+// customer-notice list drops a claim as soon as that notice is dispatched, which is the ordinary path.
+vi.mock('@/lib/claim-closure-lists', () => ({
+  listMissingClaimClosureNotices: noticesMock,
+  listPendingRestaurantRefundNotices: restoNoticesMock,
+}))
 vi.mock('@/lib/claims', () => ({
   reconcileClaimEvidence:            reconcileMock,
   attributeClaimRefund:              attributeMock,
@@ -67,6 +72,7 @@ beforeEach(() => {
   fvMock.mockResolvedValue([]); rrMock.mockResolvedValue([]); actionableMock.mockResolvedValue([]); unfinalizedMock.mockResolvedValue([])
   // ROUND 13 (H10, slice W7): both section lists read and empty by default.
   unprovenMock.mockResolvedValue({ items: [], total: 0, scanTruncated: false }); noticesMock.mockResolvedValue({ items: [], total: 0, scanTruncated: false })
+  restoNoticesMock.mockResolvedValue({ items: [], total: 0 })
   // The claims SURFACE is CLOSED throughout this file: no lease, no product flag (D′ L1) — the money handles outlive it.
   delete process.env.CLAIMS_ENABLED
   delete process.env.CLAIMS_WINDOW_UNTIL
@@ -297,7 +303,8 @@ describe('GET /financial-verification — ungated AT THE ROUTE, not just in the 
     noticesMock.mockResolvedValue({ items: [{ claimId: 'n1' }, { claimId: 'n2' }], total: 2, scanTruncated: true })
     let res = await QUEUE()
     let body = await res.json()
-    expect(body.counts).toEqual({ financialVerification: 1, reconcileRequired: 0, otherUnsettled: 0, unfinalizedRefundRows: 0, total: 1, refundedUnproven: 1, closureNoticesMissing: 2 })
+    // D′ L8 (§18): `restaurantNoticesPending` joins the counts, outside `total` like its two neighbours.
+    expect(body.counts).toEqual({ financialVerification: 1, reconcileRequired: 0, otherUnsettled: 0, unfinalizedRefundRows: 0, total: 1, refundedUnproven: 1, closureNoticesMissing: 2, restaurantNoticesPending: 0 })
     expect(body.closureNotices).toEqual({ items: [{ claimId: 'n1' }, { claimId: 'n2' }], total: 2, scanTruncated: true })
     vi.spyOn(console, 'error').mockImplementation(() => {})
     noticesMock.mockRejectedValue(new Error('db down'))

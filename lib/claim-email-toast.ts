@@ -16,6 +16,15 @@ export type CustomerEmailWhy =
   | 'claim_not_found'
   | 'no_closure_record'
   | 'not_a_closure'
+  /**
+   * D′ L8 (T-46, §16): the RESTAURANT's financial notice was withheld because the ledger cannot state the
+   * figures. Restated here because this union is pinned EQUAL to lib/claim-emails' ClaimEmailWhy by a test —
+   * that equality is what lets the console bundle a copy table without importing the senders (H15), so the
+   * two must move together. It maps to its own toast key rather than to `notSent`: « not sent » would put it
+   * with the transport failures, and this one is not a failure — the mail is correctly withheld until an
+   * accounting line exists, and the operator needs to read exactly that.
+   */
+  | 'ledger_incomplete'
   | 'sender_error'
 
 export type CustomerEmailKey =
@@ -43,6 +52,14 @@ const SKIP_KEY: Partial<Record<CustomerEmailWhy, CustomerEmailKey>> = {
   refunded_row_unproven: 'rowUnproven',
   refunded_row_failed:   'rowUnproven',
   stripe_not_confirmed:  'stripeNotConfirmed',
+  // D′ L8: `ledger_incomplete` is produced by the RESTAURANT sender, whose result never reaches this
+  // function — the closure-notice route returns it separately and the console renders it through
+  // RESTAURANT_NOTICE_LINE, where the wording can say « restaurant » and not « client ». It is listed in the
+  // union above ONLY because that union is pinned equal to lib/claim-emails' ClaimEmailWhy, which is what
+  // lets the console bundle a copy table without importing the senders (H15). Mapped to the generic key so
+  // the frozen 9-key H11 copy table is untouched, and so an unexpected arrival here still says « not sent »
+  // rather than nothing.
+  ledger_incomplete:     'notSent',
   claim_not_found:       'notSent',
   no_closure_record:     'notSent',
 }

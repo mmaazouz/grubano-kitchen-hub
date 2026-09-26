@@ -330,7 +330,11 @@ describe('the census exposes schemaReady; L3b ships no consumer, no gate, no mon
     expect(claimsCode).toMatch(/selection:\s+selectionSnapshot/)          // written in the create, once
     expect(claimsCode).toMatch(/selection:\s+systemClaimSelection\(/)     // and on the system claim too
     expect(claimsCode).toMatch(/selection: true,/)                        // selected on the ADMIN-only list
-    expect(claimsCode).toMatch(/delete pub\.selection/)                   // and REMOVED from the restaurant's
+    // D′ L8 (S-19): the restaurant's projection no longer DELETES the column — it READS it and renders a
+    // summary through lib/claim-restaurant-view, which assembles the response key by key. The L7 mechanism
+    // (a whole-row spread plus one delete) is gone with its cause, so what is asserted now is the builder.
+    expect(claimsCode).toMatch(/buildRestaurantClaimView/)
+    expect(claimsCode).not.toMatch(/delete pub\.selection/)
     // …and every surface L7 deliberately did NOT open still has no idea the column exists. The restaurant
     // display is L8's contract (S-19); the frozen engine and the pure decision rules never see a selection
     // at all, because WHAT was claimed is not an input to WHETHER money may move.

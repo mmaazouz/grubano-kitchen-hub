@@ -7241,7 +7241,43 @@
       "refused": "Reclamación rechazada.",
       "refundPending": "Aceptada — reembolso pendiente de activación.",
       "processing": "Procesando…",
-      "responseNote": "Una reclamación sin respuesta permanece pendiente: responda lo antes posible. El cliente ve su decisión desde su pedido y puede impugnar un rechazo ante Grubano."
+      "responseNote": "Una reclamación sin respuesta permanece pendiente: responda lo antes posible. El cliente ve su decisión desde su pedido y puede impugnar un rechazo ante Grubano.",
+      "status": {
+        "received": "Recibida — esperando su respuesta",
+        "answered_refused": "Ha rechazado esta reclamación",
+        "grubano_deciding": "En arbitraje por Grubano",
+        "approved_awaiting_refund": "Aprobada por Grubano — reembolso pendiente",
+        "refunding": "Reembolso en curso",
+        "refunded": "Reembolsada al cliente",
+        "refusal_confirmed": "Rechazo confirmado por Grubano",
+        "refused_by_grubano": "Rechazada por Grubano",
+        "closed": "Expediente cerrado por Grubano",
+        "under_review": "En verificación por Grubano"
+      },
+      "statusLabel": "Estado",
+      "tabPending": "Por responder",
+      "tabHistory": "Historial",
+      "historyEmpty": "Ninguna reclamación cerrada o en arbitraje.",
+      "selectionLabel": "Lo que pidió el cliente",
+      "selectionItems": "Artículos afectados",
+      "selectionAmount": "Un importe preciso",
+      "selectionWhole": "Todo el pedido",
+      "selectionNotRecorded": "Selección no registrada",
+      "approvedLabel": "Importe aprobado por Grubano",
+      "yourAnswer": "Su respuesta",
+      "yourAnswerAccepted": "Aceptada",
+      "yourAnswerRefused": "Rechazada",
+      "previouslyClaimed": "Ya afectado por una reclamación anterior",
+      "previouslyClaimedLine": "{name} — reclamación {ref} ({status}) — {qty} unidad(es)",
+      "previouslyClaimedOther": "{count} reclamación(es) anterior(es) en este pedido sin artículos indicados.",
+      "previouslyClaimedNote": "Solo informativo: no limita el derecho del cliente ni las cantidades reclamables.",
+      "financeTitle": "Efecto financiero confirmado",
+      "financeRefund": "Reembolsado al cliente",
+      "financeNet": "Impacto neto para su establecimiento",
+      "financeNote": "Importes procedentes de nuestros asientos contables confirmados. Los gastos Grubano devueltos incluyen la comisión y, en su caso, los demás gastos retenidos en el pedido.",
+      "financeUnconfirmed": "Todavía no hay efecto financiero confirmado.",
+      "financeFee": "Gastos Grubano devueltos",
+      "previouslyClaimedIncomplete": "La lista de reclamaciones anteriores está incompleta: la ausencia de una línea no significa que no haya ninguna."
     },
     "admin": {
       "title": "Arbitraje de reclamaciones",
@@ -7280,8 +7316,8 @@
       "pendingOverdue": "Plazo de respuesta superado",
       "arbitrationTitle": "En arbitraje — por decidir",
       "reasonSystem": "Motivo (sistema)",
-        "scope": "Alcance",
-        "selectionNotRecorded": "Selección no registrada",
+      "scope": "Alcance",
+      "selectionNotRecorded": "Selección no registrada",
       "systemDetails": "Detalles (sistema)",
       "customerEmail": {
         "sent": "Correo al cliente entregado al servidor de envío.",
@@ -8838,6 +8874,15 @@
       "title": "Reembolso vinculado",
       "body": "La reclamación relativa a su pedido {ref} se ha cerrado: está vinculada a un reembolso registrado en nuestros registros.",
       "next": "Si este reembolso no aparece en su extracto, responda a este correo indicando la referencia {ref}."
+    },
+    "restaurantRefunded": {
+      "subject": "Reembolso confirmado en el pedido {ref}",
+      "title": "Reembolso confirmado",
+      "body": "Se ha confirmado un reembolso para el pedido {ref} en {resto}.",
+      "lineRefund": "Reembolsado al cliente",
+      "lineNet": "Impacto neto confirmado para su establecimiento",
+      "next": "Estos importes provienen de nuestros asientos contables confirmados; los gastos Grubano devueltos incluyen la comisión y, en su caso, los demás gastos retenidos en el pedido. Para cualquier duda, responda a este correo indicando la referencia {ref}.",
+      "lineFee": "Gastos Grubano devueltos"
     }
   }
 }

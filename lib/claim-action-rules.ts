@@ -866,6 +866,72 @@ export function deriveNoRowOutcome(read: OrderMoneyRead, claimId: string): NoRow
   return { kind: 'proof', basis: 'verdict', prefix: proofPrefixFor(verdict), verdict, explained }
 }
 
+// ══ D′ L8 (S-19) — THE RESTAURANT STATUS CONTRACT ════════════════════════════════════════════════
+//
+// A restaurant had no derived status at all: `listRestaurantClaims` shipped the RAW `Claim.status` (and
+// the raw `refundError` beside it) and the panel simply never rendered them. The moment anything renders
+// them, a restaurateur reads `no_refund_proven_rail_locked:` or a French engine sentence quoting another
+// claim's id — because every marker in MARKERS is PREFIXED with its own token and the texts embed Refund
+// row ids, Stripe refund ids and verbatim engine refusals (absenceProofText, resume_mismatch texts, …).
+//
+// So the restaurant gets what the customer already has: a CLOSED set of business labels, derived here,
+// with a neutral fall-through. Two properties matter more than the mapping itself:
+//   • an unknown raw status can never reach a screen. `Claim.status` is a bare Prisma String whose value
+//     list lives in a schema COMMENT, so a future additive status WILL arrive here; a map with no default
+//     would render its raw key path as a label.
+//   • « remboursé » is never said without the same proof the customer's « Remboursée » needs (F03). A
+//     claim whose refund was REVERTED at Stripe still carries raw status 'refunded' — telling the
+//     restaurant the money went back would be the F03/F04 defect, on the other side of the table.
+//
+// This set is DELIBERATELY NOT `CUSTOMER_STATUSES`: the two audiences read different sentences about the
+// same fact (« Votre demande nécessite une vérification » is addressed to the claimant, not to the
+// restaurant it concerns), and the customer's key set is asserted exhaustive in every locale by the copy
+// contract. Restaurant copy lives under its own namespace, `claims.restaurant.status.*`.
+
+/**
+ * Spec v2 §7.3's vocabulary, plus `refunding` (the founder's §4 names « remboursement en cours » as a
+ * state the restaurant should see) and `under_review` (the neutral fall-through the spec list has no
+ * value for — see above: without it an unmapped status becomes a raw key on screen).
+ */
+export const RESTAURANT_STATUSES = [
+  'received', 'answered_refused', 'grubano_deciding', 'approved_awaiting_refund',
+  'refunding', 'refunded', 'refusal_confirmed', 'refused_by_grubano', 'closed', 'under_review',
+] as const
+export type RestaurantStatus = typeof RESTAURANT_STATUSES[number]
+
+/**
+ * The status the RESTAURANT is shown. Same evidence and same fail-closed discipline as
+ * `customerClaimStatus`, different audience and different vocabulary.
+ *
+ * `boundRowInProgress` / `refundedRow` are the F03 row facts, read by the caller: `null` means the row
+ * could not be read, and an unread row never becomes a positive statement about money.
+ */
+export function restaurantClaimStatus(c: ClaimFacts, boundRowInProgress: boolean | null, refundedRow: boolean | null = null): RestaurantStatus {
+  const NEUTRAL: RestaurantStatus = 'under_review'
+  // The money state is open by our own admission — say only that, and nothing about why.
+  if (c.status === MARKERS.FINANCIAL_VERIFICATION) return NEUTRAL
+  if (c.status === 'refunding') {
+    return !c.refundError && !!c.refundId && boundRowInProgress === true ? 'refunding' : NEUTRAL
+  }
+  if (c.status === 'approved') return (c.refundError || c.refundAttempted === true) ? NEUTRAL : 'approved_awaiting_refund'
+  const kind = claimClosureKind(c)
+  // REVERTED_AFTER_REFUND: raw status still 'refunded', money actually reversed at Stripe.
+  if (c.status === 'refunded' && kind === null) return NEUTRAL
+  // Unlike the customer, the restaurant gets no « remboursement non confirmé » wording: an unproven
+  // settlement is simply still under review here, and the CONFIRMED FIGURES (T-46) are the only channel
+  // that ever states money to a restaurant.
+  if (kind === 'refunded') return refundedRow === true ? 'refunded' : NEUTRAL
+  if (kind === 'settled_by_declaration' || kind === 'closed_by_declaration') return 'closed'
+  if (kind === 'refused_confirmed') return 'refusal_confirmed'
+  if (kind === 'refused_by_grubano') return 'refused_by_grubano'
+  if (c.status === 'restaurant_review') return 'received'
+  // Raw 'refused' is written by the restaurant's own refusal and by nothing else today. If that ever
+  // stops being true, the label must not claim the restaurant answered.
+  if (c.status === 'refused') return c.restaurantResponse === 'refused' ? 'answered_refused' : NEUTRAL
+  if (c.status === 'arbitration') return 'grubano_deciding'
+  return NEUTRAL
+}
+
 // ══ F01-F05 — THE CUSTOMER STATUS CONTRACT ═══════════════════════════════════════════════════════
 
 /** F01: the closed set. ClaimSection renders `status.${s}` from customerClaimStatus only. */
@@ -912,6 +978,23 @@ export function customerClaimReasons(c: ClaimFacts & { restaurantResponseReason?
     arbitrationReason: c.arbitrationDecision && !declaration ? (c.arbitrationReason ?? null) : null,
   }
 }
+
+/**
+ * D′ L8 (T-46) — THE RESTAURANT'S POST-MONEY NOTICE: its trigger and its dedupe key.
+ *
+ * Declared HERE, beside `CLOSURE_TRIGGER` and `closureRecordKey`, because two modules need it and neither
+ * may import the other: the SENDER (lib/claim-emails) and the admin's « was the restaurant told? » list
+ * (lib/claim-closure-lists, which is deliberately not an importer of the senders so the H15 importer set
+ * stays the routes). Restating the literals in both — the way that module restates BINDER_OR — would put a
+ * dedupe key in two places, and a dedupe key that disagrees with itself sends twice or never.
+ *
+ * The key is anchored on the PROVEN refund, not on the claim: a claim can carry more than one refund over
+ * its life and each is its own financial event, so `claim:<id>` alone would report the second one as
+ * already sent. Same reason the customer's closure record is per claim and this one is per `re_`.
+ */
+export const RESTAURANT_REFUNDED_TRIGGER = 'claim_restaurant_refunded'
+export const restaurantRefundedKey = (claimId: string, stripeRefundId: string) =>
+  `claim:${claimId}:resto_refunded:${stripeRefundId}`
 
 /** H05: this build's closure record — the only closure-notice eligibility source. */
 export const CLOSURE_RECORD_TRIGGER = 'claim_closure_record'

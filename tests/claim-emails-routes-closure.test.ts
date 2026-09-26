@@ -107,7 +107,7 @@ beforeEach(() => {
 afterEach(() => { errSpy.mockRestore(); delete process.env.SMTP_PASS; killSwitch() })
 
 describe('J-M38 — no money path', () => {
-  it('lib/claim-emails.ts imports none of lib/refund, lib/stripe, lib/claims; the closure-notice route calls only reconcileClaimEvidence, sendClaimClosureEmail and recordAdminAudit beyond its guards and its claim read', () => {
+  it('lib/claim-emails.ts imports none of lib/refund, lib/stripe, lib/claims; the closure-notice route calls only reconcileClaimEvidence, readClaimFinancialEffect, sendClaimClosureEmail, sendRestaurantRefundedEmail and recordAdminAudit beyond its guards and its claim read', () => {
     expect(readFileSync('lib/claim-emails.ts', 'utf8')).not.toMatch(/@\/lib\/(refund|stripe|claims)['"]/)
     // Comments and string literals stripped: a French word before a parenthesis inside a message is not a call.
     const code = readFileSync('app/api/admin/claims/[id]/closure-notice/route.ts', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '')
@@ -116,7 +116,16 @@ describe('J-M38 — no money path', () => {
     // D′ L1: the gate read is claimNoticeGate (lib/claim-flags, process.env only) — the legacy isClaimsEnabled is no longer
     // an accepted guard here, so a route reading it again would surface as an effect.
     const effects = Array.from(called).filter((n) => !['POST', 'resolveAdmin', 'rateLimit', 'claimNoticeGate', 'claimClosureKind', 'safeParse', 'text', 'trim', 'parse', 'json', 'findUnique', 'isInteger', 'object', 'strict', 'if', 'catch'].includes(n))
-    expect(effects.sort()).toEqual(['reconcileClaimEvidence', 'recordAdminAudit', 'sendClaimClosureEmail'])
+    // D′ L8 (T-46): THREE became FIVE, and the two new ones are named here so the addition is a decision.
+    // `readClaimFinancialEffect` is a READ (claim, Refund row, ledger lines, the charge's commission) that
+    // writes nothing and never touches Stripe — the route's Stripe re-read is still `reconcileClaimEvidence`
+    // alone. `sendRestaurantRefundedEmail` is the post-money restaurant notice; it takes the figures as a
+    // parameter, so it reads no ledger and no row of its own. What this pin protects is unchanged: nothing
+    // in this route can move money, and the list is exhaustive so a fourth effect cannot arrive unnamed.
+    expect(effects.sort()).toEqual([
+      'readClaimFinancialEffect', 'reconcileClaimEvidence', 'recordAdminAudit',
+      'sendClaimClosureEmail', 'sendRestaurantRefundedEmail',
+    ])
     expect(code).not.toMatch(/\bisClaimsEnabled\b/)
     expect(code).toMatch(/import \{ claimNoticeGate \} from ''/) // the string literals are blanked above: the named import survives
   })
@@ -175,7 +184,10 @@ describe('J-M38 — eligibility is the H05 record only', () => {
     st.claim = { ...LEGACY_REFUSAL }
     st.dispatch = []
     const r = await call(CLOSURE_NOTICE)
-    expect(r).toEqual({ status: 200, body: { customerEmail: { status: 'skipped', kind: 'refused_by_grubano', why: 'no_closure_record' } } })
+    // D′ L8: the body now carries `restaurantEmail` too. It is NULL here, and that is the assertion worth
+    // making: this claim is a REFUSAL, so there is no money and no restaurant notice — `null` distinguishes
+    // « no financial notice was due » from « one was due and was skipped », which carries a reason.
+    expect(r).toEqual({ status: 200, body: { customerEmail: { status: 'skipped', kind: 'refused_by_grubano', why: 'no_closure_record' }, restaurantEmail: null } })
     expect(sends()).toBe(0)
     expect(db.adminAuditLog.findFirst).not.toHaveBeenCalled()
     expect(db.adminAuditLog.findMany).not.toHaveBeenCalled()

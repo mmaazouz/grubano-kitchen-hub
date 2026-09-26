@@ -7241,7 +7241,43 @@
       "refused": "Réclamation refusée.",
       "refundPending": "Acceptée — remboursement en attente d’activation.",
       "processing": "Traitement…",
-      "responseNote": "Une réclamation sans réponse reste en attente : répondez au plus vite. Le client voit votre décision depuis sa commande et peut contester un refus auprès de Grubano."
+      "responseNote": "Une réclamation sans réponse reste en attente : répondez au plus vite. Le client voit votre décision depuis sa commande et peut contester un refus auprès de Grubano.",
+      "status": {
+        "received": "Reçue — en attente de votre réponse",
+        "answered_refused": "Vous avez refusé cette réclamation",
+        "grubano_deciding": "En cours d’arbitrage par Grubano",
+        "approved_awaiting_refund": "Approuvée par Grubano — remboursement en attente",
+        "refunding": "Remboursement en cours",
+        "refunded": "Remboursée au client",
+        "refusal_confirmed": "Refus confirmé par Grubano",
+        "refused_by_grubano": "Refusée par Grubano",
+        "closed": "Dossier clôturé par Grubano",
+        "under_review": "En cours de vérification par Grubano"
+      },
+      "statusLabel": "État",
+      "tabPending": "À répondre",
+      "tabHistory": "Historique",
+      "historyEmpty": "Aucune réclamation clôturée ou en cours d’arbitrage.",
+      "selectionLabel": "Demande du client",
+      "selectionItems": "Articles concernés",
+      "selectionAmount": "Montant précis demandé",
+      "selectionWhole": "Toute la commande",
+      "selectionNotRecorded": "Sélection non enregistrée",
+      "approvedLabel": "Montant approuvé par Grubano",
+      "yourAnswer": "Votre réponse",
+      "yourAnswerAccepted": "Acceptée",
+      "yourAnswerRefused": "Refusée",
+      "previouslyClaimed": "Déjà concerné par une réclamation précédente",
+      "previouslyClaimedLine": "{name} — réclamation {ref} ({status}) — {qty} unité(s)",
+      "previouslyClaimedOther": "{count} réclamation(s) précédente(s) sur cette commande sans articles précisés.",
+      "previouslyClaimedNote": "Information seulement : cela ne limite ni le droit du client ni les quantités réclamables.",
+      "financeTitle": "Effet financier confirmé",
+      "financeRefund": "Remboursé au client",
+      "financeNet": "Impact net pour votre établissement",
+      "financeNote": "Montants issus de nos écritures comptables confirmées. Les frais Grubano restitués regroupent la commission et, le cas échéant, les autres frais retenus sur la commande.",
+      "financeUnconfirmed": "Aucun effet financier confirmé pour l’instant.",
+      "financeFee": "Frais Grubano restitués",
+      "previouslyClaimedIncomplete": "La liste des réclamations antérieures est incomplète : l’absence d’une ligne ne signifie pas qu’il n’y en a pas."
     },
     "admin": {
       "title": "Arbitrage des réclamations",
@@ -7280,8 +7316,8 @@
       "pendingOverdue": "Délai de réponse dépassé",
       "arbitrationTitle": "En arbitrage — à trancher",
       "reasonSystem": "Motif (système)",
-        "scope": "Portée",
-        "selectionNotRecorded": "Sélection non enregistrée",
+      "scope": "Portée",
+      "selectionNotRecorded": "Sélection non enregistrée",
       "systemDetails": "Détails (système)",
       "customerEmail": {
         "sent": "E-mail client transmis au serveur d’envoi.",
@@ -8838,6 +8874,15 @@
       "title": "Remboursement rattaché",
       "body": "La réclamation concernant votre commande {ref} a été clôturée : elle est rattachée à un remboursement enregistré dans nos registres.",
       "next": "Si ce remboursement n’apparaît pas sur votre relevé, répondez à cet e-mail en indiquant la référence {ref}."
+    },
+    "restaurantRefunded": {
+      "subject": "Remboursement confirmé sur la commande {ref}",
+      "title": "Remboursement confirmé",
+      "body": "Un remboursement a été confirmé pour la commande {ref} chez {resto}.",
+      "lineRefund": "Remboursé au client",
+      "lineNet": "Impact net confirmé pour votre établissement",
+      "next": "Ces montants proviennent de nos écritures comptables confirmées ; les frais Grubano restitués regroupent la commission et, le cas échéant, les autres frais retenus sur la commande. Pour toute question, répondez à cet e-mail en indiquant la référence {ref}.",
+      "lineFee": "Frais Grubano restitués"
     }
   }
 }

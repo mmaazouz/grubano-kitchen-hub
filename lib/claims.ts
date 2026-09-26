@@ -53,7 +53,11 @@ import { isStripeReverted } from '@/lib/claim-money-line'
 // ROUND-8 AUDIT FIX (P1, Class 3): the server and the console ask the SAME rule which row may be attributed.
 import { attributionRefusal, ownersOf, stampedClaimId } from '@/lib/claim-attribution-rules'
 // ROUND-9 AUDIT FIX (Class 3/4): every "may a human do X on this claim?" has one shared answer.
-import { reconcileRefusal, arbitrationRefusal, customerClaimStatus, boundRowShowsInProgress, RECONCILE_GRACE_MS, reconcileMarkerAge, claimClosureKind, refundedRowTruth, proofInstantFor, MARKERS, RECONCILE_MARKER_UNREADABLE_TEXT } from '@/lib/claim-action-rules'
+import { reconcileRefusal, arbitrationRefusal, customerClaimStatus, boundRowShowsInProgress, RECONCILE_GRACE_MS, reconcileMarkerAge, claimClosureKind, refundedRowTruth, proofInstantFor, MARKERS, RECONCILE_MARKER_UNREADABLE_TEXT, restaurantClaimStatus, type RestaurantStatus } from '@/lib/claim-action-rules'
+// D′ L8 (S-19 / T-46): the restaurant's projection and the ledger-truth financial block. Both PURE — the
+// reads stay here, the decisions live there, exactly like customerClaimStatus vs listConsumerClaims.
+import { buildRestaurantClaimView, type RestaurantClaimView } from '@/lib/claim-restaurant-view'
+import { deriveFinancialEffect, type RefundLedgerFacts, type ClaimFinancialEffect, type FinancialEffectUnconfirmedReason } from '@/lib/claim-financial-effect'
 // ROUND 13 (F08): the reasons a customer payload carries, by who wrote them.
 import { customerClaimReasons } from '@/lib/claim-action-rules'
 // ROUND 13 (H05): the closure record's two constants.
@@ -706,35 +710,320 @@ function triageBySafety<T extends { reason: string }>(rows: T[]): Array<T & { sa
     .sort((a, b) => (b.safety ? 1 : 0) - (a.safety ? 1 : 0))
 }
 
-export async function listRestaurantClaims(restaurantIds: string[], opts?: { status?: string }) {
+/**
+ * D′ L8 (T-46) — ONE CLAIM'S CONFIRMED FINANCIAL EFFECT, for the post-money restaurant notice.
+ *
+ * Same evidence and same module as the projection, so the e-mail can never state a figure the panel does
+ * not, or the other way round. It reads: the claim's binding, the bound Refund row (status + `re_…`), the
+ * LEDGER LINE of that `re_`, and the commission the charge actually carried. It reads NOTHING from
+ * `Refund.applicationFeeRefundCents` / `restaurantReverseCents` — those are predictions (spec §6.5).
+ *
+ * A read that throws yields an UNCONFIRMED effect, which makes the notice unsendable (§16). Failing that
+ * way round is the point: no figure is better than a figure nobody can stand behind.
+ */
+export async function readClaimFinancialEffect(claimId: string): Promise<{
+  claim: { id: string; orderId: string; restaurantId: string } | null
+  stripeRefundId: string | null
+  effect: ClaimFinancialEffect
+}> {
+  const unconfirmed = (reason: FinancialEffectUnconfirmedReason) => ({ confirmed: false as const, reason })
+  let claim: { id: string; orderId: string; restaurantId: string; refundId: string | null; refundError: string | null } | null = null
+  try {
+    claim = await prisma.claim.findUnique({
+      where:  { id: claimId },
+      select: { id: true, orderId: true, restaurantId: true, refundId: true, refundError: true },
+    })
+  } catch { claim = null }
+  if (!claim) return { claim: null, stripeRefundId: null, effect: unconfirmed('no_refund_bound') }
+  const pub = { id: claim.id, orderId: claim.orderId, restaurantId: claim.restaurantId }
+  if (!claim.refundId) return { claim: pub, stripeRefundId: null, effect: unconfirmed('no_refund_bound') }
+  // Same gate as the projection: a set `refundError` is our own record that this money is unsettled
+  // business — a disowned binding, a reversal after settlement, a dead row. No figures, and no e-mail.
+  if (claim.refundError) return { claim: pub, stripeRefundId: null, effect: unconfirmed('claim_money_state_open') }
+
+  let row: { orderId: string; status: string; stripeRefundId: string | null } | null = null
+  try {
+    row = await prisma.refund.findUnique({
+      where:  { id: claim.refundId },
+      select: { orderId: true, status: true, stripeRefundId: true },
+    })
+  } catch { row = null }
+  if (!row) return { claim: pub, stripeRefundId: null, effect: unconfirmed('ledger_ambiguous') }
+
+  // A-S43: a row bound by two claims makes every figure on it ambiguous, for the restaurant too.
+  let binders: number | null = null
+  try {
+    binders = await prisma.claim.count({ where: { refundId: claim.refundId, OR: BINDER_OR } })
+  } catch { binders = null }
+
+  const re = row.stripeRefundId
+  let ledgerLines: RefundLedgerFacts[] | null = null
+  if (re && row.status === 'succeeded') {
+    try {
+      const lines = await prisma.ledgerEntry.findMany({
+        where:  { type: 'refund', sourceEventId: re },
+        select: { grossAmount: true, applicationFeeAmount: true, netToRestaurant: true },
+      })
+      ledgerLines = lines.map((l) => ({ grossAmount: l.grossAmount, applicationFeeAmount: l.applicationFeeAmount, netToRestaurant: l.netToRestaurant }))
+    } catch { ledgerLines = null }
+  }
+  let feeChargedCents: number | null = null
+  try {
+    const order = await prisma.order.findUnique({ where: { id: claim.orderId }, select: { stripePaymentIntentId: true } })
+    if (order?.stripePaymentIntentId) {
+      const agg = await prisma.ledgerEntry.aggregate({
+        where: { type: { in: ['payment', 'deposit_capture'] }, stripePaymentIntentId: order.stripePaymentIntentId },
+        _sum:  { applicationFeeAmount: true },
+      })
+      feeChargedCents = agg._sum.applicationFeeAmount ?? null
+    }
+  } catch { feeChargedCents = null }
+
+  return {
+    claim: pub,
+    stripeRefundId: re,
+    effect: deriveFinancialEffect({
+      bound:            true,
+      ambiguousBinding: binders === null ? true : binders >= 2,
+      refundStatus:     row.status,
+      stripeRefundId:   re,
+      rowOrderId:       row.orderId,
+      claimOrderId:     claim.orderId,
+      ledgerLines,
+      feeChargedCents,
+    }),
+  }
+}
+
+/** D′ L8: the two views the restaurant may ask for. A raw `status` is no longer a query parameter. */
+export type RestaurantClaimsView = 'pending' | 'history'
+
+/**
+ * D′ L8 (S-19) — THE RESTAURANT'S CLAIMS, PROJECTED.
+ *
+ * WHAT THIS REPLACED. A `findMany` with NO `select`, whose only redaction was `delete pub.selection`:
+ * every other column of `Claim` went to the restaurant, including `consumerId`, `decidedBy`,
+ * `refundAttempted`, `refundId`, `refundError`, `activeOrderKey`, `contestReason`, `arbitratedBy` and the
+ * raw `status`. Nothing rendered them — which is an accident, not a boundary. `refundError` alone is
+ * operator prose PREFIXED with its marker token and quoting Refund row ids, `re_…` ids and other claims'
+ * ids, and `?status=all` returned every claim of the restaurant with those texts in it.
+ *
+ * THREE CHANGES, EACH LOAD-BEARING:
+ *  1. the `select` is explicit, and the fields it reads for DERIVATION (status, refundError, refundId,
+ *     refundAttempted, arbitrationDecision, selection) are consumed here and never returned. The response
+ *     is assembled by `buildRestaurantClaimView`, which writes every key out by name — no spread — so a
+ *     future column on `Claim` cannot reach a restaurant by default (§20).
+ *  2. the raw `status` becomes a derived `RestaurantStatus` (lib/claim-action-rules), with the SAME
+ *     evidence the customer's derivation uses: « remboursé » needs the F03 row proof, a claim whose
+ *     refund was reverted at Stripe reads neutral, and an unmapped raw status fails closed.
+ *  3. the client no longer chooses which statuses it sees. `?status=<anything>` is gone; `view` is
+ *     whitelisted to 'pending' (awaiting this restaurant's answer) or 'history' (everything else).
+ *
+ * EVERY AUXILIARY READ FAILS SOFT AND NEVER UPWARD. A throw leaves the money facts UNKNOWN, which makes
+ * the status neutral and the financial block unconfirmed — it never produces « remboursé » or a figure.
+ */
+export async function listRestaurantClaims(
+  restaurantIds: string[],
+  opts?: { view?: RestaurantClaimsView },
+): Promise<RestaurantClaimView[]> {
   if (restaurantIds.length === 0) return []
-  const rows = await prisma.claim.findMany({
-    where:   { restaurantId: { in: restaurantIds }, ...(opts?.status ? { status: opts.status } : {}) },
-    orderBy: { createdAt: 'asc' },
+  const view: RestaurantClaimsView = opts?.view === 'history' ? 'history' : 'pending'
+  const claims = await prisma.claim.findMany({
+    where: {
+      restaurantId: { in: restaurantIds },
+      // 'pending' is exactly the set the respond route accepts; 'history' is everything else, so the two
+      // views partition the restaurant's claims and none is unreachable.
+      ...(view === 'pending' ? { status: 'restaurant_review' } : { NOT: { status: 'restaurant_review' } }),
+    },
+    select: {
+      // ── returned (through the builder) ──
+      id: true, orderId: true, reason: true, description: true, photoUrl: true,
+      requestedAmountCents: true, approvedAmountCents: true,
+      responseDeadlineAt: true, createdAt: true, decidedAt: true,
+      restaurantResponse: true, restaurantResponseReason: true,
+      // ── read for DERIVATION ONLY, never projected ──
+      status: true, refundError: true, refundId: true, refundAttempted: true,
+      arbitrationDecision: true, selection: true,
+    },
+    // Pending: oldest first — the response deadline is what matters. History: newest first.
+    orderBy: { createdAt: view === 'pending' ? 'asc' : 'desc' },
     take:    200,
   })
-  /**
-   * L7 (T-50) — THE SELECTION DOES NOT GO TO THE RESTAURANT IN THIS LOT, and it takes a line of code
-   * to keep it that way.
-   *
-   * This query has no `select`, so it serialises the WHOLE Claim row. `selection` has been in that
-   * payload since L3b, as null — which means the moment createClaim starts writing the snapshot, the
-   * restaurant's response would gain mode, modeSource and every line (index, itemId, qty, unitCents,
-   * name) with a zero-line diff and no review. « Not adding it » is not the default here; removing it
-   * is. The restaurant display is L8's contract (S-19); L7's job is to STORE the selection correctly
-   * and leave the exposure decision to the lot that designs it.
-   *
-   * The pre-existing over-projection of this query — consumerId, decidedBy, refundAttempted, refundId,
-   * refundError, activeOrderKey, contestReason, arbitratedBy all reach the restaurant today — is NOT
-   * fixed here: curating this select is exactly the L8 work the founder deferred, and doing it halfway
-   * would break a panel this lot never reads. It is recorded as a finding instead.
-   */
-  const withoutSelection = rows.map((r) => {
-    const pub = { ...r } as Record<string, unknown>
-    delete pub.selection
-    return pub as typeof r
+  if (claims.length === 0) return []
+
+  const orderIds = Array.from(new Set(claims.map((c) => c.orderId)))
+
+  // ── (0) the PRIOR claims of the same orders, read FIRST ─────────────────────────────────────────
+  // They feed the previouslyClaimed signal, and their own business status needs the same row facts the
+  // page's claims need — so their refund ids join the batched reads below instead of being derived from
+  // « nothing known », which would have shown an actually-refunded earlier claim as « en vérification ».
+  type PriorRow = { id: string; orderId: string; status: string; selection: unknown; refundError: string | null; refundId: string | null; refundAttempted: boolean; arbitrationDecision: string | null; restaurantResponse: string | null }
+  const PRIOR_TAKE = 400
+  let priorRows: PriorRow[] = []
+  let priorsIncomplete = false
+  try {
+    const rows = await prisma.claim.findMany({
+      // The restaurant scope is restated even though it is implied: `orderIds` come from this restaurant's
+      // own claims and an order belongs to exactly one restaurant, so the filter is redundant TODAY. It is
+      // written anyway because the redundancy is what makes the ownership explicit — an anti-IDOR property
+      // that holds by construction here should not depend on a reader re-deriving it.
+      where:  { orderId: { in: orderIds }, restaurantId: { in: restaurantIds } },
+      select: {
+        id: true, orderId: true, status: true, selection: true, createdAt: true,
+        refundError: true, refundId: true, refundAttempted: true, arbitrationDecision: true, restaurantResponse: true,
+      },
+      orderBy: { createdAt: 'asc' },
+      take:    PRIOR_TAKE,
+    })
+    priorRows = rows as unknown as PriorRow[]
+    // At the cap we cannot claim to have seen every earlier claim, and « aucune réclamation antérieure »
+    // must never be implied where one exists.
+    priorsIncomplete = rows.length >= PRIOR_TAKE
+  } catch { priorRows = []; priorsIncomplete = true }
+
+  const refundIds = Array.from(new Set(
+    [...claims, ...priorRows].map((c) => c.refundId).filter((x): x is string => !!x),
+  ))
+
+  // ── (a) the bound Refund rows: the F03 facts, and the `re_` the ledger line is keyed on ──────────
+  type Row = { id: string; orderId: string; status: string; amountCents: number; stripeRefundId: string | null }
+  let rowsById: Map<string, Row> | null = new Map()
+  if (refundIds.length) {
+    try {
+      const rows = await prisma.refund.findMany({
+        where:  { id: { in: refundIds } },
+        select: { id: true, orderId: true, status: true, amountCents: true, stripeRefundId: true },
+      })
+      rowsById = new Map(rows.map((r) => [r.id, r] as const))
+    } catch { rowsById = null /* unknown ⇒ never « remboursé », never a figure */ }
+  }
+  // ── (b) how many claims bind each row (A-S43): two binders make every figure on it ambiguous ────
+  let bindersByRow: Map<string, number> | null = new Map()
+  if (refundIds.length) {
+    try {
+      const groups = await prisma.claim.groupBy({
+        by: ['refundId'], where: { refundId: { in: refundIds }, OR: BINDER_OR }, _count: { _all: true },
+      })
+      bindersByRow = new Map(groups.map((g) => [g.refundId as string, g._count._all] as const))
+    } catch { bindersByRow = null }
+  }
+  // ── (c) the ledger lines of those refunds — the ONLY source of the T-46 figures (spec §6.5) ─────
+  const reIds = Array.from(new Set(
+    Array.from(rowsById?.values() ?? [])
+      .filter((r) => r.status === 'succeeded' && !!r.stripeRefundId)
+      .map((r) => r.stripeRefundId as string),
+  ))
+  let ledgerByRe: Map<string, RefundLedgerFacts[]> | null = new Map()
+  if (reIds.length) {
+    try {
+      const lines = await prisma.ledgerEntry.findMany({
+        where:  { type: 'refund', sourceEventId: { in: reIds } },
+        select: { sourceEventId: true, grossAmount: true, applicationFeeAmount: true, netToRestaurant: true },
+      })
+      const m = new Map<string, RefundLedgerFacts[]>()
+      for (const l of lines) {
+        const bucket = m.get(l.sourceEventId) ?? []
+        bucket.push({ grossAmount: l.grossAmount, applicationFeeAmount: l.applicationFeeAmount, netToRestaurant: l.netToRestaurant })
+        m.set(l.sourceEventId, bucket)
+      }
+      ledgerByRe = m
+    } catch { ledgerByRe = null }
+  }
+  // ── (d) the Grubano-side FEE ever CHARGED on each order's charge, as a CONSERVATION bound: you cannot
+  //        give back more fee than you took. Ledger-only, and its absence weakens nothing structurally.
+  let feeChargedByOrder: Map<string, number> = new Map()
+  if (reIds.length) {
+    try {
+      const orders = await prisma.order.findMany({
+        where: { id: { in: orderIds } }, select: { id: true, stripePaymentIntentId: true },
+      })
+      const piByOrder = new Map(orders.map((o) => [o.id, o.stripePaymentIntentId] as const))
+      const pis = Array.from(new Set(orders.map((o) => o.stripePaymentIntentId).filter((x): x is string => !!x)))
+      if (pis.length) {
+        const groups = await prisma.ledgerEntry.groupBy({
+          by: ['stripePaymentIntentId'],
+          where: { type: { in: ['payment', 'deposit_capture'] }, stripePaymentIntentId: { in: pis } },
+          _sum: { applicationFeeAmount: true },
+        })
+        const byPi = new Map(groups.map((g) => [g.stripePaymentIntentId as string, g._sum.applicationFeeAmount ?? 0] as const))
+        // Array.from: this project's tsc target predates es2015 iteration of a Map.
+        for (const [orderId, pi] of Array.from(piByOrder.entries())) {
+          if (pi && byPi.has(pi)) feeChargedByOrder.set(orderId, byPi.get(pi) as number)
+        }
+      }
+    } catch { feeChargedByOrder = new Map() /* no conservation bound ⇒ the structural guards still stand */ }
+  }
+  // ── (e) the previouslyClaimed signal (informational, S-26) — with the SAME row facts ────────────
+  const derivedStatus = (c: { orderId: string; status: string; refundError: string | null; refundId: string | null; refundAttempted: boolean; arbitrationDecision: string | null; restaurantResponse: string | null }): RestaurantStatus => {
+    const row = c.refundId && rowsById ? rowsById.get(c.refundId) ?? null : null
+    const inProgress = c.refundId ? boundRowShowsInProgress(row) === true : null
+    const refundedRow = claimClosureKind(c as ClaimFacts) !== 'refunded' ? null
+      : !c.refundId ? false
+        : rowsById && bindersByRow ? refundedRowTruth(row, bindersByRow.get(c.refundId) ?? 0, c.orderId) : null
+    return restaurantClaimStatus(c as ClaimFacts, inProgress, refundedRow)
+  }
+  const priorByOrder = new Map<string, Array<{ id: string; status: RestaurantStatus; selection: unknown }>>()
+  for (const p of priorRows) {
+    const bucket = priorByOrder.get(p.orderId) ?? []
+    bucket.push({ id: p.id, status: derivedStatus(p), selection: p.selection })
+    priorByOrder.set(p.orderId, bucket)
+  }
+
+  const views = claims.map((c) => {
+    const row = c.refundId && rowsById ? rowsById.get(c.refundId) ?? null : null
+    const binders = c.refundId && bindersByRow ? bindersByRow.get(c.refundId) ?? 0 : null
+    const re = row?.stripeRefundId ?? null
+    return buildRestaurantClaimView({
+      id:                   c.id,
+      orderRef:             orderRef(c.orderId),
+      reason:               c.reason,
+      status:               derivedStatus(c),
+      safety:               isSafetyReason(c.reason),
+      requestedAmountCents: c.requestedAmountCents,
+      approvedAmountCents:  c.approvedAmountCents ?? null,
+      // An amount is only a decision once Grubano decided; before that it is a draft of one.
+      grubanoDecided:       c.arbitrationDecision === 'approved',
+      description:          c.description ?? null,
+      photoUrl:             c.photoUrl ?? null,
+      createdAt:            c.createdAt,
+      responseDeadlineAt:   c.responseDeadlineAt,
+      decidedAt:            c.decidedAt ?? null,
+      restaurantResponse:   c.restaurantResponse ?? null,
+      restaurantResponseReason: c.restaurantResponseReason ?? null,
+      selection:            c.selection,
+      // Supplied ONLY for redaction inside free text; the view never emits it (see redactOrderId).
+      redactOrderId:        c.orderId,
+      priorClaims:          (priorByOrder.get(c.orderId) ?? []).filter((p) => p.id !== c.id),
+      priorClaimsIncomplete: priorsIncomplete,
+      financialEffect:      deriveFinancialEffect({
+        bound:                  !!c.refundId,
+        // OUR OWN records say the money truth is open. This is what stops a binding the engine DISOWNED
+        // (`resume_mismatch` — « that row is not this claim's ») and a refund REVERTED at Stripe after
+        // settlement from publishing confident figures: in both cases the row can still read `succeeded`
+        // here and still have a ledger line. Found by the adversarial review; the customer's own status
+        // derivation has always gated on this column.
+        moneyTruthOpen:         !!c.refundError,
+        // An UNREADABLE binder count fails CLOSED: a row bound by two claims settles neither of them
+        // (A-S43), and « I could not count the binders » does not rule that out. Reporting `false` here
+        // would publish figures on a row whose exclusivity was never established — found by the L8 test
+        // that throws on each auxiliary read in turn. `readClaimFinancialEffect` does the same.
+        ambiguousBinding:       binders === null ? true : binders >= 2,
+        refundStatus:           row?.status ?? null,
+        stripeRefundId:         re,
+        // A row on ANOTHER order is not this claim's refund, whatever the binding says.
+        rowOrderId:             row?.orderId ?? null,
+        claimOrderId:           c.orderId,
+        // A read that threw gives `null`, which is « missing » — never a figure invented to fill the gap.
+        ledgerLines:            re && ledgerByRe ? (ledgerByRe.get(re) ?? []) : null,
+        feeChargedCents:        feeChargedByOrder.get(c.orderId) ?? null,
+      }),
+      // The respond route's own precondition, stated rather than guessed: it accepts an answer only on a
+      // claim still in `restaurant_review` (its CAS `where`). Anything else and a button would lie.
+      canRespond:           c.status === 'restaurant_review',
+    })
   })
-  return triageBySafety(withoutSelection)
+  // Batch-2 triage kept: a safety report floats to the top. Visibility and order only.
+  return views.sort((a, b) => (b.safety ? 1 : 0) - (a.safety ? 1 : 0))
 }
 
 // ── REFUND TRIGGER — executeRefund at most once per claim ─────────────────────────

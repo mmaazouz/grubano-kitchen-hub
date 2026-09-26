@@ -20,6 +20,10 @@ describe('J-C31 — customerEmailLine per H11', () => {
       refunded_row_unproven: 'rowUnproven',
       refunded_row_failed: 'rowUnproven',
       stripe_not_confirmed: 'stripeNotConfirmed',
+      // D′ L8 (T-46, §16): in the union because it is pinned equal to ClaimEmailWhy, but it belongs to the
+      // RESTAURANT sender and never reaches this CUSTOMER toast — so it maps to the generic key and the
+      // frozen 9-key H11 table stays as it is. Its own wording lives in RESTAURANT_NOTICE_LINE.
+      ledger_incomplete: 'notSent',
       claim_not_found: 'notSent',
       no_closure_record: 'notSent',
       not_a_closure: 'notSent',

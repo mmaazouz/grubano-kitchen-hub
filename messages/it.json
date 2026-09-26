@@ -7241,7 +7241,43 @@
       "refused": "Reclamo rifiutato.",
       "refundPending": "Accettata — rimborso in attesa di attivazione.",
       "processing": "Elaborazione…",
-      "responseNote": "Un reclamo senza risposta resta in attesa: risponda al più presto. Il cliente vede la decisione dal proprio ordine e può contestare un rifiuto presso Grubano."
+      "responseNote": "Un reclamo senza risposta resta in attesa: risponda al più presto. Il cliente vede la decisione dal proprio ordine e può contestare un rifiuto presso Grubano.",
+      "status": {
+        "received": "Ricevuta — in attesa della sua risposta",
+        "answered_refused": "Ha rifiutato questo reclamo",
+        "grubano_deciding": "In arbitrato da parte di Grubano",
+        "approved_awaiting_refund": "Approvato da Grubano — rimborso in attesa",
+        "refunding": "Rimborso in corso",
+        "refunded": "Rimborsato al cliente",
+        "refusal_confirmed": "Rifiuto confermato da Grubano",
+        "refused_by_grubano": "Rifiutato da Grubano",
+        "closed": "Pratica chiusa da Grubano",
+        "under_review": "In verifica da parte di Grubano"
+      },
+      "statusLabel": "Stato",
+      "tabPending": "Da rispondere",
+      "tabHistory": "Storico",
+      "historyEmpty": "Nessun reclamo chiuso o in arbitrato.",
+      "selectionLabel": "Che cosa ha chiesto il cliente",
+      "selectionItems": "Articoli interessati",
+      "selectionAmount": "Un importo preciso",
+      "selectionWhole": "Tutto l’ordine",
+      "selectionNotRecorded": "Selezione non registrata",
+      "approvedLabel": "Importo approvato da Grubano",
+      "yourAnswer": "La sua risposta",
+      "yourAnswerAccepted": "Accettato",
+      "yourAnswerRefused": "Rifiutato",
+      "previouslyClaimed": "Già oggetto di un reclamo precedente",
+      "previouslyClaimedLine": "{name} — reclamo {ref} ({status}) — {qty} unità",
+      "previouslyClaimedOther": "{count} reclamo(i) precedente(i) su questo ordine senza articoli indicati.",
+      "previouslyClaimedNote": "Solo a titolo informativo: non limita né il diritto del cliente né le quantità reclamabili.",
+      "financeTitle": "Effetto finanziario confermato",
+      "financeRefund": "Rimborsato al cliente",
+      "financeNet": "Impatto netto per il suo locale",
+      "financeNote": "Importi tratti dalle nostre scritture contabili confermate. Gli oneri Grubano restituiti comprendono la commissione e, se applicabile, gli altri oneri trattenuti sull’ordine.",
+      "financeUnconfirmed": "Nessun effetto finanziario confermato per ora.",
+      "financeFee": "Oneri Grubano restituiti",
+      "previouslyClaimedIncomplete": "L’elenco dei reclami precedenti è incompleto: l’assenza di una riga non significa che non ce ne siano."
     },
     "admin": {
       "title": "Arbitrato dei reclami",
@@ -7280,8 +7316,8 @@
       "pendingOverdue": "Termine di risposta superato",
       "arbitrationTitle": "In arbitrato — da decidere",
       "reasonSystem": "Motivo (sistema)",
-        "scope": "Ambito",
-        "selectionNotRecorded": "Selezione non registrata",
+      "scope": "Ambito",
+      "selectionNotRecorded": "Selezione non registrata",
       "systemDetails": "Dettagli (sistema)",
       "customerEmail": {
         "sent": "Email al cliente consegnata al server di invio.",
@@ -8838,6 +8874,15 @@
       "title": "Rimborso collegato",
       "body": "Il reclamo relativo al Suo ordine {ref} è stato chiuso: è collegato a un rimborso registrato nei nostri archivi.",
       "next": "Se questo rimborso non compare sul Suo estratto conto, risponda a questa email indicando il riferimento {ref}."
+    },
+    "restaurantRefunded": {
+      "subject": "Rimborso confermato sull’ordine {ref}",
+      "title": "Rimborso confermato",
+      "body": "È stato confermato un rimborso per l’ordine {ref} presso {resto}.",
+      "lineRefund": "Rimborsato al cliente",
+      "lineNet": "Impatto netto confermato per il suo locale",
+      "next": "Questi importi provengono dalle nostre scritture contabili confermate; gli oneri Grubano restituiti comprendono la commissione e, se applicabile, gli altri oneri trattenuti sull’ordine. Per qualsiasi domanda, risponda a questa e-mail indicando il riferimento {ref}.",
+      "lineFee": "Oneri Grubano restituiti"
     }
   }
 }

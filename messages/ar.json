@@ -7241,7 +7241,43 @@
       "refused": "تم رفض الشكوى.",
       "refundPending": "تم القبول — رد المبلغ بانتظار التفعيل.",
       "processing": "جارٍ المعالجة…",
-      "responseNote": "الشكوى بدون رد تبقى قيد الانتظار: يرجى الرد في أقرب وقت. يرى العميل قرارك من طلبه ويمكنه الاعتراض على الرفض لدى Grubano."
+      "responseNote": "الشكوى بدون رد تبقى قيد الانتظار: يرجى الرد في أقرب وقت. يرى العميل قرارك من طلبه ويمكنه الاعتراض على الرفض لدى Grubano.",
+      "status": {
+        "received": "مُستلمة — في انتظار ردّك",
+        "answered_refused": "لقد رفضت هذه المطالبة",
+        "grubano_deciding": "قيد التحكيم من Grubano",
+        "approved_awaiting_refund": "مقبولة من Grubano — الاسترداد قيد الانتظار",
+        "refunding": "الاسترداد قيد التنفيذ",
+        "refunded": "تم الاسترداد للعميل",
+        "refusal_confirmed": "تم تأكيد الرفض من Grubano",
+        "refused_by_grubano": "مرفوضة من Grubano",
+        "closed": "أُغلق الملف من Grubano",
+        "under_review": "قيد التحقق من Grubano"
+      },
+      "statusLabel": "الحالة",
+      "tabPending": "بحاجة إلى ردّ",
+      "tabHistory": "السجل",
+      "historyEmpty": "لا توجد مطالبات مُغلقة أو قيد التحكيم.",
+      "selectionLabel": "ما طلبه العميل",
+      "selectionItems": "الأصناف المعنية",
+      "selectionAmount": "مبلغ محدد",
+      "selectionWhole": "الطلب بالكامل",
+      "selectionNotRecorded": "لم يُسجَّل الاختيار",
+      "approvedLabel": "المبلغ المعتمد من Grubano",
+      "yourAnswer": "ردّك",
+      "yourAnswerAccepted": "مقبولة",
+      "yourAnswerRefused": "مرفوضة",
+      "previouslyClaimed": "سبق أن شملته مطالبة سابقة",
+      "previouslyClaimedLine": "{name} — المطالبة {ref} ({status}) — {qty} وحدة",
+      "previouslyClaimedOther": "{count} مطالبة سابقة على هذا الطلب دون تحديد أصناف.",
+      "previouslyClaimedNote": "للعلم فقط: لا يحدّ ذلك من حق العميل ولا من الكميات القابلة للمطالبة.",
+      "financeTitle": "الأثر المالي المؤكد",
+      "financeRefund": "المبلغ المسترد للعميل",
+      "financeNet": "الأثر الصافي على مطعمك",
+      "financeNote": "مبالغ مأخوذة من قيودنا المحاسبية المؤكدة. رسوم Grubano المُعادة تشمل العمولة، وعند الاقتضاء، الرسوم الأخرى المحتجزة على الطلب.",
+      "financeUnconfirmed": "لا يوجد أثر مالي مؤكد حتى الآن.",
+      "financeFee": "رسوم Grubano المُعادة",
+      "previouslyClaimedIncomplete": "قائمة المطالبات السابقة غير مكتملة: غياب سطر لا يعني عدم وجود أي مطالبة."
     },
     "admin": {
       "title": "تحكيم الشكاوى",
@@ -7280,8 +7316,8 @@
       "pendingOverdue": "تم تجاوز مهلة الرد",
       "arbitrationTitle": "قيد التحكيم — بانتظار البتّ",
       "reasonSystem": "السبب (النظام)",
-        "scope": "النطاق",
-        "selectionNotRecorded": "لم تُسجَّل أي أصناف",
+      "scope": "النطاق",
+      "selectionNotRecorded": "لم تُسجَّل أي أصناف",
       "systemDetails": "التفاصيل (النظام)",
       "customerEmail": {
         "sent": "سُلِّم بريد العميل إلى خادم الإرسال.",
@@ -8838,6 +8874,15 @@
       "title": "تم ربط الاسترداد",
       "body": "تم إغلاق الشكوى المتعلقة بطلبك {ref}: وهي مرتبطة باسترداد مسجَّل في سجلاتنا.",
       "next": "إذا لم يظهر هذا الاسترداد في كشف حسابك، رُدّ على هذه الرسالة مع ذكر المرجع {ref}."
+    },
+    "restaurantRefunded": {
+      "subject": "تم تأكيد استرداد على الطلب {ref}",
+      "title": "تم تأكيد الاسترداد",
+      "body": "تم تأكيد استرداد للطلب {ref} في {resto}.",
+      "lineRefund": "المبلغ المسترد للعميل",
+      "lineNet": "الأثر الصافي المؤكد على مطعمك",
+      "next": "هذه المبالغ مأخوذة من قيودنا المحاسبية المؤكدة؛ ورسوم Grubano المُعادة تشمل العمولة وعند الاقتضاء الرسوم الأخرى المحتجزة على الطلب. لأي سؤال، يُرجى الرد على هذه الرسالة مع ذكر المرجع {ref}.",
+      "lineFee": "رسوم Grubano المُعادة"
     }
   }
 }
