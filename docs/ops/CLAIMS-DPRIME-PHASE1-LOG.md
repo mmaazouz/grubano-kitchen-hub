@@ -776,5 +776,30 @@ Six relecteurs sur les dix-huit dimensions du §28, puis **chaque constat attaqu
 
 **Constats enregistrés, non corrigés.** `LedgerEntry.stripePaymentIntentId` n'est dans aucun index (les quatre index sont `@@unique([sourceEventId, type])`, `@@index([restaurantId, createdAt])`, `@@index([type, createdAt])`, `@@index([createdAt])`), donc la lecture ledger du read-model est un balayage — et §30 interdit toute migration dans ce lot, donc un index n'est pas un correctif disponible : c'est mesuré et enregistré. `POST /api/claims/[id]/contest` renvoie la ligne `Claim` BRUTE (aucun `select`), donc il livre `consumerId`, `decidedBy`, `activeOrderKey` et le `status` brut — préexistant, mais la nouvelle page « Mes réclamations » en devient un second appelant, et le projeter est un changement de contrat de route hors périmètre §29. Les écarts de base antérieurs de T-46 restent au backlog, inchangés.
 
+### L9 — déploiement staging vérifié (2026-09-27)
+
+Commit **`41db16ed905f23f8aaf2a51a2cb57ddb57c7ccc0`**, poussé sur `develop`.
+
+| | mesuré |
+|---|---|
+| CI « Deploy → Staging » run **36319997972** | `test` **success** · `deploy` **success** — dont « Verify deployed build (version.json) », « Health check (staging @ expected SHA) » et « Client bundle integrity (served HTML → every `_next/static` asset 200) » |
+| `GET https://app.grubano.com/version.json` | `commit` **`41db16ed905f23f8aaf2a51a2cb57ddb57c7ccc0`** · `branch` develop · `buildDate` 2026-09-27T12:51:05Z · `ciRunId` 36319997972 |
+
+**Recensement read-only `claims-census.yml` run 36321626477**, mesuré 2026-09-27T13:13:09Z sur le build déployé :
+- `schema` = `{ready:true, clientReady:true, dbReady:true, missingClient:[], missingDb:[], why:null}` — **aucune migration, aucun regen**, et il n'en fallait aucun : ce lot n'ajoute aucune colonne (il lit `Refund`, `LedgerEntry` et `LoyaltyTransaction` existantes).
+- `gates` = `{claimsEnabled:false, claimsGate:"CLOSED (flag_off)", claimsSurfaceEnabled:false, claimsIntakeEnabled:false, claimsSurfaceOpen:false, claimsIntakeOpen:false, refundsEnabled:false}` — **toutes fermées**.
+- **Population réclamations INCHANGÉE** depuis L0 (`dab754d`) et à travers L5, L6, L6.1, L7, L8 et son follow-up : total **9**, `{refunded:4, refused:3, refused_final:2}`, `active:0`, `nonTerminal:3`, `closure.terminalWithoutRecord:4`, **tous les compteurs d'anomalie héritée à 0**.
+
+**AVANT / APRÈS sur la clé que le durcissement pouvait faire bouger, parce que c'est la mesure qui compte ici.** `refundedRowUnproven` valait **0** au recensement L8 (run 36267451140) et vaut **0** ici, sur le build durci. Ce n'est pas une coïncidence, c'est la conséquence d'une décision : durcir `refundedRowProven` rendait une ligne `pending` NON prouvée, ce qui l'aurait fait entrer dans une liste et un compteur nommés E-13 — et aurait cassé l'invariant énoncé « E-07 et E-13 restent disjointes ». La forme est donc exclue de E-13 exactement comme A-S31c l'est, parce que `listUnfinalizedClaimRefundRows` (E-07) la liste déjà AVEC son verdict de réconciliation. Le compteur mesure donc toujours E-13 et rien d'autre, et l'égalité 0 = 0 est une vérification, pas un hasard.
+
+**Sondes externes NON AUTHENTIFIÉES du build déployé** — les surfaces que L9 touche d'abord :
+- `GET /api/orders/[id]` → **401 « Authentification requise »** · `GET /api/eat/orders` → **401** · `GET /api/orders?take=5` → **401**. C'est la sonde qui compte : `refundSummary` et la forme minimale des listes vivent derrière la session conso, donc aucun chiffre de remboursement n'est atteignable sans session.
+- `GET /api/claims` → **200 `{enabled:false}`** · `?orderId=…` → **200 `{enabled:false}`** : la surface Claims reste coupée par le kill-switch, et la page « Mes réclamations » rend en conséquence le repli support humain.
+- **La route E3 :** `GET` et `POST /api/admin/refunds/rows/<id>/notify` → **403 « Accès refusé »** les deux. Elle est NON gatée par les drapeaux produit (l'argent est déjà parti, S-25) et **admin-gatée par `resolveAdmin`** : les deux 403 le prouvent depuis l'extérieur, sans session.
+- `GET /api/admin/claims/financial-verification` → **403 « Accès refusé »** (la nouvelle section « avis client non envoyé — remboursements support » vit derrière `resolveAdmin`).
+- Portes d'argent, intouchées par ce lot : `POST /api/claims` → **403 `{gated:true}`** · `POST /api/admin/refunds/run` → **403 `{gated:true}`** · `POST /api/admin/claims/pay-approved` → **403 « Accès refusé »**.
+
+**AUCUN EFFET ARGENT, et voici par quoi.** (1) Un déploiement n'exécute par lui-même ni migration ni script serveur, et le recensement confirme `schema.ready` sans qu'aucune colonne ait été ajoutée. (2) Toutes les sondes se sont arrêtées au garde AVANT toute logique — 401 sur les trois routes commandes que ce lot modifie, 403 sur la route E3 et sur la carte admin. (3) Aucun appel AUTHENTIFIÉ n'a été fait contre staging : aucune commande ni réclamation créée, aucun avis envoyé, aucun remboursement déclenché. **Les lectures Stripe du code E3 n'ont été exercées qu'en test, avec un double** (`vi.mock('@/lib/stripe')`) — §31 l'exige, et aucun `stripe.refunds.retrieve` réel n'a été émis depuis cette machine ni depuis staging. (4) `lib/refund.ts` reste byte-identique (blob `e2dc42b8eb89cd3249a4497682b8bc94080ef725`) et les treize autres épingles §29 sont inchangées vs `f748a5a1`. (5) Le BLOQUEUR PRE-L11 `scripts/server/phase2-refund-gate.js` est inchangé et reste OUVERT, exprès.
+
 ## Lots suivants
 (complété lot par lot : SHA, preuves, CI, SHA déployé)
