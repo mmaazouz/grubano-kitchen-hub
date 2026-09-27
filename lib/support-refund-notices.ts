@@ -213,6 +213,8 @@ export interface SupportNoticeTarget {
   rowId:          string
   orderId:        string
   orderRef:       string
+  /** D′ L9.1: the owning restaurant, for the claim-agnostic post-money notice. */
+  restaurantId:   string
   stripeRefundId: string
   /** OUR amount. The route sends the amount it re-reads from STRIPE, never this one (§20). */
   rowAmountCents: number
@@ -263,7 +265,7 @@ export async function resolveSupportNoticeTarget(
   const order = await prisma.order.findUnique({
     where: { id: row.orderId },
     select: {
-      id: true, total: true, consumerId: true,
+      id: true, total: true, consumerId: true, restaurantId: true,
       restaurant: { select: { name: true } },
     },
   })
@@ -285,6 +287,7 @@ export async function resolveSupportNoticeTarget(
       rowId:          row.id,
       orderId:        row.orderId,
       orderRef:       orderRef(row.orderId),
+      restaurantId:   order.restaurantId,
       stripeRefundId: row.stripeRefundId as string,
       rowAmountCents: row.amountCents,
       partial:        chargeCents > 0 && totalRefunded < chargeCents,

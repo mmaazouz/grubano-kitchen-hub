@@ -165,11 +165,79 @@ describe('J-C29 — import topology (H15)', () => {
     // can name the type without gaining any reach, and the FIGURES are still computed by the caller and
     // passed in — the same discipline as ClosureEvidence, and the reason a sender never reads a ledger.
     expect(Array.from(new Set(specifiers(read('lib/claim-financial-effect.ts'))))).toEqual([])
+    // D′ L9.1 — EIGHT BECAME TEN, named here so each addition is a decision. The restaurant's post-money
+    // notice had to stop depending on a claimId (a SUPPORT refund legitimately has no Claim, and spec v2
+    // §6.3 asked for a notice the old signature could not produce), so the sender moved to
+    // `@/lib/refund-restaurant-notice` and this module DELEGATES to it — one refund, one sender, one key.
+    // `@/lib/claim-email-shell` is the chrome the two senders share instead of rendering the same notice
+    // twice. BOTH are leaves or near-leaves and neither adds reach to lib/claims, lib/refund or lib/stripe,
+    // which is what the assertions below prove rather than assume.
     expect(Array.from(new Set(specifiers(read('lib/claim-emails.ts')))).sort()).toEqual(
-      ['@/lib/claim-action-rules', '@/lib/claim-financial-effect', '@/lib/claim-selection', '@/lib/onboarding-nudge', '@/lib/order-ref', '@/lib/prisma', '@/lib/transactional-emails', 'next-intl/server'])
+      ['@/lib/claim-action-rules', '@/lib/claim-email-shell', '@/lib/claim-financial-effect', '@/lib/claim-selection', '@/lib/onboarding-nudge', '@/lib/order-ref', '@/lib/prisma', '@/lib/refund-restaurant-notice', '@/lib/transactional-emails', 'next-intl/server'])
+    // The chrome is a LEAF, asserted the same way lib/claim-financial-effect is: an empty specifier list is
+    // what makes sharing it safe for the import graph.
+    expect(Array.from(new Set(specifiers(read('lib/claim-email-shell.ts'))))).toEqual([])
+    // The claim-agnostic sender's own list, closed and named. It reads the LEDGER for its figures and the
+    // transactional rail to send; it never names the refund engine, Stripe, or the claim state machine.
+    // `@/lib/claim-action-rules` is where the trigger and BOTH key shapes are declared — one definition
+    // shared with the admin lists, because a dedupe key that disagrees with itself sends twice or never. It
+    // is already in the senders' reach set (lib/claim-emails imports it), so naming it adds nothing new.
+    expect(Array.from(new Set(specifiers(read('lib/refund-restaurant-notice.ts')))).sort()).toEqual(
+      ['@/lib/claim-action-rules', '@/lib/claim-email-shell', '@/lib/claim-financial-effect', '@/lib/onboarding-nudge', '@/lib/order-ref', '@/lib/prisma', '@/lib/transactional-emails', 'next-intl/server'])
+    expect(read('lib/refund-restaurant-notice.ts')).not.toMatch(/@\/lib\/(refund|stripe|claims)['"]/)
+    const fromNotice = reach(['lib/refund-restaurant-notice.ts'], fsReader)
+    expect(['lib/claims.ts', 'lib/refund.ts', 'lib/stripe.ts'].filter((f) => fromNotice.has(f))).toEqual([])
     for (const m of SENDER_MODULES) expect(read(m), m).not.toMatch(/@\/lib\/(refund|stripe|claims)['"]/)
     const fromSenders = reach(SENDER_MODULES, fsReader)
     expect(['lib/claims.ts', 'lib/refund.ts', 'lib/stripe.ts'].filter((f) => fromSenders.has(f))).toEqual([])
+  })
+
+  it('D′ L9.1 — the importers of lib/refund-restaurant-notice are a CLOSED list of two, and the webhook is not one', () => {
+    // The founder asked for an explicit, closed list of authorised callsites rather than a relaxed wildcard.
+    // Only two paths may tell a restaurant that a refund happened:
+    //   lib/claim-emails.ts — the CLAIM closure path, which delegates here so one refund has one sender;
+    //   .../refunds/rows/[rowId]/notify — the SUPPORT path, for refunds with no claim behind them.
+    const files = ['app', 'lib', 'components', 'scripts'].flatMap(walk).filter((f) => /\.(ts|tsx|js|mjs)$/.test(f))
+    const importers = files.filter((f) => specifiers(read(f)).some((s) => resolveImport(s, f, fsReader) === 'lib/refund-restaurant-notice.ts'))
+    // IMPORTERS of the module — TWO, and they are the two callsites. An adversarial review of this lot's own
+    // work tightened this from three: lib/claim-closure-lists first imported the key helpers from HERE, which
+    // made the admin list an importer of a sender module for no reason and put the trigger literal in two
+    // files. Both keys and the trigger now come from lib/claim-action-rules, the module that exists so the
+    // sender and the admin lists can share ONE definition without importing each other.
+    expect(importers.sort()).toEqual([
+      'app/api/admin/refunds/rows/[rowId]/notify/route.ts',
+      'lib/claim-emails.ts',
+    ])
+    // ONE DEFINITION, asserted rather than trusted: the notice module re-exports what claim-action-rules
+    // declares, so the two spellings cannot drift apart into two literals.
+    expect(read('lib/refund-restaurant-notice.ts')).not.toMatch(/=\s*'claim_restaurant_refunded'/)
+    expect(read('lib/refund-restaurant-notice.ts')).not.toMatch(/=\s*\(stripeRefundId: string\) =>/)
+    expect(read('lib/claim-closure-lists.ts')).not.toContain('refund-restaurant-notice')
+    // CALLSITES of the sender — the closed list of two the founder asked for. Only these may tell a
+    // restaurant that a refund happened: the CLAIM closure path (through lib/claim-emails, which delegates)
+    // and the SUPPORT path. A third caller appearing here is a product decision, not a refactor.
+    // The module itself is excluded: it DEFINES the function, which is not a callsite.
+    const callsites = files.filter((f) => f !== 'lib/refund-restaurant-notice.ts' && /sendRefundRestaurantNotice\s*\(/.test(read(f)))
+    expect(callsites.sort()).toEqual([
+      'app/api/admin/refunds/rows/[rowId]/notify/route.ts',
+      'lib/claim-emails.ts',
+    ])
+    // and lib/claim-closure-lists really does NOT call it — asserted, so « importer, not callsite » is a fact
+    expect(read('lib/claim-closure-lists.ts')).not.toMatch(/sendRefundRestaurantNotice\s*\(/)
+  })
+
+  it('NEGATIVE CONTROL (H15) — no webhook, reconcile-refunds or cron root reaches the restaurant notice sender', () => {
+    // H15 exists so a webhook retry storm can never become a mail storm. The new sender is post-money and
+    // ungated, which makes this the assertion that matters most about it: reachable from a human action,
+    // never from an event the platform delivers at its own pace.
+    const reached = reach(ROOTS(), fsReader)
+    expect(reached.has('app/api/webhooks/stripe/route.ts')).toBe(true)  // the walk really did start there
+    const forbidden = ['lib/refund-restaurant-notice.ts', ...SENDER_MODULES]
+      .filter((m) => reached.has(m))
+      .map((m) => `${m} ← ${reached.get(m)!.join(' → ')}`)
+    expect(forbidden).toEqual([])
+    // …and the webhook does not NAME it either, so a future dynamic import cannot slip past the walk.
+    expect(read('app/api/webhooks/stripe/route.ts')).not.toMatch(/refund-restaurant-notice|sendRefundRestaurantNotice/)
   })
 
   it('the importers of lib/claim-emails are exactly the 10 H15 routes (D′ L4 adds withdraw-approval, D′ L5 the pay rail)', () => {

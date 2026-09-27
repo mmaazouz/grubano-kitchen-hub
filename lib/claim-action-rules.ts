@@ -993,8 +993,55 @@ export function customerClaimReasons(c: ClaimFacts & { restaurantResponseReason?
  * already sent. Same reason the customer's closure record is per claim and this one is per `re_`.
  */
 export const RESTAURANT_REFUNDED_TRIGGER = 'claim_restaurant_refunded'
+/**
+ * THE LEGACY KEY — read in compatibility, NEVER written again since D′ L9.1.
+ *
+ * It names the claim, which is precisely what turned out to be wrong: `/api/admin/refunds/run` and the
+ * abandoned-checkout auto-refund create `Refund` rows with NO `Claim` behind them, so a support refund
+ * cannot form this shape at all, and inventing a claim to carry an e-mail is forbidden. Every notice L8
+ * dispatched nevertheless sits under it, so it is still read — see `restaurantNoticeKeys` below.
+ */
 export const restaurantRefundedKey = (claimId: string, stripeRefundId: string) =>
   `claim:${claimId}:resto_refunded:${stripeRefundId}`
+
+/**
+ * THE CANONICAL KEY (D′ L9.1): the REFUND is the identity of its own notice.
+ *
+ * Invariant: ONE real `re_` ⇒ AT MOST ONE restaurant post-money notice, whichever path discovers it — the
+ * claim closure path, the support notify route, or an admin replay. The trigger keeps its historical value
+ * because `EmailDispatch` is unique on the PAIR (trigger, dedupeKey): renaming it would orphan every notice
+ * already dispatched and re-offer the button, which is the duplicate the compatibility read exists to stop.
+ */
+export const canonicalRestaurantNoticeKey = (stripeRefundId: string) => `refund:${stripeRefundId}`
+
+/**
+ * EVERY key under which this refund's restaurant notice may ALREADY have been dispatched.
+ *
+ * The canonical one always; the legacy one only when a claim id is in hand, because that is the only shape
+ * that could have produced it. Both are read wherever an « already sent? » question is asked — the sender
+ * before sending, and the admin lists that offer the button — because the two shapes cannot collide, so
+ * reading one of them would re-offer, or re-send, every notice recorded under the other.
+ *
+ * Declared HERE for the reason the trigger is: the sender and the admin list must share ONE definition
+ * without importing each other, and a dedupe key that disagrees with itself sends twice or never.
+ */
+export function restaurantNoticeKeys(p: { stripeRefundId: string; claimId?: string | null }): string[] {
+  const keys = [canonicalRestaurantNoticeKey(p.stripeRefundId)]
+  if (p.claimId) keys.push(restaurantRefundedKey(p.claimId, p.stripeRefundId))
+  return keys
+}
+
+/**
+ * THE LEGACY KEY'S TAIL, for the caller that knows the refund but NOT the claim.
+ *
+ * `restaurantNoticeKeys` can only build the legacy shape when a claim id is in hand, so the support path —
+ * which by definition has none — would miss a legacy notice if a claim existed and both of the route's
+ * claim guards had failed to see it. That combination is not reachable today, and « not reachable today » is
+ * how the duplicate the founder forbade would eventually ship. A suffix match closes it without making the
+ * sender claim-aware: under this trigger, a dedupe key ending in this tail can only be that refund's own
+ * legacy notice, whichever claim id it names.
+ */
+export const legacyRestaurantNoticeKeySuffix = (stripeRefundId: string) => `:resto_refunded:${stripeRefundId}`
 
 /** H05: this build's closure record — the only closure-notice eligibility source. */
 export const CLOSURE_RECORD_TRIGGER = 'claim_closure_record'

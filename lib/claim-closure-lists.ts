@@ -7,8 +7,11 @@
 import { prisma } from '@/lib/prisma'
 import {
   claimClosureKind, CLOSURE_TRIGGER, CLOSURE_RECORD_TRIGGER, closureRecordKey, refundedRowProven, refundRowSettled,
-  RESTAURANT_REFUNDED_TRIGGER, restaurantRefundedKey, type ClosureKind,
+  RESTAURANT_REFUNDED_TRIGGER, restaurantNoticeKeys, type ClosureKind,
 } from '@/lib/claim-action-rules'
+// D′ L9.1: the restaurant notice's identity is the REFUND now (`refund:<re_>`). BOTH key shapes are read
+// wherever an « already sent? » question is asked, because every notice L8 dispatched sits under the
+// claim-shaped one — and they come from claim-action-rules, so this file still imports no sender.
 import type { ClosureNoticeBlocker } from '@/lib/claim-console-copy'
 
 export type { ClosureNoticeBlocker } from '@/lib/claim-console-copy'
@@ -122,7 +125,7 @@ async function missingAmong(ids: string[]): Promise<MissingClosureNotice[]> {
     if (refundRowSettled(row) && row!.orderId === x.c.orderId) reByClaim.set(x.c.id, row!.stripeRefundId as string)
   }
   const reIds = Array.from(new Set(Array.from(reByClaim.values())))
-  const restoKeys = Array.from(reByClaim.entries()).map(([claimId, re]) => restaurantRefundedKey(claimId, re))
+  const restoKeys = Array.from(reByClaim.entries()).flatMap(([claimId, re]) => restaurantNoticeKeys({ stripeRefundId: re, claimId }))
   let restoSent: Set<string> | null = new Set<string>()
   let ledgered: Set<string> | null = new Set<string>()
   if (reIds.length) {
@@ -148,7 +151,7 @@ async function missingAmong(ids: string[]): Promise<MissingClosureNotice[]> {
       const re = reByClaim.get(c.id) ?? null
       restaurantNotice = !re ? 'refund_not_succeeded'
         : restoSent === null || ledgered === null ? 'unknown'
-          : restoSent.has(restaurantRefundedKey(c.id, re)) ? 'already_sent'
+          : restaurantNoticeKeys({ stripeRefundId: re, claimId: c.id }).some((k) => restoSent.has(k)) ? 'already_sent'
             : !ledgered.has(re) ? 'ledger_incomplete'
               : 'pending'
     }
@@ -219,7 +222,14 @@ export async function listPendingRestaurantRefundNotices(): Promise<PendingResta
     .filter((x) => refundedRowProven(x.row, x.c.orderId) && (binders.get(x.c.refundId as string) ?? 0) < 2)
   if (settled.length === 0) return { items: [], total: 0 }
 
-  const keys = settled.map((x) => restaurantRefundedKey(x.c.id, x.row!.stripeRefundId as string))
+  // D′ L9.1 — BOTH KEY SHAPES, and this list is where forgetting one would hurt most: it is what offers the
+  // button. The notice's identity became the REFUND (`refund:<re_>`) so a claim-free support refund can have
+  // one, but every notice L8 dispatched sits under `claim:<id>:resto_refunded:<re_>`. The two shapes cannot
+  // collide, so reading only the canonical one would re-offer every already-sent notice and produce exactly
+  // the duplicate the founder's legacy clause forbids.
+  const keysOf = (x: { c: { id: string }; row: { stripeRefundId: string | null } | null }) =>
+    restaurantNoticeKeys({ stripeRefundId: x.row!.stripeRefundId as string, claimId: x.c.id })
+  const keys = settled.flatMap(keysOf)
   const sent = new Set((await prisma.emailDispatch.findMany({
     where:  { trigger: RESTAURANT_REFUNDED_TRIGGER, dedupeKey: { in: keys } },
     select: { dedupeKey: true },
@@ -231,7 +241,7 @@ export async function listPendingRestaurantRefundNotices(): Promise<PendingResta
   })).map((l) => l.sourceEventId))
 
   const items = settled
-    .filter((x) => !sent.has(restaurantRefundedKey(x.c.id, x.row!.stripeRefundId as string)))
+    .filter((x) => !keysOf(x).some((k) => sent.has(k)))
     .map((x) => ({
       claimId:   x.c.id,
       orderId:   x.c.orderId,

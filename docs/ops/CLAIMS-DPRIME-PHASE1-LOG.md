@@ -801,5 +801,53 @@ Commit **`41db16ed905f23f8aaf2a51a2cb57ddb57c7ccc0`**, poussé sur `develop`.
 
 **AUCUN EFFET ARGENT, et voici par quoi.** (1) Un déploiement n'exécute par lui-même ni migration ni script serveur, et le recensement confirme `schema.ready` sans qu'aucune colonne ait été ajoutée. (2) Toutes les sondes se sont arrêtées au garde AVANT toute logique — 401 sur les trois routes commandes que ce lot modifie, 403 sur la route E3 et sur la carte admin. (3) Aucun appel AUTHENTIFIÉ n'a été fait contre staging : aucune commande ni réclamation créée, aucun avis envoyé, aucun remboursement déclenché. **Les lectures Stripe du code E3 n'ont été exercées qu'en test, avec un double** (`vi.mock('@/lib/stripe')`) — §31 l'exige, et aucun `stripe.refunds.retrieve` réel n'a été émis depuis cette machine ni depuis staging. (4) `lib/refund.ts` reste byte-identique (blob `e2dc42b8eb89cd3249a4497682b8bc94080ef725`) et les treize autres épingles §29 sont inchangées vs `f748a5a1`. (5) Le BLOQUEUR PRE-L11 `scripts/server/phase2-refund-gate.js` est inchangé et reste OUVERT, exprès.
 
+## L9.1 — arbitrage fondateur : l'avis restaurant SANS réclamation, et le zéro-fuite de la contestation (aucun argent déplacé)
+
+L9 était validé sur le fond mais **pas formellement clos** : deux corrections ciblées, décidées le 2026-09-27, plus un constat de performance à enregistrer sans migrer.
+
+### La contradiction de §6.3, et qui avait tort
+
+L9 s'était arrêté en énonçant un STOP : la spec demandait à `POST /api/admin/refunds/rows/[rowId]/notify` d'envoyer l'avis post-argent au restaurant **et** lui interdisait `lib/claim-emails`, seul module qui contenait un tel émetteur ; de plus `sendRestaurantRefundedEmail` exigeait un `claimId` et clé sur `claim:<id>:resto_refunded:<re_>`, qu'une ligne support **ne peut pas former par construction** — `/api/admin/refunds/run` et le remboursement automatique de panier abandonné créent des `Refund` sans aucune `Claim`.
+
+Le fondateur a tranché : **l'intention tient, l'implémentation était fausse.** L'avis ne doit pas dépendre d'une réclamation, et **aucune réclamation synthétique** ne peut être inventée pour porter un e-mail. Ce que ce lot livre :
+
+- **`lib/refund-restaurant-notice.ts`**, claim-agnostique. Il prend la commande, le restaurant, le `re_`, l'effet financier confirmé et une étiquette de trace. Le `claimId` n'est accepté qu'en **option**, et uniquement pour consulter l'ancienne clé.
+- **L'identité de l'avis est LE REMBOURSEMENT** : clé canonique `refund:<re_>`. Invariant : **UN `re_` réel ⇒ AU PLUS UN avis restaurant**, quel que soit le chemin qui le découvre (clôture de réclamation, route support, rejeu admin).
+- **Le trigger garde sa valeur historique `claim_restaurant_refunded`, et c'est une décision.** `EmailDispatch` est unique sur le COUPLE `(trigger, dedupeKey)` : renommer le trigger orphelinerait tous les avis déjà distribués par L8, `listPendingRestaurantRefundNotices` cesserait de les reconnaître comme envoyés et **re-proposerait le bouton** — exactement le doublon que la clause legacy existe pour empêcher. L'instruction du fondateur est d'ailleurs formulée en termes de CLÉS, pas de triggers. Le nom dit encore « claim » pour des raisons d'historique ; l'avis, non.
+- **Compatibilité legacy en lecture, sans migration** : `already_sent` si la clé canonique **OU** `claim:<id>:resto_refunded:<re_>` existe. Les deux endroits qui posent la question « déjà envoyé ? » la posent sur les deux formes (`listPendingRestaurantRefundNotices` et le ré-adressage de `listMissingClaimClosureNotices`). L'ancienne forme n'est plus jamais écrite.
+- **Source financière strictement L8** : la ligne `LedgerEntry {type:'refund', sourceEventId:<re_>}`, jamais les colonnes de répartition de `Refund` (des prédictions écrites avant la réponse de Stripe). Ledger incomplet ⇒ **0 e-mail restaurant**, la ligne reste visible `ledger_incomplete`.
+- **Le chrome extrait dans `lib/claim-email-shell.ts`, feuille délibérée (zéro import).** Copier huit lignes de balisage dans le nouveau module aurait été le plus petit changement et le pire : deux rendus du même avis divergent, et ce chantier vient déjà de corriger un chiffre calculé de deux façons. Zéro import signifie qu'il n'ajoute **aucune accessibilité** à ce qui le rejoint, ce qui est ce qui rend le partage sûr vis-à-vis de H15.
+- **`sendRestaurantRefundedEmail` DÉLÈGUE** désormais ici : une seule implémentation, donc rien à faire dériver.
+
+### H15 n'est pas relâché, et la liste d'appelants est FERMÉE
+
+Le fondateur l'a exigé explicitement (« Ne relâche PAS H15 avec un wildcard. Je veux une liste fermée de callsites autorisés »). Le graphe d'imports est mis à jour **par énumération** :
+
+- `lib/claim-emails.ts` : liste de spécificateurs portée de 8 à 10, exacte par égalité.
+- `lib/claim-email-shell.ts` : asserté **FEUILLE** (`[]` — aucun import).
+- `lib/refund-restaurant-notice.ts` : sa propre liste de 7 spécificateurs, exacte par égalité ; interdiction textuelle de `@/lib/(refund|stripe|claims)` ; marche d'accessibilité depuis le module.
+- **IMPORTEURS (3)** vs **APPELANTS (2)**, distingués : `lib/claim-closure-lists.ts` importe les clés et le trigger **sans** appeler l'émetteur — un import n'est pas un appel, et la liste des appelants est `lib/claim-emails.ts` + la route notify. La définition du module n'est pas un appel d'elle-même (le balayage l'exclut nommément, un piège qui a rendu ce test vert pour la mauvaise raison au premier essai).
+- **Contrôle négatif webhook** : la marche depuis les racines (webhook Stripe, reconcile-refunds, crons) n'atteint **ni** le nouveau module **ni** les senders, et le webhook ne les **nomme** pas — sans quoi un import dynamique futur passerait sous la marche.
+
+### Le zéro-fuite de la contestation : une PROJECTION partagée, pas une liste noire par route
+
+`POST /api/claims/[id]/contest` renvoyait encore la `Claim` Prisma **brute**. L9 avait corrigé l'historique et laissé cette réponse-là intacte : la même réclamation fuyait par une route ce qu'elle ne fuyait plus par l'autre. C'est la forme du défaut, pas la route, qui devait disparaître.
+
+`buildConsumerClaimView(...)` est extraite de `listConsumerClaims` et devient la **seule** forme rendue au client. Un DTO de quatorze clés, construit clé par clé, aucun spread Prisma. Épinglé par un test **sentinelle** : une réclamation dont chaque champ interdit porte une valeur repérable (`consumerId`, `refundId`, `refundError`, `stripeRefundId`, `activeOrderKey`, `arbitratedBy`, `decidedBy`, jeton d'arbitrage interne, clé d'idempotence, métadonnées d'audit, `photoUrl`, `contestReason`, `description`), un POST réussi, le JSON final scanné par **nom** et par **valeur** — et deux contrôles négatifs qui font tout le travail : (1) la row brute **fuit vraiment**, donc l'assertion n'est pas vide ; (2) une **colonne future fictive** (`riskScore`, `opsNote`, `assignedAgentId`) ne fuit pas — ce qu'une liste noire aurait livré toutes les trois, et c'est la raison même d'un constructeur.
+
+Corrigé au passage : `consumerSelectionSummary` renvoie désormais son **mode** (`lines | whole | amount`), pour que « Sélection non enregistrée » soit réservé à une absence réelle d'instantané et ne soit plus affiché pour une réclamation dont la portée EST enregistrée.
+
+### L'épingle `paymentStatus` durcie, et son contrôle négatif
+
+Le fondateur a demandé que le test ne dépende plus d'un dépouillement naïf des commentaires et qu'il **prouve** qu'il devient rouge. Trois changements :
+
+1. **Plus aucun dépouillement de commentaires sur le chemin risqué.** Mesuré lors de L9 : un `/\*[\s\S]*?\*/` non gourmand sur le webhook Stripe supprimait **les six** `prisma.order.update` du fichier — l'épingle passait donc parce que le code qu'elle devait inspecter avait disparu. Le détecteur est ancré sur un site d'appel `prisma.order.*` réel et lit la **fenêtre de charge utile**. Un commentaire byte-identique à une écriture le fait sonner : direction conservatrice, contrairement à celle qui cache du code.
+2. **Il lit l'EXPRESSION de valeur, pas un littéral.** L'écriture légitime du webhook est un **ternaire** (`paymentStatus: refunded ? 'refunded' : 'reconcile_manual'`) : un motif exigeant une quote juste après le deux-points rapportait le seul écrivain légitime de `'refunded'` comme ne l'écrivant pas — et un détecteur aveugle à cette forme est aveugle au prochain écrit de la même façon. Trouvé en écrivant le contrôle négatif, ce qui est précisément à quoi il sert.
+3. **Survie des repères + deux contrôles négatifs** : le balayage voit bien ≥ 6 sites `prisma.order.*` dans le webhook et ≥ 1 dans la route de paiement ; un **nouvel écrivain réel** synthétique (`app/api/orders/[id]/refund-notice/route.ts` écrivant `paymentStatus: 'refunded'`) fait **grossir la liste fermée de deux**, donc rend rouge la première assertion ; et un écrivain caché **après un littéral regex contenant `/*`** est retrouvé, alors que le dépouillement naïf le perd (asserté, pour que la raison du changement reste démontrée).
+
+### Constat enregistré, NON corrigé (décision fondateur)
+
+**`LedgerEntry.stripePaymentIntentId` n'appartient à aucun index** → **T-71, P2 PERFORMANCE / REVUE PRÉ-LIVE** dans `docs/ops/GO-LIVE-TICKETS.md`, avec la mesure : 11 sites de requête produit dans 8 fichiers filtrent sur cette colonne ; le modèle porte `@@unique([sourceEventId, type])` et trois index dont aucun ne la contient. Ce n'est pas un balayage de table entière (les requêtes portent aussi `type ∈ {payment, refund}`, donc le préfixe `type` de `[type, createdAt]` est attaquable), mais le coût reste proportionnel aux lignes de ces types dans toute la table. **Aucune migration dans ce lot** ; l'index proposé est additif et devra être mesuré par `EXPLAIN` avant/après, sur staging, à volume représentatif.
+
 ## Lots suivants
 (complété lot par lot : SHA, preuves, CI, SHA déployé)

@@ -8,6 +8,7 @@ import { sendRefundConfirmation } from '@/lib/transactional-emails'
 import { getStripe } from '@/lib/stripe'
 import { prisma } from '@/lib/prisma'
 import { resolveSupportNoticeTarget, REFUND_CONFIRMATION_TRIGGER } from '@/lib/support-refund-notices'
+import { sendRefundRestaurantNotice, readRefundRestaurantEffect } from '@/lib/refund-restaurant-notice'
 
 // ── POST /api/admin/refunds/rows/[rowId]/notify — D′ L9 / E3 ═══════════════════════════════════════════
 //
@@ -173,6 +174,45 @@ export async function POST(req: NextRequest, { params }: { params: { rowId: stri
       }
     }
 
+    // ── (3c) THE RESTAURANT'S POST-MONEY NOTICE (founder arbitration, 2026-09-27) ────────────────────
+    //
+    // Spec v2 §6.3 always asked for this, and L9 could not deliver it: the only sender required a `claimId`
+    // and keyed its dedupe on `claim:<id>:resto_refunded:<re_>`, which a SUPPORT refund cannot form because it
+    // has no Claim — and inventing one to carry an e-mail is forbidden. The founder corrected the
+    // implementation rather than the intent: the notice is now claim-agnostic and keyed on the REFUND.
+    //
+    // ITS FIGURES COME FROM THE LEDGER LINE OF THIS `re_`, never from the Refund row's own split columns,
+    // which are predictions written before Stripe answered (L8's rule, unchanged). No ledger line ⇒ no
+    // figures ⇒ NO restaurant e-mail, and the row stays visible in the admin list as `ledger_incomplete`.
+    // A financial notice without numbers is not a lighter version of this one, it is a different message.
+    //
+    // The two notices are INDEPENDENT: a restaurant notice that cannot be sent must never suppress the
+    // customer's confirmation, which is why this runs after the send above and can only add to the answer.
+    let restaurantNotice: { status: string; why?: string } = { status: 'skipped', why: 'not_attempted' }
+    try {
+      const effect = await readRefundRestaurantEffect({
+        stripeRefundId: t.stripeRefundId,
+        orderId:        t.orderId,
+        refundStatus:   'succeeded',   // proven twice above: our row, then Stripe re-read in this request
+        rowOrderId:     t.orderId,
+      })
+      restaurantNotice = await sendRefundRestaurantNotice({
+        restaurantId:   t.restaurantId,
+        orderId:        t.orderId,
+        stripeRefundId: t.stripeRefundId,
+        effect,
+        // POST-MONEY: the money has already left, so no product flag may suppress it (S-25). Passed as a
+        // literal `true` rather than read from a gate, because this route is ungated by decision.
+        noticeOpen:     true,
+        traceLabel:     t.rowId,
+        // NO claimId: there is no claim, and none is invented. The legacy dedupe key is therefore not
+        // consulted on this path — it could never have been written for a row with no claim.
+      })
+    } catch (e) {
+      console.error('[admin/refunds/notify] restaurant notice failed (the customer notice already went):', t.rowId, e instanceof Error ? e.message : e)
+      restaurantNotice = { status: 'failed', why: 'sender_error' }
+    }
+
     // ── (4) THE TRACE, after the act, each in its own try/catch ──────────────────────────────────────
     try {
       await recordAdminAudit({
@@ -187,7 +227,7 @@ export async function POST(req: NextRequest, { params }: { params: { rowId: stri
       console.error('[admin/refunds/notify] audit write failed (the e-mail was already sent):', t.rowId, e instanceof Error ? e.message : e)
     }
 
-    return NextResponse.json({ notified: sent.status === 'sent', status: sent.status, amountCents: stripeAmount, deduped })
+    return NextResponse.json({ notified: sent.status === 'sent', status: sent.status, amountCents: stripeAmount, deduped, restaurantNotice })
   } catch (e) {
     console.error('[POST /api/admin/refunds/rows/[rowId]/notify]', e)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })

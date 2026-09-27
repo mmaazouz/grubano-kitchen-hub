@@ -37,6 +37,14 @@
 //   leaves none; a 'duplicate' leaves none (the earlier attempt's row stands).
 
 import { orderRef } from '@/lib/order-ref'
+// D′ L9.1 — EIGHT BECAME TEN, and each addition is named so it stays a decision rather than a drift.
+// `@/lib/claim-email-shell` is the e-mail chrome, extracted so the claim-agnostic restaurant sender can
+// share it instead of re-rendering the same notice a second way. It is a LEAF (zero imports), so it adds no
+// reach and the H15 walk is unaffected. `@/lib/refund-restaurant-notice` holds that sender: the restaurant's
+// post-money notice no longer depends on a claim, because a SUPPORT refund legitimately has none, and this
+// module now DELEGATES to it so one refund can only ever produce one such notice, whichever path finds it.
+import { claimShell, esc, euros } from '@/lib/claim-email-shell'
+import { sendRefundRestaurantNotice } from '@/lib/refund-restaurant-notice'
 import { getTranslations } from 'next-intl/server'
 import { prisma } from '@/lib/prisma'
 import { sendTransactional, logEmailSkipped, type SendStatus } from '@/lib/transactional-emails'
@@ -53,14 +61,8 @@ import {
   type ClaimFacts, type ClosureKind,
 } from '@/lib/claim-action-rules'
 
-const esc = (s: string): string =>
-  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
 
-/** Montant en euros dans la LOCALE du destinataire (revue : .toFixed(2) mettait
- *  un point décimal dans les emails FR/ES/IT). Les 5 codes sont des tags BCP-47. */
-const euros = (locale: string, cents: number) =>
-  new Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR' }).format(cents / 100)
 
 /** H03: why a claim e-mail did not go out. The closed set — I-08's no_address, not_eligible and duplicate are not in it. */
 export type ClaimEmailWhy =
@@ -108,16 +110,6 @@ function transportResult(trigger: string, claimId: string, r: { status: SendStat
   return { status: r.status }
 }
 
-/** Gabarit sobre local (patron renderNudgeHtml / admin-alerts — shell() du rail
- *  est privé ; AUCUNE refonte de gabarit, juste le strict nécessaire + RTL ar). */
-function claimShell(p: { title: string; bodyHtml: string; footer: string; rtl: boolean }): string {
-  return `
-    <div dir="${p.rtl ? 'rtl' : 'ltr'}" style="font-family:Inter,Arial,sans-serif;max-width:480px;margin:0 auto;color:#1a1a2e">
-      <h2 style="color:#F97316">${p.title}</h2>
-      ${p.bodyHtml}
-      <p style="font-size:12px;color:#9ca3af;margin-top:28px">${p.footer}</p>
-    </div>`
-}
 
 /** Le client (Operator) destinataire : email + prénom + locale email préférée. */
 async function resolveConsumer(consumerId: string) {
@@ -174,59 +166,44 @@ export async function sendRestaurantRefundedEmail(p: {
   claimId:        string
   restaurantId:   string
   orderId:        string
-  /** The Stripe refund PROVEN succeeded by the caller. Used as the dedupe anchor, never printed. */
+  /** The Stripe refund PROVEN succeeded by the caller. The dedupe anchor, never printed. */
   stripeRefundId: string
   /** The T-46 block. Only `confirmed: true` sends. */
   effect:         ClaimFinancialEffect
   /** The notice class read at send time by the calling file — `true` for post-money and closure. */
   claimsOpen:     boolean
 }): Promise<ClaimEmailResult> {
-  const trigger = RESTAURANT_REFUNDED_TRIGGER
-  if (!p.claimsOpen) return claimsClosedSkip(trigger, p.claimId)
-  // §16 — Stripe saying succeeded is not sufficient. Without the ledger there are no numbers, and a
-  // financial e-mail without numbers is not a lighter version of this one, it is a different message.
-  if (!p.effect.confirmed) {
-    await traceMiss(trigger, p.claimId, 'ledger_incomplete')
-    return { status: 'skipped', why: 'ledger_incomplete' }
-  }
-  if (typeof p.stripeRefundId !== 'string' || p.stripeRefundId === '') {
-    await traceMiss(trigger, p.claimId, 'stripe_not_confirmed')
-    return { status: 'skipped', why: 'stripe_not_confirmed' }
-  }
-  const resto = await resolveRestaurantRecipient(p.restaurantId)
-  if (!resto) {
-    await traceMiss(trigger, p.claimId, 'no_recipient')
-    return { status: 'skipped', why: 'no_recipient' }
-  }
-  const t = await getTranslations({ locale: resto.locale, namespace: 'claimEmails' })
-  const ref = orderRef(p.orderId)
-  const e = p.effect
-  // The net impact is stored SIGNED and negative; it is printed as the signed figure so « −4,60 € » reads
-  // as a debit and cannot be mistaken for something received.
-  const rows = [
-    [t('restaurantRefunded.lineRefund'), euros(resto.locale, e.customerRefundCents)],
-    [t('restaurantRefunded.lineFee'), euros(resto.locale, e.grubanoFeeReturnedCents)],
-    [t('restaurantRefunded.lineNet'), euros(resto.locale, e.restaurantNetImpactCents)],
-  ]
-  const bodyHtml =
-    `<p>${esc(t('restaurantRefunded.body', { ref, resto: resto.restaurantName || t('theRestaurant') }))}</p>`
-    + '<table style="font-size:14px;border-collapse:collapse;margin:8px 0">'
-    + rows.map(([k, v]) => `<tr><td style="padding:2px 12px 2px 0;color:#6b7280">${esc(k)}</td><td style="padding:2px 0;font-weight:600">${esc(v)}</td></tr>`).join('')
-    + '</table>'
-    + `<p style="font-size:13px;color:#6b7280">${esc(t('restaurantRefunded.next', { ref }))}</p>`
-  const r = await sendTransactional({
-    to:        resto.to,
-    subject:   t('restaurantRefunded.subject', { ref }),
-    html:      claimShell({
-      title:    t('restaurantRefunded.title'),
-      bodyHtml,
-      footer:   t('footer'),
-      rtl:      resto.locale === 'ar',
-    }),
-    trigger,
-    dedupeKey: restaurantRefundedKey(p.claimId, p.stripeRefundId),
+  // D′ L9.1 — THIS IS NOW A DELEGATION, and that is the point of the lot. The implementation moved to
+  // `lib/refund-restaurant-notice`, which needs no claim, because a SUPPORT refund legitimately has none and
+  // spec v2 §6.3 asked for a notice the old signature could not produce (it required a `claimId` and keyed its
+  // dedupe on `claim:<id>:resto_refunded:<re_>`). Keeping a second implementation here would have given one
+  // refund two senders and two chances to diverge — the failure this chantier has already paid for twice.
+  //
+  // The CLAIM path keeps this entry point, and keeps passing its `claimId`, for two reasons: the EmailLog
+  // trail still names the claim, and the LEGACY dedupe key can only be checked when a claim id is in hand.
+  const r = await sendRefundRestaurantNotice({
+    restaurantId:   p.restaurantId,
+    orderId:        p.orderId,
+    stripeRefundId: p.stripeRefundId,
+    effect:         p.effect,
+    noticeOpen:     p.claimsOpen,
+    traceLabel:     p.claimId,
+    claimId:        p.claimId,
   })
-  return transportResult(trigger, p.claimId, r)
+  // The claim vocabulary is narrower than the notice module's; map rather than widen it, so the toast table
+  // (H11, nine frozen keys) is untouched.
+  if (r.status === 'sent') return { status: 'sent' }
+  if (r.status === 'duplicate') return { status: 'duplicate' }
+  if (r.status === 'failed') return { status: 'failed', why: 'sender_error' }
+  // `notice_closed` maps back to this module's OWN word for the same fact, `claims_disabled`, because the
+  // toast table (H11) is nine frozen keys and this path used to answer exactly that. The mapping is explicit
+  // for each value: a default that swallowed an unknown reason into `ledger_incomplete` would tell an
+  // operator a ledger line is missing when it is not.
+  return { status: 'skipped', why: r.why === 'no_recipient' ? 'no_recipient'
+    : r.why === 'smtp_disabled' ? 'smtp_disabled'
+    : r.why === 'stripe_not_confirmed' ? 'stripe_not_confirmed'
+    : r.why === 'notice_closed' ? 'claims_disabled'
+    : 'ledger_incomplete' }
 }
 
 // ── (1) Accusé de réception — à l'OUVERTURE d'une réclamation ──────────────────

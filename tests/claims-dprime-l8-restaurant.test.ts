@@ -852,7 +852,18 @@ describe('P/Q/R/S/T — the restaurant is told about money only once, and only w
     // The figures arrive as a parameter, and the sender only prints them.
     const fn = src.slice(src.indexOf('export async function sendRestaurantRefundedEmail'), src.indexOf('// ── (1) Accusé'))
     expect(fn).toContain('p.effect')
-    expect(fn).toContain('if (!p.effect.confirmed)')
+    // D′ L9.1 — THE RULE MOVED, SO THE PIN FOLLOWED IT. `sendRestaurantRefundedEmail` is now a DELEGATION to
+    // lib/refund-restaurant-notice, which needs no claimId because a SUPPORT refund legitimately has no Claim.
+    // Asserting « if (!p.effect.confirmed) » in THIS file would now pass only while a second implementation
+    // existed here — i.e. the pin would reward exactly the duplication the delegation removes. So it is
+    // asserted in both halves: the delegation here, the rule where it lives.
+    expect(fn).toContain('sendRefundRestaurantNotice({')
+    expect(fn).toContain('effect:         p.effect')
+    const sender = fs.readFileSync('lib/refund-restaurant-notice.ts', 'utf8')
+    expect(sender).toContain('if (!p.effect.confirmed)')
+    // …and the delegate is held to the same discipline: it derives the effect from LEDGER integers a caller
+    // read, and it never calls Stripe.
+    for (const s2 of ['getStripe', '@/lib/stripe']) expect(sender, s2).not.toContain(s2)
   })
 
   it('V — nothing in this lot writes to Stripe', () => {

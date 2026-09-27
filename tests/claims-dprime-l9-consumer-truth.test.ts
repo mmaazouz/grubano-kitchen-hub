@@ -25,6 +25,42 @@ describe('§2 — Order.paymentStatus is not a refund read-model and gains no ne
     try { return walk(d) } catch { return [] }
   })
 
+  const WEBHOOK = 'app/api/webhooks/stripe/route.ts'
+  const PAY = 'app/api/orders/[id]/pay/route.ts'
+
+  /**
+   * THE DETECTOR, at describe scope so the NEGATIVE CONTROLS below can attack it with a synthetic tree
+   * (founder L9.1: « Ajouter un contrôle négatif qui prouve que le test devient rouge si un writer
+   * paymentStatus refund est réellement introduit »). A pin nobody has ever seen go red is a decoration.
+   */
+  const orderWriteSites = (src: string): number[] => {
+    const re = /prisma\.order\.(update|updateMany|upsert|create|createMany)\s*\(/g
+    const out: number[] = []
+    for (let m = re.exec(src); m; m = re.exec(src)) out.push(m.index)
+    return out
+  }
+  /** The payload window of one call. 900 chars covers every multi-line `data: { … }` in the tree. */
+  const payloadNear = (src: string, i: number) => src.slice(i, i + 900)
+  const writesOrderPaymentStatus = (src: string): boolean =>
+    orderWriteSites(src).some((i) => /paymentStatus:\s*['\w]/.test(payloadNear(src, i)))
+  /**
+   * A REFUND state specifically, anchored on a real `prisma.order.*` call — no comment-stripping.
+   *
+   * IT READS THE VALUE EXPRESSION, not a literal. The webhook's own write is a TERNARY
+   * (`paymentStatus: refunded ? 'refunded' : 'reconcile_manual'`), so a pattern demanding a quote straight
+   * after the colon reports the ONE legitimate writer of 'refunded' as not writing it — and a detector blind
+   * to the real shape is blind to the next one written the same way. The first `paymentStatus:` after the
+   * call site is the one bound to THAT call; a later write in the same window belongs to its own call site.
+   */
+  const writesRefundPaymentStatus = (src: string): boolean =>
+    orderWriteSites(src).some((i) => {
+      const m = /paymentStatus:\s*([^,}\n]*)/.exec(payloadNear(src, i))
+      return !!m && /'(refunded|partially_refunded)'/.test(m[1])
+    })
+  const productWriters = (files: string[], rd: (f: string) => string) =>
+    files.filter((f) => /^(app|lib|components)\//.test(f) && writesOrderPaymentStatus(rd(f))).sort()
+  const fsRead = (f: string) => readFileSync(f, 'utf8')
+
   it('EXACTLY two files write Order.paymentStatus, and they are the two that always did', () => {
     // SCOPED TO THE ORDER MODEL on purpose. `paymentStatus` is a column on other models too — lib/supply-payment
     // writes a supplier payment's and two QA seed scripts write their own fixtures — so a detector that merely
@@ -38,21 +74,14 @@ describe('§2 — Order.paymentStatus is not a refund read-model and gains no ne
     // `prisma.order.update` occurrences, so a pin built on it would have reported the webhook as not writing
     // the column at all, i.e. it would have passed for the wrong reason. The payload pattern below requires a
     // VALUE after the colon, which prose cannot satisfy.
-    const writesOrderPaymentStatus = (src: string): boolean => {
-      const re = /prisma\.order\.(update|updateMany|upsert|create|createMany)\s*\(/g
-      for (let m = re.exec(src); m; m = re.exec(src)) {
-        if (/paymentStatus:\s*['\w]/.test(src.slice(m.index, m.index + 900))) return true
-      }
-      return false
-    }
     // Scanned over the PRODUCT (app, lib, components). A QA seed under scripts/ also creates Order fixtures
     // carrying the column; that is fixture data, not the product asserting a payment state, and the second
     // assertion below is what holds it honest.
-    const productWriters = FILES.filter((f) => /^(app|lib|components)\//.test(f) && writesOrderPaymentStatus(readFileSync(f, 'utf8'))).sort()
-    expect(productWriters).toEqual([
-      'app/api/orders/[id]/pay/route.ts',
-      'app/api/webhooks/stripe/route.ts',
-    ])
+    expect(productWriters(FILES, fsRead)).toEqual([PAY, WEBHOOK])
+    // LANDMARK SURVIVAL — the scan really does see the webhook's own writes. Without this the list above
+    // could be right for the wrong reason (a detector that finds nothing anywhere also finds no new writer).
+    expect(orderWriteSites(fsRead(WEBHOOK)).length).toBeGreaterThanOrEqual(6)
+    expect(orderWriteSites(fsRead(PAY)).length).toBeGreaterThanOrEqual(1)
     // …and every OTHER writer anywhere in the tree writes only fixture values, never a refund state.
     const others = FILES.filter((f) => !/^(app|lib|components)\//.test(f) && writesOrderPaymentStatus(readFileSync(f, 'utf8')))
     for (const f of others) {
@@ -65,11 +94,59 @@ describe('§2 — Order.paymentStatus is not a refund read-model and gains no ne
     for (const f of FILES) {
       const src = readFileSync(f, 'utf8')
       expect(src, `${f} invents partially_refunded`).not.toContain("'partially_refunded'")
-      if (f !== 'app/api/webhooks/stripe/route.ts') {
-        const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
-        expect(code, `${f} writes paymentStatus 'refunded'`).not.toMatch(/paymentStatus:\s*'refunded'/)
-      }
+      // NO COMMENT-STRIPPING, for the reason measured above: the strip deleted all SIX `prisma.order.update`
+      // statements from the webhook, so a pin built on stripped source can pass because the code it was
+      // meant to inspect is gone. The detector is anchored on a real call site instead, and a COMMENT that
+      // is byte-identical to a write trips it — a conservative direction, unlike the one that hides code.
+      if (f !== WEBHOOK) expect(writesRefundPaymentStatus(src), `${f} writes a refund paymentStatus`).toBe(false)
     }
+    // LANDMARK SURVIVAL: the webhook DOES write it, so the exclusion above is excluding something real.
+    expect(writesRefundPaymentStatus(fsRead(WEBHOOK))).toBe(true)
+  })
+
+  it('NEGATIVE CONTROL — the pin goes RED when a real refund paymentStatus writer is introduced', () => {
+    // A file that does exactly what §2 forbids: a consumer-facing route deciding that a refunded order's
+    // payment should now read 'refunded'. This is the change the founder wants the suite to catch.
+    const NEW_WRITER = 'app/api/orders/[id]/refund-notice/route.ts'
+    const SYNTHETIC = `
+      import { prisma } from '@/lib/prisma'
+      export async function POST(req: Request, { params }: { params: { id: string } }) {
+        const summary = await loadOrderRefundSummary(params.id)
+        if (summary.isTotal) {
+          await prisma.order.update({
+            where: { id: params.id },
+            data:  { paymentStatus: 'refunded' },
+          })
+        }
+        return Response.json({ ok: true })
+      }`
+    const rd = (f: string) => (f === NEW_WRITER ? SYNTHETIC : fsRead(f))
+    const list = productWriters([...FILES, NEW_WRITER], rd)
+    // (1) the detector sees it…
+    expect(writesOrderPaymentStatus(SYNTHETIC)).toBe(true)
+    expect(writesRefundPaymentStatus(SYNTHETIC)).toBe(true)
+    // (2) …so the closed list of two grows, which is the assertion of the first test failing
+    expect(list).toContain(NEW_WRITER)
+    expect(list).not.toEqual([PAY, WEBHOOK])
+    // (3) …and the refund-state scan of the second test flags it too, because it is not the webhook
+    expect(NEW_WRITER).not.toBe(WEBHOOK)
+  })
+
+  it('NEGATIVE CONTROL — a writer hidden after a regex literal or a `*/` inside a string is still found', () => {
+    // The shapes that broke the OLD comment-stripping pin. A non-greedy `/\\*…\\*/` strip starting at an
+    // early block comment swallows everything up to the next `*/` — including, measured on the webhook, six
+    // real statements. These two sources therefore exist to prove the replacement does not rely on that.
+    const AFTER_REGEX = `
+      const RE = /a\\/*b/g             // the two chars that OPEN a block comment, inside a regex literal
+      await prisma.order.update({ where: { id }, data: { paymentStatus: 'refunded' } })
+      /** a real doc comment, whose terminator closes the FAKE one opened above */`
+    expect(writesOrderPaymentStatus(AFTER_REGEX)).toBe(true)
+    expect(writesRefundPaymentStatus(AFTER_REGEX)).toBe(true)
+    // NEGATIVE CONTROL OF THE NEGATIVE CONTROL: the naive strip really does lose it, which is why it is gone.
+    const naive = AFTER_REGEX.replace(/\/\*[\s\S]*?\*\//g, '')
+    expect(naive).not.toContain('prisma.order.update')
+    // …and a write to ANOTHER model's paymentStatus is still not an Order write (the supplier rail)
+    expect(writesOrderPaymentStatus(`await prisma.supplierOrder.update({ data: { paymentStatus: 'paid' } })`)).toBe(false)
   })
 
   it('the refund read-model itself never reads or writes paymentStatus', () => {
@@ -263,7 +340,9 @@ describe('§27 — listConsumerClaims is a BUILDER and leaks nothing', () => {
     expect(code).not.toContain('{ ...c')
     expect(code).not.toContain('{...c')
     expect(code).not.toContain('CONSUMER_HIDDEN_CLAIM_FIELDS')   // nothing is deleted any more
-    expect(code).toContain('const card: ConsumerClaimCard = {')
+    // D′ L9.1: the builder moved into the SHARED primitive `buildConsumerClaimView`, so the list and the
+    // contest response cannot project one audience two ways. The pin follows it.
+    expect(code).toContain('buildConsumerClaimView({')
   })
 
   it('the declared card keys are EXACTLY the §16 contract, and every forbidden field is absent from it', () => {
@@ -355,5 +434,107 @@ describe('P1 — both « avis non envoyés » sections can actually render', () 
     expect(src).toContain('take: SUPPORT_NOTICE_SCAN_CAP + 1')
     expect(src).toContain('const scanTruncated = candidates.length > SUPPORT_NOTICE_SCAN_CAP')
     expect(src).toContain('items: items.slice(0, SUPPORT_NOTICE_CAP)')
+  })
+})
+
+// ── L9.1 §"CONTEST ZERO-LEAK" — a client response goes through the shared projection ════════════════
+describe('L9.1 — the contest response leaks nothing, proven with sentinels', () => {
+  it('EVERY sensitive field carries a sentinel; none of them, by NAME or by VALUE, reaches the payload', async () => {
+    const { buildConsumerClaimView } = await import('@/lib/claims')
+    // A claim where every field the founder forbids holds a value we can search the JSON for. If the payload
+    // were the raw Prisma row — the shape this replaced — each sentinel would appear verbatim.
+    const SENTINELS = {
+      consumerId:               'SENTINEL_consumerId',
+      refundId:                 'SENTINEL_refundId',
+      refundError:              'SENTINEL_refundError',
+      activeOrderKey:           'SENTINEL_activeOrderKey',
+      arbitratedBy:             'SENTINEL_arbitratedBy',
+      decidedBy:                'SENTINEL_decidedBy',
+      contestReason:            'SENTINEL_contestReason',
+      photoUrl:                 'SENTINEL_photoUrl',
+      description:              'SENTINEL_description',
+      idempotencyKey:           'SENTINEL_idempotencyKey',
+      stripeRefundId:           're_SENTINELstripeRefundId',
+      auditMetadata:            'SENTINEL_auditMetadata',
+      internalArbitrationToken: 'SENTINEL_internalToken',
+    }
+    const view = buildConsumerClaimView({
+      claim: {
+        id: 'cl1', orderId: 'ord_abcdef', restaurantId: 'r1', status: 'arbitration',
+        reason: 'wrong_item', requestedAmountCents: 900, approvedAmountCents: 900,
+        createdAt: new Date('2026-09-20T10:00:00Z'), decidedAt: new Date('2026-09-21T10:00:00Z'),
+        selection: { v: 1, mode: 'lines', lines: [{ index: 0, itemId: 'SENTINEL_itemId', qty: 2, unitCents: 450 }] },
+        refundAttempted: true, restaurantResponse: 'refused', restaurantResponseReason: 'le plat était correct',
+        arbitrationDecision: 'approved', arbitrationReason: 'photo concluante',
+        ...SENTINELS,
+      } as never,
+      restaurantName: 'Gnocchi Bar',
+      boundRow: null, rowsReadable: true, binders: null,
+      nowMs: Date.parse('2026-09-22T10:00:00Z'), contestWindowMs: 48 * 3600 * 1000,
+    })
+    const json = JSON.stringify(view)
+    for (const [name, value] of Object.entries(SENTINELS)) {
+      expect(json, `leaked the NAME ${name}`).not.toContain(name)
+      expect(json, `leaked the VALUE of ${name}`).not.toContain(value)
+    }
+    // the L7 internals of the selection snapshot stay inside too
+    expect(json).not.toContain('SENTINEL_itemId')
+    expect(json).not.toContain('unitCents')
+    expect(json).not.toContain('450')
+    // …and the payload IS the closed DTO
+    expect(Object.keys(view).sort()).toEqual([
+      'approvedAmountCents', 'arbitrationReason', 'canContest', 'createdAt', 'decidedAt', 'id', 'orderId',
+      'orderRef', 'reason', 'requestedAmountCents', 'restaurantName', 'restaurantResponseReason',
+      'selectionSummary', 'status',
+    ])
+    // the derived status, never the raw one
+    expect(view.status).toBe('arbitration')
+    expect(view.orderRef).toBe('GR-ABCDEF')
+    // approved === requested ⇒ not stated (it is not information)
+    expect(view.approvedAmountCents).toBe(null)
+  })
+
+  it('NEGATIVE CONTROL — the raw Prisma row WOULD leak, so the assertion above is not vacuous', () => {
+    // The shape this replaced, reconstructed here: `findUnique({ where })` with no select, returned as-is.
+    const rawRow = {
+      id: 'cl1', orderId: 'ord_abcdef', consumerId: 'SENTINEL_consumerId', decidedBy: 'SENTINEL_decidedBy',
+      status: 'arbitration', activeOrderKey: 'SENTINEL_activeOrderKey', refundId: 'SENTINEL_refundId',
+    }
+    const json = JSON.stringify({ claim: rawRow })
+    for (const name of ['consumerId', 'decidedBy', 'activeOrderKey', 'refundId']) {
+      expect(json, name).toContain(name)              // ← the old response really did carry these
+    }
+  })
+
+  it('A FUTURE COLUMN ON Claim DOES NOT LEAK BY DEFAULT — the whole reason this is a builder', async () => {
+    const { buildConsumerClaimView } = await import('@/lib/claims')
+    const view = buildConsumerClaimView({
+      claim: {
+        id: 'cl2', orderId: 'ord_xyz123', restaurantId: 'r1', status: 'refused',
+        createdAt: new Date('2026-09-20T10:00:00Z'), decidedAt: new Date('2026-09-20T12:00:00Z'),
+        // an additive column a future migration might bring, carrying something internal
+        riskScore: 97, opsNote: 'SENTINEL_future_internal_note', assignedAgentId: 'SENTINEL_agent',
+      } as never,
+      restaurantName: null, boundRow: null, rowsReadable: true, binders: null,
+      nowMs: Date.parse('2026-09-21T10:00:00Z'), contestWindowMs: 48 * 3600 * 1000,
+    })
+    const json = JSON.stringify(view)
+    for (const leak of ['riskScore', '97', 'opsNote', 'SENTINEL_future_internal_note', 'assignedAgentId', 'SENTINEL_agent']) {
+      expect(json, leak).not.toContain(leak)
+    }
+    // a blocklist would have shipped all three; a builder cannot
+    expect(view.canContest).toBe(true)   // refused, inside the window
+  })
+
+  it('the contest route hands the projection straight through, and reads no raw row itself', () => {
+    const route = readFileSync('app/api/claims/[id]/contest/route.ts', 'utf8')
+    expect(route).toContain('return NextResponse.json({ claim: result.claim })')
+    expect(route).not.toContain('prisma.')
+    const lib = readFileSync('lib/claims.ts', 'utf8')
+    const fn = lib.slice(lib.indexOf('export async function contestClaim('))
+    const body = fn.slice(0, fn.indexOf('\nexport '))
+    expect(body).toContain('buildConsumerClaimView({')
+    // NEGATIVE CONTROL: the raw row must not be what is returned
+    expect(body).not.toContain('return { ok: true, claim: updated }')
   })
 })

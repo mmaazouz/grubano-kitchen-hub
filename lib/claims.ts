@@ -594,38 +594,86 @@ export async function listConsumerClaims(consumerId: string): Promise<ConsumerCl
   const nowMs = Date.now()
   // The internal recovery fields never reach the customer: refundError carries engine and Stripe text and
   // ids written for operators (found in round 10 while deriving the status; no UI reads them).
-  return claims.map((c) => {
-    const row = c.refundId && rowsById ? rowsById.get(c.refundId) ?? null : null
-    const inProgress = c.refundId ? boundRowShowsInProgress(row) === true : null
-    const refundedRow = claimClosureKind(c) !== 'refunded' ? null
-      : !c.refundId ? false
-        : rowsById && bindersByRow ? refundedRowTruth(row, bindersByRow.get(c.refundId) ?? 0, c.orderId) : null
-    // ROUND 13 (F08): the reasons are the customer's own view — a restaurant reason only for its refusal, no Grubano
-    // reason on a declaration (a legacy declaration may still carry the operator's note in arbitrationReason).
-    const reasons = customerClaimReasons(c)
-    // C2, the same rule getClaimEligibility applies: a refused claim is contestable inside the window.
-    const canContest = c.status === 'refused' && !!c.decidedAt && (nowMs - c.decidedAt.getTime() <= contestWindowMs)
-    const card: ConsumerClaimCard = {
-      id:                       c.id,
-      orderRef:                 orderRef(c.orderId),
-      orderId:                  c.orderId,
-      restaurantName:           namesById.get(c.restaurantId) ?? null,
-      createdAt:                c.createdAt,
-      reason:                   c.reason ?? null,
-      requestedAmountCents:     c.requestedAmountCents ?? null,
-      // Only when it DIFFERS: an approved amount equal to the request is not information, and showing it
-      // on every card would invite « why is this number here » on the ordinary case.
-      approvedAmountCents:      typeof c.approvedAmountCents === 'number' && c.approvedAmountCents !== c.requestedAmountCents
-        ? c.approvedAmountCents : null,
-      status:                   customerClaimStatus(c, inProgress, refundedRow),
-      canContest,
-      decidedAt:                c.decidedAt ?? null,
-      restaurantResponseReason: reasons.restaurantResponseReason,
-      arbitrationReason:        reasons.arbitrationReason,
-      selectionSummary:         consumerSelectionSummary(c.selection),
-    }
-    return card
-  })
+  return claims.map((c) => buildConsumerClaimView({
+    claim:          c,
+    restaurantName: namesById.get(c.restaurantId) ?? null,
+    boundRow:       c.refundId && rowsById ? rowsById.get(c.refundId) ?? null : null,
+    rowsReadable:   rowsById !== null,
+    binders:        c.refundId && bindersByRow ? bindersByRow.get(c.refundId) ?? 0 : null,
+    nowMs,
+    contestWindowMs,
+  }))
+}
+
+/**
+ * D′ L9.1 — THE ONE PROJECTION EVERY CONSUMER CLAIM PAYLOAD GOES THROUGH.
+ *
+ * L9 converted the history list to a key-by-key builder but left the ACTION responses alone, and the
+ * adversarial review found the hole: `POST /api/claims/[id]/contest` answered with
+ * `prisma.claim.findUnique({ where })` — no `select` — so a 200 carried `consumerId` (the caller's own
+ * Operator id, echoed back), `decidedBy` (WHICH PERSON at Grubano decided), `activeOrderKey`, the RAW
+ * `status` that `customerClaimStatus` exists to hide, plus `contestReason`, `photoUrl`,
+ * `responseDeadlineAt`, `arbitrationDecision` and the whole stored `selection`. The founder put it in
+ * L9.1's scope because it is a CLIENT response.
+ *
+ * A shared primitive rather than a second builder: two projections of one audience drift, and a blocklist
+ * ships every future column by default. Assigning every key by name makes both impossible — a new `Claim`
+ * column cannot reach a customer without someone adding a line here.
+ */
+export function buildConsumerClaimView(input: {
+  /**
+   * `ClaimFacts &` and not a hand-written field list: the status derivation reads facts through that type,
+   * and a local list that forgot one (`responseDeadlineAt`, `refundError`, `arbitrationDecision`) would let a
+   * caller pass an object the rules then read as undefined — a wrong STATUS shown to a customer, silently.
+   * Intersecting the real type makes the compiler check the caller instead of a cast hiding the gap.
+   */
+  claim: ClaimFacts & {
+    id: string; orderId: string; restaurantId: string
+    requestedAmountCents?: number | null
+    createdAt: Date; decidedAt?: Date | null; selection?: unknown
+    restaurantResponseReason?: string | null; arbitrationReason?: string | null
+  }
+  restaurantName: string | null
+  /** The bound Refund row, when the caller read it. null = no row, or not read. */
+  boundRow: { orderId: string; status: string; stripeRefundId: string | null; amountCents: number } | null
+  /** false when the row batch could not be read — the status must then fail closed, never « Remboursée ». */
+  rowsReadable: boolean
+  /** Binder count for the bound row, or null when unread (A-S43 fails closed on null). */
+  binders: number | null
+  nowMs: number
+  contestWindowMs: number
+}): ConsumerClaimCard {
+  const c = input.claim
+  const inProgress = c.refundId ? boundRowShowsInProgress(input.boundRow) === true : null
+  const refundedRow = claimClosureKind(c) !== 'refunded' ? null
+    : !c.refundId ? false
+      : input.rowsReadable && input.binders !== null
+        ? refundedRowTruth(input.boundRow, input.binders, c.orderId)
+        : null
+  // ROUND 13 (F08): the reasons are the customer's own view — a restaurant reason only for its refusal, no
+  // Grubano reason on a declaration (a legacy declaration may still carry the operator's note).
+  const reasons = customerClaimReasons(c)
+  // C2, the same rule getClaimEligibility applies: a refused claim is contestable inside the window.
+  const canContest = c.status === 'refused' && !!c.decidedAt && (input.nowMs - c.decidedAt.getTime() <= input.contestWindowMs)
+  return {
+    id:                       c.id,
+    orderRef:                 orderRef(c.orderId),
+    orderId:                  c.orderId,
+    restaurantName:           input.restaurantName,
+    createdAt:                c.createdAt,
+    reason:                   c.reason ?? null,
+    requestedAmountCents:     c.requestedAmountCents ?? null,
+    // Only when it DIFFERS: an approved amount equal to the request is not information, and showing it on
+    // every card would invite « why is this number here » on the ordinary case.
+    approvedAmountCents:      typeof c.approvedAmountCents === 'number' && c.approvedAmountCents !== c.requestedAmountCents
+      ? c.approvedAmountCents : null,
+    status:                   customerClaimStatus(c, inProgress, refundedRow),
+    canContest,
+    decidedAt:                c.decidedAt ?? null,
+    restaurantResponseReason: reasons.restaurantResponseReason,
+    arbitrationReason:        reasons.arbitrationReason,
+    selectionSummary:         consumerSelectionSummary(c.selection),
+  }
 }
 
 /**
@@ -1885,8 +1933,34 @@ export async function contestClaim(input: { claimId: string; consumerId: string;
     if (isP2002(err)) return { ok: false, status: 409, error: 'Une réclamation active existe déjà pour cette commande.' }
     throw err
   }
+  // D′ L9.1 — THE CONTEST RESPONSE IS A CLIENT PAYLOAD, so it goes through the SHARED projection.
+  // It used to be `findUnique({ where })` with no `select`, returned straight to the browser: a 200 carried
+  // `consumerId` (the caller's own Operator id, echoed back), `decidedBy` (WHICH PERSON at Grubano decided),
+  // `activeOrderKey`, the RAW `status` that `customerClaimStatus` exists to hide, plus `contestReason`,
+  // `photoUrl`, `responseDeadlineAt`, `arbitrationDecision` and the whole stored `selection`. Found by the
+  // adversarial review of L9; the founder scoped it into L9.1 because it is a client response.
+  //
+  // A contest has just re-opened the claim, so no refund row is settled and none is read: the row facts are
+  // passed as « no row, readable » and `customerClaimStatus` derives the state from the claim alone.
   const updated = await prisma.claim.findUnique({ where: { id: claim.id } })
-  return { ok: true, claim: updated }
+  if (!updated) return { ok: false, status: 409, error: 'Cette réclamation a déjà été traitée.' }
+  let restaurantName: string | null = null
+  try {
+    const r = await prisma.restaurant.findUnique({ where: { id: updated.restaurantId }, select: { name: true } })
+    restaurantName = r?.name ?? null
+  } catch { restaurantName = null }
+  return {
+    ok: true,
+    claim: buildConsumerClaimView({
+      claim:          updated,
+      restaurantName,
+      boundRow:       null,
+      rowsReadable:   true,
+      binders:        null,
+      nowMs:          Date.now(),
+      contestWindowMs: claimContestHours() * 3600 * 1000,
+    }),
+  }
 }
 
 // ── ADMIN — arbitrate a claim awaiting a Grubano decision ─────────────────────────
