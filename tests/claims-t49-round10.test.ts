@@ -572,7 +572,7 @@ describe('OUR PENDING ROW WITH A STRIPE ID — read by that id, as the engine do
 
   it('a CANCELED row in our table paid nothing → the reconciler’s failed path, closable', async () => {
     db.refund.findMany.mockResolvedValue([OWN({ status: 'canceled', stripeRefundId: 're_1' })])
-    db.claim.findFirst.mockResolvedValue({ id: 'cl1', status: 'refunding', refundError: MARKER })
+    db.claim.findFirst.mockResolvedValue({ id: 'cl1', orderId: 'o_cl1', status: 'refunding', refundError: MARKER })
     expect(await reconcileClaimEvidence({ claimId: 'cl1' })).toMatchObject({ ok: true, outcome: 'refund_failed', refundId: 'rf1' })
     expect(isStuckResolvable(fx.row as { status: string; refundError: string })).toBe(true)
   })
@@ -597,7 +597,7 @@ describe('A CLAIM BOUND TO A ROW, NO ERROR — reconcile applies that row’s tr
 
   it('the bound row FAILED in our table → recorded as failed by the reconciler, and the claim becomes closable', async () => {
     db.refund.findUnique.mockResolvedValue(OWN({ status: 'failed', stripeRefundId: 're_1' }))
-    db.claim.findFirst.mockResolvedValue({ id: 'cl1', status: 'refunding', refundError: null })
+    db.claim.findFirst.mockResolvedValue({ id: 'cl1', orderId: 'o_cl1', status: 'refunding', refundError: null })
     expect(await reconcileClaimEvidence({ claimId: 'cl1' })).toMatchObject({ ok: true, outcome: 'refund_failed', refundId: 'rf1' })
     expect(isStuckResolvable(fx.row as { status: string; refundError: string })).toBe(true)
   })
@@ -721,7 +721,7 @@ describe('GUIDANCE — one fact-only line per money state, shared by both consol
   })
 
   it('ROUND 12 (round-11 audit, P1): a pending row without a Stripe id is no longer refused — its evidence decides', () => {
-    const r = attributionRefusal({ claimId: 'cl1', row: { id: 'rf1', status: 'pending', reason: claimRefundReason('cl1'), stripeRefundId: null }, orderRows: [{ id: 'rf1', reason: claimRefundReason('cl1') }], boundToOtherClaimId: null })
+    const r = attributionRefusal({ claimId: 'cl1', row: { id: 'rf1', orderId: 'o_rf1', status: 'pending', reason: claimRefundReason('cl1'), stripeRefundId: null }, orderRows: [{ id: 'rf1', reason: claimRefundReason('cl1') }], boundToOtherClaimId: null })
     expect(r).toBeNull()
   })
 
@@ -759,16 +759,16 @@ describe('CUSTOMER STATUS — never the raw recovery state', () => {
 
   it('the customer list carries the derived status and none of the internal recovery fields', async () => {
     db.claim.findMany.mockResolvedValue([
-      { id: 'a', status: 'refunding', refundId: 'rfA', refundError: null, refundAttempted: true, activeOrderKey: 'o1', arbitratedBy: null },
-      { id: 'b', status: 'refunding', refundId: 'rfB', refundError: null, refundAttempted: true, activeOrderKey: 'o2', arbitratedBy: null },
-      { id: 'c', status: 'approved', refundId: null, refundError: 'engine_failed: Erreur paiement', refundAttempted: true, activeOrderKey: 'o3', arbitratedBy: 'op1' },
-      { id: 'd', status: 'refunding', refundId: null, refundError: MARKER, refundAttempted: true, activeOrderKey: 'o4', arbitratedBy: null },
+      { id: 'a', orderId: 'o_a', status: 'refunding', refundId: 'rfA', refundError: null, refundAttempted: true, activeOrderKey: 'o1', arbitratedBy: null },
+      { id: 'b', orderId: 'o_b', status: 'refunding', refundId: 'rfB', refundError: null, refundAttempted: true, activeOrderKey: 'o2', arbitratedBy: null },
+      { id: 'c', orderId: 'o_c', status: 'approved', refundId: null, refundError: 'engine_failed: Erreur paiement', refundAttempted: true, activeOrderKey: 'o3', arbitratedBy: 'op1' },
+      { id: 'd', orderId: 'o_d', status: 'refunding', refundId: null, refundError: MARKER, refundAttempted: true, activeOrderKey: 'o4', arbitratedBy: null },
       { id: 'e', orderId: 'o5', status: 'refunded', refundId: 'rfE', refundError: null, refundAttempted: true, activeOrderKey: null, arbitratedBy: null },
     ])
     // Round 11: « en cours » needs the bound row PENDING and recorded at Stripe — the row read carries its status.
     // ROUND 13 (F03): « Remboursée » needs the settled claim's bound row proven (same order, succeeded, amount > 0).
     db.refund.findMany.mockResolvedValue([
-      { id: 'rfA', status: 'pending', stripeRefundId: 're_A' }, { id: 'rfB', status: 'pending', stripeRefundId: null },
+      { id: 'rfA', orderId: 'o_rfA', status: 'pending', stripeRefundId: 're_A' }, { id: 'rfB', orderId: 'o_rfB', status: 'pending', stripeRefundId: null },
       { id: 'rfE', orderId: 'o5', status: 'succeeded', amountCents: 500, stripeRefundId: 're_E' },
     ])
     const out = await listConsumerClaims('u1')

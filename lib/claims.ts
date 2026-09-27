@@ -510,7 +510,49 @@ export async function createClaim(input: {
   }
 }
 
-export async function listConsumerClaims(consumerId: string) {
+/**
+ * THE CONSUMER'S OWN CLAIM CARD — the exact shape « Mes réclamations » renders (D′ L9 §16/§17/§27).
+ *
+ * A BUILDER, not a blocklist. Until this lot the function below returned `{ ...claim }` minus five deleted
+ * keys, which is precisely the pattern D′ L8 removed from the restaurant side for the reason that applies
+ * here too: a blocklist ships every FUTURE column by default. It also shipped several present ones that had
+ * no business leaving the server — `consumerId` (the customer's own Operator id, echoed back), `decidedBy`
+ * (WHICH PERSON at Grubano decided), the raw `arbitrationDecision`, `contestReason`, `photoUrl`,
+ * `responseDeadlineAt`, `restaurantId`, and the whole stored `selection` snapshot with its `itemId` and
+ * `unitCents` internals. §27 names the first two explicitly. Assigning every key by name makes the leak
+ * impossible rather than merely absent, and a static test pins the absence of a spread.
+ */
+export interface ConsumerClaimCard {
+  id:                      string
+  /** The PUBLIC reference the customer sees on their pass and in every e-mail — never a raw cuid. */
+  orderRef:                string
+  /** Kept because the card links to /eat/order/<id>/help, and the customer owns this order. */
+  orderId:                 string
+  restaurantName:          string | null
+  createdAt:               Date
+  /** The reason KEY the customer chose, rendered client-side from the frozen vocabulary. Never free text. */
+  reason:                   string | null
+  requestedAmountCents:    number | null
+  /** Present only when Grubano approved a DIFFERENT amount than the one asked for. */
+  approvedAmountCents:     number | null
+  /** The derived customer status — one of CUSTOMER_STATUSES, never a raw Claim.status. */
+  status:                  string
+  canContest:              boolean
+  decidedAt:               Date | null
+  /** Shown only when the RESTAURANT itself refused (customerClaimReasons). */
+  restaurantResponseReason: string | null
+  /** Shown only for a Grubano decision, never on a declaration close (customerClaimReasons). */
+  arbitrationReason:       string | null
+  /**
+   * A client-safe précis of what was claimed, or null when no scope was recorded at all (legacy rows).
+   * `mode` is carried so the card can render the SAME word the other two surfaces render for a scope that
+   * has no lines by construction (`whole`, `amount`) instead of claiming the scope was never recorded.
+   * Never an itemId, never a unitCents, never the ceiling.
+   */
+  selectionSummary:        { mode: 'lines' | 'whole' | 'amount'; lines: number; items: number } | null
+}
+
+export async function listConsumerClaims(consumerId: string): Promise<ConsumerClaimCard[]> {
   const claims = await prisma.claim.findMany({ where: { consumerId }, orderBy: { createdAt: 'desc' }, take: 100 })
   // ROUND-9 AUDIT FIX (P1): the status the customer reads is derived, never the raw recovery state —
   // « en cours » only for a refund bound to a row Stripe confirmed (lib/claim-action-rules).
@@ -538,6 +580,18 @@ export async function listConsumerClaims(consumerId: string) {
       bindersByRow = new Map(groups.map((g) => [g.refundId as string, g._count._all] as const))
     } catch { bindersByRow = null }
   }
+  // D′ L9 §16: the card names the restaurant. ONE batched read for the page — never one per claim — and an
+  // unreadable batch leaves the name null rather than failing the whole history.
+  let namesById: Map<string, string> = new Map()
+  const restaurantIds = Array.from(new Set(claims.map((c) => c.restaurantId).filter((x): x is string => !!x)))
+  if (restaurantIds.length) {
+    try {
+      const rs = await prisma.restaurant.findMany({ where: { id: { in: restaurantIds } }, select: { id: true, name: true } })
+      namesById = new Map(rs.map((r) => [r.id, r.name] as const))
+    } catch { namesById = new Map() }
+  }
+  const contestWindowMs = claimContestHours() * 3600 * 1000
+  const nowMs = Date.now()
   // The internal recovery fields never reach the customer: refundError carries engine and Stripe text and
   // ids written for operators (found in round 10 while deriving the status; no UI reads them).
   return claims.map((c) => {
@@ -548,12 +602,74 @@ export async function listConsumerClaims(consumerId: string) {
         : rowsById && bindersByRow ? refundedRowTruth(row, bindersByRow.get(c.refundId) ?? 0, c.orderId) : null
     // ROUND 13 (F08): the reasons are the customer's own view — a restaurant reason only for its refusal, no Grubano
     // reason on a declaration (a legacy declaration may still carry the operator's note in arbitrationReason).
-    const pub: Record<string, unknown> = { ...c, status: customerClaimStatus(c, inProgress, refundedRow), ...customerClaimReasons(c) }
-    for (const k of CONSUMER_HIDDEN_CLAIM_FIELDS) delete pub[k]
-    return pub
+    const reasons = customerClaimReasons(c)
+    // C2, the same rule getClaimEligibility applies: a refused claim is contestable inside the window.
+    const canContest = c.status === 'refused' && !!c.decidedAt && (nowMs - c.decidedAt.getTime() <= contestWindowMs)
+    const card: ConsumerClaimCard = {
+      id:                       c.id,
+      orderRef:                 orderRef(c.orderId),
+      orderId:                  c.orderId,
+      restaurantName:           namesById.get(c.restaurantId) ?? null,
+      createdAt:                c.createdAt,
+      reason:                   c.reason ?? null,
+      requestedAmountCents:     c.requestedAmountCents ?? null,
+      // Only when it DIFFERS: an approved amount equal to the request is not information, and showing it
+      // on every card would invite « why is this number here » on the ordinary case.
+      approvedAmountCents:      typeof c.approvedAmountCents === 'number' && c.approvedAmountCents !== c.requestedAmountCents
+        ? c.approvedAmountCents : null,
+      status:                   customerClaimStatus(c, inProgress, refundedRow),
+      canContest,
+      decidedAt:                c.decidedAt ?? null,
+      restaurantResponseReason: reasons.restaurantResponseReason,
+      arbitrationReason:        reasons.arbitrationReason,
+      selectionSummary:         consumerSelectionSummary(c.selection),
+    }
+    return card
   })
 }
-const CONSUMER_HIDDEN_CLAIM_FIELDS = ['refundError', 'refundId', 'refundAttempted', 'activeOrderKey', 'arbitratedBy'] as const
+
+/**
+ * A client-safe précis of the stored L7 selection: how many lines and how many units. NOTHING else — no
+ * `itemId`, no `unitCents`, no `modeSource`, no `ceilingVerified`. §16 allows a summary « sans élargir le
+ * périmètre L7 », and L7's own contract is that no quantity ever becomes an authority; two counts cannot
+ * become one, so this widens nothing. A snapshot that is absent, legacy-null or not line-shaped gives null,
+ * which the card renders as « non enregistré » rather than as « toute la commande ».
+ */
+export function consumerSelectionSummary(selection: unknown): { mode: 'lines' | 'whole' | 'amount'; lines: number; items: number } | null {
+  if (!selection || typeof selection !== 'object') return null
+  const raw = selection as { mode?: unknown; lines?: unknown }
+  const mode = raw.mode === 'whole' ? 'whole' : raw.mode === 'amount' ? 'amount' : raw.mode === 'lines' ? 'lines' : null
+  // A snapshot with no recognisable mode is legacy or malformed: null, and the card renders « non enregistrée ».
+  // That sentence must be reserved for a REAL absence.
+  if (!mode) return null
+  const lines = Array.isArray(raw.lines) ? raw.lines : []
+  // A LINE-LESS MODE IS NOT AN ABSENT SNAPSHOT, and conflating the two made the card assert something false.
+  // The first version returned null whenever `lines` was empty — but `whole` and `amount` are COMPLETE, valid
+  // snapshots that record no lines by construction (REQUIREMENT['restaurant_closed'] is 'whole_derived', so a
+  // closed-restaurant claim persists `{mode:'whole', lines:[]}`). The card then said « Sélection non
+  // enregistrée » about a claim whose scope WAS recorded — on the very screen where a customer checks what
+  // they asked Grubano for — while the restaurant panel said « Toute la commande » for the same claim. Found
+  // by the adversarial review of this lot.
+  let items = 0
+  for (const l of lines) {
+    const qty = (l as { qty?: unknown })?.qty
+    if (typeof qty === 'number' && Number.isInteger(qty) && qty > 0) items += qty
+  }
+  return { mode, lines: lines.length, items }
+}
+
+/**
+ * Kept as the NEGATIVE list a test asserts against the builder's own keys: every one of these must be absent
+ * from a `ConsumerClaimCard`. It is no longer used to delete anything — nothing is copied in the first place.
+ * Extended by D′ L9 §27 with the fields the old blocklist let through.
+ */
+const CONSUMER_HIDDEN_CLAIM_FIELDS = [
+  'refundError', 'refundId', 'refundAttempted', 'activeOrderKey', 'arbitratedBy',
+  'consumerId', 'decidedBy', 'arbitrationDecision', 'restaurantId', 'restaurantResponse',
+  'contestReason', 'contestedAt', 'arbitratedAt', 'responseDeadlineAt', 'photoUrl', 'description',
+  'selection', 'stripeRefundId',
+] as const
+export const CONSUMER_HIDDEN_CLAIM_FIELDS_FOR_TEST = CONSUMER_HIDDEN_CLAIM_FIELDS
 
 export type ClaimEligibility = {
   canClaim: boolean
@@ -645,7 +761,11 @@ export async function getClaimEligibility(input: { consumerId: string; orderId: 
     if (!existing.refundId) existingRefundedRow = false
     else {
       try {
-        const row = await prisma.refund.findUnique({ where: { id: existing.refundId }, select: { id: true, orderId: true, status: true, amountCents: true } })
+        // D′ L9 (S-20): `stripeRefundId` is part of the PROOF now, so it must be selected here. Without it
+        // the hardened `refundedRowProven` would read `undefined` and answer false for EVERY refunded claim,
+        // turning « Remboursée » into « Remboursement non confirmé » on the help and tracking surfaces — a
+        // silent regression that no type error would have caught, because the field is optional in the shape.
+        const row = await prisma.refund.findUnique({ where: { id: existing.refundId }, select: { id: true, orderId: true, status: true, amountCents: true, stripeRefundId: true } })
         // W7 fixer (ER-C22): binders are counted by the claim's refundId whether or not the row exists, as listConsumerClaims,
         // the closure sender and the H10 lists count them — a missing row shared by two claims reads the manual review here too.
         const binders = await prisma.claim.count({ where: { refundId: existing.refundId, OR: BINDER_OR } })
@@ -2547,9 +2667,15 @@ const UNPROVEN_ITEMS_CAP = 200
 
 /**
  * ROUND 13 (H10 / E-13, slice W7) listRefundedClaimsWithUnprovenRow — READ-ONLY. Settled claims (refunded, refundError null)
- * whose bound row is not established (F03 refundedRowProven false: no refundId, the row missing, on another order, not
- * succeeded or pending, or without a usable amount), EXCLUDING a failed row with a Stripe id on the claim's own order (A-S31c,
+ * whose bound row is not established (F03 refundedRowProven false: no refundId, the row missing, on another order, or NOT
+ * SETTLED), EXCLUDING a failed row with a Stripe id on the claim's own order (A-S31c,
  * listed in the card's otherUnsettled bucket by listActionableRefundClaims: E-07 and E-13 stay disjoint).
+ *
+ * D′ L9 (§1, S-20) WIDENED « NOT SETTLED » and it is worth stating, because this list drives an admin action.
+ * Settled now means `succeeded` AND a valid `re_` AND an integer amount > 0. A PENDING row is therefore a LISTING
+ * CAUSE where it used to be treated as proof — which is the point: a claim declared refunded on a row the engine
+ * never finished is exactly the shape a human must look at, and it was previously invisible here and counted as
+ * proven in the census. The A-S31c exclusion is unchanged, so E-07 and E-13 stay disjoint.
  * reconcilable = reconcileRefusal(claim facts with the bound row) === null (D0).
  * IMPLEMENTATION NOTE (W7) on H10 / E-12: a row with two or more binders (A-S43) is excluded too — its claims read the manual
  * review (refundedRowTruth null), not « Remboursement non confirmé », so the section text would be false for them; they stay
@@ -2591,6 +2717,16 @@ export async function listRefundedClaimsWithUnprovenRow() {
       if (refundedRowProven(row, c.orderId)) continue
       // A-S31c (E-07): listed by listActionableRefundClaims, never here.
       if (row && row.orderId === c.orderId && row.status === 'failed' && !!row.stripeRefundId) continue
+      // A-S31d (E-07), ADDED BY D′ L9 §1 AND FOR THE SAME REASON AS THE LINE ABOVE. Hardening the proof made
+      // a PENDING row unproven, which is the truth — but it also made this list and E-07 overlap, and « E-07
+      // and E-13 stay disjoint » is a stated invariant, not an accident. It matters practically: an admin must
+      // meet each stuck claim in exactly ONE queue with ONE prescribed action, and a pending row already has
+      // its own queue — `listUnfinalizedClaimRefundRows` (E-07) lists it WITH its reconcile verdict, which is
+      // strictly more useful than a second undifferentiated line here. So the shape is excluded here exactly
+      // as the failed-with-id shape is: not because it is proven (it is not), but because another surface owns
+      // it. The CUSTOMER still reads the hardened truth — that derivation is `customerClaimStatus`, untouched
+      // by this exclusion — and the census keeps counting the same population it always did.
+      if (row && row.orderId === c.orderId && row.status === 'pending') continue
       if (c.refundId && (binders.get(c.refundId) ?? 0) >= 2) continue
       const boundRow: BoundRowFacts | null = row ? { id: row.id, orderId: row.orderId, status: row.status, stripeRefundId: row.stripeRefundId, reason: row.reason } : null
       found.push({ ...c, refund: row, reconcilable: reconcileRefusal({ ...c, boundRow }) === null })

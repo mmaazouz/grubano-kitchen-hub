@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { orderRef } from '@/lib/order-ref'
 import { getToken } from 'next-auth/jwt'
 import { prisma } from '@/lib/prisma'
+import { loadRefundSummariesForOrders, refundListBadge } from '@/lib/order-refund-summary'
 
 // ── GET /api/eat/orders ──────────────────────────────────────────────────────
 // READ-ONLY consumer feed for the « Mes commandes » screen (/eat/orders). Merges
@@ -67,6 +68,8 @@ export async function GET(req: NextRequest) {
       select: {
         id: true, status: true, total: true, fulfillmentType: true,
         trackingUrl: true, createdAt: true, items: true, estimatedTime: true,
+        // D′ L9 (T-45): the join for the refund badge. Already-selected columns cost nothing extra.
+        stripePaymentIntentId: true,
         restaurant: { select: { id: true, name: true } },
       },
     })
@@ -106,6 +109,25 @@ export async function GET(req: NextRequest) {
 
     const cards: Card[] = []
 
+    // ── ADDITIVE (D′ L9 / T-45) — the refund badge for the order list ───────────────────────────────
+    //
+    // §11: a list carries the MINIMAL shape only — `refundedCents`, `isTotal`, `isPartial`. No history, no
+    // pending figure, no unattributed figure: a card is not the place to explain a refund, and a list that
+    // carried `refunds[]` would ship a source vocabulary nobody renders.
+    //
+    // THREE queries for the whole page, never one per card (§9). Only terminal orders with a PaymentIntent
+    // are collected, so a list of orders in preparation costs exactly zero. An unreadable batch degrades to
+    // no badge at all — a missing badge is silence, while a wrong badge is a lie about money.
+    let refundByOrder = new Map<string, ReturnType<typeof refundListBadge>>()
+    try {
+      const summaries = await loadRefundSummariesForOrders(prisma, orders.map((o) => ({
+        id: o.id, status: o.status, total: o.total, stripePaymentIntentId: o.stripePaymentIntentId,
+      })))
+      refundByOrder = new Map(Array.from(summaries.entries()).map(([id, s]) => [id, refundListBadge(s)] as const))
+    } catch (e) {
+      console.error('[GET /api/eat/orders] refund badges unreadable (cards render without one):', e instanceof Error ? e.message : e)
+    }
+
     for (const o of orders) {
       const items = Array.isArray(o.items) ? (o.items as Array<{ qty?: number }>) : []
       const itemsCount = items.reduce((s, it) => s + (typeof it?.qty === 'number' ? it.qty : 1), 0)
@@ -122,6 +144,8 @@ export async function GET(req: NextRequest) {
         restaurantId: o.restaurant?.id,
         eta: o.estimatedTime,
         trackingId: o.id,
+        // D′ L9: 0 / false / false when there is nothing to say, so a card never has to test for undefined.
+        ...(refundByOrder.get(o.id) ?? { refundedCents: 0, unattributedCents: 0, isTotal: false, isPartial: false }),
       })
     }
 

@@ -1,0 +1,98 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+ * « Mes réclamations » (consumer, D′ L9 / T-45) — the customer's own claim history.
+ * There is NO frozen CD ref for this screen: it is built in the idiom of its sibling
+ * account sub-page « Mes adresses » (addresses.css — same page frame, same
+ * `.page__head` / `.page__body`, same empty state, same mobile break) so the two read
+ * as one surface. Tokens come from the gb-foundation (gb-tokens.css); no :root block
+ * is redeclared here. Class names are prefixed `.cl-` where they could collide with
+ * the foundation's generic components, exactly as addresses.css renames `.btn`/`.field`.
+ *
+ * `.mono` carries `direction:ltr;unicode-bidi:isolate` (the receipt.css idiom): an
+ * order reference and a euro amount must not be reordered by the Arabic RTL run
+ * around them.
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+.gb-claims{width:100%;max-width:720px;margin:0 auto;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-xl);box-shadow:var(--gb-shadow-card);overflow:hidden}
+.gb-claims .mono{font-family:var(--gb-font-mono);direction:ltr;unicode-bidi:isolate}
+.gb-claims .page__head{display:flex;align-items:center;gap:14px;padding:20px 24px;border-bottom:1px solid var(--gb-border)}
+.gb-claims .page__head .back{font-size:24px;cursor:pointer;color:var(--gb-text);background:none;border:none;padding:0;display:inline-flex;align-items:center}
+.gb-claims .page__head h1{flex:1;margin:0;font-family:var(--gb-font-display);font-weight:800;font-size:21px;letter-spacing:-.02em}
+.gb-claims .page__body{padding:18px 24px 24px}
+
+/* ── the list ───────────────────────────────────────────────────────────────── */
+.gb-claims .cl-list{display:flex;flex-direction:column;gap:12px}
+.gb-claims .cl-card{background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-lg);padding:16px}
+.gb-claims .cl-top{display:flex;align-items:flex-start;gap:14px}
+.gb-claims .cl-ico{width:44px;height:44px;border-radius:var(--gb-r-md);background:var(--gb-surface-2);border:1px solid var(--gb-border);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.gb-claims .cl-ico .ms{font-size:23px;color:var(--gb-zest-600)}
+[data-theme="dark"] .gb-claims .cl-ico .ms{color:var(--gb-zest)}
+.gb-claims .cl-head{flex:1;min-width:0}
+.gb-claims .cl-ref{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px}
+.gb-claims .cl-ref b{font-family:var(--gb-font-mono);font-weight:700;font-size:14px;letter-spacing:.01em}
+.gb-claims .cl-resto{font-family:var(--gb-font-display);font-weight:700;font-size:15.5px;line-height:1.3}
+.gb-claims .cl-date{font-size:12px;color:var(--gb-muted-2);margin-top:3px}
+
+/* status pill — the wording comes from `claims.status.*` and nothing else; the TONE
+   never says more than the wording (an unconfirmed or manually checked refund is
+   neutral grey, never the green of a settled one). */
+.gb-claims .cl-pill{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;line-height:1.35;border-radius:var(--gb-r-pill);padding:4px 10px;text-align:start}
+.gb-claims .cl-pill .ms{font-size:13px}
+.gb-claims .cl-pill[data-tone="wait"]{color:var(--gb-warning);background:var(--gb-warning-bg)}
+.gb-claims .cl-pill[data-tone="go"]{color:var(--gb-zest-600);background:rgba(255,138,40,.12)}
+[data-theme="dark"] .gb-claims .cl-pill[data-tone="go"]{color:var(--gb-zest)}
+.gb-claims .cl-pill[data-tone="done"]{color:var(--gb-success-fg);background:var(--gb-success-bg)}
+.gb-claims .cl-pill[data-tone="no"]{color:var(--gb-danger);background:var(--gb-danger-bg)}
+.gb-claims .cl-pill[data-tone="check"]{color:var(--gb-muted);background:var(--gb-surface-2);border:1px solid var(--gb-border)}
+
+/* ── the facts ──────────────────────────────────────────────────────────────── */
+.gb-claims .cl-facts{display:flex;flex-direction:column;gap:6px;margin-top:13px;padding-top:13px;border-top:1px solid var(--gb-border)}
+.gb-claims .cl-fact{display:flex;align-items:baseline;gap:8px;font-size:13px;line-height:1.5;color:var(--gb-muted)}
+.gb-claims .cl-fact b{font-weight:600;color:var(--gb-text);flex-shrink:0}
+.gb-claims .cl-fact .val{color:var(--gb-text);font-weight:700}
+.gb-claims .cl-why{margin-top:10px;font-size:12.5px;line-height:1.55;color:var(--gb-muted);background:var(--gb-surface-2);border:1px solid var(--gb-border);border-radius:var(--gb-r-md);padding:10px 12px}
+.gb-claims .cl-why b{display:block;font-weight:700;color:var(--gb-text);margin-bottom:3px}
+
+/* ── actions ────────────────────────────────────────────────────────────────── */
+.gb-claims .cl-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px}
+.gb-claims .cl-btn{font-family:var(--gb-font-ui);font-weight:700;font-size:13.5px;cursor:pointer;border-radius:var(--gb-r-md);padding:11px 16px;border:1px solid var(--gb-border-strong);background:var(--gb-surface);color:var(--gb-text);display:inline-flex;align-items:center;gap:7px}
+.gb-claims .cl-btn .ms{font-size:17px}
+.gb-claims .cl-btn--primary{color:#fff;background:var(--gb-grad);border-color:transparent;box-shadow:var(--gb-shadow-btn)}
+.gb-claims .cl-btn--ghost{border-color:transparent;background:none;color:var(--gb-muted)}
+.gb-claims .cl-btn[disabled]{opacity:.55;cursor:default}
+.gb-claims .cl-help{margin-inline-start:auto;display:inline-flex;align-items:center;gap:5px;font-size:13px;font-weight:700;color:var(--gb-zest-600);text-decoration:none}
+[data-theme="dark"] .gb-claims .cl-help{color:var(--gb-zest)}
+.gb-claims .cl-help .ms{font-size:17px}
+
+/* ── contest form (inline, same endpoint as the tracking page's widget) ─────── */
+.gb-claims .cl-contest{margin-top:12px;border-top:1px solid var(--gb-border);padding-top:12px}
+.gb-claims .cl-contest h3{margin:0 0 4px;font-family:var(--gb-font-display);font-weight:700;font-size:14px}
+.gb-claims .cl-contest p{margin:0 0 10px;font-size:12.5px;line-height:1.55;color:var(--gb-muted)}
+.gb-claims .cl-contest textarea{width:100%;resize:none;min-height:76px;line-height:1.5;font-family:inherit;font-size:14px;color:var(--gb-text);background:var(--gb-field-bg);border:1px solid var(--gb-border-strong);border-radius:var(--gb-r-md);padding:11px 13px}
+.gb-claims .cl-contest textarea::placeholder{color:var(--gb-muted);opacity:.7}
+.gb-claims .cl-contest textarea:focus{outline:none;border-color:var(--gb-focus-border);box-shadow:var(--gb-focus)}
+.gb-claims .cl-err{display:flex;align-items:center;gap:5px;margin-top:8px;font-size:12px;font-weight:600;color:var(--gb-danger)}
+.gb-claims .cl-err .ms{font-size:15px}
+
+/* ── empty / support / sign-in / skeleton ───────────────────────────────────── */
+.gb-claims .empty{display:flex;flex-direction:column;align-items:center;text-align:center;padding:44px 24px}
+.gb-claims .empty__ico{width:84px;height:84px;border-radius:50%;background:#FFF1E7;display:flex;align-items:center;justify-content:center;margin-bottom:18px}
+[data-theme="dark"] .gb-claims .empty__ico{background:rgba(255,124,57,.16)}
+.gb-claims .empty__ico .ms{font-size:42px;color:var(--gb-zest-600)}
+[data-theme="dark"] .gb-claims .empty__ico .ms{color:var(--gb-zest)}
+.gb-claims .empty h2{margin:0;font-family:var(--gb-font-display);font-weight:800;font-size:19px;letter-spacing:-.02em}
+.gb-claims .empty p{margin:8px 0 20px;font-size:13.5px;line-height:1.55;color:var(--gb-muted);max-width:38ch}
+.gb-claims .empty .cl-btn{align-self:center}
+.gb-claims .cl-lbl{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--gb-muted-2);margin:0 0 10px}
+.gb-claims .cl-support{font-size:12.5px;line-height:1.55;color:var(--gb-muted);background:var(--gb-surface-2);border:1px solid var(--gb-border);border-radius:var(--gb-r-lg);padding:14px 16px}
+.gb-claims .cl-mail{display:flex;align-items:center;gap:10px;margin-top:12px;padding:14px 16px;border:1px solid var(--gb-border);border-radius:var(--gb-r-lg);background:var(--gb-surface);text-decoration:none;color:var(--gb-text)}
+.gb-claims .cl-mail .ms{font-size:21px;color:var(--gb-zest-600)}
+[data-theme="dark"] .gb-claims .cl-mail .ms{color:var(--gb-zest)}
+.gb-claims .cl-mail b{font-size:13.5px;font-weight:700}
+.gb-claims .cl-mail span{font-size:12.5px;color:var(--gb-muted);margin-inline-start:auto}
+.gb-claims .cl-skel{height:104px;border-radius:var(--gb-r-lg);background:var(--gb-surface-2);border:1px solid var(--gb-border);animation:gb-pulse 1.4s ease-in-out infinite;margin-bottom:12px}
+
+@media (max-width:720px){
+  .gb-claims{max-width:none;border:none;border-radius:0;min-height:100%}
+  .gb-claims .page__head h1{font-size:19px}
+  .gb-claims .cl-help{margin-inline-start:0}
+}

@@ -421,7 +421,12 @@ describe('FINANCIAL-VERIFICATION CARD — visible, and says what the toasts poin
 
   it('the card uses the predicate, renders the recorded detail and the bound row status, and guidance on every unsettled row', () => {
     const fv = read('components/claims/AdminFinancialVerification.tsx')
-    expect(fv).toContain('if (!financialVerificationCardVisible({ claimRows: rows.length, unfinalizedRows: unfinalized.length, closureNotices: sectionWeight(noticesList), refundedUnproven: sectionWeight(refundedList) })) {')
+    // D′ L9 — the call gained the two NOTICE lists. They were absent from the gate, so a build whose only
+    // pending work was « somebody was refunded and never told » returned early and rendered NEITHER notice
+    // section. Asserted on the PREFIX plus the two new arguments, so the pin keeps proving the component asks
+    // the predicate rather than re-deriving visibility, without breaking on every future argument.
+    expect(fv).toContain('if (!financialVerificationCardVisible({ claimRows: rows.length, unfinalizedRows: unfinalized.length')
+    expect(fv).toContain('restaurantNotices: sectionWeight(restoNoticesList), supportNotices: sectionWeight(supportNoticesList)')
     expect(fv).toContain('const headingVisible = financialVerificationHeadingVisible({ claimRows: rows.length, unfinalizedRows: unfinalized.length })')
     expect(fv).toContain('Détail enregistré :')
     expect(fv).toContain('Statut de notre ligne liée :')

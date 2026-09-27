@@ -130,7 +130,11 @@ describe('J-C05 — getClaimEligibility and listConsumerClaims wire the customer
     id: 'cl1', status: 'refunded', decidedAt: null, restaurantResponseReason: null, arbitrationReason: null, refundError: null, refundId: 'rf1',
     refundAttempted: true, arbitrationDecision: 'approved', restaurantResponse: null, reason: 'wrong_item', ...o,
   })
-  const ROW = (status: string) => ({ id: 'rf1', orderId: 'o1', status, amountCents: 500 })
+  // D′ L9 (S-20, spec v2 §7.2 — supersedes R13 F03): a bound row only proves « Remboursée » when it is
+  // SETTLED — 'succeeded' AND carrying a Stripe refund id we can re-read. These rows always MEANT « a settled
+  // row », so they carry one; the id is what makes the proof re-checkable against Stripe, and a row nobody can
+  // look up proves nothing. The second argument exists so a scenario can take the id away on purpose.
+  const ROW = (status: string, stripeRefundId: string | null = 're_L9testAAAAAA1') => ({ id: 'rf1', orderId: 'o1', status, amountCents: 500, stripeRefundId })
 
   beforeEach(() => {
     stripeMock.paymentIntents.retrieve.mockResolvedValue({ latest_charge: charge(500) })
@@ -138,7 +142,7 @@ describe('J-C05 — getClaimEligibility and listConsumerClaims wire the customer
     db.claim.count.mockResolvedValue(1)
   })
 
-  it('statuses in order: refunded, refund_unconfirmed, manual check (read throw), manual check (two binders), closed_by_support, manual check (REVERTED)', async () => {
+  it('statuses in order: refunded, refund_unconfirmed, manual check (read throw), manual check (two binders), closed_by_support, manual check (REVERTED), refund_unconfirmed (succeeded WITHOUT a Stripe id)', async () => {
     // Each run resets the three reads: a read a scenario never makes must not leak its queued answer into the next one.
     const run = async (existing: Record<string, unknown>, row: () => Promise<unknown>, binders = 1) => {
       db.claim.findFirst.mockReset().mockResolvedValue(existing)
@@ -153,8 +157,13 @@ describe('J-C05 — getClaimEligibility and listConsumerClaims wire the customer
       await run(EXISTING(), async () => ROW('succeeded'), 2),
       await run(EXISTING({ refundError: 'engine_failed: x' }), async () => ROW('succeeded')),
       await run(EXISTING({ refundError: REVERTED }), async () => ROW('succeeded')),
+      // D′ L9 (S-20): the last case IS the new rule. A row marked 'succeeded' with no Stripe refund id is a
+      // settlement nobody can re-read at Stripe, so it no longer proves a payment: the customer reads « non
+      // confirmé », never « Remboursée ». Without this case the ids added above would be decoration, and the
+      // hardening would be assumed rather than measured.
+      await run(EXISTING(), async () => ROW('succeeded', null)),
     ]
-    expect(statuses).toEqual(['refunded', 'refund_unconfirmed', 'financial_verification', 'financial_verification', 'closed_by_support', 'financial_verification'])
+    expect(statuses).toEqual(['refunded', 'refund_unconfirmed', 'financial_verification', 'financial_verification', 'closed_by_support', 'financial_verification', 'refund_unconfirmed'])
   })
 
   // W7 fixer (ER-C22): binders are counted by refundId even when the row is missing, as listConsumerClaims, the closure sender
@@ -200,7 +209,10 @@ describe('J-C05 — getClaimEligibility and listConsumerClaims wire the customer
       { ...EXISTING({ id: 'decl', refundError: 'engine_failed: x', arbitrationReason: 'NOTE INTERNE' }), orderId: 'o1', consumerId: 'u1', activeOrderKey: null, arbitratedBy: 'op1' },
     ]
     db.claim.findMany.mockResolvedValue(claims)
-    db.refund.findMany.mockResolvedValue([{ ...ROW('succeeded'), stripeRefundId: 're_1' }])
+    // D′ L9 (S-20): 're_1' was a placeholder from the days when only `status` was read; the proof now requires an id
+    // of the shape lib/claims enforces (/^re_[A-Za-z0-9]{8,}$/), so the fixture carries a real-shaped one. The row is
+    // the same settled row the test always meant — the page's expectation below is untouched.
+    db.refund.findMany.mockResolvedValue([{ ...ROW('succeeded'), stripeRefundId: 're_L9testBBBBBB2' }])
     db.claim.groupBy.mockResolvedValue([{ refundId: 'rf1', _count: { _all: 1 } }])
     const out = await listConsumerClaims('u1')
     expect(out.map((c) => [c.id, c.status])).toEqual([['a', 'refunded'], ['d', 'restaurant_review'], ['decl', 'closed_by_support']])

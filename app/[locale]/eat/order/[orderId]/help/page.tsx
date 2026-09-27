@@ -57,6 +57,22 @@ import '@/app/gb-foundation/gb-components.css'
 //    reason picker is a future nicety (the API accepts the full CLAIM_REASONS enum).
 
 interface OrderItem { name: string; qty: number; price: number }
+/**
+ * D′ L9 (T-45) — the slice of the server's `refundSummary` read-model this page consumes. Declared
+ * LOCALLY, not imported from lib/order-refund-summary: this is a `'use client'` page and that module
+ * pulls the refund/claim server chain, which a client bundle must never resolve. Optional because this
+ * page types the RAW API object; every read below defaults to 0/false, i.e. « nothing to say ».
+ */
+interface RefundLite {
+  /** Money PROVEN returned — settled Refund rows carrying a Stripe `re_`. The ONLY basis for « remboursé ». */
+  refundedCents: number
+  /** A refund in flight. NEVER worded « remboursé » — « en cours », and nothing else. */
+  pendingCents: number
+  /** Real Stripe money on this order with no certain internal origin → NEUTRAL copy only. */
+  unattributedCents: number
+  isTotal: boolean
+  isPartial: boolean
+}
 interface Order {
   id: string
   status: string
@@ -65,6 +81,8 @@ interface Order {
   restaurant?: { name?: string } | null
   // P0-19 — served by GET /api/orders/[id]; drives pickup-aware status labels.
   fulfillmentType?: string
+  // D′ L9 (T-45) — the refund truth that `status` and `total` above cannot express.
+  refundSummary?: RefundLite
 }
 
 type View = 'help' | 'refund' | 'chat'
@@ -102,6 +120,10 @@ const refOf = orderRef
 
 export default function OrderHelpScreen() {
   const t = useTranslations('eat.help')
+  // D′ L9 (T-45, §15) — the refund sentences live in ONE shared namespace read by every consumer
+  // surface that recaps an order (this page, the post-delivery screen, the pickup pass, the tracking
+  // page). A per-screen copy of the same sentence is how two surfaces describe one order differently.
+  const tRefund = useTranslations('eat.refund')
   const locale = useLocale()
   const router = useRouter()
   const { orderId } = useParams<{ orderId: string }>()
@@ -211,6 +233,63 @@ export default function OrderHelpScreen() {
                   : t('statusReceived')
 
   const restaurantName = order?.restaurant?.name ?? '—'
+
+  // ── D′ L9 (T-45, §15) — WHAT THE SYSTEM ALREADY KNOWS ABOUT THE MONEY ───────────────────────────
+  //
+  // A customer opens this page to ask « where is my money ». Until this lot the page could not answer:
+  // no consumer surface read the `Refund` table, so it offered a claim form (or a mailto) for a refund
+  // that had ALREADY landed — and a second claim on money already returned is exactly the confusion
+  // T-45 was filed for. The three facts below are stated BEFORE any form or any address.
+  //
+  // THE WORDING IS THE WHOLE POINT, and each line has one basis and one only:
+  //   • `refundedCents > 0`      → « remboursée » / « remboursement partiel ». Settled rows carrying a
+  //                                Stripe `re_`, i.e. money PROVEN returned. The word is never used on
+  //                                anything else, and never on 0.
+  //   • `pendingCents > 0`       → « remboursement de X € en cours ». In flight, so never « remboursé »
+  //                                and never « effectué ». Never added to the confirmed figure.
+  //   • `unattributedCents > 0`  → NEUTRAL only: real Stripe money on this order whose internal origin
+  //                                is not certain (a Dashboard refund, typically). It names no author,
+  //                                no réclamation, no commission, and is called NEITHER total NOR
+  //                                partial — none of that is known. The three sums are disjoint by
+  //                                construction server-side, so showing all three double-counts nothing.
+  // NO bank delay and NO estimated date is stated anywhere: the only delay sentence on this page is
+  // `refundEstimate`, which belongs to the CLAIM being filed and is not a promise about this money.
+  //
+  // NOT CLAIMS-GATED. `claimsEnabled` gates the claim FORM; a refund is an ORDER truth and is stated
+  // whether the claims surface is open, paused or closed — which is why this block is built ABOVE the
+  // branch below and rendered inside BOTH of its outcomes.
+  const rs = order?.refundSummary
+  const refundedCents = rs?.refundedCents ?? 0
+  const pendingCents = rs?.pendingCents ?? 0
+  const unattributedCents = rs?.unattributedCents ?? 0
+  // Cents ÷ 100 through the shared helper — never a hand-formatted euro string. The amount is isolated
+  // with <bdi> (the idiom this page already uses for figures) so an Arabic RTL sentence cannot reorder it.
+  const refundEuros = (cents: number) => formatEuros(cents / 100, locale)
+  const refundState = (refundedCents > 0 || pendingCents > 0 || unattributedCents > 0) ? (
+    <>
+      <p className="lbl">{tRefund('stateLabel')}</p>
+      <div className="rcard" style={{ display: 'grid', gap: 6, fontSize: 12.5, lineHeight: 1.55 }}>
+        {refundedCents > 0 && (
+          <span>
+            {tRefund.rich(rs?.isTotal ? 'refundedTotal' : 'refundedPartial', {
+              amount: refundEuros(refundedCents),
+              amt: (c) => <bdi>{c}</bdi>,
+            })}
+          </span>
+        )}
+        {pendingCents > 0 && (
+          <span>
+            {tRefund.rich('refundPending', { amount: refundEuros(pendingCents), amt: (c) => <bdi>{c}</bdi> })}
+          </span>
+        )}
+        {unattributedCents > 0 && (
+          <span>
+            {tRefund.rich('refundRecorded', { amount: refundEuros(unattributedCents), amt: (c) => <bdi>{c}</bdi> })}
+          </span>
+        )}
+      </div>
+    </>
+  ) : null
 
   function goBack() {
     if (view !== 'help') {
@@ -409,6 +488,9 @@ const REFUSAL_LABEL: Record<string, string> = {
         <div className="gb gb-help">
           <Header titleKey="refundTitle" />
           <div className="body">
+            {/* D′ L9 (T-45) — the refund FACT first, then the only channel the beta has. A customer
+                whose money is already back must read that before being told to write an e-mail. */}
+            {refundState}
             <p className="lbl">{t('refundOffTitle')}</p>
             <div className="rcard" style={{ fontSize: 12.5, color: 'var(--gb-muted)', lineHeight: 1.55 }}>
               {t('refundOffBody')}
@@ -427,6 +509,9 @@ const REFUSAL_LABEL: Record<string, string> = {
       <div className="gb gb-help">
         <Header titleKey="refundTitle" />
         <div className="body">
+          {/* D′ L9 (T-45) — the SAME refund fact as the closed-surface branch above: a live claim form
+              does not change what already happened to the money, so the customer reads it first. */}
+          {refundState}
           <p className="lbl">{t('refundWhich')}</p>
           <div className="rcard">
             <div className="items">
@@ -622,6 +707,12 @@ const REFUSAL_LABEL: Record<string, string> = {
             <span className="st">{statusLabel(order?.status)}</span>
           </div>
         )}
+
+        {/* D′ L9 (T-45, §15) — the banner above states « Livrée · 14,50 € », the charge and the
+            delivery, which is all it can say. On a refunded order that reads as money still paid, so
+            the same sentence the other surfaces use is stated here too — before the options offer a
+            claim on money that may already be back. */}
+        {refundState}
 
         <div className="opts">
           <button type="button" className="opt warn" onClick={() => setView('refund')}>

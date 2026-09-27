@@ -6,7 +6,7 @@
 // F03 is restated here (lib/claim-emails restates it too) so this module never imports lib/claims.
 import { prisma } from '@/lib/prisma'
 import {
-  claimClosureKind, CLOSURE_TRIGGER, CLOSURE_RECORD_TRIGGER, closureRecordKey, refundedRowProven,
+  claimClosureKind, CLOSURE_TRIGGER, CLOSURE_RECORD_TRIGGER, closureRecordKey, refundedRowProven, refundRowSettled,
   RESTAURANT_REFUNDED_TRIGGER, restaurantRefundedKey, type ClosureKind,
 } from '@/lib/claim-action-rules'
 import type { ClosureNoticeBlocker } from '@/lib/claim-console-copy'
@@ -115,7 +115,11 @@ async function missingAmong(ids: string[]): Promise<MissingClosureNotice[]> {
   for (const x of notSent) {
     if (x.kind !== 'refunded' || !x.c.refundId) continue
     const row = rowById.get(x.c.refundId)
-    if (row && row.status === 'succeeded' && row.stripeRefundId) reByClaim.set(x.c.id, row.stripeRefundId)
+    // D′ L9 (§1, « une primitive commune »): the shared proof, not a hand-rolled copy. The inline form
+    // this replaces tested `!!row.stripeRefundId` — raw truthiness, so any non-empty string passed, even
+    // one that is not a Stripe id — and it ignored `amountCents` entirely. Two copies of a money proof in
+    // one repository is how the two halves of T-46's scope came apart a day earlier.
+    if (refundRowSettled(row) && row!.orderId === x.c.orderId) reByClaim.set(x.c.id, row!.stripeRefundId as string)
   }
   const reIds = Array.from(new Set(Array.from(reByClaim.values())))
   const restoKeys = Array.from(reByClaim.entries()).map(([claimId, re]) => restaurantRefundedKey(claimId, re))
@@ -197,17 +201,22 @@ export async function listPendingRestaurantRefundNotices(): Promise<PendingResta
   const rowIds = Array.from(new Set(claims.map((c) => c.refundId as string)))
   const rows = await prisma.refund.findMany({
     where:  { id: { in: rowIds } },
-    select: { id: true, orderId: true, status: true, stripeRefundId: true },
+    // D′ L9: `amountCents` is part of the shared proof (an integer > 0), so it must be read here too.
+    select: { id: true, orderId: true, status: true, stripeRefundId: true, amountCents: true },
   })
   const rowById = new Map(rows.map((r) => [r.id, r] as const))
   // A-S43: a row bound by two claims settles neither — nothing is announced for either.
   const groups = await prisma.claim.groupBy({ by: ['refundId'], where: { refundId: { in: rowIds }, OR: BINDER_OR }, _count: { _all: true } })
   const binders = new Map(groups.map((g) => [g.refundId as string, g._count._all] as const))
 
+  // D′ L9 (§1): the SHARED proof. Previously inline — `status === 'succeeded' && !!stripeRefundId` — which
+  // accepted any non-empty string as a Stripe id and never looked at the amount, so a row carrying a
+  // malformed id or a zero/fractional amount could have put a restaurant notice in the « to send » queue.
+  // `refundedRowProven` is the same predicate the customer's « Remboursée » now uses, so the two audiences
+  // cannot disagree about whether the money moved.
   const settled = claims
     .map((c) => ({ c, row: rowById.get(c.refundId as string) ?? null }))
-    .filter((x) => !!x.row && x.row.status === 'succeeded' && !!x.row.stripeRefundId
-      && x.row.orderId === x.c.orderId && (binders.get(x.c.refundId as string) ?? 0) < 2)
+    .filter((x) => refundedRowProven(x.row, x.c.orderId) && (binders.get(x.c.refundId as string) ?? 0) < 2)
   if (settled.length === 0) return { items: [], total: 0 }
 
   const keys = settled.map((x) => restaurantRefundedKey(x.c.id, x.row!.stripeRefundId as string))

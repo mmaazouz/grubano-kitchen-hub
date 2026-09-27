@@ -101,10 +101,19 @@ const claim = (id: string, o: Row = {}): Row => ({
   refundId: null, refundError: null, arbitrationDecision: 'approved', restaurantResponse: null, decidedAt: new Date(T0 + (seq++) * 60_000),
   createdAt: new Date(T0 - DAY + seq * 1000), activeOrderKey: null, ...o,
 })
-const row = (id: string, o: Row = {}): Row => ({ id, orderId: 'o1', status: 'succeeded', amountCents: 500, stripeRefundId: `re_${id}`, reason: null, createdAt: new Date(T0), ...o })
+// D′ L9 §1 / S-20: a settled row PROVES a refund only when it also carries a Stripe refund id of the real shape
+// (STRIPE_REFUND_ID_SHAPE = /^re_[A-Za-z0-9]{8,}$/). `re_${id}` was never one — `re_rfA` is three characters of suffix, and
+// `re_rf_f` is not even alphanumeric — so the fixture stamped its « settled » rows with ids Stripe never issues. The shape is
+// part of the proof now, so the helper stamps a distinguishable id PER ROW in the shape Stripe actually returns.
+const reId = (id: string) => `re_L9${id.replace(/[^A-Za-z0-9]/g, '')}AAAAAA`
+const row = (id: string, o: Row = {}): Row => ({ id, orderId: 'o1', status: 'succeeded', amountCents: 500, stripeRefundId: reId(id), reason: null, createdAt: new Date(T0), ...o })
 const record = (claimId: string, at = T0 + (seq++) * 1000): Row => ({ id: `d_rec_${claimId}`, trigger: 'claim_closure_record', dedupeKey: `claim:${claimId}`, createdAt: new Date(at) })
 const sent = (claimId: string, trigger: string): Row => ({ id: `d_${trigger}_${claimId}`, trigger, dedupeKey: `claim:${claimId}`, createdAt: new Date(T0) })
 const REVERTED = `${MARKERS.REVERTED_AFTER_REFUND} la réclamation a été soldée sur la ligne x…`
+/** D′ L9 §1 / S-20: a Stripe refund id the proof accepts, for the rows handed straight to the pure rules. */
+const RE_PROVEN = 're_L9testAAAAAA1'
+/** The same string the round-13 fixtures used: it starts with `re_`, and it is NOT a Stripe id — so it proves nothing. */
+const RE_NOT_AN_ID = 'rf_local_only'   // our own row id, not a Stripe object id
 
 // ══ J-C30 — listMissingClaimClosureNotices ═══════════════════════════════════════════════════════════════════════════
 describe('J-C30 (H10) — listMissingClaimClosureNotices: record ∧ no same-trigger dispatch ∧ kind ≠ null', () => {
@@ -137,7 +146,11 @@ describe('J-C30 (H10) — listMissingClaimClosureNotices: record ∧ no same-tri
     expect(out.scanTruncated).toBe(false)
   })
 
-  it('blockers, in the sender order: two binders → ambiguous; failed with an id on the own order → failed; any other unproven row → unproven', async () => {
+  // D′ L9 §1 (S-20) — spec v2 §7.2 supersedes R13 F03: a PENDING row proves nothing. Stripe has not paid while a refund is
+  // pending, so « Remboursée » on a pending row would be a claim the money does not back; only a succeeded row carrying a
+  // Stripe refund id settles a claim. The pending case stays in the fixture — it is now an unproven row like the others — and
+  // a succeeded row WITH its `re_…` takes over as the one shape that lifts the blocker.
+  it('blockers, in the sender order: two binders → ambiguous; failed with an id on the own order → failed; any other unproven row (a PENDING row included) → unproven', async () => {
     st.claims = [
       claim('failed_id', { refundId: 'rf_f' }),
       claim('failed_no_id', { refundId: 'rf_fn' }),
@@ -147,11 +160,12 @@ describe('J-C30 (H10) — listMissingClaimClosureNotices: record ∧ no same-tri
       claim('amount_zero', { refundId: 'rf_0' }),
       claim('two_binders_a', { refundId: 'rf_2' }),
       claim('two_binders_b', { refundId: 'rf_2', status: 'refunding' }),
-      claim('proven_pending', { refundId: 'rf_p' }),
+      claim('pending_unproven', { refundId: 'rf_p' }),
+      claim('proven_settled', { refundId: 'rf_ok' }),
     ]
     st.refunds = [
       row('rf_f', { status: 'failed' }), row('rf_fn', { status: 'failed', stripeRefundId: null }), row('rf_fo', { status: 'failed', orderId: 'o2' }),
-      row('rf_0', { amountCents: 0 }), row('rf_2'), row('rf_p', { status: 'pending' }),
+      row('rf_0', { amountCents: 0 }), row('rf_2'), row('rf_p', { status: 'pending' }), row('rf_ok'),
     ]
     st.dispatch = st.claims.filter((c) => c.status === 'refunded').map((c) => record(c.id))
     const out = await listMissingClaimClosureNotices()
@@ -159,14 +173,19 @@ describe('J-C30 (H10) — listMissingClaimClosureNotices: record ∧ no same-tri
     expect(by).toEqual({
       failed_id: 'refunded_row_failed', failed_no_id: 'refunded_row_unproven', failed_other_order: 'refunded_row_unproven',
       missing_row: 'refunded_row_unproven', no_refund_id: 'refunded_row_unproven', amount_zero: 'refunded_row_unproven',
-      two_binders_a: 'refunded_row_ambiguous', proven_pending: null,
+      two_binders_a: 'refunded_row_ambiguous', pending_unproven: 'refunded_row_unproven', proven_settled: null,
     })
   })
 
   it('closureNoticeBlocker (pure): NEGATIVE CONTROL — a single-binder proven row has no blocker; the spec’s status-only rule would call the other-order failed row « failed »', () => {
-    expect(closureNoticeBlocker({ orderId: 'o1', status: 'succeeded', amountCents: 500, stripeRefundId: 're_1' }, 1, 'o1')).toBeNull()
-    expect(closureNoticeBlocker({ orderId: 'o1', status: 'succeeded', amountCents: 500, stripeRefundId: 're_1' }, 2, 'o1')).toBe('refunded_row_ambiguous')
-    expect(closureNoticeBlocker({ orderId: 'o2', status: 'failed', amountCents: 500, stripeRefundId: 're_1' }, 1, 'o1')).toBe('refunded_row_unproven')
+    // D′ L9 §1 (S-20): the proven row carries a Stripe-shaped id — the order, not the id, is what blocks the o2 row below.
+    expect(closureNoticeBlocker({ orderId: 'o1', status: 'succeeded', amountCents: 500, stripeRefundId: RE_PROVEN }, 1, 'o1')).toBeNull()
+    expect(closureNoticeBlocker({ orderId: 'o1', status: 'succeeded', amountCents: 500, stripeRefundId: RE_PROVEN }, 2, 'o1')).toBe('refunded_row_ambiguous')
+    expect(closureNoticeBlocker({ orderId: 'o2', status: 'failed', amountCents: 500, stripeRefundId: RE_PROVEN }, 1, 'o1')).toBe('refunded_row_unproven')
+    // D′ L9 §1 (S-20): a succeeded row of the OWN order whose id names no Stripe object proves nothing either.
+    // NOT a length rule — the row-reading contract is `re_` + something, matching the frozen §24 predicate.
+    expect(closureNoticeBlocker({ orderId: 'o1', status: 'succeeded', amountCents: 500, stripeRefundId: RE_NOT_AN_ID }, 1, 'o1')).toBe('refunded_row_unproven')
+    expect(closureNoticeBlocker({ orderId: 'o1', status: 'succeeded', amountCents: 500, stripeRefundId: null }, 1, 'o1')).toBe('refunded_row_unproven')
     const statusOnly = (r: { status: string }) => (r.status === 'failed' ? 'refunded_row_failed' : null)
     expect(statusOnly({ status: 'failed' })).toBe('refunded_row_failed') // ← the ER-C22 divergence the rule closes
   })
@@ -182,17 +201,20 @@ describe('J-C30 (H10) — listMissingClaimClosureNotices: record ∧ no same-tri
     ]) expect(sender, line).toContain(line)
     const senderRefuses = (r: Row | null, b: number, o: string) => b >= 2 || (!!r && r.status === 'failed') || !r || !refundedRowProven(r, o)
     const rows: Array<Row | null> = [null]
-    for (const status of ['succeeded', 'pending', 'failed', 'canceled']) for (const orderId of ['o1', 'o2']) for (const amountCents of [500, 0]) for (const stripeRefundId of ['re_1', null]) rows.push({ orderId, status, amountCents, stripeRefundId })
+    // D′ L9 §1 (S-20): three id shapes now, because the id is part of the proof — a Stripe-shaped one (the only one that can
+    // prove), a `re_…` too short to be a Stripe id, and none. With `re_1` alone no row in this table was provable, so the
+    // « exactly when » had nothing left to separate: every case blocked on both sides.
+    for (const status of ['succeeded', 'pending', 'failed', 'canceled']) for (const orderId of ['o1', 'o2']) for (const amountCents of [500, 0]) for (const stripeRefundId of [RE_PROVEN, RE_NOT_AN_ID, null]) rows.push({ orderId, status, amountCents, stripeRefundId })
     for (const r of rows) for (const b of [0, 1, 2]) {
       expect(closureNoticeBlocker(r, b, 'o1') !== null, JSON.stringify({ r, b })).toBe(senderRefuses(r, b, 'o1'))
     }
     // the value differs from the sender's why for a failed row without an id, or on another order (both block)
     expect(closureNoticeBlocker({ orderId: 'o1', status: 'failed', amountCents: 500, stripeRefundId: null }, 1, 'o1')).toBe('refunded_row_unproven')
-    expect(closureNoticeBlocker({ orderId: 'o2', status: 'failed', amountCents: 500, stripeRefundId: 're_1' }, 1, 'o1')).toBe('refunded_row_unproven')
+    expect(closureNoticeBlocker({ orderId: 'o2', status: 'failed', amountCents: 500, stripeRefundId: RE_PROVEN }, 1, 'o1')).toBe('refunded_row_unproven')
     // NEGATIVE CONTROL: a blocker that ignored the binder count would be null where the sender refuses
     const noBinders = (r: Row | null, o: string) => closureNoticeBlocker(r, 0, o)
-    expect(noBinders({ orderId: 'o1', status: 'succeeded', amountCents: 500, stripeRefundId: 're_1' }, 'o1')).toBeNull()
-    expect(senderRefuses({ orderId: 'o1', status: 'succeeded', amountCents: 500, stripeRefundId: 're_1' }, 2, 'o1')).toBe(true)
+    expect(noBinders({ orderId: 'o1', status: 'succeeded', amountCents: 500, stripeRefundId: RE_PROVEN }, 'o1')).toBeNull()
+    expect(senderRefuses({ orderId: 'o1', status: 'succeeded', amountCents: 500, stripeRefundId: RE_PROVEN }, 2, 'o1')).toBe(true)
   })
 
   it('paging is stable under an insert between pages: every record is scanned exactly once', async () => {
@@ -276,10 +298,14 @@ describe('J-C30 (H10, E-13) — listRefundedClaimsWithUnprovenRow', () => {
       claim('amount_zero', { refundId: 'rf_0' }),
       claim('failed_no_id', { refundId: 'rf_fn' }),
       claim('canceled_status', { refundId: 'rf_cx' }),
+      // D′ L9 §1 (S-20), spec v2 §7.2 over R13 F03: these two were « proven » under the round-13 predicate and are E-13
+      // shapes now. A PENDING row means Stripe has not paid yet, and a succeeded row with no `re_…` names no refund we can
+      // re-read at Stripe — neither establishes the money the « Remboursée » wording claims.
+      claim('pending', { refundId: 'rf_p' }),
+      claim('succeeded_no_id', { refundId: 'rf_sn' }),
       // excluded
       claim('failed_with_id', { refundId: 'rf_f' }),
       claim('succeeded', { refundId: 'rf_s' }),
-      claim('pending', { refundId: 'rf_p' }),
       claim('declared', { refundId: 'rf_d', refundError: 'engine_failed: x' }),
       claim('reverted', { refundId: 'rf_r', refundError: REVERTED }),
       claim('two_binders_a', { refundId: 'rf_2', status: 'refunded' }),
@@ -288,15 +314,25 @@ describe('J-C30 (H10, E-13) — listRefundedClaimsWithUnprovenRow', () => {
     ]
     st.refunds = [
       row('rf_oo', { orderId: 'o2' }), row('rf_0', { amountCents: 0 }), row('rf_fn', { status: 'failed', stripeRefundId: null }), row('rf_cx', { status: 'canceled' }),
-      row('rf_f', { status: 'failed' }), row('rf_s'), row('rf_p', { status: 'pending' }), row('rf_d', { status: 'failed' }), row('rf_r'), row('rf_2', { amountCents: 0 }),
+      row('rf_f', { status: 'failed' }), row('rf_s'), row('rf_p', { status: 'pending' }), row('rf_sn', { stripeRefundId: null }),
+      row('rf_d', { status: 'failed' }), row('rf_r'), row('rf_2', { amountCents: 0 }),
     ]
   }
 
-  it('lists the E-13 shapes; excludes failed-with-id (A-S31c), succeeded, pending, refundError set, REVERTED and a row with two binders', async () => {
+  it('lists the E-13 shapes — a succeeded row without its `re_…` included (D′ L9 §1); excludes failed-with-id (A-S31c) AND pending (A-S31d), a settled row, refundError set, REVERTED and a row with two binders', async () => {
+    // D′ L9 §1 gave this list ONE new member and deliberately withheld another. The new member is the
+    // succeeded-row-with-no-`re_` shape: unproven, and owned by nobody else, so it belongs here. The
+    // withheld one is the PENDING row: also unproven now, but E-07's `unfinalizedRefundRows` already lists it
+    // WITH its reconcile verdict, and « E-07 and E-13 stay disjoint » is a stated invariant that exists so an
+    // admin meets each stuck claim in exactly one queue. Same reason A-S31c has always been excluded.
     arrange()
     const out = await listRefundedClaimsWithUnprovenRow()
-    expect(out.items.map((c) => c.id).sort()).toEqual(['amount_zero', 'canceled_status', 'failed_no_id', 'no_refund_id', 'other_order', 'row_missing'])
-    expect(out).toMatchObject({ total: 6, scanTruncated: false })
+    expect(out.items.map((c) => c.id).sort()).toEqual(['amount_zero', 'canceled_status', 'failed_no_id', 'no_refund_id', 'other_order', 'row_missing', 'succeeded_no_id'])
+    expect(out).toMatchObject({ total: 7, scanTruncated: false })
+    // NEGATIVE CONTROL on the withheld shape: 'pending' IS unproven, so it is not absent by accident.
+    const pendingRow = st.refunds.find((r) => r.id === st.claims.find((c) => c.id === 'pending')!.refundId)!
+    expect(refundedRowProven(pendingRow, 'o_pending')).toBe(false)
+    expect(out.items.map((c) => c.id)).not.toContain('pending')
   })
 
   // W7 fixer (H10 paging): an id cursor, not an offset — a claim that leaves {refunded, refundError null} between two pages
@@ -334,9 +370,13 @@ describe('J-C30 (H10, E-13) — listRefundedClaimsWithUnprovenRow', () => {
       const boundRow: BoundRowFacts | null = c.refund ? { id: c.refund.id, orderId: c.refund.orderId, status: c.refund.status, stripeRefundId: c.refund.stripeRefundId, reason: c.refund.reason } : null
       expect(c.reconcilable, c.id).toBe(reconcileRefusal({ ...c, boundRow }) === null)
     }
-    // same-order row with an unusable amount: R0 reads it; a missing or other-order row: no action exists
+    // same-order row with an unusable amount: R0 reads it; a missing or other-order row: no action exists.
+    // D′ L9 §1 (S-20): the ONE newly-listed shape is reconcilable — G1 (iii) still admits a settled claim bound to a
+    // succeeded row of its own order, so R0 re-reads Stripe and finishes what the proof no longer asserts on its own.
+    // The pending shape is not here at all: E-07 owns it (see the shape test above).
     expect(Object.fromEntries(out.items.map((c) => [c.id, c.reconcilable]))).toEqual({
       no_refund_id: false, row_missing: false, other_order: false, amount_zero: true, failed_no_id: false, canceled_status: false,
+      succeeded_no_id: true,
     })
   })
 

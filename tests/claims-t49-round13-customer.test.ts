@@ -41,7 +41,13 @@ const claim = (id: string, o: Row = {}): Row => ({
   arbitrationDecision: 'approved', restaurantResponse: null, restaurantResponseReason: null, arbitrationReason: null, reason: 'wrong_item',
   decidedAt: new Date(), createdAt: new Date(), activeOrderKey: null, arbitratedBy: 'op1', ...o,
 })
-const row = (id: string, o: Row = {}): Row => ({ id, orderId: 'o1', status: 'succeeded', amountCents: 500, stripeRefundId: `re_${id}`, ...o })
+/**
+ * D′ L9 (S-20): `re_${id}` was never a Stripe id SHAPE — `re_rf_s` carries an underscore and four characters after the
+ * prefix, where STRIPE_REFUND_ID_SHAPE requires /^re_[A-Za-z0-9]{8,}$/. While the id was decoration the shape could not
+ * be seen; it is part of the PROOF now, so these rows carry a shape the code accepts, the suffix still derived from the
+ * row id so two distinct rows stay distinguishable. The INTENT of these fixtures is unchanged: a settled row.
+ */
+const row = (id: string, o: Row = {}): Row => ({ id, orderId: 'o1', status: 'succeeded', amountCents: 500, stripeRefundId: `re_L9test${id.replace(/[^A-Za-z0-9]/g, '')}`, ...o })
 
 beforeEach(() => {
   st.fail = {}
@@ -51,6 +57,10 @@ beforeEach(() => {
     claim('c_failed', { refundId: 'rf_f' }),
     claim('c_pending', { refundId: 'rf_p' }),
     claim('c_succ', { refundId: 'rf_s' }),
+    // D′ L9 (S-20): the sibling case that makes the Stripe-id half of the rule load-bearing. Without it the fixtures only
+    // discriminate « pending », so dropping provenStripeRefundId would leave this file green. No id, no object to re-read,
+    // so nothing can ever confirm or refute the row: « we believe it worked » is not a proof of payment.
+    claim('c_succ_noid', { refundId: 'rf_snoid' }),
     claim('c_missing', { refundId: 'rf_gone' }),
     claim('c_two_a', { refundId: 'rf_2' }),
     claim('c_two_b', { refundId: 'rf_2', consumerId: 'u2' }),
@@ -63,7 +73,8 @@ beforeEach(() => {
     claim('c_refused_decl', { status: 'refused_final', arbitrationDecision: 'approved', refundError: 'engine_failed: x' }),
   ]
   st.refunds = [
-    row('rf_rev'), row('rf_decl'), row('rf_f', { status: 'failed' }), row('rf_p', { status: 'pending' }), row('rf_s'), row('rf_2'),
+    row('rf_rev'), row('rf_decl'), row('rf_f', { status: 'failed' }), row('rf_p', { status: 'pending' }), row('rf_s'),
+    row('rf_snoid', { stripeRefundId: null }), row('rf_2'),
   ]
   const byConsumer = (where: Row) => st.claims.filter((c) => matchWhere(where ?? {}, c))
   db.claim.findMany.mockReset().mockImplementation(async ({ where }: { where: Row }) => byConsumer(where).map((c) => ({ ...c })))
@@ -94,16 +105,24 @@ beforeEach(() => {
   delete process.env.CLAIMS_WINDOW_UNTIL
 })
 
+// D′ L9 §1 (S-20) — A-S31d IS INVERTED HERE, deliberately. R13 v1 F03 counted a « pending » row as a proof and its
+// Section A entry A-S31d went further and REQUIRED « Remboursée » for a settled claim sitting on one. Spec v2 §7.2 wrote
+// the opposite — succeeded ∧ stripeRefundId ≠ null, never pending — and §1 of L9 resolves the contradiction in favour of
+// v2. A pending row is not a settlement: the SAME row was already read as « La ligne liée est en attente, sans
+// identifiant Stripe enregistré » by the admin console and as refund_not_succeeded by the restaurant's figures, so
+// « Remboursée » was the one optimistic answer of three — and the only one the customer saw. c_pending and c_succ_noid
+// now read the neutral key, which states neither a payment nor an absence of refund.
 const EXPECTED: Record<string, string> = {
   c_rev: 'financial_verification', c_decl: 'closed_by_support',
-  c_failed: 'refund_unconfirmed', c_pending: 'refunded', c_succ: 'refunded', c_missing: 'refund_unconfirmed',
+  c_failed: 'refund_unconfirmed', c_pending: 'refund_unconfirmed', c_succ: 'refunded', c_missing: 'refund_unconfirmed',
+  c_succ_noid: 'refund_unconfirmed',
   c_two_a: 'financial_verification',
   c_v13: 'financial_verification', c_rail: 'financial_verification', c_hold: 'financial_verification', c_approved: 'approved',
   c_marker: 'financial_verification', c_fv: 'financial_verification', c_refused_decl: 'closed_by_support',
 }
 
 describe('J-M51 — listConsumerClaims: the customer status of every money state', () => {
-  it('each fixture reads its key (REVERTED → manual review; declarations → closed_by_support; a failed or missing row → unconfirmed; pending / succeeded → refunded; two binders → manual review)', async () => {
+  it('each fixture reads its key (REVERTED → manual review; declarations → closed_by_support; a failed, missing, pending or id-less row → unconfirmed; succeeded WITH a Stripe id → refunded; two binders → manual review)', async () => {
     const out = await listConsumerClaims('u1')
     expect(Object.fromEntries(out.map((c) => [c.id, c.status]))).toEqual(EXPECTED)
     // the other binder of the ambiguous row reads the manual review too
@@ -114,7 +133,7 @@ describe('J-M51 — listConsumerClaims: the customer status of every money state
   it('an unreadable row read → the refunded kinds read the manual review; other statuses are unchanged', async () => {
     st.fail.rows = true
     const out = Object.fromEntries((await listConsumerClaims('u1')).map((c) => [c.id, c.status]))
-    for (const id of ['c_failed', 'c_pending', 'c_succ', 'c_missing', 'c_two_a']) expect(out[id], id).toBe('financial_verification')
+    for (const id of ['c_failed', 'c_pending', 'c_succ', 'c_succ_noid', 'c_missing', 'c_two_a']) expect(out[id], id).toBe('financial_verification')
     expect(out.c_approved).toBe('approved')
     expect(out.c_decl).toBe('closed_by_support')
   })
@@ -128,7 +147,7 @@ describe('J-M51 — listConsumerClaims: the customer status of every money state
     }
   })
 
-  it('NEGATIVE CONTROL — a single-binder refunded row reads « Remboursée »; the fixtures discriminate the two break mutants', async () => {
+  it('NEGATIVE CONTROL — a single-binder SETTLED row reads « Remboursée »; the fixtures discriminate the three break mutants', async () => {
     const out = Object.fromEntries((await listConsumerClaims('u1')).map((c) => [c.id, c.status]))
     expect(out.c_succ).toBe('refunded')
     // (1) DECLARED startsWith → includes: the declaration text carries the REVERTED marker, so the mutant reads it as a reversal.
@@ -137,6 +156,11 @@ describe('J-M51 — listConsumerClaims: the customer status of every money state
     // (2) dropping the binder count: the ambiguous row alone is proven, so without the count c_two_a would read « Remboursée ».
     expect(refundedRowTruth(row('rf_2'), 1, 'o1')).toBe(true)
     expect(refundedRowTruth(row('rf_2'), 2, 'o1')).toBeNull()
+    // (3) D′ L9 (S-20): dropping provenStripeRefundId, or putting « pending » back among the proofs. Both rows are FALSE
+    // — a stated absence of proof, which the customer reads as « Remboursement non confirmé » — never null, which is the
+    // unread row and reads as the manual review. The two verdicts are not interchangeable: only one of them claims to know.
+    expect(refundedRowTruth(row('rf_s', { stripeRefundId: null }), 1, 'o1')).toBe(false)
+    expect(refundedRowTruth(row('rf_p', { status: 'pending' }), 1, 'o1')).toBe(false)
   })
 })
 

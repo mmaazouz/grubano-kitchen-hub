@@ -12,8 +12,7 @@ import {
   refundedUnprovenHeading, REFUNDED_UNPROVEN_TEXT, REFUNDED_UNPROVEN_RECONCILE_CAPTION, REFUNDED_UNPROVEN_NO_ACTION, REFUNDED_UNPROVEN_TRUNCATED,
   closureNoticesHeading, CLOSURE_NOTICES_INTRO, CLOSURE_NOTICE_BUTTON, CLOSURE_NOTICES_TRUNCATED, CLOSURE_KIND_LABEL, CLOSURE_BLOCKER_LINE,
   RESTAURANT_NOTICE_LINE, RESTAURANT_NOTICES_HEADING, RESTAURANT_NOTICES_INTRO, RESTAURANT_NOTICE_STATE_LINE,
-  LIST_UNREADABLE_TEXT, itemsCappedText, type ClosureNoticeBlocker,
-} from '@/lib/claim-console-copy'
+  LIST_UNREADABLE_TEXT, itemsCappedText, type ClosureNoticeBlocker, SUPPORT_NOTICES_HEADING, SUPPORT_NOTICES_INTRO, SUPPORT_NOTICE_BUTTON, SUPPORT_NOTICE_ORIGIN_LINE, SUPPORT_NOTICE_REFUSAL_FR,} from '@/lib/claim-console-copy'
 // ROUND 13 (G12, B10): the attribution success copy and the pending-row legend come from the shared pure module.
 import { attributionSuccessText, PENDING_ROW_LEGEND, adoptionRefusalWroteText } from '@/lib/claim-attribution-rules'
 // ROUND 13 (H07, H11): the customer e-mail result of a closing action, as a toast (the card is French-only).
@@ -86,6 +85,9 @@ type Payload = {
   closureNotices?: SectionList<{ claimId: string; orderId: string; kind: ClosureKind; decidedAt: string | null; blocker: ClosureNoticeBlocker | null; restaurantNotice?: string }>
   /** D′ L8 (§18): settled refunds the RESTAURANT has not been told about — its own population. */
   restaurantNotices?: SectionList<{ claimId: string; orderId: string; decidedAt: string | null; state: 'pending' | 'ledger_incomplete' }>
+  // D′ L9 (E3): the SUPPORT half. `rowId` is a Refund row, not a claim — hence its own key and its own
+  // button. No Stripe id and no recipient in the shape: the route holds those, the console does not need them.
+  supportNotices?: SectionList<{ rowId: string; orderRef: string; restaurantName: string | null; amountCents: number; partial: boolean; settledAt: string | null; origin: 'support' | 'system' }>
   counts: {
     financialVerification: number; reconcileRequired: number; otherUnsettled: number; total: number; unfinalizedRefundRows?: number
     refundedUnproven?: number | null; closureNoticesMissing?: number | null
@@ -296,6 +298,32 @@ export default function AdminFinancialVerification({ initialData }: { initialDat
 
   // ROUND 13 (H10 / D10 (iv), slice W7): « Envoyer l’avis au client » — the per-claim resend. The body is empty: the notice's
   // content comes from the database and, for a refunded claim, from Stripe's refund object the server reads. No money path.
+  /**
+   * D′ L9 (E3) — the SUPPORT notice. A sibling of sendClosureNotice, deliberately NOT merged with it: the
+   * two routes answer different shapes and refuse for different reasons, and a shared handler would have to
+   * guess which. The refusal codes are rendered as the server's own words, never re-worded here, because
+   * `support_row_reverted` in particular means « Stripe disagrees with our base » and an admin must read that
+   * sentence and not a friendlier paraphrase of it.
+   */
+  const sendSupportNotice = useCallback(async (rowId: string) => {
+    setBusyId(rowId)
+    try {
+      const res = await fetch(`/api/admin/refunds/rows/${encodeURIComponent(rowId)}/notify`, { method: 'POST' })
+      const body = await res.json().catch(() => ({})) as { error?: string; status?: string; notified?: boolean }
+      if (!res.ok) {
+        toast.error(SUPPORT_NOTICE_REFUSAL_FR[(body.error ?? '') as keyof typeof SUPPORT_NOTICE_REFUSAL_FR]
+          ?? 'Envoi refusé — rien n’a été envoyé au client. Rechargez la liste.')
+        await load(); return
+      }
+      if (body.status === 'sent') toast.success('Confirmation envoyée au client.')
+      else if (body.status === 'duplicate') toast.info('Déjà envoyée — rien n’a été renvoyé.')
+      else toast.error('Aucun e-mail n’est parti (envoi désactivé ou en échec) — la ligne reste à traiter.')
+      await load()
+    } catch {
+      toast.error('Envoi impossible — rien n’est confirmé. Rechargez la liste.')
+    } finally { setBusyId(null) }
+  }, [load, toast])
+
   const sendClosureNotice = useCallback(async (claimId: string) => {
     setBusyId(claimId)
     try {
@@ -359,6 +387,7 @@ export default function AdminFinancialVerification({ initialData }: { initialDat
   const refundedList = data?.refundedUnproven
   const noticesList = data?.closureNotices
   const restoNoticesList = data?.restaurantNotices
+  const supportNoticesList = data?.supportNotices
   // ROUND 13 (AMF-1, slice W7): the re-verification control renders whatever the queue holds — an E-09 claim is in no list.
   const settledReverifyControl = (
     <div className="mb-3 rounded-grubano-xl border border-grubano-border bg-grubano-surface p-3" data-section="settled-reverify">
@@ -370,7 +399,7 @@ export default function AdminFinancialVerification({ initialData }: { initialDat
   )
   // ROUND 13 (E0 / H10, slice W7): the card is visible for claim rows, unfinalized rows or either section; the red heading and
   // its banner only for claim rows or unfinalized rows (financialVerificationHeadingVisible).
-  if (!financialVerificationCardVisible({ claimRows: rows.length, unfinalizedRows: unfinalized.length, closureNotices: sectionWeight(noticesList), refundedUnproven: sectionWeight(refundedList) })) {
+  if (!financialVerificationCardVisible({ claimRows: rows.length, unfinalizedRows: unfinalized.length, closureNotices: sectionWeight(noticesList), refundedUnproven: sectionWeight(refundedList), restaurantNotices: sectionWeight(restoNoticesList), supportNotices: sectionWeight(supportNoticesList) })) {
     return <section className="mb-6">{settledReverifyControl}</section>
   }
   const headingVisible = financialVerificationHeadingVisible({ claimRows: rows.length, unfinalizedRows: unfinalized.length })
@@ -774,6 +803,34 @@ export default function AdminFinancialVerification({ initialData }: { initialDat
                   <p className={`mt-1 text-[12px] ${n.state === 'pending' ? 'text-grubano-ink-muted' : 'text-red-700'}`}>
                     {RESTAURANT_NOTICE_STATE_LINE[n.state]}
                   </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+      {supportNoticesList && sectionWeight(supportNoticesList) > 0 && (
+        <div className="mt-4 rounded-grubano-xl border border-grubano-border bg-grubano-surface p-4" data-section="support-notices">
+          <h3 className="text-sm font-bold text-grubano-ink">
+            {SUPPORT_NOTICES_HEADING('error' in supportNoticesList ? null : supportNoticesList.total)}
+          </h3>
+          <p className="mt-1 text-[13px] text-grubano-ink-muted">{SUPPORT_NOTICES_INTRO}</p>
+          {'error' in supportNoticesList ? (
+            <p className="mt-2 text-[13px] text-red-700">{LIST_UNREADABLE_TEXT}</p>
+          ) : (
+            <ul className="mt-2 space-y-2 text-[13px] text-grubano-ink">
+              {supportNoticesList.items.map((n) => (
+                <li key={n.rowId}>
+                  {/* Enough to ACT on and nothing more (§24): the public order reference, the amount, the
+                      restaurant, when it settled, and what kind of refund it was. No Stripe id, no
+                      idempotency key, no recipient address — an admin decides, they do not need the secrets. */}
+                  Commande {n.orderRef}{n.restaurantName ? ` — ${n.restaurantName}` : ''} — {(n.amountCents / 100).toLocaleString(locale, { style: 'currency', currency: 'EUR' })}{n.partial ? ' (partiel)' : ''}
+                  {n.settledAt ? ` — abouti le ${new Date(n.settledAt).toLocaleString(locale)}` : ''}
+                  {' '}
+                  <Button size="sm" variant="secondary" disabled={busyId === n.rowId} onClick={() => sendSupportNotice(n.rowId)}>
+                    {SUPPORT_NOTICE_BUTTON}
+                  </Button>
+                  <p className="mt-1 text-[12px] text-grubano-ink-muted">{SUPPORT_NOTICE_ORIGIN_LINE[n.origin]}</p>
                 </li>
               ))}
             </ul>

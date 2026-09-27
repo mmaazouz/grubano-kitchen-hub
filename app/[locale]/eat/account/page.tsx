@@ -197,6 +197,15 @@ export default function ProfileScreen() {
           {orders.length > 0 && <span className="pill">{orders.length}</span>}
           <span className="ms go" aria-hidden="true">chevron_right</span>
         </button>
+        {/* D′ L9 (T-45) — « Mes réclamations ». Sits next to « Mes commandes » because a claim is
+            read against the order it was filed on. NO counter: this page fetches orders and the
+            loyalty wallet and NOTHING about claims, so any badge here would be a number we do
+            not have. The claims page itself states the surface's real state (incl. closed). */}
+        <button type="button" className="ac-row" onClick={() => router.push('/eat/account/claims')}>
+          <span className="ic blue"><span className="ms" aria-hidden="true">flag</span></span>
+          <div className="main"><b>{t('rowClaims')}</b><span>{t('rowClaimsSub')}</span></div>
+          <span className="ms go" aria-hidden="true">chevron_right</span>
+        </button>
       </div>
 
       {/* ─── Préférences ─── */}

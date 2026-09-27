@@ -3269,7 +3269,10 @@
       "resDepositAuthorizedArrived": "Retención de {amount} preautorizada — no se cobra nada; se libera al pagar la cuenta.",
       "resDepositAuthorizedPending": "La retención de {amount} sigue preautorizada — su liberación está en curso, no se cobra nada.",
       "paymentProof": "Comprobante de pago",
-      "paymentProofError": "No se pudo generar el comprobante — no se creó ningún archivo. Vuelve a intentarlo; si persiste, el soporte puede verificar tu pago."
+      "paymentProofError": "No se pudo generar el comprobante — no se creó ningún archivo. Vuelve a intentarlo; si persiste, el soporte puede verificar tu pago.",
+      "refundedBadge": "Reembolsada {amount}",
+      "refundedPartialBadge": "Reembolso parcial {amount}",
+      "refundedRecordedBadge": "Reembolso registrado"
     },
     "postDelivery": {
       "close": "Cerrar",
@@ -3300,7 +3303,8 @@
       "reorder": "Volver a pedir",
       "notFoundTitle": "Pedido no encontrado",
       "notFoundBody": "Este pedido no existe o ya no está disponible.",
-      "tipRecap": "Propina añadida · {amount}"
+      "tipRecap": "Propina añadida · {amount}",
+      "pointsEarnedAfterRefund": "+{points} punto{points, plural, one {} other {s}} conservado{points, plural, one {} other {s}} tras el reembolso"
     },
     "addresses": {
       "title": "Direcciones de entrega",
@@ -3466,7 +3470,23 @@
       "needHelp": "¿Necesitas ayuda?",
       "viewPickupPass": "Mostrar mi pase de recogida",
       "etaMinutes": "≈ {min} min",
-      "approxPosition": "Ubicación aproximada del repartidor"
+      "approxPosition": "Ubicación aproximada del repartidor",
+      "refundLabel": "Reembolso",
+      "refundedOn": "Reembolsado el {date}",
+      "refundedLabel": "Reembolsado",
+      "refundedTotal": "Total reembolsado",
+      "refundInProgress": "Reembolso en curso",
+      "refundRecorded": "Se ha registrado un reembolso de <m>{amount}</m> en este pedido.",
+      "refundedInFullNote": "Este total es el importe cobrado al realizar el pedido; se ha reembolsado en su totalidad.",
+      "refundedNote": "Se te han reembolsado <m>{amount}</m> en este pedido.",
+      "refundPendingNote": "Hay un reembolso de <m>{amount}</m> en curso en este pedido.",
+      "pointsKeptAfterRefund": "{kept} punto{kept, plural, one {} other {s}} de fidelidad conservado{kept, plural, one {} other {s}} — {reversed} retirado{reversed, plural, one {} other {s}} tras el reembolso",
+      "pointsAllReversedNote": "No se conserva ningún punto de fidelidad en este pedido: {reversed} punto{reversed, plural, one {} other {s}} retirado{reversed, plural, one {} other {s}} tras el reembolso.",
+      "pointsRestoredNote": "{points} punto{points, plural, one {} other {s}} de fidelidad utilizado{points, plural, one {} other {s}} te {points, plural, one {ha} other {han}} sido devuelto{points, plural, one {} other {s}} en este pedido.",
+      "expiredRefundedDesc": "Este pedido caducó y se había registrado un pago — te ha sido reembolsado. No se inició ninguna preparación.",
+      "pointsAllReversedPendingNote": "No se conservó ningún punto de fidelidad en este pedido — {reversed} punto{reversed, plural, one {} other {s}} retirado{reversed, plural, one {} other {s}}.",
+      "pointsRestoredPendingNote": "Se te {points, plural, one {ha} other {han}} vuelto a acreditar {points} punto{points, plural, one {} other {s}} de fidelidad que habías usado.",
+      "pointsKeptPending": "{kept} punto{kept, plural, one {} other {s}} de fidelidad conservado{kept, plural, one {} other {s}} — {reversed} retirado{reversed, plural, one {} other {s}}"
     },
     "account": {
       "title": "Mi Perfil",
@@ -3540,7 +3560,9 @@
       "rowHelpCenter": "Centro de ayuda",
       "rowTerms": "Privacidad",
       "rowBecomePartner": "Conviértete en socio Grubano",
-      "version": "Grubano · v1.0.0"
+      "version": "Grubano · v1.0.0",
+      "rowClaims": "Mis reclamaciones",
+      "rowClaimsSub": "Seguimiento de tus solicitudes de reembolso"
     },
     "auth": {
       "tabLogin": "Iniciar sesión",
@@ -4144,6 +4166,28 @@
       "issueAction": "¿Un problema con esta cuenta?",
       "issueSubject": "Cuenta {code} — Grubano",
       "metaAddress": "Dirección"
+    },
+    "claims": {
+      "title": "Mis reclamaciones",
+      "filedOn": "Presentada el {date}",
+      "restaurantUnknown": "Restaurante no indicado",
+      "reasonUnknown": "Motivo no registrado",
+      "selectionSummary": "Selección: {lines} línea(s), {items} artículo(s)",
+      "requested": "Importe solicitado",
+      "approved": "Importe aprobado por Grubano",
+      "emptyTitle": "Ninguna reclamación",
+      "emptyBody": "Todavía no has presentado ninguna reclamación. Puedes informar de un problema desde uno de tus pedidos.",
+      "emptyCta": "Ver mis pedidos",
+      "helpLink": "Ayuda con este pedido",
+      "selectionWhole": "Alcance: todo el pedido",
+      "selectionAmount": "Alcance: un importe, sin detalle por artículo"
+    },
+    "refund": {
+      "refundedTotal": "Este pedido ha sido reembolsado · <amt>{amount}</amt>.",
+      "refundedPartial": "Reembolso parcial de <amt>{amount}</amt> en este pedido.",
+      "refundPending": "Reembolso de <amt>{amount}</amt> en curso.",
+      "refundRecorded": "Se ha registrado un reembolso de <amt>{amount}</amt> en este pedido.",
+      "stateLabel": "Reembolso"
     }
   },
   "menu": {

@@ -304,7 +304,14 @@ describe('GET /financial-verification — ungated AT THE ROUTE, not just in the 
     let res = await QUEUE()
     let body = await res.json()
     // D′ L8 (§18): `restaurantNoticesPending` joins the counts, outside `total` like its two neighbours.
-    expect(body.counts).toEqual({ financialVerification: 1, reconcileRequired: 0, otherUnsettled: 0, unfinalizedRefundRows: 0, total: 1, refundedUnproven: 1, closureNoticesMissing: 2, restaurantNoticesPending: 0 })
+    // D′ L9 (E3): `supportNoticesPending` joins them the same way — outside `total`, because it counts refund
+    // ROWS with no claim behind them, not claims. Kept as an exact toEqual: a count appearing in an admin
+    // money card must be a decision, so a new key has to be named here to ship.
+    //   NULL, not 0, and that is the CONTRACT rather than an accident of this fixture: this world's prisma
+    //   double does not carry the tables that list reads, so the read is refused and an unreadable list
+    //   reports null. « Unknown » must never render as « none to send » — the same reason
+    //   `restaurantNoticesPending` is null in the registry-visibility fixture beside it.
+    expect(body.counts).toEqual({ financialVerification: 1, reconcileRequired: 0, otherUnsettled: 0, unfinalizedRefundRows: 0, total: 1, refundedUnproven: 1, closureNoticesMissing: 2, restaurantNoticesPending: 0, supportNoticesPending: null })
     expect(body.closureNotices).toEqual({ items: [{ claimId: 'n1' }, { claimId: 'n2' }], total: 2, scanTruncated: true })
     vi.spyOn(console, 'error').mockImplementation(() => {})
     noticesMock.mockRejectedValue(new Error('db down'))

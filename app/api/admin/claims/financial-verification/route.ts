@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { resolveAdmin } from '@/lib/admin-guard'
 import { listFinancialVerificationClaims, listReconcileRequiredClaims, listActionableRefundClaims, listUnfinalizedClaimRefundRows, listRefundedClaimsWithUnprovenRow } from '@/lib/claims'
 // ROUND 13 (H10, slice W7): the « Avis client non envoyés » list — read-only, outside lib/claim-emails (H15).
+import { listPendingSupportRefundNotices } from '@/lib/support-refund-notices'
 import { listPendingRestaurantRefundNotices, listMissingClaimClosureNotices } from '@/lib/claim-closure-lists'
 
 export const runtime = 'nodejs'
@@ -49,7 +50,7 @@ export async function GET() {
   // list cannot: « which settled refunds has the RESTAURANT not been told about? » On the ordinary path the
   // customer's notice IS dispatched, so those claims never appear in `closureNotices` — surfacing the
   // restaurant notice only there would have left it unreachable in exactly the normal case.
-  const [refundedUnproven, closureNotices, restaurantNotices] = await Promise.all([
+  const [refundedUnproven, closureNotices, restaurantNotices, supportNotices] = await Promise.all([
     listRefundedClaimsWithUnprovenRow().catch((e: unknown) => {
       console.error('[claims financial-verification] refundedUnproven NOT READ —', e instanceof Error ? e.message : e)
       return unreadable
@@ -60,6 +61,15 @@ export async function GET() {
     }),
     listPendingRestaurantRefundNotices().catch((e: unknown) => {
       console.error('[claims financial-verification] restaurantNotices NOT READ —', e instanceof Error ? e.message : e)
+      return unreadable
+    }),
+    // D′ L9 (E3, §24): the SUPPORT half of « avis non envoyés ». These are refunds with NO claim behind them —
+    // a support rail refund or an abandoned-checkout auto-refund — that Stripe settled asynchronously, so the
+    // 202 answer carried no e-mail and the finalising webhook is forbidden from sending one. The customer was
+    // refunded and never told. Unreadable degrades like its siblings: the card shows « liste illisible »
+    // rather than an empty section, because an empty section reads as « nothing to do ».
+    listPendingSupportRefundNotices().catch((e: unknown) => {
+      console.error('[claims financial-verification] supportNotices NOT READ —', e instanceof Error ? e.message : e)
       return unreadable
     }),
   ])
@@ -75,6 +85,7 @@ export async function GET() {
     refundedUnproven,
     closureNotices,
     restaurantNotices,
+    supportNotices,
     counts: {
       financialVerification: financialVerification.length,
       reconcileRequired:     reconcileRequired.length,
@@ -89,6 +100,9 @@ export async function GET() {
       closureNoticesMissing: countOf(closureNotices),
       /** D′ L8 (§18): settled refunds the RESTAURANT has not been told about — outside `total`; null when unreadable. */
       restaurantNoticesPending: countOf(restaurantNotices),
+      /** D′ L9 (E3): settled SUPPORT refunds the CUSTOMER has not been told about — outside `total` (these are
+       *  refund rows, not claims); null when unreadable, never 0, so « unknown » cannot read as « none ». */
+      supportNoticesPending:    countOf(supportNotices),
     },
   })
 }

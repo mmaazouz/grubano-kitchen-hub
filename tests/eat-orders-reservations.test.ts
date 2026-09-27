@@ -132,6 +132,15 @@ describe('GET /api/eat/orders — cartes réservation (V5-1)', () => {
       itemsCount: 2, total: 24.5, status: 'preparing',
       createdAt: new Date(now - 1 * H).toISOString(), ref: 'GR-' + 'ord1'.slice(-6).toUpperCase(), // formule unique lib/order-ref (lot veracite)
       restaurantId: 'r1', eta: 20, trackingId: 'ord1',
+      // D′ L9 (T-45, §11): the card gained the MINIMAL refund badge shape and nothing more — no history,
+      // no pending figure, no unattributed figure. Named here rather than loosened to toMatchObject,
+      // because the point of this pin is that the card shape IS a contract: a field appearing on a
+      // consumer card must be a decision. All three are 0 / false on an order with no refund, so a card
+      // never has to test for undefined and the ordinary card renders exactly as it always did.
+      // `unattributedCents` joined the badge after the adversarial review: without it a card holding the
+      // amount and the flags cannot tell « fully refunded, 14,10 € » from « fully refunded, of which only
+      // 10,00 € is ours to name », and it printed the smaller figure as if it were the whole refund.
+      refundedCents: 0, unattributedCents: 0, isTotal: false, isPartial: false,
     })
   })
 

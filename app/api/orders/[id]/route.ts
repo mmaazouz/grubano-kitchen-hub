@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { prisma } from '@/lib/prisma'
 import { resolveEstablishmentScope } from '@/lib/establishment-scope'
+import { loadOrderRefundSummary, emptyRefundSummary, summaryAnomaly } from '@/lib/order-refund-summary'
 
 // La « position livreur » mockée (coordonnées ALÉATOIRES dans Paris, servies
 // comme réelles sur picked_up) est retirée : aucun rail livreur n'est actif.
@@ -90,6 +91,34 @@ export async function GET(
       } catch { /* nameless line */ }
     }
 
+    // ── ADDITIVE (D′ L9 / T-45) — WHAT A REFUND DID TO THIS ORDER ────────────────────────────────
+    //
+    // Until this lot the consumer app could not tell a refunded order from a paid one. Worse, it asserted
+    // the opposite: `paymentStatus` below still reads 'paid' (by design — it describes the PAYMENT, and
+    // §2 of the L9 decision keeps it that way), and `pointsEarned` below is the pre-refund column, which
+    // is never decremented. So a fully refunded order rendered « Total payé 14,50 € » and « +14 points
+    // fidélité crédités » with nothing to contradict it.
+    //
+    // `refundSummary` is the additive read-model that carries the truth instead. It is computed ONLY for a
+    // terminal order that has a PaymentIntent (§9), so the 15-second tracking poll of an order still in
+    // preparation costs exactly ZERO extra queries; for a terminal one it costs three, all batched, none
+    // per-row, and no Stripe call — a Stripe outage must never delay this page.
+    //
+    // A read that throws degrades to the stable empty shape rather than 500-ing the order: a customer must
+    // be able to open their order even when the refund side is unreadable, and « nothing shown » is the
+    // honest answer when nothing can be proven. Never a partial summary — §10 requires one stable shape.
+    let refundSummary = emptyRefundSummary()
+    try {
+      refundSummary = await loadOrderRefundSummary(prisma, {
+        id: order.id, status: order.status, total: order.total,
+        stripePaymentIntentId: order.stripePaymentIntentId,
+      })
+      const anomaly = summaryAnomaly(refundSummary)
+      if (anomaly) console.error(`[MONEY REVIEW] [refund_summary_anomaly] order ${order.id}: ${anomaly}`)
+    } catch (e) {
+      console.error('[GET /api/orders/:id] refundSummary unreadable (degraded to empty):', order.id, e instanceof Error ? e.message : e)
+    }
+
     return NextResponse.json({
       order: {
         id:              order.id,
@@ -121,7 +150,13 @@ export async function GET(
         // Checkout C2 (additive) — null = legacy/not initiated, 'pending' = PI
         // created, 'paid' = webhook-confirmed (C1 contract).
         paymentStatus:   order.paymentStatus,
+        // PRE-REFUND COLUMN, kept for compatibility and NO LONGER the whole truth: a consumer surface must
+        // read `refundSummary.pointsReversed` beside it before saying anything about points. Never
+        // decremented on a refund — that is a schema fact, not an oversight this lot may fix (T-44 / L6.1
+        // own the loyalty numbers).
         pointsEarned:    order.pointsEarned,
+        // D′ L9 (T-45): additive, always present, never undefined on any path.
+        refundSummary,
         createdAt:       order.createdAt,
         updatedAt:       order.updatedAt,
         restaurant:      order.restaurant,

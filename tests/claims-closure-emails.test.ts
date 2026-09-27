@@ -5,6 +5,11 @@
 // The senders run for real on the real mail rail (lib/transactional-emails), with nodemailer and Prisma mocked and the real
 // message catalogs: an EmailLog row is counted where the code writes it, and the html is the rendered copy.
 //
+// IMPLEMENTATION NOTE (D′ L9 §1 / S-20) on F03: the proof of a settlement was hardened — a bound row proves « Remboursée »
+// only when it is `succeeded` AND carries a Stripe refund id of the form re_… (≥ 8 chars). Spec v2 §7.2 supersedes R13 F03
+// and its A-S31d entry: `pending` is no longer a proof, so the fixtures below name the identifier instead of assuming it,
+// and the one case that asserted the old rule ((9), pending) now asserts the new one.
+//
 // IMPLEMENTATION NOTE (W6) on ER-C19 / J-C24: « every fixture produces exactly one EmailLog row » holds for every attempt
 // that reaches a template. A claim that is not a closure (not_applicable / not_a_closure) is not an attempt and leaves no
 // row; a 'duplicate' leaves none either (the earlier attempt's row stands). A skip for no_recipient keeps the historical
@@ -49,7 +54,10 @@ const REFUNDED: Row = {
   id: 'cl1', status: 'refunded', consumerId: 'c1', orderId: 'ord123abc', refundId: 'rf1', refundError: null,
   arbitrationDecision: 'approved', restaurantResponse: null, arbitrationReason: null,
 }
-const ROW: Row = { orderId: 'ord123abc', status: 'succeeded', amountCents: 1250, stripeRefundId: 're_1' }
+// D′ L9 §1 (S-20) : la ligne de référence est une ligne SOLDÉE, et depuis le durcissement une ligne n'est soldée
+// que si elle porte un identifiant Stripe de forme re_… (≥ 8 caractères) : sans objet à relire, il n'y a rien à
+// confirmer ni à réfuter. L'intention du fixture n'a pas changé — l'identifiant est désormais dit, pas supposé.
+const ROW: Row = { orderId: 'ord123abc', status: 'succeeded', amountCents: 1250, stripeRefundId: 're_L9rowAAAAAA1' }
 const CONSUMER: Row = { email: 'lea@x.fr', name: 'Léa', locale: null }
 const st: { claim: Row | null; row: Row | null; binders: number; record: boolean; consumer: Row | null; claimThrows: boolean } =
   { claim: null, row: null, binders: 1, record: true, consumer: null, claimThrows: false }
@@ -200,10 +208,22 @@ describe('J-C24 — sendClaimClosureEmail check order, one EmailLog row per atte
     expect(logs()).toHaveLength(1)
   })
 
-  it('(9) Stripe 1250 = row 1250 → refunded.subject/title + refundedLinked.body with « 12,50 »; a pending row with equal evidence → refundedLinked too', async () => {
+  // D′ L9 §1 (S-20) — INVERSION ASSUMÉE : la moitié « pending » de ce cas affirmait l'inverse. La spec v2 §7.2
+  // supersède R13 F03 (et son entrée A-S31d, qui EXIGEAIT « Remboursée » sur une ligne en attente) : « pending »
+  // ne prouve plus rien, MÊME à preuve Stripe égale. Une preuve égale ne dit que le montant ; elle ne dit pas que
+  // l'argent est parti. Et la ligne (pending, sans identifiant) est exactement ce qu'un process tué entre
+  // stripe.refunds.create et l'écriture de finalisation laisse pour toujours : trois surfaces la lisaient
+  // différemment, et le client recevait la seule lecture optimiste. Le cas RESTE dans la liste, avec sa vérité.
+  it('(9) Stripe 1250 = row 1250 → refunded.subject/title + refundedLinked.body with « 12,50 »; a pending row with equal evidence is no longer a proof → refunded_row_unproven, nothing sent', async () => {
     for (const status of ['succeeded', 'pending']) {
       fresh({ row: { ...ROW, status } })
-      expect(await closure(EV(1250))).toEqual({ status: 'sent', kind: 'refunded' })
+      if (status === 'pending') {
+        expect(await closure(EV(1250)), status).toEqual({ status: 'skipped', kind: 'refunded', why: 'refunded_row_unproven' })
+        expect(sends()).toEqual([])
+        expect(logs()).toHaveLength(1)
+        continue
+      }
+      expect(await closure(EV(1250)), status).toEqual({ status: 'sent', kind: 'refunded' })
       const m = sends()[0]
       expect(m.subject).toBe(text('fr', 'refunded.subject', { ref: REF }))
       expect(m.html).toContain(text('fr', 'refunded.title'))
@@ -264,13 +284,19 @@ describe('J-C24 — sendClaimClosureEmail check order, one EmailLog row per atte
 
 // ══ J-C25 — parity: the customer status and the closure sender ═══════════════════════════════════
 describe('J-C25 — customer refund_unconfirmed ⇔ sender refunded_row_unproven / refunded_row_failed', () => {
+  // D′ L9 §1 (S-20) : chaque nom dit maintenant la vérité de l'objet. « with id » porte un identifiant de la forme
+  // que la preuve exige (re_… ≥ 8), sinon le nom promettait un identifiant que le durcissement ne reconnaît pas, et
+  // other_order serait rejetée pour DEUX raisons au lieu de la seule qu'elle teste. succeeded_without_id est le
+  // frère manquant : la ligne (succeeded, sans identifiant) est la forme que L9 §1 retire des preuves — elle doit
+  // être dans la table, sinon rien ne pinne le fait qu'un statut seul ne suffit plus.
   const ROWS: Record<string, Row | null> = {
     missing: null,
-    other_order: { orderId: 'o_other', status: 'succeeded', stripeRefundId: 're_1' },
-    failed_with_id: { orderId: 'ord123abc', status: 'failed', stripeRefundId: 're_1' },
+    other_order: { orderId: 'o_other', status: 'succeeded', stripeRefundId: 're_L9otherAAAAA1' },
+    failed_with_id: { orderId: 'ord123abc', status: 'failed', stripeRefundId: 're_L9failedAAAA1' },
     failed_without_id: { orderId: 'ord123abc', status: 'failed', stripeRefundId: null },
-    pending: { orderId: 'ord123abc', status: 'pending', stripeRefundId: 're_1' },
-    succeeded: { orderId: 'ord123abc', status: 'succeeded', stripeRefundId: 're_1' },
+    pending: { orderId: 'ord123abc', status: 'pending', stripeRefundId: 're_L9pendingAAA1' },
+    succeeded: { orderId: 'ord123abc', status: 'succeeded', stripeRefundId: 're_L9succeedAAA1' },
+    succeeded_without_id: { orderId: 'ord123abc', status: 'succeeded', stripeRefundId: null },
   }
   it('over rows × amount {0, 1250} × binders {1, 2}, Stripe evidence equal', async () => {
     const impossible: string[] = []

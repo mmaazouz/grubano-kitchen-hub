@@ -49,8 +49,26 @@ import '@/app/gb-foundation/gb-components.css'
 //    l'adresse texte). Grubano ne calcule NI trajet NI ETA — l'app de cartes s'en charge.
 //  • « J'arrive » / « Me prévenir » (boutons INERTES) ont été RETIRÉS — aucun backend.
 //  • Aucune distance Haversine affichée comme distance de trajet (décision bêta).
+//
+// D′ L9 (T-45) — LE PASS NE PEUT PLUS SE PRÉSENTER COMME UN DROIT SUR LA MARCHANDISE APRÈS
+// REMBOURSEMENT. Jusqu'à ce lot aucune surface conso ne lisait la table `Refund` : une commande
+// remboursée EN ENTIER continuait d'afficher un code, un QR et un « Total payé » intacts. Le pass lit
+// désormais `order.refundSummary` (additif, TOUJOURS présent sur GET /api/orders/[id]) et ajoute UNE
+// ligne factuelle. Ce qui est délibérément NON fait :
+//  • le pass, le code et le QR restent RENDUS tels quels — désactiver ou masquer un pass est une
+//    décision produit que personne n'a prise ; on énonce le fait, on ne ferme pas la porte ;
+//  • « remboursée » n'est écrit que pour de l'argent PROUVÉ revenu (`refundedCents > 0`) ET cumulé
+//    jusqu'à la charge (`isTotal`) — jamais pour un remboursement EN COURS, jamais sur 0 ;
+//  • AUCUN délai bancaire, AUCUNE date estimée.
 
 interface OrderItem { name: string; qty: number; price: number }
+/**
+ * D′ L9 (T-45) — the slice of the server's `refundSummary` read-model this pass consumes. Declared
+ * LOCALLY, not imported from lib/order-refund-summary: this is a `'use client'` page and that module
+ * pulls the refund/claim server chain, which a client bundle must never resolve. Optional here because
+ * this page types the RAW API object; every read below defaults to 0/false, i.e. « nothing to say ».
+ */
+interface RefundLite { refundedCents: number; isTotal: boolean }
 interface Order {
   id: string
   status: string
@@ -58,6 +76,8 @@ interface Order {
   total: number
   estimatedTime: number
   items: OrderItem[]
+  // D′ L9 (T-45) — the refund truth that `total` and `status` above cannot express.
+  refundSummary?: RefundLite
   restaurant?: { name?: string; address?: string; city?: string; lat?: number | null; lng?: number | null; pickupPrepTime?: number | null } | null
   createdAt: string
 }
@@ -68,6 +88,10 @@ const refOf = orderRef
 
 export default function PickupPassScreen() {
   const t = useTranslations('eat.pickup')
+  // D′ L9 (T-45, §15) — the refund sentences live in ONE shared namespace read by every consumer
+  // surface that recaps an order (this pass, the post-delivery screen, the help page, the tracking
+  // page). A per-screen copy of the same sentence is how two surfaces describe one order differently.
+  const tRefund = useTranslations('eat.refund')
   const locale = useLocale()
   const router = useRouter()
   const { orderId } = useParams<{ orderId: string }>()
@@ -181,6 +205,10 @@ export default function PickupPassScreen() {
   // opérateur « Remise au client » : ready→delivered) ; 'picked_up' est traité pareil.
   const collected = order.status === 'picked_up' || order.status === 'delivered'
   const ready = order.status === 'ready'
+  // D′ L9 (T-45) — money PROVEN returned, and the whole charge with it. `pendingCents` is deliberately
+  // not read: a pass has one line to give and it must state a fact, never an expectation.
+  const refundedCents = order.refundSummary?.refundedCents ?? 0
+  const refundedTotal = refundedCents > 0 && order.refundSummary?.isTotal === true
   const code = refOf(orderId)
   const restaurantName = order.restaurant?.name ?? '—'
   const restaurantAddress = [order.restaurant?.address, order.restaurant?.city].filter(Boolean).join(', ') || '—'
@@ -219,6 +247,25 @@ export default function PickupPassScreen() {
             <p>{prepMins != null
               ? t.rich('prepBodyMins', { mins: prepMins, b: (c) => <b><bdi>{c}</bdi></b> })
               : t('prepBodyNoTime')}</p>
+          </div>
+        )}
+
+        {/* D′ L9 (T-45) — commande remboursée EN ENTIER : UNE ligne factuelle, posée juste sous le
+            héros de statut, AVANT le code et le QR (qui restent rendus — cf. en-tête). Le montant est
+            isolé par <bdi> (l'idiome déjà utilisé ici pour les nombres) pour qu'un paragraphe RTL arabe
+            ne réordonne pas « 14,50 € ». Cents ÷ 100 via le helper partagé — jamais de chaîne € à la
+            main. Aucun délai, aucune date, aucun auteur. */}
+        {refundedTotal && (
+          <div className="pk-rrow">
+            <span className="ic"><span className="ms" aria-hidden="true">currency_exchange</span></span>
+            <div className="m">
+              <span style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: 'var(--gb-text)', lineHeight: 1.4 }}>
+                {tRefund.rich('refundedTotal', {
+                  amount: formatEuros(refundedCents / 100, locale),
+                  amt: (c) => <bdi>{c}</bdi>,
+                })}
+              </span>
+            </div>
           </div>
         )}
 

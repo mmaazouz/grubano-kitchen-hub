@@ -3269,7 +3269,10 @@
       "resDepositAuthorizedArrived": "مبلغ تأمين {amount} محجوز مسبقًا — لن يُخصم شيء، ويُحرَّر عند تسوية الحساب.",
       "resDepositAuthorizedPending": "ما زال مبلغ التأمين {amount} محجوزًا — التحرير قيد التنفيذ ولن يُخصم شيء.",
       "paymentProof": "إثبات الدفع",
-      "paymentProofError": "تعذّر إنشاء إثبات الدفع — لم يُنشأ أي ملف. أعد المحاولة؛ وإذا تكرر الفشل، يمكن للدعم التحقق من دفعتك."
+      "paymentProofError": "تعذّر إنشاء إثبات الدفع — لم يُنشأ أي ملف. أعد المحاولة؛ وإذا تكرر الفشل، يمكن للدعم التحقق من دفعتك.",
+      "refundedBadge": "تم رد {amount}",
+      "refundedPartialBadge": "رد جزئي {amount}",
+      "refundedRecordedBadge": "تم تسجيل مبلغ مُسترد"
     },
     "postDelivery": {
       "close": "إغلاق",
@@ -3300,7 +3303,8 @@
       "reorder": "أعد الطلب",
       "notFoundTitle": "الطلب غير موجود",
       "notFoundBody": "هذا الطلب غير موجود أو لم يعد متاحًا.",
-      "tipRecap": "تمت إضافة البقشيش · {amount}"
+      "tipRecap": "تمت إضافة البقشيش · {amount}",
+      "pointsEarnedAfterRefund": "+{points} نقطة محفوظة بعد الاسترداد"
     },
     "addresses": {
       "title": "عناوين التوصيل",
@@ -3466,7 +3470,23 @@
       "needHelp": "تحتاج مساعدة؟",
       "viewPickupPass": "عرض بطاقة الاستلام",
       "etaMinutes": "≈ {min} دقيقة",
-      "approxPosition": "الموقع التقريبي لعامل التوصيل"
+      "approxPosition": "الموقع التقريبي لعامل التوصيل",
+      "refundLabel": "الاسترداد",
+      "refundedOn": "تم الاسترداد في {date}",
+      "refundedLabel": "تم الاسترداد",
+      "refundedTotal": "إجمالي المبلغ المسترد",
+      "refundInProgress": "استرداد قيد التنفيذ",
+      "refundRecorded": "تم تسجيل استرداد بمبلغ <m>{amount}</m> على هذا الطلب.",
+      "refundedInFullNote": "هذا المجموع هو المبلغ الذي تم خصمه عند الطلب؛ وقد تم استرداده بالكامل.",
+      "refundedNote": "تم استرداد <m>{amount}</m> لك على هذا الطلب.",
+      "refundPendingNote": "هناك استرداد بمبلغ <m>{amount}</m> قيد التنفيذ على هذا الطلب.",
+      "pointsKeptAfterRefund": "تم الاحتفاظ بـ {kept} نقطة ولاء — وتم استرجاع {reversed} بعد الاسترداد",
+      "pointsAllReversedNote": "لم يتم الاحتفاظ بأي نقطة ولاء على هذا الطلب — تم استرجاع {reversed} نقطة بعد الاسترداد.",
+      "pointsRestoredNote": "تم إرجاع {points} نقطة ولاء مستخدمة على هذا الطلب.",
+      "expiredRefundedDesc": "انتهت صلاحية هذا الطلب وكان قد تم تسجيل دفعة — وقد تم ردّها إليك. لم يبدأ أي تحضير.",
+      "pointsAllReversedPendingNote": "لم يتم الاحتفاظ بأي نقاط ولاء على هذا الطلب — تم سحب {reversed} نقطة.",
+      "pointsRestoredPendingNote": "تمت إعادة {points} نقطة ولاء كنت قد استخدمتها إلى رصيدك.",
+      "pointsKeptPending": "تم الاحتفاظ بـ {kept} نقطة ولاء — وتم سحب {reversed}"
     },
     "account": {
       "title": "حسابي",
@@ -3540,7 +3560,9 @@
       "rowHelpCenter": "مركز المساعدة",
       "rowTerms": "الخصوصية",
       "rowBecomePartner": "كن شريك غروبانو",
-      "version": "Grubano · v1.0.0"
+      "version": "Grubano · v1.0.0",
+      "rowClaims": "مطالباتي",
+      "rowClaimsSub": "تتبّع طلبات استرداد المبالغ"
     },
     "auth": {
       "tabLogin": "تسجيل الدخول",
@@ -4144,6 +4166,28 @@
       "issueAction": "مشكلة في هذا الحساب؟",
       "issueSubject": "الحساب {code} — Grubano",
       "metaAddress": "العنوان"
+    },
+    "claims": {
+      "title": "مطالباتي",
+      "filedOn": "قُدّمت في {date}",
+      "restaurantUnknown": "المطعم غير محدد",
+      "reasonUnknown": "السبب غير مسجّل",
+      "selectionSummary": "التحديد: {lines} سطر، {items} عنصر",
+      "requested": "المبلغ المطلوب",
+      "approved": "المبلغ الذي وافقت عليه Grubano",
+      "emptyTitle": "لا توجد مطالبات",
+      "emptyBody": "لم تقدّم أي مطالبة حتى الآن. يمكنك الإبلاغ عن مشكلة من إحدى طلباتك.",
+      "emptyCta": "عرض طلباتي",
+      "helpLink": "مساعدة بشأن هذا الطلب",
+      "selectionWhole": "النطاق: الطلب بالكامل",
+      "selectionAmount": "النطاق: مبلغ، دون تفصيل لكل عنصر"
+    },
+    "refund": {
+      "refundedTotal": "تم استرداد مبلغ هذا الطلب · <amt>{amount}</amt>.",
+      "refundedPartial": "استرداد جزئي بمبلغ <amt>{amount}</amt> على هذا الطلب.",
+      "refundPending": "جارٍ استرداد مبلغ <amt>{amount}</amt>.",
+      "refundRecorded": "تم تسجيل استرداد مبلغ <amt>{amount}</amt> على هذا الطلب.",
+      "stateLabel": "الاسترداد"
     }
   },
   "menu": {

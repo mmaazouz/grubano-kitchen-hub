@@ -169,8 +169,18 @@ export function amountLineKind(r: {
  * ROUND 13 (E0 / H10 / I-09, slice W7): widened to the two sections kept out of `total` — the refunded claims whose bound
  * row is not established (E-13) and the closure notices not sent (E-16). Each input alone makes the card visible.
  */
-export function financialVerificationCardVisible(p: { claimRows: number; unfinalizedRows: number; closureNotices: number; refundedUnproven: number }): boolean {
+export function financialVerificationCardVisible(p: {
+  claimRows: number; unfinalizedRows: number; closureNotices: number; refundedUnproven: number
+  // D′ L9 — THE TWO NOTICE SECTIONS WERE NOT IN THIS GATE, so each was unreachable in exactly the state
+  // it exists for: a build whose ONLY pending work is « somebody was refunded and never told » returned
+  // early above and rendered neither section. L8's restaurant half shipped with the same hole — found while
+  // adding the support half, and fixed here for both rather than only for mine. Optional so a caller that
+  // does not know about them still compiles; absent reads as zero, which is the old behaviour.
+  restaurantNotices?: number
+  supportNotices?: number
+}): boolean {
   return p.claimRows > 0 || p.unfinalizedRows > 0 || p.closureNotices > 0 || p.refundedUnproven > 0
+    || (p.restaurantNotices ?? 0) > 0 || (p.supportNotices ?? 0) > 0
 }
 
 /** H10: the red « Vérification financière requise (n) » heading renders only for claim rows or unfinalized rows. */

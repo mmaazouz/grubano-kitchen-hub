@@ -737,7 +737,11 @@ export async function sendRefundConfirmation(p: {
   refundedCents:  number
   /** true when part of the payment remains (partial refund). */
   partial:        boolean
-}): Promise<void> {
+  // D′ L9 (E3): the RETURN became meaningful. This used to be `Promise<void>` — it awaited
+  // `sendTransactional` and threw the `{ status }` away — so a caller could not tell an admin whether the
+  // notice was sent, was a duplicate, or was skipped because SMTP is off. The deferred-notice route needs
+  // exactly that word for its toast. Additive: the two existing callers await and ignore it, unchanged.
+}): Promise<{ status: SendStatus }> {
   // Email truthfulness hotfix (2026-09-06):
   //   • ACTOR — refunds are instructed by Grubano's admin rail (Q3), never by the restaurant:
   //     the old « effectué par {resto} » named the wrong actor. Neutral wording; the restaurant
@@ -747,7 +751,7 @@ export async function sendRefundConfirmation(p: {
   //     the engine / Stripe refund amount, never a requested or estimated amount). The email
   //     speaks of CASH only; loyalty restoration (points) is never presented as cash.
   //   • STATE — callers send this ONLY after Stripe `succeeded` (pending/failed ⇒ no email).
-  await sendTransactional({
+  return await sendTransactional({
     to:      p.to,
     subject: `Votre remboursement ${p.partial ? 'partiel ' : ''}est confirmé — ${p.restaurantName}`,
     trigger: 'refund_confirmation',

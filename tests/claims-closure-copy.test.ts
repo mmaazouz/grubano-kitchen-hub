@@ -342,10 +342,25 @@ describe('F08 — the reasons a customer is shown, and who wrote them', () => {
       .toEqual({ restaurantResponseReason: 'Plat conforme', arbitrationReason: null })
   })
 
-  it('both consumer payloads spread it; ClaimSection renders what it receives; the admin label follows the restaurant response', () => {
+  it('both consumer payloads derive the reasons through customerClaimReasons; ClaimSection renders what it receives; the admin label follows the restaurant response', () => {
     const claims = stripComments(read('lib/claims.ts'))
-    expect(claims).toContain('...customerClaimReasons(c) }')
+    // D′ L9 §27 — THE LIST PAYLOAD STOPPED SPREADING, and that is the point of the lot: `listConsumerClaims`
+    // used to return `{ ...claim, ...customerClaimReasons(c) }` minus a five-key blocklist, which shipped every
+    // FUTURE column to the customer by default and several present ones that had no business leaving the
+    // server. It is now a key-by-key BUILDER. What this pin protects is not the syntax but the ROUTE the two
+    // reason fields travel: both consumer payloads must still get them from `customerClaimReasons` and never
+    // read `restaurantResponseReason` / `arbitrationReason` off the row, because that function is what hides a
+    // restaurant's note unless the restaurant refused and Grubano's note on a declaration close.
+    expect(claims).toContain('const reasons = customerClaimReasons(c)')
+    expect(claims).toContain('restaurantResponseReason: reasons.restaurantResponseReason')
+    expect(claims).toContain('arbitrationReason:        reasons.arbitrationReason')
+    // the eligibility payload still spreads it — it is already a five-key projection, so it cannot over-share
     expect(claims).toContain('...customerClaimReasons(existing) }')
+    // NEGATIVE CONTROL: the builder must not take either reason straight from the claim row.
+    const builder = claims.slice(claims.indexOf('const card: ConsumerClaimCard = {'))
+    const cardBody = builder.slice(0, builder.indexOf('    return card'))
+    expect(cardBody).not.toContain('c.restaurantResponseReason')
+    expect(cardBody).not.toContain('c.arbitrationReason')
     const section = stripComments(read('components/claims/ClaimSection.tsx'))
     expect(section).toContain('const showRefusalReason = !!ec.restaurantResponseReason')
     expect(section).toContain("t('client.grubanoDecisionReason')")

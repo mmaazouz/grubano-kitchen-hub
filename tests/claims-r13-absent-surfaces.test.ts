@@ -122,7 +122,39 @@ describe('J-M54 — every claim alert is sent from the writing request (I-01 …
     // I-05: « markRefundRowFailed's refund_failed alert and the external failed-refund alert are unchanged » — lib/refund.ts
     // (byte-identical, J-M06) keeps its own refund:<re> send; no Claims module and no other route sends that key.
     const holders = Object.entries(sources()).filter(([f, s]) => !f.startsWith('messages/') && /dedupeKey:\s*`refund:\$\{/.test(s)).map(([f]) => f).sort()
-    expect(holders).toEqual(['app/api/webhooks/stripe/route.ts', 'lib/refund.ts'])
+    // D′ L9 (E3) — TWO BECAME FOUR, and the addition is named here so it stays a decision. `EmailDispatch` is
+    // unique on the PAIR (trigger, dedupeKey), so what this pin really protects is that no second sender can
+    // claim the SAME pair and silently suppress a message. The two new holders form `refund:<re_>` under
+    // triggers of their own:
+    //   lib/support-refund-notices  → refund_confirmation              (the CUSTOMER's notice — and the whole
+    //                                 point of E3 is that exactly one of these can exist per refund)
+    //   .../rows/[rowId]/notify     → admin_money_review_support_row_reverted (an ADMIN alert)
+    // Neither can collide with lib/refund's own refund_failed alert or with the webhook's, which is asserted
+    // below rather than assumed — a shared trigger AND a shared key would be the real defect.
+    expect(holders).toEqual([
+      'app/api/admin/refunds/rows/[rowId]/notify/route.ts',
+      'app/api/webhooks/stripe/route.ts',
+      'lib/refund.ts',
+      'lib/support-refund-notices.ts',
+    ])
+    // The trigger each holder pairs that key with, so the four cannot converge on one pair.
+    // What each holder PAIRS that key with. The notify route legitimately names BOTH triggers: it sends the
+    // customer notice under `refund_confirmation` (through lib/transactional-emails) and raises its admin
+    // alerts under `admin_money_review_*`, and since the adversarial review it also READS the confirmation
+    // trigger back to verify its own dedupe marker landed. So the assertion is on the SET each file reaches.
+    const triggersOf = (f: string) => {
+      const s = sources()[f]
+      const out: string[] = []
+      if (/REFUND_CONFIRMATION_TRIGGER|trigger:\s*'refund_confirmation'|sendRefundConfirmation/.test(s)) out.push('refund_confirmation')
+      if (/sendAdminMoneyReviewAlert/.test(s)) out.push('admin_money_review_*')
+      return out.sort()
+    }
+    expect(triggersOf('lib/support-refund-notices.ts')).toEqual(['refund_confirmation'])
+    expect(triggersOf('app/api/admin/refunds/rows/[rowId]/notify/route.ts')).toEqual(['admin_money_review_*', 'refund_confirmation'])
+    expect(triggersOf('lib/refund.ts')).toEqual(['admin_money_review_*'])
+    // THE PROPERTY THAT MATTERS: no two holders can claim the same (trigger, dedupeKey) pair for one refund.
+    // lib/refund and the webhook only ever ALERT; only the notify path can dispatch a customer confirmation.
+    expect(triggersOf('app/api/webhooks/stripe/route.ts')).toEqual(['admin_money_review_*'])
     const src = claims()
     const trigger = fnBody(src, 'export async function triggerClaimRefund(')
     expect((src.match(/kind:\s*'claim_attempt_superseded'/g) ?? []).length).toBe((trigger.match(/kind:\s*'claim_attempt_superseded'/g) ?? []).length)

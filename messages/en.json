@@ -3269,7 +3269,10 @@
       "resDepositAuthorizedArrived": "A {amount} hold is pre-authorised — nothing is charged; it is released when the bill is settled.",
       "resDepositAuthorizedPending": "The {amount} hold is still pre-authorised — its release is in progress, nothing is charged.",
       "paymentProof": "Payment proof",
-      "paymentProofError": "The payment proof could not be generated — no file was created. Try again; if it keeps failing, support can verify your payment."
+      "paymentProofError": "The payment proof could not be generated — no file was created. Try again; if it keeps failing, support can verify your payment.",
+      "refundedBadge": "Refunded {amount}",
+      "refundedPartialBadge": "Partial refund {amount}",
+      "refundedRecordedBadge": "Refund recorded"
     },
     "postDelivery": {
       "close": "Close",
@@ -3300,7 +3303,8 @@
       "reorder": "Reorder",
       "notFoundTitle": "Order not found",
       "notFoundBody": "This order doesn't exist or is no longer available.",
-      "tipRecap": "Tip added · {amount}"
+      "tipRecap": "Tip added · {amount}",
+      "pointsEarnedAfterRefund": "+{points} point{points, plural, one {} other {s}} kept after the refund"
     },
     "addresses": {
       "title": "Delivery addresses",
@@ -3466,7 +3470,23 @@
       "needHelp": "Need help?",
       "viewPickupPass": "Show my pickup pass",
       "etaMinutes": "≈ {min} min",
-      "approxPosition": "Courier's approximate location"
+      "approxPosition": "Courier's approximate location",
+      "refundLabel": "Refund",
+      "refundedOn": "Refunded on {date}",
+      "refundedLabel": "Refunded",
+      "refundedTotal": "Total refunded",
+      "refundInProgress": "Refund in progress",
+      "refundRecorded": "A refund of <m>{amount}</m> has been recorded on this order.",
+      "refundedInFullNote": "This total is the amount charged when the order was placed; it has been refunded in full.",
+      "refundedNote": "<m>{amount}</m> has been refunded to you on this order.",
+      "refundPendingNote": "A refund of <m>{amount}</m> is in progress on this order.",
+      "pointsKeptAfterRefund": "{kept} loyalty point{kept, plural, one {} other {s}} kept — {reversed} taken back after the refund",
+      "pointsAllReversedNote": "No loyalty points kept on this order — {reversed} point{reversed, plural, one {} other {s}} taken back after the refund.",
+      "pointsRestoredNote": "{points} redeemed loyalty point{points, plural, one {} other {s}} {points, plural, one {has} other {have}} been given back on this order.",
+      "expiredRefundedDesc": "This order expired and a payment had been recorded — it has been refunded to you. No preparation was started.",
+      "pointsAllReversedPendingNote": "No loyalty points kept on this order — {reversed} point{reversed, plural, one {} other {s}} taken back.",
+      "pointsRestoredPendingNote": "{points} loyalty point{points, plural, one {} other {s}} you had spent {points, plural, one {has} other {have}} been credited back.",
+      "pointsKeptPending": "{kept} loyalty point{kept, plural, one {} other {s}} kept — {reversed} taken back"
     },
     "account": {
       "title": "My Profile",
@@ -3540,7 +3560,9 @@
       "rowHelpCenter": "Help center",
       "rowTerms": "Privacy",
       "rowBecomePartner": "Become a Grubano partner",
-      "version": "Grubano · v1.0.0"
+      "version": "Grubano · v1.0.0",
+      "rowClaims": "My claims",
+      "rowClaimsSub": "Track your refund requests"
     },
     "auth": {
       "tabLogin": "Login",
@@ -4144,6 +4166,28 @@
       "issueAction": "A problem with this bill?",
       "issueSubject": "Bill {code} — Grubano",
       "metaAddress": "Address"
+    },
+    "claims": {
+      "title": "My claims",
+      "filedOn": "Filed on {date}",
+      "restaurantUnknown": "Restaurant not specified",
+      "reasonUnknown": "Reason not recorded",
+      "selectionSummary": "Selection: {lines} line(s), {items} item(s)",
+      "requested": "Amount requested",
+      "approved": "Amount approved by Grubano",
+      "emptyTitle": "No claims",
+      "emptyBody": "You haven't filed any claim yet. You can report a problem from one of your orders.",
+      "emptyCta": "View my orders",
+      "helpLink": "Help with this order",
+      "selectionWhole": "Scope: the whole order",
+      "selectionAmount": "Scope: an amount, with no per-item detail"
+    },
+    "refund": {
+      "refundedTotal": "This order has been refunded · <amt>{amount}</amt>.",
+      "refundedPartial": "Partial refund of <amt>{amount}</amt> on this order.",
+      "refundPending": "Refund of <amt>{amount}</amt> in progress.",
+      "refundRecorded": "A refund of <amt>{amount}</amt> has been recorded on this order.",
+      "stateLabel": "Refund"
     }
   },
   "menu": {

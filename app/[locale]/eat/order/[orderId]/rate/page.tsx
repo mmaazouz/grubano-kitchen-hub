@@ -31,10 +31,41 @@ import '@/app/gb-foundation/gb-components.css'
  *  • COURIER card → NEUTRAL placeholder. The order API exposes NO real driver model (name/
  *    rating/vehicle); we do NOT fabricate a named courier (same stance as /eat/track). Generic
  *    « Votre livreur » + icon avatar; the courier-rating stars are inert too.
- *  • « Merci » / +points = REAL loyalty. order.pointsEarned (1pt/€, credited on `delivered`)
- *    is shown ONLY when > 0; otherwise a generic thank-you with NO fabricated number.
+ *  • « Merci » / +points = REAL loyalty, NET OF THE REFUND (D′ L9 / T-45 — see below).
  *  • « Signaler un souci » → Aide flow (routes to /eat for now; no dedicated help route yet).
+ *
+ * D′ L9 (T-45) — WHY THIS SCREEN LIED ABOUT POINTS, and what now holds it to the truth.
+ * `order.pointsEarned` is the PRE-REFUND column: it is written when the order is delivered and is
+ * NEVER decremented (a schema fact — T-44 / L6.1 own the loyalty numbers, not this page). The
+ * claw-back lives in `LoyaltyTransaction` rows instead, which this page never read. So a fully
+ * refunded order congratulated the customer — « +14 points gagnés » — on points that had gone
+ * straight back out, while the confirmation e-mail said the opposite. This screen now reads
+ * `order.refundSummary` (additive, ALWAYS present on GET /api/orders/[id]) beside that column:
+ *   • points are stated NET of `pointsReversed`, and at or below zero the line is not rendered
+ *     at all — there is no truthful « gagnés » to show;
+ *   • when the WHOLE charge came back (`isTotal`) ONE sober line states it. « Remboursée » is
+ *     used only for money PROVEN returned (`refundedCents > 0`), never for a refund in flight,
+ *     and NO bank delay and NO date is ever promised;
+ *   • the rating flow itself is untouched — a customer may rate a refunded order, and taking the
+ *     screen away would be a product decision nobody has taken.
  * ───────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * D′ L9 (T-45) — the slice of the server's `refundSummary` read-model this screen consumes. Declared
+ * LOCALLY rather than imported from lib/order-refund-summary: this is a `'use client'` page and that
+ * module pulls the claim/refund server chain, which a client bundle must never resolve (the fix-server
+ * precedent: a dead branch is still resolved by the bundler). The shape is additive and always present
+ * on GET /api/orders/[id], but it is normalised defensively below anyway — a screen that decides whether
+ * to congratulate someone must not depend on an optional chain reading `undefined` as « nothing to say ».
+ */
+interface RefundLite {
+  /** Money PROVEN returned (settled Refund rows carrying a Stripe `re_`). 0 = nothing came back. */
+  refundedCents: number
+  /** The confirmed cumulative reaches the charge. */
+  isTotal: boolean
+  /** Loyalty points TAKEN BACK because of the refund (read from LoyaltyTransaction rows). */
+  pointsReversed: number
+}
 
 interface OrderLite {
   id: string
@@ -44,6 +75,8 @@ interface OrderLite {
   // P2-TIP — the courier tip CHARGED AT CHECKOUT (cents). The tip is no longer
   // collected here; this page shows it as a READ-ONLY recap. 0 = no tip.
   tipCents: number
+  // D′ L9 (T-45) — the refund truth that `pointsEarned` and `total` above cannot express.
+  refundSummary: RefundLite
   restaurant: { name: string }
 }
 
@@ -52,6 +85,10 @@ const QTAG_KEYS = ['delicious', 'wellPacked', 'hot', 'generous'] as const
 
 export default function PostDeliveryScreen() {
   const t = useTranslations('eat.postDelivery')
+  // D′ L9 (T-45, §15) — the refund sentences live in ONE shared namespace read by every consumer
+  // surface that recaps an order (this screen, the pickup pass, the help page, the tracking page). A
+  // per-screen copy of the same sentence is how two surfaces end up describing one order differently.
+  const tRefund = useTranslations('eat.refund')
   const locale = useLocale()
   const { orderId } = useParams<{ orderId: string }>()
   const router = useRouter()
@@ -81,6 +118,13 @@ export default function PostDeliveryScreen() {
         total: typeof o.total === 'number' ? o.total : 0,
         pointsEarned: typeof o.pointsEarned === 'number' ? o.pointsEarned : 0,
         tipCents: typeof o.tipCents === 'number' ? o.tipCents : 0,
+        // D′ L9 — normalised the same way as every other figure on this page: an absent or
+        // non-numeric field becomes 0/false, i.e. « nothing to say », never a rendered guess.
+        refundSummary: {
+          refundedCents: typeof o.refundSummary?.refundedCents === 'number' ? o.refundSummary.refundedCents : 0,
+          isTotal: o.refundSummary?.isTotal === true,
+          pointsReversed: typeof o.refundSummary?.pointsReversed === 'number' ? o.refundSummary.pointsReversed : 0,
+        },
         restaurant: { name: o.restaurant?.name ?? '' },
       })
     } catch {
@@ -99,6 +143,27 @@ export default function PostDeliveryScreen() {
   // P2-TIP — the tip ALREADY charged at checkout (read-only recap, euros). > 0 → a
   // confirmation line shows; never editable here, no money moves on this page.
   const tipEur = (order?.tipCents ?? 0) / 100
+
+  // D′ L9 (T-45) — THE POINTS THE CUSTOMER ACTUALLY KEPT, and the refund fact.
+  // `pointsEarned` is the pre-refund column; `pointsReversed` is what the refund took back. The net is
+  // the only figure this screen may show, and only while it is positive: at 0 (a full claw-back) there
+  // is nothing gained, so nothing is rendered — that silence IS the fix for T-45, not a missing line.
+  const pointsEarned = order?.pointsEarned ?? 0
+  const pointsReversed = order?.refundSummary.pointsReversed ?? 0
+  const netPoints = pointsEarned - pointsReversed
+  // « Remboursée » is gated on money PROVEN returned (`refundedCents > 0`) AND on the confirmed
+  // cumulative reaching the charge (`isTotal`). A refund in flight (`pendingCents`) is deliberately
+  // NOT read here: this screen has one sober line to give and it must state a fact, not an expectation.
+  const refundedCents = order?.refundSummary.refundedCents ?? 0
+  const refundedTotal = refundedCents > 0 && order?.refundSummary.isTotal === true
+  // The amount is isolated with <bdi> (the idiom this page already uses for numbers) so an Arabic RTL
+  // paragraph cannot reorder « 14,50 € ». Cents ÷ 100 through the shared helper — never hand-formatted.
+  const refundedLine = refundedTotal
+    ? tRefund.rich('refundedTotal', {
+        amount: formatEuros(refundedCents / 100, locale),
+        amt: (c) => <bdi>{c}</bdi>,
+      })
+    : null
 
   // Submit = INERT. No review write, no tip charge — just reveal the « Merci » view.
   function submit() { setDone(true) }
@@ -124,7 +189,6 @@ export default function PostDeliveryScreen() {
 
   // ── « Merci » view (after submit) ────────────────────────────────────────────
   if (done) {
-    const pts = order?.pointsEarned ?? 0
     return (
       <div className="gb gb-postdelivery">
         <div className="pd-done">
@@ -132,9 +196,18 @@ export default function PostDeliveryScreen() {
           <h2>{t('thanksTitle')}</h2>
           {/* tip confirmation only if the order carried a (checkout-charged) tip */}
           <p>{tipEur > 0 ? t('thanksTipBody', { amount: formatEuros(tipEur, locale) }) : t('thanksBody')}</p>
-          {/* REAL loyalty points — shown only when the order actually earned some */}
-          {pts > 0 && (
-            <span className="pts"><span className="ms" aria-hidden="true">redeem</span>{t('pointsEarned', { points: pts })}</span>
+          {/* D′ L9 (T-45) — the WHOLE charge came back: one sober line, stated before any
+              congratulation. No delay, no date, no author — just the fact. */}
+          {refundedLine && <p style={{ marginTop: 0, color: 'var(--gb-text)', fontWeight: 600 }}>{refundedLine}</p>}
+          {/* REAL loyalty points, NET of what the refund reversed (D′ L9). With no refund the net IS
+              `pointsEarned` and the rendering is unchanged; with a partial one the net is stated as
+              what was KEPT; with a full claw-back (net ≤ 0) no points line exists at all. */}
+          {netPoints > 0 && (
+            <span className="pts"><span className="ms" aria-hidden="true">redeem</span>
+              {pointsReversed > 0
+                ? t('pointsEarnedAfterRefund', { points: netPoints })
+                : t('pointsEarned', { points: netPoints })}
+            </span>
           )}
           <div className="acts">
             <button type="button" className="w" onClick={() => router.push(`/eat/track/${orderId}`)}>{t('viewReceipt')}</button>
@@ -170,6 +243,10 @@ export default function PostDeliveryScreen() {
           {loading
             ? <p><span className="sk sk-line" style={{ width: 200, height: 12, margin: '6px auto 0' }} /></p>
             : <p><bdi>{heroMeta}</bdi></p>}
+          {/* D′ L9 (T-45) — the hero meta above states the total CHARGED. On a fully refunded order
+              that figure alone reads as money the customer still paid, so the fact is stated right
+              under it: same sentence as every other surface, no delay and no date. */}
+          {refundedLine && <p style={{ color: 'var(--gb-text)', fontWeight: 600 }}>{refundedLine}</p>}
         </div>
 
         {/* ⭐ order rating + quick tags — INERT (no review backend) */}

@@ -1000,10 +1000,74 @@ export const restaurantRefundedKey = (claimId: string, stripeRefundId: string) =
 export const CLOSURE_RECORD_TRIGGER = 'claim_closure_record'
 export const closureRecordKey = (id: string) => `claim:${id}`
 
-/** F03: the bound row proves a settlement the customer may read as « Remboursée ». */
-export function refundedRowProven(row: { orderId?: string | null; status?: string | null; amountCents?: number | null } | null | undefined, claimOrderId: string): boolean {
-  return !!row && row.orderId === claimOrderId && (row.status === 'succeeded' || row.status === 'pending')
+/**
+ * S-20 — THE ONE DEFINITION OF « this row proves money reached the customer ».
+ *
+ * HARDENED BY D′ L9 (founder decision of 2026-09-27, §1), and this is a DELIBERATE SUPERSESSION of an
+ * earlier frozen spec rather than a bug fix on top of it. R13 v1 F03 prescribed
+ * `status ∈ {succeeded, pending}` with no Stripe id at all, and its Section A entry A-S31d went further
+ * and REQUIRED « Remboursée » for a settled claim sitting on a pending row. Spec v2 §7.2 then wrote the
+ * opposite — « durci (succeeded ∧ stripeRefundId≠null, jamais pending) » — and the code was never
+ * changed, so for two lots the repository implemented R13 while its own spec claimed the hardening was
+ * done. §1 of L9 resolves it: v2 wins, A-S31d flips from « Remboursée » to the neutral state.
+ *
+ * WHAT WAS ACTUALLY WRONG, measured. A claim marked `refunded` bound to a row `(pending, stripeRefundId
+ * NULL, 500 c)` rendered « Remboursée » to the customer, while the SAME row in the SAME build was
+ * classified by the admin console as `local_pending_unconfirmed` (« La ligne liée est en attente, sans
+ * identifiant Stripe enregistré ») and by the restaurant's figures as `refund_not_succeeded`. Three
+ * surfaces, one row, three different answers — and the customer got the only optimistic one. The shape is
+ * reachable, not hypothetical: the engine inserts the row BEFORE calling Stripe, and a process killed
+ * between `stripe.refunds.create` and the finalize write leaves (pending, NULL) for ever.
+ *
+ * WHY A STRIPE ID IS PART OF THE PROOF, not decoration: without it there is no object to re-read, so
+ * nothing can ever confirm or refute the row. « We believe it worked » is not a proof of payment.
+ *
+ * The four ways a row stops proving anything are all covered by this single predicate or by the caller:
+ *   RELEASED (lib/refund-void-state.isReleasedRow) is the pair (failed, NULL) plus a key mark — excluded
+ *     here by `succeeded`, structurally, with no need to import the void state;
+ *   FAILED AT STRIPE is (failed, re_…) — excluded by `succeeded`;
+ *   DISOWNED is a CLAIM property (`refundError` starts with `resume_mismatch`) — handled by the binder
+ *     count in `refundedRowTruth`, not by the row;
+ *   REVERTED AFTER SETTLEMENT is also a claim property — `claimClosureKind` returns null before this is
+ *     ever consulted.
+ */
+/**
+ * THE ID CONTRACT, and there are TWO in this repository for two different jobs. Picking the wrong one is a
+ * real mistake, so the difference is written down here:
+ *
+ *   READING OUR OWN STORED ROW — `startsWith('re_')`, which is what the FROZEN §24 set uses
+ *     (`lib/loyalty-prorata.isStripeRefundId`). The question being asked is « is there a Stripe object we
+ *     can name and re-read? », and the answer must agree with the set the loyalty authority already
+ *     reconciles against. A stricter test here would make two parts of the same system disagree about
+ *     which rows count — the exact defect T-46 shipped and then had to fix.
+ *   VALIDATING UNTRUSTED INPUT — `/^re_[A-Za-z0-9]{8,}$/` (`lib/claims.STRIPE_REFUND_ID_RE`), for an id a
+ *     human types into the adoption route. That one is deliberately narrow because it guards a write.
+ *
+ * This predicate is the FIRST kind. It rejects a null, a non-string, the bare prefix and anything that is
+ * not a refund id at all — which is the whole safety property §1 asks for (« sans stripeRefundId n'est
+ * JAMAIS une preuve »). A test pins it behaving identically to the §24 predicate on a shared fixture, so the
+ * two cannot drift.
+ */
+export const STRIPE_REFUND_ID_PREFIX = 're_'
+
+export function provenStripeRefundId(v: unknown): v is string {
+  return typeof v === 'string' && v.startsWith(STRIPE_REFUND_ID_PREFIX) && v.length > STRIPE_REFUND_ID_PREFIX.length
+}
+
+/**
+ * THE SHARED PRIMITIVE (§1: « les surfaces client ET restaurant … doivent partager … une primitive
+ * commune »). Order-agnostic on purpose, so the consumer read-model — which sums the rows of ONE order
+ * and has no claim in hand — uses the very same rule as the claim surfaces instead of a second copy.
+ * A second copy is exactly how T-46 shipped a half-applied scope one day earlier.
+ */
+export function refundRowSettled(row: { status?: string | null; stripeRefundId?: string | null; amountCents?: number | null } | null | undefined): boolean {
+  return !!row && row.status === 'succeeded' && provenStripeRefundId(row.stripeRefundId)
     && typeof row.amountCents === 'number' && Number.isInteger(row.amountCents) && row.amountCents > 0
+}
+
+/** F03 + S-20: the bound row proves a settlement the customer may read as « Remboursée ». */
+export function refundedRowProven(row: { orderId?: string | null; status?: string | null; stripeRefundId?: string | null; amountCents?: number | null } | null | undefined, claimOrderId: string): boolean {
+  return !!row && row.orderId === claimOrderId && refundRowSettled(row)
 }
 /** F03: null when unreadable (binders null) or ambiguous (≥ 2 non-mismatch binders, A-S43). */
 export function refundedRowTruth(row: Parameters<typeof refundedRowProven>[0], binders: number | null, claimOrderId: string): boolean | null {

@@ -132,7 +132,15 @@ const claim = (id: string, o: Row = {}): Row => ({
   refundId: null, refundError: null, arbitrationDecision: 'approved', restaurantResponse: null, arbitrationReason: null, decidedAt: new Date(), createdAt: new Date(Date.now() - 48 * H),
   responseDeadlineAt: new Date(0), activeOrderKey: 'o1', ...o,
 })
-const row = (id: string, o: Row = {}): Row => ({ id, orderId: 'o1', status: 'succeeded', amountCents: 500, stripeRefundId: `re_${id}`, reason: null, createdAt: new Date(Date.now() - 30 * H), royaltyRefundCents: 0, idempotencyKey: `refund:o1:${id}`, ...o })
+/**
+ * D′ L9 (S-20) — a Stripe refund id in the shape the PROOF now demands (provenStripeRefundId,
+ * /^re_[A-Za-z0-9]{8,}$/). `re_${id}` was never that shape (our row ids carry a `_`, and they are too short),
+ * so the day `refundedRowProven` started requiring a readable Stripe id every « settled » fixture row stopped
+ * proving anything — while the fixtures still MEANT « a settled row ». The id keeps the row's own characters so
+ * two rows stay distinguishable, minus the separators, padded to the length the shape requires.
+ */
+const reId = (id: string) => `re_L9${id.replace(/[^A-Za-z0-9]/g, '')}AAAA`
+const row = (id: string, o: Row = {}): Row => ({ id, orderId: 'o1', status: 'succeeded', amountCents: 500, stripeRefundId: reId(id), reason: null, createdAt: new Date(Date.now() - 30 * H), royaltyRefundCents: 0, idempotencyKey: `refund:o1:${id}`, ...o })
 const marker = (atMs: number) => `reconcile_required: tentative de remboursement démarrée à ${iso(atMs)} (tentative 1a2b) — identité du remboursement pas encore liée.`
 const REVERTED = `${MARKERS.REVERTED_AFTER_REFUND} la réclamation a été soldée sur la ligne rf_e06…`
 
@@ -194,7 +202,10 @@ describe('J-M50 / J-C45 — every E entry is in its bucket and count', () => {
       // carry the tables the new list reads, so its read rejects — and the route answers 200 with a null
       // count for THAT list while every other figure stands. A section that cannot be read never costs the
       // operator the money queue (the same contract as refundedUnproven / closureNotices).
-      financialVerification: 5, reconcileRequired: 1, otherUnsettled: 7, total: 13, unfinalizedRefundRows: 1, refundedUnproven: 1, closureNoticesMissing: 1, restaurantNoticesPending: null,
+      // D′ L9 (E3): `supportNoticesPending` joins them the same way — outside `total` (it counts refund ROWS,
+      // not claims) and null rather than 0 when the list could not be read, so « unknown » can never be
+      // mistaken for « none to send ». null here because this fixture's double has no emailDispatch table.
+      financialVerification: 5, reconcileRequired: 1, otherUnsettled: 7, total: 13, unfinalizedRefundRows: 1, refundedUnproven: 1, closureNoticesMissing: 1, restaurantNoticesPending: null, supportNoticesPending: null,
     })
   })
 
@@ -251,7 +262,7 @@ describe('J-M50 / J-C45 — every E entry is in its bucket and count', () => {
     expect(acceptedExits({ claim: nul, now }).includes('approve') && arbitrationRefusal(nul, 'approve', now) === null).toBe(false)
   })
 
-  it('the customer status of each fixture equals its E entry’s CUSTOMER field', () => {
+  it('the customer status of each fixture equals its E entry’s CUSTOMER field — A-S31d as spec v2 §7.2 rewrote it: a pending row is never « Remboursée »', () => {
     registryWorld()
     const truth = (id: string) => {
       const c = st.claims.find((x) => x.id === id)!
@@ -260,9 +271,16 @@ describe('J-M50 / J-C45 — every E entry is in its bucket and count', () => {
       return customerClaimStatus(c, r ? r.status === 'pending' && !!r.stripeRefundId : null, refundedRowTruth(r, binders, c.orderId))
     }
     const FVc = 'financial_verification'
+    // D′ L9 §1 (S-20) — E-07d (A-S31d) FLIPS from « Remboursée » to « Remboursement non confirmé », and the founder decided
+    // this knowingly: spec v2 §7.2 (« refundedRowProven durci … jamais pending ») supersedes R13 v1 F03 and the A-S31d line
+    // that read « RFc until R0b (no failure signal read) ». The old entry was defensible on C6 grounds — nothing had READ a
+    // failure — but « nothing has contradicted it yet » is not a proof of payment: the row is (pending, re_…), the money may
+    // never have left, and the SAME row was already read as `local_pending_unconfirmed` by the admin console and
+    // `refund_not_succeeded` by the restaurant's figures. The customer got the only optimistic answer of the three. RUc is
+    // now the truth for it, and « Remboursée » is reserved for a row Stripe settled and that we can re-read.
     expect(Object.fromEntries(['E-01', 'E-02', 'E-03', 'E-04', 'E-05-grace', 'E-06', 'E-07c', 'E-07d', 'E-08', 'E-09', 'E-10-null', 'E-10-v13', 'E-12-a', 'E-13', 'E-14', 'E-15', 'E-16', 'E-18'].map((id) => [id, truth(id)]))).toEqual({
       'E-01': FVc, 'E-02': FVc, 'E-03': FVc, 'E-04': FVc, 'E-05-grace': FVc, 'E-06': FVc,
-      'E-07c': 'refund_unconfirmed', 'E-07d': 'refunded', // A-S31d: RFc until R0b (no failure signal read)
+      'E-07c': 'refund_unconfirmed', 'E-07d': 'refund_unconfirmed', // A-S31d: RUc, because a PENDING row proves nothing (S-20)
       'E-08': 'refunded', 'E-09': 'refunded', // the documented C6 breach (E-08) and REG-7 (E-09)
       'E-10-null': 'approved', 'E-10-v13': FVc, 'E-12-a': FVc, 'E-13': 'refund_unconfirmed', 'E-14': 'closed_by_support', 'E-15': 'refunded',
       'E-16': 'refused_by_grubano', 'E-18': 'closed_by_support',
@@ -295,7 +313,20 @@ describe('J-M50 / J-C45 — every E entry is in its bucket and count', () => {
       if (c.refundId && bindersOf(c.refundId) >= 2) return false
       return refundedRowTruth(r, 1, c.orderId) === false
     }).map((c) => c.id).sort()
-    expect([...e13, ...p.otherUnsettled.filter((r: Row) => r.status === 'refunded' && r.refundError === null).map((r: Row) => r.id)].sort()).toEqual(unprovenOrFailed)
+    // D′ L9 §1 — THE UNION GAINED A TERM, and the reason is the point of the change. Hardening the proof made a
+    // PENDING row unproven, so the set on the right now includes the A-S31d shape. That shape is NOT in E-13 (it is
+    // excluded there, exactly as A-S31c is, because a second undifferentiated line helps nobody) — it is in E-07's
+    // THIRD list, `unfinalizedRefundRows`, which carries its reconcile verdict. So the union that covers every
+    // unproven settled claim is now E-13 ∪ otherUnsettled ∪ unfinalizedRefundRows, and the disjointness assertion
+    // above already reads the full E-07 including that third list. Restricted to settled claims, because
+    // `unfinalizedRefundRows` also lists pending rows bound to claims that are not settled at all.
+    const settledIds = new Set(settled.map((c) => c.id))
+    const unionSide = [
+      ...e13,
+      ...p.otherUnsettled.filter((r: Row) => r.status === 'refunded' && r.refundError === null).map((r: Row) => r.id),
+      ...p.unfinalizedRefundRows.map((u: Row) => u.claimId).filter((id: string) => settledIds.has(id)),
+    ].sort()
+    expect(unionSide).toEqual(unprovenOrFailed)
   })
 
   it('W7 fixer (J-C45) — an unproven row with two binders is in neither list and each claim reads the manual review; NEGATIVE CONTROL: one binder → section A', async () => {
@@ -378,8 +409,9 @@ describe('J-C46 (NM0) — the registry surfaces move no money; their audits say 
   // W7 fixer (J-C46): the attribute WRITE through the route — the Serializable transaction commits, and still no money moves.
   it('POST attribute (write, not a preview) on an FV claim with a Stripe-proven row: the claim settles, all money spies 0, audit moneyMoved false', async () => {
     registryWorld()
-    st.refunds.push(row('rf_attr', { stripeRefundId: 're_attr' }))
-    stripeMock.refunds.retrieve.mockResolvedValue({ id: 're_attr', status: 'succeeded', amount: 500, payment_intent: 'pi_1', charge: 'ch_1', metadata: {} })
+    // D′ L9 (S-20): « Stripe-proven » means an id in the proof shape, so the row keeps the default one and Stripe answers on it.
+    st.refunds.push(row('rf_attr'))
+    stripeMock.refunds.retrieve.mockResolvedValue({ id: reId('rf_attr'), status: 'succeeded', amount: 500, payment_intent: 'pi_1', charge: 'ch_1', metadata: {} })
     const res = await post(ATTRIBUTE, 'E-04', { refundRowId: 'rf_attr' })
     expect(res.status).toBe(200)
     expect((await res.json()).result.outcome).toBe('refunded')
@@ -416,8 +448,9 @@ describe('J-C46 (NM0) — the registry surfaces move no money; their audits say 
 
   it('attribute preview (dryRun) reads Stripe and writes nothing', async () => {
     registryWorld()
-    st.refunds.push(row('rf_attr', { stripeRefundId: 're_attr' }))
-    stripeMock.refunds.retrieve.mockResolvedValue({ id: 're_attr', status: 'succeeded', amount: 500, payment_intent: 'pi_1', charge: 'ch_1', metadata: {} })
+    // D′ L9 (S-20): « Stripe-proven » means an id in the proof shape, so the row keeps the default one and Stripe answers on it.
+    st.refunds.push(row('rf_attr'))
+    stripeMock.refunds.retrieve.mockResolvedValue({ id: reId('rf_attr'), status: 'succeeded', amount: 500, payment_intent: 'pi_1', charge: 'ch_1', metadata: {} })
     const out = await attributeClaimRefund({ claimId: 'E-04', refundRowId: 'rf_attr', adminId: 'op1', dryRun: true })
     expect(out.ok).toBe(true)
     expect(db.claim.updateMany).not.toHaveBeenCalled()

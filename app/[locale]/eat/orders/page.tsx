@@ -41,6 +41,19 @@ interface Card {
   depositAmount?: number
   depositStatus?: string
   cancellable?: boolean
+  // D′ L9 (T-45) — kinds 'delivery' | 'pickup' only (additive; the API never sets
+  // these on a dine-in or a reservation card). This is the MINIMAL list shape: the
+  // money PROVEN returned, plus the server's verdict on whether that confirmed
+  // figure covers the whole charge. No pending figure and no history, ON PURPOSE —
+  // a card is not the place to explain a refund, so a refund still in flight gets
+  // NO badge here rather than a badge the list has no figure to justify. Only a
+  // TERMINAL order can carry them, and the API files every terminal order under
+  // `past` → the badge lives in PastCard alone; CurrentCard stays untouched.
+  refundedCents?: number
+  /** Confirmed refunded money we cannot attribute to a row of ours. See refundBadge below. */
+  unattributedCents?: number
+  isTotal?: boolean
+  isPartial?: boolean
 }
 
 const TYPE_ICON: Record<Kind, string> = { delivery: 'two_wheeler', pickup: 'storefront', dinein: 'table_restaurant', reservation: 'event' }
@@ -302,6 +315,48 @@ export default function OrdersPage() {
   const finalLabel = (c: Card) =>
     c.status === 'cancelled' ? t('finalCancelled') : c.kind === 'pickup' ? t('finalPickedUp') : c.kind === 'dinein' ? t('finalPaid') : t('finalDelivered')
 
+  // ── D′ L9 (T-45) — le badge de remboursement ────────────────────────────────
+  // « Remboursée » states money that CAME BACK, so the sentence is spoken from
+  // `refundedCents` ALONE (settled Refund rows carrying a Stripe re_ id) and only
+  // above zero: never from a refund in flight — the list deliberately carries no
+  // pending figure, so there is nothing here to announce — and never on a zero.
+  // `isTotal` / `isPartial` are the SERVER's verdict on that same confirmed figure;
+  // we never re-derive them from `c.total`, which is the charge, not the refund.
+  // Food cards only, matching the API. Both flags false above zero is unreachable
+  // by the server's own derivation (isPartial = confirmed > 0 && !isTotal), and if
+  // it ever happened silence is the right default: a missing badge is silence,
+  // a badge we cannot qualify would be a claim about money.
+  const refundBadge = (c: Card): string | null => {
+    if (c.kind !== 'delivery' && c.kind !== 'pickup') return null
+    const cents = c.refundedCents ?? 0
+    const other = c.unattributedCents ?? 0
+    if (cents <= 0 && other <= 0) return null
+    // WHEN PART OF THE CONFIRMED REFUND CANNOT BE ATTRIBUTED, THIS CARD STATES NO FIGURE.
+    // `refundedCents` is deliberately rows-only (the frozen §4 contract), so on an order refunded by two
+    // rails — say 10,00 € through the claim engine and the remaining 4,10 € from the Stripe Dashboard, which
+    // writes a ledger line and no row — it holds 10,00 € of a 14,10 € refund. Printing it would understate
+    // the refund by 4,10 € on a card too small to explain why, so the card says « un remboursement a été
+    // enregistré » and the tracking page, which has room, states the parts. The neutral wording is also
+    // what §6 requires of that money: never a cause, never a totality.
+    if (other > 0) return t('refundedRecordedBadge')
+    const amount = formatEuros(cents / 100, locale)
+    return c.isTotal ? t('refundedBadge', { amount }) : c.isPartial ? t('refundedPartialBadge', { amount }) : null
+  }
+
+  // Same pill family as the terminal badge (`.final`), with the foundation's
+  // --gb-warning pair: `final--done` / `final--res` are both the basil green and
+  // would read as a SECOND success next to « Livrée », while `final--warn`'s red
+  // would read as a failure. Money coming back is neither — it is a fact to notice.
+  const RefundBadge = ({ c }: { c: Card }) => {
+    const label = refundBadge(c)
+    if (!label) return null
+    return (
+      <span className="final" style={{ color: 'var(--gb-warning)', background: 'var(--gb-warning-bg)' }}>
+        <span className="ms" style={{ fontSize: 13 }} aria-hidden="true">undo</span>{label}
+      </span>
+    )
+  }
+
   const PastCard = ({ c, i }: { c: Card; i: number }) => (
     <article className="o-card">
       <div className="o-card__top">
@@ -312,7 +367,19 @@ export default function OrdersPage() {
           </div>
           <div className="o-card__meta">{fmtDate(c.createdAt)}{c.kind === 'dinein' && c.tableLabel ? ` · ${c.tableLabel}` : ` · ${t('items', { count: c.itemsCount })}`}</div>
         </div>
-        <span className="final final--done"><span className="ms" style={{ fontSize: 13 }} aria-hidden="true">check_circle</span>{finalLabel(c)}</span>
+        {/* D′ L9 (T-45) — composition of the two facts: the fulfilment word STAYS
+            (« Livrée » remains true about the food, and a money event does not undo
+            it) and the refund pill qualifies it immediately beside it, stacked, so a
+            refunded order is never read as a bare « Livrée · 14,50 € ». We do not
+            overwrite the fulfilment badge with the money badge — that would trade one
+            silence for another. The wrapper is unconditional: with no refund it
+            renders the single pill exactly as before (a content-width column,
+            vertically centred like the flex item it replaces) and it is left
+            shrinkable so a narrow card shares the row instead of squeezing the name. */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center', gap: 5 }}>
+          <span className="final final--done"><span className="ms" style={{ fontSize: 13 }} aria-hidden="true">check_circle</span>{finalLabel(c)}</span>
+          <RefundBadge c={c} />
+        </div>
       </div>
       <div className="statusline" style={{ justifyContent: 'space-between', paddingTop: 2 }}>
         <span className="total" style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}><small>{t('total')}</small><b style={{ fontSize: 16 }}>{formatEuros(c.total, locale)}</b></span>

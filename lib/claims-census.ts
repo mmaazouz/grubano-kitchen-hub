@@ -74,7 +74,13 @@ export async function claimsLegacyCensus(now: Date = new Date()): Promise<Claims
       return claims.filter((c) => {
         const row = c.refundId ? byId.get(c.refundId) ?? null : null
         const failedWithIdOwnOrder = !!row && row.orderId === c.orderId && row.status === 'failed' && !!row.stripeRefundId
-        return !refundedRowProven(row, c.orderId) && !failedWithIdOwnOrder
+        // D′ L9 §1: the two shapes E-07 owns are excluded here, so this key keeps measuring E-13 and only
+        // E-13. Without the second line the hardened proof would have moved this counter by counting every
+        // pending-row claim — a real population, but one already counted under E-07, and a census key that
+        // silently changes what it means is worse than one that stays narrow. `listRefundedClaimsWithUnprovenRow`
+        // carries the identical pair of exclusions, and a test asserts the two derivations agree.
+        const pendingOwnOrder = !!row && row.orderId === c.orderId && row.status === 'pending'
+        return !refundedRowProven(row, c.orderId) && !failedWithIdOwnOrder && !pendingOwnOrder
       }).length
     }),
     // E-05 / E-14: a resume_mismatch on the claim's OWN stamped row, split by terminal status (one read, both fields).

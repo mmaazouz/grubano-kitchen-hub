@@ -195,6 +195,37 @@ export const RESTAURANT_NOTICE_LINE: Record<string, string> = {
 }
 
 /** D′ L8 (§18): the heading and intro of « Avis financier au restaurant non envoyé ». */
+/* ── D′ L9 (E3, §24) — LES AVIS CLIENT NON ENVOYÉS, MOITIÉ SUPPORT ────────────────────────
+   La moitié réclamation de cette carte existe depuis L8. Celle-ci couvre les remboursements SANS
+   réclamation — un remboursement du rail support, ou l'auto-remboursement d'un panier abandonné — que
+   Stripe a réglés de façon ASYNCHRONE : la route a répondu 202 sans e-mail (honnêtement, l'argent n'était
+   pas encore parti) et le webhook qui a finalisé la ligne n'a pas le droit d'envoyer (H15). Le client a
+   donc été remboursé sans jamais être prévenu. */
+export const SUPPORT_NOTICES_HEADING = (n: number | null) =>
+  `Avis client non envoyé — remboursements support${n === null ? '' : ` (${n})`}`
+export const SUPPORT_NOTICES_INTRO =
+  'Remboursements ABOUTIS chez Stripe, sans réclamation derrière eux, dont le client n’a reçu aucune confirmation. C’est une vérité APRÈS argent : aucun réglage produit ne la masque. Le bouton relit Stripe dans la même requête avant d’envoyer, et c’est le montant relu chez Stripe qui est annoncé au client, jamais celui de notre base. Si Stripe dit que le remboursement n’est plus abouti, rien n’est envoyé et une alerte est levée.'
+export const SUPPORT_NOTICE_BUTTON = 'Envoyer la confirmation au client'
+/** Ce que chaque origine veut dire, pour qu’un admin sache ce qu’il annonce avant de l’annoncer. */
+/** Les refus de la route notify, dans les mots du serveur. Un admin doit lire le FAIT, pas une paraphrase. */
+export const SUPPORT_NOTICE_REFUSAL_FR: Record<string, string> = {
+  row_missing:          'Ligne de remboursement introuvable — rien n’a été envoyé.',
+  not_succeeded:        'La ligne n’est plus « aboutie » dans notre base — rien n’a été envoyé.',
+  refund_id_unknown:    'Aucun identifiant Stripe sur cette ligne : impossible de relire le remboursement, donc rien n’est annoncé.',
+  claim_bound:          'Cette ligne appartient à une réclamation : l’avis passe par la clôture de la réclamation, pas par ici.',
+  external_mirror:      'Ligne miroir d’un remboursement externe — hors périmètre de cet envoi.',
+  already_sent:         'Le client a déjà reçu une confirmation pour ce remboursement — rien n’a été renvoyé.',
+  order_missing:        'Commande introuvable — rien n’a été envoyé.',
+  no_recipient:         'Aucune adresse client sur cette commande — rien n’a été envoyé.',
+  stripe_unreadable:    'Stripe est injoignable : on n’annonce rien qu’on ne peut pas vérifier. Réessayez plus tard.',
+  support_row_reverted: 'STRIPE CONTREDIT NOTRE BASE : le remboursement n’y est plus abouti. Aucun e-mail n’est parti et une alerte a été levée.',
+}
+
+export const SUPPORT_NOTICE_ORIGIN_LINE: Record<'support' | 'system', string> = {
+  support: 'Remboursement décidé par un humain chez Grubano.',
+  system:  'Remboursement automatique d’un paiement abandonné (commande expirée).',
+}
+
 export const RESTAURANT_NOTICES_HEADING = (n: number | null) =>
   `Avis financier au restaurant non envoyé${n === null ? '' : ` (${n})`}`
 export const RESTAURANT_NOTICES_INTRO =

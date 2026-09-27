@@ -102,20 +102,41 @@ describe('J-C01 — customer status derivation table (F05)', () => {
 
 // ══ J-C04 — refundedRowProven / refundedRowTruth ═════════════════════════════════════════════════
 describe('J-C04 — refundedRowProven / refundedRowTruth', () => {
+  /**
+   * D′ L9 §1 (S-20): spec v2 §7.2 supersedes R13 F03 here. A bound row proves a settlement only when it is
+   * SUCCEEDED **and** carries a Stripe refund id of the shape /^re_[A-Za-z0-9]{8,}$/. Two consequences for this
+   * table. (a) `pending` is no longer a proof: the engine inserts its row BEFORE calling Stripe, so a process
+   * killed in between leaves (pending, NULL) for ever — « we believe it worked » is not a proof of payment.
+   * (b) an id is part of the proof, not decoration: without it there is no object to re-read, so nothing can ever
+   * confirm or refute the row. Every fixture whose INTENT is a settled row therefore carries its own id (distinct
+   * suffixes keep the rows distinguishable), and `failed with id` finally carries the id its name promises — it was
+   * byte-identical to `failed without id` before, so the pair proved nothing about the id.
+   */
   const ROWS_: Array<[string, Parameters<typeof refundedRowProven>[0]]> = [
     ['null', null],
-    ['other order', { orderId: 'o2', status: 'succeeded', amountCents: 1250 }],
-    ['failed with id', { orderId: 'o1', status: 'failed', amountCents: 1250 }],
+    ['other order', { orderId: 'o2', status: 'succeeded', amountCents: 1250, stripeRefundId: 're_L9testAAAAAA1' }],
+    ['failed with id', { orderId: 'o1', status: 'failed', amountCents: 1250, stripeRefundId: 're_L9testAAAAAA2' }],
     ['failed without id', { orderId: 'o1', status: 'failed', amountCents: 1250 }],
     ['pending', { orderId: 'o1', status: 'pending', amountCents: 1250 }],
-    ['succeeded', { orderId: 'o1', status: 'succeeded', amountCents: 1250 }],
-    ['succeeded 0', { orderId: 'o1', status: 'succeeded', amountCents: 0 }],
-    ['succeeded 1.5', { orderId: 'o1', status: 'succeeded', amountCents: 1.5 }],
-    ['succeeded -1', { orderId: 'o1', status: 'succeeded', amountCents: -1 }],
+    // the strongest pending shape there is — an id AND a positive integer amount — still proves nothing (a).
+    ['pending with id', { orderId: 'o1', status: 'pending', amountCents: 1250, stripeRefundId: 're_L9testAAAAAA3' }],
+    ['succeeded', { orderId: 'o1', status: 'succeeded', amountCents: 1250, stripeRefundId: 're_L9testAAAAAA4' }],
+    // the three shapes (b) rejects: no id at all, and each half of the id shape broken on its own.
+    ['succeeded without id', { orderId: 'o1', status: 'succeeded', amountCents: 1250 }],
+    ['succeeded, id of the wrong prefix', { orderId: 'o1', status: 'succeeded', amountCents: 1250, stripeRefundId: 'rf_L9testAAAAAA5' }],
+    // The row-reading contract is `re_` + SOMETHING (an id that names a retrievable object), not a length
+    // rule — a length rule here would disagree with the frozen §24 set about which rows count. So the
+    // unproven id shapes are the bare prefix and a non-Stripe id, and both are pinned.
+    ['succeeded, bare re_ prefix', { orderId: 'o1', status: 'succeeded', amountCents: 1250, stripeRefundId: 're_' }],
+    ['succeeded 0', { orderId: 'o1', status: 'succeeded', amountCents: 0, stripeRefundId: 're_L9testAAAAAA6' }],
+    ['succeeded 1.5', { orderId: 'o1', status: 'succeeded', amountCents: 1.5, stripeRefundId: 're_L9testAAAAAA7' }],
+    ['succeeded -1', { orderId: 'o1', status: 'succeeded', amountCents: -1, stripeRefundId: 're_L9testAAAAAA8' }],
   ]
-  const PROVEN = new Set(['pending', 'succeeded'])
+  // D′ L9 §1: « pending » has LEFT this set — it is the one derivation line the hardening inverts, and the only
+  // member left is the row that is succeeded, on the claim's order, with a readable id and an integer amount > 0.
+  const PROVEN = new Set(['succeeded'])
 
-  it('proven only for the same order, succeeded or pending, and an integer amount > 0', () => {
+  it('proven only for the same order, a SUCCEEDED row carrying a Stripe refund id, and an integer amount > 0', () => {
     for (const [name, row] of ROWS_) expect(refundedRowProven(row, 'o1'), name).toBe(PROVEN.has(name))
   })
 
@@ -128,9 +149,11 @@ describe('J-C04 — refundedRowProven / refundedRowTruth', () => {
     }
   })
 
+  // D′ L9 §1: the control's name promised a Stripe id the objects did not carry, so it held even if `failed` had
+  // stopped being disqualifying. Both rows now carry one: only `succeeded` keeps them out.
   it('NEGATIVE CONTROL — a failed row with a Stripe id is never proven', () => {
-    expect(refundedRowProven({ orderId: 'o1', status: 'failed', amountCents: 500 }, 'o1')).toBe(false)
-    expect(refundedRowTruth({ orderId: 'o1', status: 'failed', amountCents: 500 }, 1, 'o1')).toBe(false)
+    expect(refundedRowProven({ orderId: 'o1', status: 'failed', amountCents: 500, stripeRefundId: 're_L9testBBBBBB1' }, 'o1')).toBe(false)
+    expect(refundedRowTruth({ orderId: 'o1', status: 'failed', amountCents: 500, stripeRefundId: 're_L9testBBBBBB1' }, 1, 'o1')).toBe(false)
   })
 })
 
@@ -156,19 +179,25 @@ describe('J-C04 — the binder count reads use the explicit null branch (Prisma 
 
   it('getClaimEligibility: row read, then claim.count on { refundId, OR: [null branch, NOT startsWith] }', async () => {
     db.claim.findFirst.mockResolvedValue({ ...EXISTING })
-    db.refund.findUnique.mockResolvedValue({ id: 'rf1', orderId: 'o1', status: 'succeeded', amountCents: 500 })
+    // D′ L9 §1 (S-20): a settled row carries its Stripe id — the fixture's intent all along, now load-bearing.
+    db.refund.findUnique.mockResolvedValue({ id: 'rf1', orderId: 'o1', status: 'succeeded', amountCents: 500, stripeRefundId: 're_L9testCCCCCC1' })
     db.claim.count.mockResolvedValue(1)
     expect((await getClaimEligibility({ consumerId: 'u1', orderId: 'o1' })).existingClaim?.status).toBe('refunded')
     const where = db.claim.count.mock.calls[0][0].where
     expect(where).toEqual({ refundId: 'rf1', OR: BINDER_SHAPE })
-    expect(db.refund.findUnique.mock.calls[0][0].select).toEqual({ id: true, orderId: true, status: true, amountCents: true })
+    // D′ L9 §1: `stripeRefundId` joined the PROOF, so it must be SELECTED here. Reading it as `undefined` would
+    // answer false for every refunded claim — « Remboursement non confirmé » everywhere, with no type error to catch
+    // it (the field is optional in the row shape). The pin stays an exact set: a select that drops it fails here.
+    expect(db.refund.findUnique.mock.calls[0][0].select).toEqual({ id: true, orderId: true, status: true, amountCents: true, stripeRefundId: true })
     // the eligibility select carries the provenance fields F02 reads
     expect(db.claim.findFirst.mock.calls[0][0].select).toMatchObject({ restaurantResponse: true, reason: true, arbitrationReason: true })
   })
 
   it('getClaimEligibility: two binders → manual check; a failed row → unconfirmed; a throw → manual check', async () => {
     db.claim.findFirst.mockResolvedValue({ ...EXISTING })
-    db.refund.findUnique.mockResolvedValue({ id: 'rf1', orderId: 'o1', status: 'succeeded', amountCents: 500 })
+    // D′ L9 §1: the id makes the row PROVEN, so the manual check below is caused by the two binders alone — without
+    // it the first leg would have passed for the wrong reason (an unproven row reads « non confirmé », not FVc).
+    db.refund.findUnique.mockResolvedValue({ id: 'rf1', orderId: 'o1', status: 'succeeded', amountCents: 500, stripeRefundId: 're_L9testCCCCCC2' })
     db.claim.count.mockResolvedValue(2)
     expect((await getClaimEligibility({ consumerId: 'u1', orderId: 'o1' })).existingClaim?.status).toBe(FV)
     db.claim.count.mockResolvedValue(1)
@@ -185,10 +214,12 @@ describe('J-C04 — the binder count reads use the explicit null branch (Prisma 
       { id: 'c', orderId: 'o1', status: 'refunded', refundId: 'rfX', refundError: null, refundAttempted: true, arbitrationDecision: 'approved' },
       { id: 'd', orderId: 'o1', status: 'restaurant_review', refundId: null, refundError: null, refundAttempted: false, arbitrationDecision: null },
     ])
+    // D′ L9 §1 (S-20): the ids are now READ, not decorative — « re_S » does not satisfy /^re_[A-Za-z0-9]{8,}$/, so the
+    // rows keep their intent (rfS settled, rfF failed, rfX settled but shared) only with ids of the real shape.
     db.refund.findMany.mockResolvedValue([
-      { id: 'rfS', orderId: 'o1', status: 'succeeded', amountCents: 500, stripeRefundId: 're_S' },
-      { id: 'rfF', orderId: 'o1', status: 'failed', amountCents: 500, stripeRefundId: 're_F' },
-      { id: 'rfX', orderId: 'o1', status: 'succeeded', amountCents: 500, stripeRefundId: 're_X' },
+      { id: 'rfS', orderId: 'o1', status: 'succeeded', amountCents: 500, stripeRefundId: 're_L9testS0001' },
+      { id: 'rfF', orderId: 'o1', status: 'failed', amountCents: 500, stripeRefundId: 're_L9testF0001' },
+      { id: 'rfX', orderId: 'o1', status: 'succeeded', amountCents: 500, stripeRefundId: 're_L9testX0001' },
     ])
     db.claim.groupBy.mockResolvedValue([
       { refundId: 'rfS', _count: { _all: 1 } }, { refundId: 'rfF', _count: { _all: 1 } }, { refundId: 'rfX', _count: { _all: 2 } },
@@ -208,7 +239,8 @@ describe('J-C04 — the binder count reads use the explicit null branch (Prisma 
       { id: 'a', orderId: 'o1', status: 'refunded', refundId: 'rfS', refundError: null, refundAttempted: true, arbitrationDecision: 'approved' },
       { id: 'd', orderId: 'o1', status: 'restaurant_review', refundId: null, refundError: null, refundAttempted: false, arbitrationDecision: null },
     ])
-    db.refund.findMany.mockResolvedValue([{ id: 'rfS', orderId: 'o1', status: 'succeeded', amountCents: 500, stripeRefundId: 're_S' }])
+    // D′ L9 §1: a proof-shaped id, so the manual check comes from the groupBy throw alone (binders unreadable).
+    db.refund.findMany.mockResolvedValue([{ id: 'rfS', orderId: 'o1', status: 'succeeded', amountCents: 500, stripeRefundId: 're_L9testS0002' }])
     db.claim.groupBy.mockRejectedValue(new Error('db down'))
     const out = await listConsumerClaims('u1')
     expect(out.map((c) => [c.id, c.status])).toEqual([['a', FV], ['d', 'restaurant_review']])
@@ -433,6 +465,10 @@ describe('J-C03 — Section A customer column', () => {
   const approvedNull: Omit<Case, 'line'> = { c: ap(null) }
   const reverted = refundedWith(true, `${MARKERS.REVERTED_AFTER_REFUND} x`)
   const declared = refundedWith(true, `${MARKERS.DECLARED_AFTER_REVERT} x`)
+  /** A-S31d's own row: pending in our base with a Stripe id, Stripe having failed it (the event was lost). */
+  const A_S31D_PENDING_ROW = { orderId: 'o1', status: 'pending', amountCents: 500, stripeRefundId: 're_L9testDDDDDD1' }
+  /** A settled row, id included: what A-S43 and the negative control below mean by « une ligne prouvée ». */
+  const SETTLED_ROW = { orderId: 'o1', status: 'succeeded', amountCents: 500, stripeRefundId: 're_L9testEEEEEE1' }
   type Variant = Omit<Case, 'line'> & { key: CustomerStatus }
   const v = (base: Omit<Case, 'line'>, key: CustomerStatus): Variant => ({ ...base, key })
   const group = (ids: string[], variants: Variant[]) => Object.fromEntries(ids.map((id) => [id, variants]))
@@ -452,9 +488,15 @@ describe('J-C03 — Section A customer column', () => {
     ...group(['A-S30b-2a', 'A-S30b-2b', 'A-S30e-3'], [v(approvedNull, 'approved')]),
     ...group(['A-S31-1', 'A-S31-2', 'A-S31b'], [v(reverted, FV), v(declared, 'closed_by_support'), v({ c: { status: 'refused_final', arbitrationDecision: 'approved', refundError: `${MARKERS.REVERTED_AFTER_REFUND} x` } }, 'closed_by_support')]),
     ...group(['A-S31c', 'A-S31f-1'], [v(refundedWith(false), 'refund_unconfirmed')]),
-    ...group(['A-S31d'], [v(refundedWith(true), 'refunded'), v(reverted, FV)]),
+    // D′ L9 §1 (S-20): spec v2 §7.2 supersedes the A-S31d CUSTOMER column of the FROZEN v1 text parsed below. That
+    // state's bound row is PENDING (Stripe failed it, the event was lost), and a pending row no longer proves a
+    // settlement — the derived truth is now FALSE, so the customer reads « Remboursement non confirmé », not
+    // « Remboursée ». The first variant stays on the v1 token the parity assertion reads (the specification is
+    // frozen and is not this file's to rewrite); the second pins the derivation spec v2 actually ships.
+    ...group(['A-S31d'], [v(refundedWith(true), 'refunded'), v(refundedWith(refundedRowTruth(A_S31D_PENDING_ROW, 1, 'o1')), 'refund_unconfirmed'), v(reverted, FV)]),
     ...group(['A-S31e-1', 'A-S31e-2', 'A-S31f-2', 'A-S31f-3'], [v(refundedWith(true), 'refunded')]),
-    ...group(['A-S43'], [v(refundedWith(refundedRowTruth({ orderId: 'o1', status: 'succeeded', amountCents: 500 }, 2, 'o1')), FV)]),
+    // the row is PROVEN (settled, id included) — A-S43's manual check comes from the two binders, nothing else.
+    ...group(['A-S43'], [v(refundedWith(refundedRowTruth(SETTLED_ROW, 2, 'o1')), FV)]),
     ...group(['A-S05b-1', 'A-S05b-2', 'A-S05c-1', 'A-S05c-2a', 'A-S05c-2b', 'A-S09a', 'A-S09b', 'A-S13a', 'A-S13b', 'A-S14a-1', 'A-S14a-2a', 'A-S14a-2b', 'A-S17', 'A-S18', 'A-S20', 'A-S22', 'A-S22b', 'A-S23b-1', 'A-S23b-2', 'A-S27-1a', 'A-S27-1b', 'A-S27-2', 'A-S29-1', 'A-S29-2', 'A-S29-3', 'A-S30e-4', 'A-S34', 'A-S37', 'A-S38-1', 'A-S38-2', 'A-S40', 'A-S41'], [v(fvStatus, FV)]),
   }
   const TOKEN: Record<string, CustomerStatus> = { FVc: FV, RFc: 'refunded', APc: 'approved', CBS: 'closed_by_support', RUc: 'refund_unconfirmed' }
@@ -477,7 +519,7 @@ describe('J-C03 — Section A customer column', () => {
   })
 
   it('NEGATIVE CONTROL — A-S43 with one binder reads « Remboursée » (the binder count flips it); A-S31c with refundedRow true reads « Remboursée », not RUc', () => {
-    const one = refundedRowTruth({ orderId: 'o1', status: 'succeeded', amountCents: 500 }, 1, 'o1')
+    const one = refundedRowTruth(SETTLED_ROW, 1, 'o1')
     expect(customerClaimStatus({ status: 'refunded', refundId: 'rf1', refundError: null }, null, one)).toBe('refunded')
     expect(customerClaimStatus({ status: 'refunded', refundId: 'rf1', refundError: null }, null, true)).not.toBe('refund_unconfirmed')
   })

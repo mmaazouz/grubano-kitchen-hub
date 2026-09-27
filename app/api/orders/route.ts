@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { prisma } from '@/lib/prisma'
+import { loadRefundSummariesForOrders, refundListBadge, emptyRefundSummary } from '@/lib/order-refund-summary'
 import { rateLimit } from '@/lib/rate-limit'
 import { loadHoursContext, isOpenAtCtx, nextOpeningCtx, nextOpeningLabelFr } from '@/lib/opening-hours'
 import { computeApplicationFee, type CommissionChannel } from '@/lib/commission'
@@ -1051,6 +1052,8 @@ export async function GET(req: NextRequest) {
           deliveryAddress: true,
           paymentMethod:   true,
           createdAt:       true,
+          // D′ L9 (T-45): the join for the refund badge below.
+          stripePaymentIntentId: true,
           restaurant: {
             select: { id: true, name: true, logo: true, cuisine: true },
           },
@@ -1059,7 +1062,28 @@ export async function GET(req: NextRequest) {
       prisma.order.count({ where }),
     ])
 
-    return NextResponse.json({ orders, total, take, skip })
+    // ── ADDITIVE (D′ L9 / T-45) — the refund badge, minimal shape (§11) ─────────────────────────────
+    //
+    // This route feeds the /eat/account history block and the shell's active-order count. It gets the same
+    // three fields as /api/eat/orders and for the same reason: two consumer lists that disagreed about
+    // whether an order was refunded would be worse than neither saying anything. THREE queries for the
+    // page; a list with no terminal order costs zero. `stripePaymentIntentId` is dropped from the response
+    // right after — it is a join key, never something a client needs.
+    let withBadges: unknown[] = orders
+    try {
+      const summaries = await loadRefundSummariesForOrders(prisma, orders.map((o) => ({
+        id: o.id, status: o.status, total: o.total, stripePaymentIntentId: o.stripePaymentIntentId,
+      })))
+      withBadges = orders.map(({ stripePaymentIntentId: _pi, ...o }) => ({
+        ...o,
+        ...refundListBadge(summaries.get(o.id) ?? emptyRefundSummary()),
+      }))
+    } catch (e) {
+      console.error('[GET /api/orders] refund badges unreadable (list renders without them):', e instanceof Error ? e.message : e)
+      withBadges = orders.map(({ stripePaymentIntentId: _pi, ...o }) => ({ ...o, refundedCents: 0, unattributedCents: 0, isTotal: false, isPartial: false }))
+    }
+
+    return NextResponse.json({ orders: withBadges, total, take, skip })
   } catch (err) {
     console.error('[GET /api/orders]', err)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })

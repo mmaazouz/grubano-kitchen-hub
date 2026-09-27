@@ -208,6 +208,10 @@ export type MoneyReviewKind =
   // is handed back (the high-water floor holds), but a refund that Stripe or the database once proved and no
   // longer does is a fact a human needs rather than a silence.
   | 'loyalty_proof_set_shrank'
+  // D′ L9 (E3): our base says a support refund settled and STRIPE, re-read in the same request, says it
+  // did not — reverted, failed, or not readable as succeeded. NO customer notice is sent on that reading, so
+  // the fact would otherwise be silent: a row we believe paid a customer, that Stripe says did not.
+  | 'support_row_reverted'
 
 export async function sendAdminMoneyReviewAlert(p: {
   kind:      MoneyReviewKind

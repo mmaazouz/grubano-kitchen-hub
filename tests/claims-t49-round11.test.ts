@@ -225,16 +225,16 @@ describe('CUSTOMER — « en cours » only for a bound row still pending and rec
   })
 
   const ROWS: Record<string, Record<string, unknown>> = {
-    rfP: { id: 'rfP', status: 'pending', stripeRefundId: 're_P' },
-    rfF: { id: 'rfF', status: 'failed', stripeRefundId: 're_F' },
-    rfS: { id: 'rfS', status: 'succeeded', stripeRefundId: 're_S' },
+    rfP: { id: 'rfP', orderId: 'o_rfP', status: 'pending', stripeRefundId: 're_P' },
+    rfF: { id: 'rfF', orderId: 'o_rfF', status: 'failed', stripeRefundId: 're_F' },
+    rfS: { id: 'rfS', orderId: 'o_rfS', status: 'succeeded', stripeRefundId: 're_S' },
   }
 
   it('the customer list — select-aware row read', async () => {
     db.claim.findMany.mockResolvedValue([
-      { id: 'p', status: 'refunding', refundId: 'rfP', refundError: null },
-      { id: 'f', status: 'refunding', refundId: 'rfF', refundError: null },
-      { id: 's', status: 'refunding', refundId: 'rfS', refundError: null },
+      { id: 'p', orderId: 'o_p', status: 'refunding', refundId: 'rfP', refundError: null },
+      { id: 'f', orderId: 'o_f', status: 'refunding', refundId: 'rfF', refundError: null },
+      { id: 's', orderId: 'o_s', status: 'refunding', refundId: 'rfS', refundError: null },
     ])
     db.refund.findMany.mockImplementation(async ({ where, select }: { where: { id: { in: string[] } }; select?: Record<string, unknown> }) =>
       where.id.in.map((id) => pick(ROWS[id], select)).filter(Boolean))
@@ -247,7 +247,7 @@ describe('CUSTOMER — « en cours » only for a bound row still pending and rec
     db.refund.findUnique.mockImplementation(async ({ where, select }: { where: { id: string }; select?: Record<string, unknown> }) => pick(ROWS[where.id], select))
     const cases: Array<[string, string]> = [['rfP', 'refunding'], ['rfF', FINANCIAL_VERIFICATION], ['rfS', FINANCIAL_VERIFICATION]]
     for (const [rowId, want] of cases) {
-      db.claim.findFirst.mockResolvedValue({ id: 'cl1', status: 'refunding', decidedAt: null, restaurantResponseReason: null, arbitrationReason: null, refundError: null, refundId: rowId, refundAttempted: true })
+      db.claim.findFirst.mockResolvedValue({ id: 'cl1', orderId: 'o_cl1', status: 'refunding', decidedAt: null, restaurantResponseReason: null, arbitrationReason: null, refundError: null, refundId: rowId, refundAttempted: true })
       const e = await getClaimEligibility({ consumerId: 'u1', orderId: 'o1' })
       expect(e.existingClaim?.status, rowId).toBe(want)
     }
@@ -303,11 +303,11 @@ describe('APPLIED FROM STRIPE WHILE OUR ROW STAYS PENDING — alerted, and liste
 
   it('the ungated list carries pending rows whose claim is no longer refunding — and nothing else', async () => {
     const CLAIMS = [
-      { id: 'c1', status: 'refunded', refundId: 'rf1' },
-      { id: 'c2', status: 'refunding', refundId: 'rf2' },
-      { id: 'c3', status: 'approved', refundId: 'rf3' },
-      { id: 'c4', status: 'refused_final', refundId: 'rf4' },
-      { id: 'c5', status: 'approved', refundId: null },
+      { id: 'c1', orderId: 'o_c1', status: 'refunded', refundId: 'rf1' },
+      { id: 'c2', orderId: 'o_c2', status: 'refunding', refundId: 'rf2' },
+      { id: 'c3', orderId: 'o_c3', status: 'approved', refundId: 'rf3' },
+      { id: 'c4', orderId: 'o_c4', status: 'refused_final', refundId: 'rf4' },
+      { id: 'c5', orderId: 'o_c5', status: 'approved', refundId: null },
     ]
     const ROWS = [
       { id: 'rf1', orderId: 'o1', status: 'pending', amountCents: 500, stripeRefundId: null, createdAt: new Date(1) },
@@ -385,7 +385,7 @@ describe('CENSUS — a failed groupBy is NOT MEASURED, never an empty population
 // ══ P3 — the operator's note ═══════════════════════════════════════════════════════════════
 describe('STUCK CLOSE — the operator note stays admin-side', () => {
   it('arbitrationReason, which the customer payload carries, is not written from the note; the audit keeps it', async () => {
-    db.claim.findUnique.mockResolvedValue({ id: 'cl1', status: 'approved', refundError: 'engine_failed: x' })
+    db.claim.findUnique.mockResolvedValue({ id: 'cl1', orderId: 'o_cl1', status: 'approved', refundError: 'engine_failed: x' })
     fx.row = { status: 'approved', refundError: 'engine_failed: x' }
     const r = await resolveStuckClaim({ claimId: 'cl1', adminId: 'op1', resolution: 'closed_no_payment', reason: 'note interne : appel restaurant' })
     expect(r.ok).toBe(true)
