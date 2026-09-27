@@ -973,5 +973,40 @@ Six attaquants indépendants sur les dimensions du §23 du fondateur, lancés su
 
 **Constats enregistrés, NON corrigés, et pourquoi** (T-78 → T-83) : les deux voies de recours que les CGV nomment aboutissent à des placeholders dans les mentions légales, alors que le produit connaît déjà une adresse de contact réelle — **remplir un champ légal est une donnée du fondateur, et §12 interdit de décider à sa place, même quand la valeur semble déductible** ; les CGV affirment qu'une version s'applique sans que la page porte version ni date — une date d'entrée en vigueur est un fait juridique ; aucune page légale n'est atteignable depuis une session conso MOBILE, ce qui est **pré-existant et identique pour les quatre pages** ; deux landings partenaires n'ont pas le lien CGV, décision assumée (les CGV sont les conditions au CONSOMMATEUR, une landing partenaire s'adresse à une entreprise) ; le retrait de « en attente d'activation » côté restaurant, défendable dans les deux sens, est remonté pour arbitrage ; et deux refus du POST client restent sans code, la règle §2 étant néanmoins tenue puisque le repli est désormais localisé.
 
+
+### L10 — déploiement staging vérifié (2026-09-27)
+
+Commit **`f60cab12b036546296e1ebbc226ce2f53b5a747f`**, poussé sur `develop`.
+
+| | mesuré |
+|---|---|
+| CI « Deploy → Staging » run **36352467950** | `test` **success** · `deploy` **success** — dont « Check translations », « Verify deployed build (version.json) », « Health check (staging @ expected SHA) » et « Client bundle integrity (served HTML → every `_next/static` asset 200) » |
+| `GET https://app.grubano.com/version.json` | `commit` **`f60cab12b036546296e1ebbc226ce2f53b5a747f`** · `branch` develop · `buildDate` 2026-09-27T21:45:44Z · `ciRunId` 36352467950 |
+
+**Les CGV dans les cinq locales, sur le build déployé** — c'est la vérification que ce lot devait produire :
+
+| route | HTTP | `<title>` servi | `<h1>` servi |
+|---|---|---|---|
+| `/fr/legal/cgv` | **200** | « Conditions générales de vente — Grubano » | « Conditions générales de vente » |
+| `/en/legal/cgv` | **200** | « Terms of sale — Grubano » | « Terms of sale » |
+| `/es/legal/cgv` | **200** | — (vérifié 200, 460 764 octets) | — |
+| `/it/legal/cgv` | **200** | — (vérifié 200, 460 722 octets) | — |
+| `/ar/legal/cgv` | **200** | « الشروط العامة للبيع — Grubano » | « الشروط العامة للبيع » |
+
+Sur les trois locales inspectées en détail : **`noindex` présent** (l'identité société est incomplète ET aucun conseil juridique n'a relu → `isCgvPublishable()` est faux), **le lien CGV rendu une fois** dans la navigation légale, et **AUCUNE case à cocher** dans le HTML servi. Les quatre pages légales répondent 200 : la nouvelle n'a rien cassé.
+
+**Recensement read-only `claims-census.yml` run 36354157233**, mesuré 2026-09-27T22:07:12Z sur le build déployé :
+- `schema` = `{ready:true, clientReady:true, dbReady:true, missingClient:[], missingDb:[], why:null}` — **aucune migration, aucun regen**, et il n'en fallait aucun : un lot de textes n'ajoute pas de colonne.
+- `gates` = `{claimsEnabled:false, claimsGate:"CLOSED (flag_off)", claimsSurfaceEnabled:false, claimsIntakeEnabled:false, claimsSurfaceOpen:false, claimsIntakeOpen:false, refundsEnabled:false}` — **toutes fermées**.
+- **Population réclamations INCHANGÉE** depuis L0 (`dab754d`) et à travers L5 → L9.1 : total **9**, `{refunded:4, refused:3, refused_final:2}`, `active:0`, `nonTerminal:3`, `closure.terminalWithoutRecord:4`, **tous les compteurs d'anomalie héritée à 0**.
+
+**Sondes externes NON AUTHENTIFIÉES du build déployé :**
+- `POST /api/claims` → **403 `{gated:true}`** · `POST /api/claims/<id>/contest` → **403 `{gated:true}`** · `POST /api/claims/<id>/respond` → **403 `{gated:true}`** : les trois routes dont L10 a changé la charge utile de refus s'arrêtent au drapeau, donc aucun code ni aucune phrase n'est atteignable sans ouverture de surface. La projection des refus est prouvée par les tests, pas par une sonde publique — et c'est la seule manière honnête de le dire.
+- `POST /api/admin/refunds/run` → **403 `{gated:true}`** · `POST /api/admin/refunds/rows/<id>/notify` → **403 « Accès refusé »** (admin-gatée, non gatée par les drapeaux produit : l'argent est déjà parti, S-25).
+- `GET /api/orders/[id]` → **401** · `GET /api/eat/orders` → **401** : `refundSummary` reste derrière la session conso.
+- `GET /api/claims` → **200 `{enabled:false}`** : la surface Claims reste coupée par le kill-switch.
+
+**AUCUN EFFET ARGENT, et voici par quoi.** (1) Un déploiement n'exécute par lui-même ni migration ni script serveur, et le recensement confirme `schema.ready` sans qu'aucune colonne n'ait été ajoutée. (2) Toutes les sondes se sont arrêtées au garde AVANT toute logique. (3) **Aucun appel AUTHENTIFIÉ contre staging** : aucune commande ni réclamation créée, **aucun e-mail envoyé** (ni client ni restaurant), aucun remboursement déclenché. Les envois du sender localisé et les lectures Stripe n'ont été exercés **qu'en test, avec des doubles** (`vi.mock('nodemailer')`, `vi.mock('next-intl/server')` lisant les VRAIS `messages/*.json`, `vi.mock('@/lib/stripe')`) — aucun SMTP réel, aucun `refunds.retrieve` réel. (4) `lib/refund.ts` reste byte-identique (blob `e2dc42b8eb89cd3249a4497682b8bc94080ef725`) et les treize autres épingles §22 sont inchangées vs `e2f83c61`. (5) Le BLOQUEUR PRE-L11 `scripts/server/phase2-refund-gate.js` est inchangé et reste OUVERT, exprès.
+
 ## Lots suivants
 (complété lot par lot : SHA, preuves, CI, SHA déployé)
