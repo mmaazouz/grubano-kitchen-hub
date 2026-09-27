@@ -849,5 +849,29 @@ Le fondateur a demandé que le test ne dépende plus d'un dépouillement naïf d
 
 **`LedgerEntry.stripePaymentIntentId` n'appartient à aucun index** → **T-71, P2 PERFORMANCE / REVUE PRÉ-LIVE** dans `docs/ops/GO-LIVE-TICKETS.md`, avec la mesure : 11 sites de requête produit dans 8 fichiers filtrent sur cette colonne ; le modèle porte `@@unique([sourceEventId, type])` et trois index dont aucun ne la contient. Ce n'est pas un balayage de table entière (les requêtes portent aussi `type ∈ {payment, refund}`, donc le préfixe `type` de `[type, createdAt]` est attaquable), mais le coût reste proportionnel aux lignes de ces types dans toute la table. **Aucune migration dans ce lot** ; l'index proposé est additif et devra être mesuré par `EXPLAIN` avant/après, sur staging, à volume représentatif.
 
+### L9.1 — déploiement staging vérifié (2026-09-27)
+
+Commit **`7917535e13d1f0f6732dace428ed753661d68e15`**, poussé sur `develop`.
+
+| | mesuré |
+|---|---|
+| CI « Deploy → Staging » run **36327726485** | `test` **success** · `deploy` **success** — dont « Verify deployed build (version.json) », « Health check (staging @ expected SHA) » et « Client bundle integrity (served HTML → every `_next/static` asset 200) », les 21 étapes vertes |
+| `GET https://app.grubano.com/version.json` | `commit` **`7917535e13d1f0f6732dace428ed753661d68e15`** · `branch` develop · `buildDate` 2026-09-27T15:03:33Z · `ciRunId` 36327726485 |
+
+**Recensement read-only `claims-census.yml` run 36329222457**, mesuré 2026-09-27T15:21:08Z sur le build déployé :
+- `schema` = `{ready:true, clientReady:true, dbReady:true, missingClient:[], missingDb:[], why:null}` — **aucune migration, aucun regen**, et il n'en fallait aucun : ce lot n'ajoute aucune colonne (T-71 propose un INDEX, enregistré et non posé).
+- `gates` = `{claimsEnabled:false, claimsGate:"CLOSED (flag_off)", claimsSurfaceEnabled:false, claimsIntakeEnabled:false, claimsSurfaceOpen:false, claimsIntakeOpen:false, refundsEnabled:false}` — **toutes fermées**.
+- **Population réclamations INCHANGÉE** depuis L0 (`dab754d`) et à travers L5 → L9 : total **9**, `{refunded:4, refused:3, refused_final:2}`, `active:0`, `nonTerminal:3`, `closure.terminalWithoutRecord:4`, **tous les compteurs d'anomalie héritée à 0** — dont `refundedRowUnproven` **0**, la clé que le durcissement de L9 pouvait faire bouger.
+
+**Sondes externes NON AUTHENTIFIÉES du build déployé** — les surfaces que L9.1 touche :
+- **La route E3 (le seul chemin qui peut désormais envoyer l'avis restaurant sans réclamation) :** `GET` et `POST /api/admin/refunds/rows/<id>/notify` → **403 « Accès refusé »** les deux. Elle reste NON gatée par les drapeaux produit (l'argent est déjà parti, S-25) et **admin-gatée par `resolveAdmin`** : les deux 403 le prouvent de l'extérieur, sans session.
+- **La contestation, dont la réponse a changé de forme :** `POST /api/claims/<id>/contest` → **403 `{gated:true}`** (surface Claims coupée par le kill-switch). Aucun corps de réponse n'est donc atteignable sans session ET sans ouverture de surface — la projection partagée est vérifiée par les tests, pas par une sonde publique, et c'est la seule manière honnête de le dire.
+- `GET /api/orders/[id]` → **401** · `GET /api/eat/orders` → **401** · `GET /api/orders?take=5` → **401** : `refundSummary` reste derrière la session conso.
+- `GET /api/claims` → **200 `{enabled:false}`** · `GET /api/admin/claims/financial-verification` → **403** · `GET /api/admin/claims/census` → **401**.
+- Portes d'argent, intouchées : `POST /api/claims` → **403 `{gated:true}`** · `POST /api/admin/refunds/run` → **403 `{gated:true}`** · `POST /api/admin/claims/pay-approved` → **403**.
+- `GET /api/restaurants?take=1` → **200** avec des données réelles : le client Prisma du serveur est vivant (le piège « client Prisma périmé, invisible aux healthchecks 200 » est écarté par une lecture DB, pas par un 200 de page).
+
+**AUCUN EFFET ARGENT, et voici par quoi.** (1) Un déploiement n'exécute par lui-même ni migration ni script serveur, et le recensement confirme `schema.ready` sans qu'aucune colonne n'ait été ajoutée. (2) Toutes les sondes se sont arrêtées au garde AVANT toute logique — 401 sur les routes commandes, 403 sur la route E3, sur la carte admin et sur la contestation. (3) **Aucun appel AUTHENTIFIÉ contre staging** : aucune commande ni réclamation créée, **aucun avis envoyé** (ni client ni restaurant), aucun remboursement déclenché. Les lectures Stripe du code E3 et les envois du nouvel émetteur n'ont été exercés **qu'en test, avec des doubles** (`vi.mock('@/lib/stripe')`, `vi.mock('@/lib/transactional-emails')`) — aucun `stripe.refunds.retrieve` réel, aucun SMTP réel, depuis cette machine ni depuis staging. (4) `lib/refund.ts` reste byte-identique (blob `e2dc42b8eb89cd3249a4497682b8bc94080ef725`) et les treize autres épingles §29 sont inchangées vs `9c18304c`. (5) Le BLOQUEUR PRE-L11 `scripts/server/phase2-refund-gate.js` est inchangé et reste OUVERT, exprès.
+
 ## Lots suivants
 (complété lot par lot : SHA, preuves, CI, SHA déployé)
