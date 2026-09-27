@@ -424,7 +424,14 @@ describe('STATIC PINS — the 25 sites read lib/claim-flags; the operators refus
   })
 
   it('the client renders intake_closed (help page + i18n ×5) and the admin console has its surface-closed empty copy ×5', () => {
-    expect(src('app/[locale]/eat/order/[orderId]/help/page.tsx')).toMatch(/case 'intake_closed':\s*return t\('claimIntakeClosed'\)/)
+    // D′ L10 (§2) — THE SWITCH BECAME A LOOKUP, SO THE PIN FOLLOWS THE RULE. The page had a hand-written
+    // `switch` over refusal codes AND the lot was un-duplicating a second copy of the same table, so a code
+    // added to the shared map would have appeared on one surface and not the other. `intake_closed` →
+    // `claimIntakeClosed` is now asserted where the mapping lives; the page is asserted to ASK that map.
+    const help = src('app/[locale]/eat/order/[orderId]/help/page.tsx')
+    expect(help).toContain("from '@/lib/claim-refusal-labels'")
+    expect(help).toContain("t(claimRefusalKey(eligibility?.reason) ?? 'claimNotEligible')")
+    expect(src('lib/claim-refusal-labels.ts')).toMatch(/intake_closed:\s*'claimIntakeClosed'/)
     for (const loc of ['fr', 'en', 'es', 'it', 'ar']) {
       const m = JSON.parse(readFileSync(`messages/${loc}.json`, 'utf8')) as { eat: { help: Record<string, string> }; claims: { admin: Record<string, string> } }
       expect(typeof m.eat.help.claimIntakeClosed, loc).toBe('string')

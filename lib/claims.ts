@@ -184,6 +184,12 @@ export async function buildClaimScopeForOrder(input: {
  * the product sites read claimsSurfaceOpen() / claimsIntakeOpen() / claimNoticeGate() there.
  */
 export { CLAIMS_WINDOW_MAX_MS, claimsGateState, isClaimsEnabled, type ClaimsGateState } from '@/lib/claim-flags'
+// D′ L10: the submission window MOVED to lib/claim-flags (which imports nothing) so the public /legal/cgv page
+// can state the real value without pulling Prisma and Stripe into a legal route. Imported AND re-exported here
+// so this module's own window checks and every existing caller keep reading ONE definition. (A bare
+// `export { x } from` would re-export without binding the name locally — tsc caught exactly that.)
+import { claimWindowHours } from '@/lib/claim-flags'
+export { claimWindowHours }
 
 /** P0-25 (vague 1, principe fondateur) : « aucune automatisation à effet financier
  *  sans validation humaine ». La route /api/admin/claims/auto-approve (sweep
@@ -199,10 +205,6 @@ function envHours(name: string, def: number): number {
   const v = Number.parseInt(process.env[name] ?? '', 10)
   return Number.isFinite(v) && v > 0 ? v : def
 }
-/** Submission window (default 48h), anchored on Order.deliveredAt — the delivery instant, written once by
- *  the transition (D′ L6, lib/claim-eligibility E4). NEVER Order.updatedAt: that moves on every later write
- *  (a note, a reconciliation, a repair) and would silently reopen the window days after the meal. */
-export function claimWindowHours(): number { return envHours('CLAIM_WINDOW_HOURS', 48) }
 /** Restaurant response delay before auto-approval (default 24h). */
 export function claimResponseHours(): number { return envHours('CLAIM_RESPONSE_HOURS', 24) }
 /** Contest window (default 48h) — a client may contest a refusal within this delay (C2). */
@@ -354,6 +356,15 @@ export type ClaimPostRefusalReason =
   /** L7 (T-50): what the request said about its SCOPE, and what the selection said about the order. */
   | ScopeModeRefusalCode
   | ClaimAmountRefusalCode
+  /**
+   * D′ L10 (§2) — the CONTEST refusals, which had no code at all until this lot. Rendered by
+   * lib/claim-refusal-labels.CONTEST_REFUSAL_LABEL → `claims.client.contest*` in all five locales.
+   * `claim_not_found` is the 404 an owner-scoping miss produces; it says nothing about whose claim it is.
+   */
+  | 'claim_not_found'
+  | 'not_contestable'
+  | 'contest_window_over'
+  | 'already_processed'
 
 export type RefundTriggerResult =
   /** Email truthfulness hotfix (2026-09-06): `amountCents` = the ENGINE's actual succeeded cash
@@ -504,7 +515,14 @@ export async function createClaim(input: {
     return { ok: true, claim }
   } catch (err) {
     if (isP2002(err)) {
-      return { ok: false, status: 409, error: 'Une réclamation est déjà en cours pour cette commande.' }
+      // D′ L10 (§2): the CODE was missing here and only here. The sentence is byte-identical to
+      // CLAIM_REFUSAL_TEXT.active_claim, which the same function sends WITH its code a few lines above — so
+      // the loser of a unique-key race read French in every locale while the customer merely blocked read
+      // their own language. Same fact, same sentence, same code.
+      return {
+        ok: false, status: 409, reason: 'active_claim',
+        error: 'Une réclamation est déjà en cours pour cette commande.',
+      }
     }
     throw err
   }
@@ -1783,6 +1801,9 @@ async function routeClaimToArbitration(claimId: string, routedBy: 'auto_timeout'
 // (arbitrateClaim → triggerClaimRefund). decidedBy/decidedAt restent vides : la
 // décision d'argent appartient à l'admin, pas au resto. Aucun montant (partiel ou
 // intégral) n'est déclenchable depuis ce chemin.
+// D′ L10 (§2): the RESTAURANT's refusals carry codes too. The panel used to render `data.error`, i.e. this
+// module's French sentence, to a restaurateur reading the app in another language. Same two facts, same two
+// sentences, now with the codes the surface renders through lib/claim-refusal-labels.
 export async function respondToClaim(input: {
   claimId: string
   restaurantIds: string[]   // the responding operator's owned restaurants (from session)
@@ -1795,10 +1816,10 @@ export async function respondToClaim(input: {
   })
   // Anti-IDOR: a claim on another operator's order is INVISIBLE (404, not 403).
   if (!claim || !input.restaurantIds.includes(claim.restaurantId)) {
-    return { ok: false, status: 404, error: 'Réclamation introuvable.' }
+    return { ok: false, status: 404, error: 'Réclamation introuvable.', reason: 'claim_not_found' }
   }
   if (claim.status !== 'restaurant_review') {
-    return { ok: false, status: 409, error: 'Cette réclamation a déjà été traitée.' }
+    return { ok: false, status: 409, error: 'Cette réclamation a déjà été traitée.', reason: 'already_processed' }
   }
 
   if (input.action === 'refuse') {
@@ -1813,7 +1834,7 @@ export async function respondToClaim(input: {
         activeOrderKey:           null, // terminal → free the order (C2 may re-claim)
       },
     })
-    if (refused.count !== 1) return { ok: false, status: 409, error: 'Cette réclamation a déjà été traitée.' }
+    if (refused.count !== 1) return { ok: false, status: 409, error: 'Cette réclamation a déjà été traitée.', reason: 'already_processed' }
     const updated = await prisma.claim.findUnique({ where: { id: claim.id } })
     return { ok: true, claim: updated }
   }
@@ -1829,7 +1850,7 @@ export async function respondToClaim(input: {
       restaurantResponseReason: input.reason ?? null,
     },
   })
-  if (moved.count !== 1) return { ok: false, status: 409, error: 'Cette réclamation a déjà été traitée.' }
+  if (moved.count !== 1) return { ok: false, status: 409, error: 'Cette réclamation a déjà été traitée.', reason: 'already_processed' }
   const updated = await prisma.claim.findUnique({ where: { id: claim.id } })
   return { ok: true, claim: updated }
 }
@@ -1910,16 +1931,26 @@ export async function contestClaim(input: { claimId: string; consumerId: string;
     where:  { id: input.claimId },
     select: { id: true, consumerId: true, orderId: true, status: true, decidedAt: true },
   })
+  // D′ L10 (§2) — EVERY REFUSAL BELOW NOW CARRIES A CODE. They used to be French sentences and nothing
+  // else, so three localized clients echoed French prose (`toast.error(data.error || …)`) — and one of them
+  // carried a comment declaring that the project rule. The worst of them interpolated a NUMBER into an
+  // untranslatable string (« Le délai de contestation (48 h) est dépassé »), which no locale could render and
+  // which also put a figure in front of a customer discussing money. The sentence stays — it is read in logs
+  // and by an operator looking at a 409 — but the CODE is what the surface renders.
+  //
   // Owner-scoping: a claim that is not the caller's is INVISIBLE (404 — no IDOR).
   if (!claim || claim.consumerId !== input.consumerId) {
-    return { ok: false, status: 404, error: 'Réclamation introuvable.' }
+    return { ok: false, status: 404, error: 'Réclamation introuvable.', reason: 'claim_not_found' }
   }
   if (claim.status !== 'refused') {
-    return { ok: false, status: 409, error: 'Cette réclamation ne peut pas être contestée.' }
+    return { ok: false, status: 409, error: 'Cette réclamation ne peut pas être contestée.', reason: 'not_contestable' }
   }
   const anchor = claim.decidedAt?.getTime() ?? 0
   if (!anchor || Date.now() - anchor > claimContestHours() * 3600 * 1000) {
-    return { ok: false, status: 409, error: `Le délai de contestation (${claimContestHours()} h) est dépassé.` }
+    return {
+      ok: false, status: 409, reason: 'contest_window_over',
+      error: `Le délai de contestation (${claimContestHours()} h) est dépassé.`,
+    }
   }
   // CAS refused → arbitration (count===1 winner); re-acquire activeOrderKey (active again).
   try {
@@ -1927,10 +1958,14 @@ export async function contestClaim(input: { claimId: string; consumerId: string;
       where: { id: claim.id, status: 'refused' },
       data:  { status: 'arbitration', contestedAt: new Date(), contestReason: input.reason ?? null, activeOrderKey: claim.orderId },
     })
-    if (moved.count !== 1) return { ok: false, status: 409, error: 'Cette réclamation ne peut plus être contestée.' }
+    if (moved.count !== 1) {
+      return { ok: false, status: 409, error: 'Cette réclamation ne peut plus être contestée.', reason: 'not_contestable' }
+    }
   } catch (err) {
     // A newer active claim already holds activeOrderKey for this order → cannot re-activate.
-    if (isP2002(err)) return { ok: false, status: 409, error: 'Une réclamation active existe déjà pour cette commande.' }
+    if (isP2002(err)) {
+      return { ok: false, status: 409, error: 'Une réclamation active existe déjà pour cette commande.', reason: 'active_claim' }
+    }
     throw err
   }
   // D′ L9.1 — THE CONTEST RESPONSE IS A CLIENT PAYLOAD, so it goes through the SHARED projection.
@@ -1943,7 +1978,7 @@ export async function contestClaim(input: { claimId: string; consumerId: string;
   // A contest has just re-opened the claim, so no refund row is settled and none is read: the row facts are
   // passed as « no row, readable » and `customerClaimStatus` derives the state from the claim alone.
   const updated = await prisma.claim.findUnique({ where: { id: claim.id } })
-  if (!updated) return { ok: false, status: 409, error: 'Cette réclamation a déjà été traitée.' }
+  if (!updated) return { ok: false, status: 409, error: 'Cette réclamation a déjà été traitée.', reason: 'already_processed' }
   let restaurantName: string | null = null
   try {
     const r = await prisma.restaurant.findUnique({ where: { id: updated.restaurantId }, select: { name: true } })

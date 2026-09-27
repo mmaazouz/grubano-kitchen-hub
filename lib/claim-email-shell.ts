@@ -17,10 +17,21 @@ export const esc = (s: string): string =>
 
 /**
  * An amount in euros, in the RECIPIENT's locale. Never `.toFixed(2)`, which put a decimal POINT in FR/ES/IT
- * e-mails (found in an earlier review). The five locale codes are BCP-47 tags.
+ * e-mails (found in an earlier review).
+ *
+ * D′ L10 — THE TAG IS RESOLVED, NOT PASSED THROUGH, and Arabic is why. A bare `'ar'` makes Intl choose a
+ * region, and it chose one that formats with a decimal POINT: an Arabic recipient read « 12.50 € » in the
+ * e-mail while every Arabic SCREEN of the app showed « 12,50 € », because lib/format-money resolves `ar` to
+ * `ar-MA`. Two figures for one amount, from one refund. The same map is used here so the e-mail and the screen
+ * cannot disagree — and an unknown tag falls back to `fr-FR` deterministically rather than to whatever ICU
+ * version the host happens to ship. Found by this lot's adversarial review.
  */
+const EMAIL_INTL_LOCALE: Record<string, string> = {
+  fr: 'fr-FR', en: 'en-US', es: 'es-ES', it: 'it-IT', ar: 'ar-MA',
+}
 export const euros = (locale: string, cents: number): string =>
-  new Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR' }).format(cents / 100)
+  new Intl.NumberFormat(EMAIL_INTL_LOCALE[locale] ?? 'fr-FR', { style: 'currency', currency: 'EUR' })
+    .format(cents / 100)
 
 /**
  * The sober local template (the `renderNudgeHtml` / `admin-alerts` pattern — the rail's own `shell()` is

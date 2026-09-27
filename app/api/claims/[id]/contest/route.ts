@@ -25,6 +25,14 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   if (!parsed.success) return NextResponse.json({ error: 'Requête invalide.' }, { status: 400 })
 
   const result = await contestClaim({ claimId: params.id, consumerId: token.sub, reason: parsed.data.reason })
-  if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
+  // D′ L10 (§2): the CODE travels beside the sentence, so the client renders it in the customer's own
+  // language. The sentence stays in the payload for logs and for an operator reading a 409 — no surface
+  // displays it any more (lib/claim-refusal-labels + a test that greps for `data.error`).
+  if (!result.ok) {
+    return NextResponse.json(
+      result.reason ? { error: result.error, reason: result.reason } : { error: result.error },
+      { status: result.status },
+    )
+  }
   return NextResponse.json({ claim: result.claim })
 }

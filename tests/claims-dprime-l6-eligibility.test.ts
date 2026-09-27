@@ -306,11 +306,21 @@ describe('D′ L6 — both functions ask the ONE list, and nothing anchors on up
     // Without this the customer read the server's French sentence whatever their locale — the code existed
     // and was dropped at the boundary.
     expect(route).toContain('result.reason ? { error: result.error, reason: result.reason }')
+    // D′ L10 (§2) — THE MAP MOVED, SO THE PIN FOLLOWS IT. The code→key table left this page for
+    // lib/claim-refusal-labels, because components/claims/ClaimSection (the /eat/track widget) was rendering
+    // the server's FRENCH sentence and two copies of one table drift invisibly — a missing entry does not
+    // throw, it silently falls back. Asserting `REFUSAL_LABEL[code]` here would now pass only while a SECOND
+    // copy existed in the page, i.e. the pin would reward exactly the duplication the move removes.
     const page = read('app/[locale]/eat/order/[orderId]/help/page.tsx')
-    expect(page).toMatch(/REFUSAL_LABEL\[code\]/)
-    // Every code the server can send has a label on the page.
+    expect(page).toContain("from '@/lib/claim-refusal-labels'")
+    expect(page).toContain('claimRefusalKey(data?.reason)')
+    // …and the FALLBACK is the localized generic, never the server's sentence — that was the defect.
+    expect(page).toContain("setSubmitError(localized ? t(localized) : t('claimError'))")
+    expect(page).not.toMatch(/setSubmitError\([^)]*data\?\.error/)
+    // Every code the server can send has a label, where the labels now live.
+    const labels = read('lib/claim-refusal-labels.ts')
     for (const code of ['not_owner', 'not_paid', 'not_delivered', 'window_expired', 'active_claim', 'no_refundable_amount']) {
-      expect(page, code).toMatch(new RegExp(`${code}:\\s*'claim`))
+      expect(labels, code).toMatch(new RegExp(`${code}:\\s*'claim`))
     }
   })
 

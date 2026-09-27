@@ -104,8 +104,14 @@ export async function POST(req: NextRequest) {
   })
   if (!result.ok) {
     // D′ L6 (spec v2 §7.1): forward the eligibility CODE beside the sentence. The client renders the code in
-    // its own locale (REFUSAL_LABEL on the help page) and falls back to `error` when there is none — so a
-    // refusal that is not an eligibility rule still reads as a sentence rather than as a bare code.
+    // its own locale.
+    //
+    // D′ L10 (§2) — TWO THINGS IN THIS COMMENT WERE OUT OF DATE, and it is the first thing a reader of this
+    // payload meets. (1) The map is no longer `REFUSAL_LABEL` on the help page: it is `lib/claim-refusal-labels`,
+    // shared with components/claims/ClaimSection, which was rendering the FRENCH sentence to every locale.
+    // (2) The client no longer « falls back to `error` » — that fallback WAS the defect. An unmapped code now
+    // degrades to a LOCALIZED generic. `error` stays in the payload for logs and for an operator reading a 409;
+    // no surface displays it, and a test greps every claims surface to keep it that way.
     return NextResponse.json(
       result.reason ? { error: result.error, reason: result.reason } : { error: result.error },
       { status: result.status },

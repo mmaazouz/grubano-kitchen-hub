@@ -758,12 +758,19 @@ describe('R — the codes travel, and the client can say them in five languages'
     }
   })
 
-  it('the help page maps exactly these codes, so a code with no label cannot appear silently', () => {
-    const src = require('node:fs').readFileSync('app/[locale]/eat/order/[orderId]/help/page.tsx', 'utf8') as string
-    const block = src.slice(src.indexOf('const REFUSAL_LABEL'), src.indexOf('}', src.indexOf('const REFUSAL_LABEL')))
+  it('the SHARED map holds exactly these codes, so a code with no label cannot appear silently', () => {
+    // D′ L10 (§2): the table moved out of the page into lib/claim-refusal-labels, so the help page and the
+    // /eat/track widget answer one code the same way. And the four codes this test's own note called « left
+    // UNMAPPED on purpose » now have keys in all five locales — until L10 their fallback was the server's
+    // French sentence, which is the one thing §2 forbids.
+    const src = require('node:fs').readFileSync('lib/claim-refusal-labels.ts', 'utf8') as string
+    const block = src.slice(src.indexOf('export const CLAIM_REFUSAL_LABEL'), src.indexOf('})', src.indexOf('export const CLAIM_REFUSAL_LABEL')))
     for (const [code, key] of Object.entries(MAPPED)) {
       expect(block, code).toContain(code)
       expect(block, key).toContain(key)
+    }
+    for (const code of ['invalid_scope', 'reason_not_selectable', 'items_not_allowed', 'amount_not_allowed']) {
+      expect(block, `${code} must now be mapped`).toContain(code)
     }
   })
 

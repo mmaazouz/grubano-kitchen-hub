@@ -145,6 +145,10 @@ describe('POST /api/admin/refunds/run — LOT C email client best-effort', () =>
     const res = await post({ token: 'secret-cron' })
     expect(res.status).toBe(200)
     expect(emailMock).toHaveBeenCalledTimes(1)
+    // D′ L10 (§6): the confirmation is localized, so the call gained the recipient's LANGUAGE and the PUBLIC
+    // order reference. `locale` is `undefined` here because this fixture's Operator has no `locale` — which is
+    // the honest state of the column today (nothing writes it; see T-72), and the sender treats absent as 'fr',
+    // exactly the behaviour this assertion pinned before the lot.
     expect(emailMock).toHaveBeenCalledWith({
       to:             'lea@x.fr',
       customerName:   'Léa',
@@ -152,7 +156,13 @@ describe('POST /api/admin/refunds/run — LOT C email client best-effort', () =>
       refundedCents:  2500,
       partial:        true,               // remainingRefundableCents 2500 > 0
       dedupeKey:      'refund:re_1', // T-47: identity, not amount
+      locale:         undefined,
+      orderRef:       'GR-O1',
     })
+    // …and the recipient lookup now asks for the language, so a caller CAN supply one
+    expect(db.operator.findUnique).toHaveBeenCalledWith(expect.objectContaining({
+      select: { email: true, name: true, locale: true },
+    }))
   })
 
   it('échec de l\'email → JAMAIS bloquant : le refund reste un 200 complet', async () => {

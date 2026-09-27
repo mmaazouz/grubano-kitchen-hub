@@ -538,3 +538,97 @@ describe('L9.1 — the contest response leaks nothing, proven with sentinels', (
     expect(body).not.toContain('return { ok: true, claim: updated }')
   })
 })
+
+// ── D′ L10 — THE « refund established » GATE WAS A TAUTOLOGY ══════════════════════════════════════════
+describe('L10 — the loyalty sentence follows the MONEY, and the pending variants are reachable', () => {
+  const LOCALES = ['fr', 'en', 'es', 'it', 'ar'] as const
+  const PAGE = 'app/[locale]/eat/track/[orderId]/page.tsx'
+  const src = () => readFileSync(PAGE, 'utf8').replace(/\r\n/g, '\n')
+
+  it('the gate reads the money and ONLY the money', () => {
+    const s = src()
+    // The definition, exactly: two money terms, nothing else.
+    expect(s).toContain('const refundEstablished = refundedCents > 0 || refundOtherCents > 0')
+    // The loyalty facts are GONE from it. That is the defect: both use sites are inside
+    // `pointsAllReversed && (…)` and `pointsRestored > 0 && (…)`, so including them made the disjunct always
+    // true and the false branch unreachable — a clawback is a CONSEQUENCE of a refund, never its proof.
+    const line = s.split('\n').find((l) => l.startsWith('  const refundEstablished'))!
+    expect(line).not.toContain('pointsAllReversed')
+    expect(line).not.toContain('pointsRestored')
+    // THREE use sites, not two. The first version of this fix's own comment said two, and the adversarial
+    // review caught it: the « points conservés » box is a third reader, it was NOT a tautology there
+    // (`pointsKept > 0` makes `pointsAllReversed` false), and its behaviour DOES change — a loyalty
+    // restoration alone could make it say « après le remboursement » with no money proven. Counting the sites
+    // is what keeps the claim honest, so the count is asserted.
+    const uses = (s.match(/refundEstablished/g) ?? []).length - 1   // minus the definition
+    expect(uses, 'the gate has THREE readers on this page').toBe(3)
+    expect(s).toContain("? t('pointsKeptAfterRefund'")
+    expect(s).toContain(": t('pointsKeptPending'")
+  })
+
+  it('the THIRD site: a loyalty RESTORATION alone no longer claims the refund happened', () => {
+    // The old formula reduced, at that site, to `money || pointsRestored > 0` — so a give-back with no proven
+    // refund produced « points conservés après le remboursement ». Reconstructed to demonstrate the change.
+    const before = (m: { refundedCents: number; refundOtherCents: number; pointsAllReversed: boolean; pointsRestored: number }) =>
+      m.refundedCents > 0 || m.refundOtherCents > 0 || m.pointsAllReversed || m.pointsRestored > 0
+    const now = (m: { refundedCents: number; refundOtherCents: number }) => m.refundedCents > 0 || m.refundOtherCents > 0
+    // partly kept points (so pointsAllReversed is false), a restoration, and NO money proven
+    const w = { refundedCents: 0, refundOtherCents: 0, pointsAllReversed: false, pointsRestored: 3 }
+    expect(before(w), 'the old gate said the refund was established').toBe(true)
+    expect(now(w), 'the new gate asks the money and says no').toBe(false)
+    // …and with money proven, both agree
+    const m2 = { refundedCents: 500, refundOtherCents: 0, pointsAllReversed: false, pointsRestored: 3 }
+    expect(before(m2)).toBe(true)
+    expect(now(m2)).toBe(true)
+  })
+
+  it('NEGATIVE CONTROL — the old definition really was a tautology at both use sites', () => {
+    // Reconstructed here so the claim is demonstrated, not asserted. `established` is the OLD formula.
+    const old = (m: { refundedCents: number; refundOtherCents: number; pointsAllReversed: boolean; pointsRestored: number }) =>
+      m.refundedCents > 0 || m.refundOtherCents > 0 || m.pointsAllReversed || m.pointsRestored > 0
+    // the exact state the gate exists for: points clawed back, our row still pending, no money proven
+    const w = { refundedCents: 0, refundOtherCents: 0, pointsAllReversed: true, pointsRestored: 0 }
+    expect(old(w)).toBe(true)                                   // ← the false branch could never run
+    expect(w.refundedCents > 0 || w.refundOtherCents > 0).toBe(false)   // …while the money says otherwise
+    // same for the restored-points site
+    const w2 = { refundedCents: 0, refundOtherCents: 0, pointsAllReversed: false, pointsRestored: 5 }
+    expect(old(w2)).toBe(true)
+    expect(w2.refundedCents > 0 || w2.refundOtherCents > 0).toBe(false)
+  })
+
+  it('the four loyalty sentences exist in all five locales, and the PAST-TENSE ones are the gated branch', () => {
+    for (const l of LOCALES) {
+      const tr = JSON.parse(readFileSync(`messages/${l}.json`, 'utf8')).eat.track
+      for (const k of ['pointsAllReversedNote', 'pointsAllReversedPendingNote', 'pointsRestoredNote', 'pointsRestoredPendingNote']) {
+        expect(typeof tr[k], `${l}.eat.track.${k}`).toBe('string')
+        expect(tr[k].trim().length).toBeGreaterThan(0)
+      }
+      // the PENDING variants must not claim the refund happened
+      expect(tr.pointsAllReversedPendingNote, `${l} pending claims a past refund`).not.toMatch(
+        /après le remboursement|after the refund|tras el reembolso|dopo il rimborso|بعد رد المبلغ/i)
+    }
+    // FR is the reference: the gated one names the refund as done, the pending one does not
+    const fr = JSON.parse(readFileSync('messages/fr.json', 'utf8')).eat.track
+    expect(fr.pointsAllReversedNote).toContain('après le remboursement')
+    expect(fr.pointsAllReversedPendingNote).not.toContain('après le remboursement')
+  })
+
+  it('the « recorded » sentence no longer contradicts the « en cours » widget on the same screen', () => {
+    // Reachable state: a Refund row left (pending, re_A) while a ledger `refund` line for re_A exists. The
+    // page put that amount in `unattributedCents` and said « a été enregistré » (our record is closed) three
+    // rows above ClaimSection's « Remboursement en cours » (our row is in flight). Both were true of
+    // different facts and contradictory to a customer. The confirmation is now attributed to the PROVIDER,
+    // which is true in both sub-cases — money of unknown product origin, or our own row not yet finalised.
+    for (const l of LOCALES) {
+      const m = JSON.parse(readFileSync(`messages/${l}.json`, 'utf8'))
+      for (const v of [m.eat.track.refundRecorded, m.eat.refund.refundRecorded]) {
+        expect(typeof v, l).toBe('string')
+        expect(v, `${l} still asserts OUR record is closed`).not.toMatch(
+          /a été enregistré|has been recorded|ha sido registrado|è stato registrato|تم تسجيل/i)
+      }
+    }
+    // and the tags the app renders are intact
+    expect(JSON.parse(readFileSync('messages/fr.json', 'utf8')).eat.track.refundRecorded).toContain('<m>{amount}</m>')
+    expect(JSON.parse(readFileSync('messages/fr.json', 'utf8')).eat.refund.refundRecorded).toContain('<amt>{amount}</amt>')
+  })
+})

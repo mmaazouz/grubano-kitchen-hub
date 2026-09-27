@@ -56,6 +56,11 @@ export default async function LegalLayout({
             <Link href="/legal/mentions-legales" className="transition-colors hover:text-grubano-primary">
               {t('nav.mentions')}
             </Link>
+            {/* D′ L10 (D-8): the CGV join the legal nav. `@/navigation`'s Link carries the locale, so the
+                URL is written ONCE and reachable in all five locales — never five hardcoded paths. */}
+            <Link href="/legal/cgv" className="transition-colors hover:text-grubano-primary">
+              {t('nav.cgv')}
+            </Link>
             <Link href="/legal/confidentialite" className="transition-colors hover:text-grubano-primary">
               {t('nav.confidentialite')}
             </Link>

@@ -30,6 +30,7 @@
 // client choose which claims came back, is gone.
 
 import { useState, useEffect, useCallback } from 'react'
+import { respondRefusalKey } from '@/lib/claim-refusal-labels'
 import { useTranslations, useLocale } from 'next-intl'
 import { Button, useToast } from '@/components/design-system'
 import { formatEuros } from '@/lib/format-money'
@@ -96,7 +97,13 @@ export default function RestaurantClaimsPanel() {
         body:    JSON.stringify({ action, reason }),
       })
       const data = await res.json().catch(() => ({}))
-      if (!res.ok) { toast.error(data.error || t('client.errorGeneric')); return }
+      if (!res.ok) {
+        // D′ L10 (§2): the CODE decides the sentence. `data.error` is French — for logs and for an operator
+        // reading a 409 — and is never shown; an unmapped code degrades to the localized generic.
+        const key = respondRefusalKey((data as { reason?: unknown } | null)?.reason)
+        toast.error(key ? t(`restaurant.${key}`) : t('client.errorGeneric'))
+        return
+      }
       if (action === 'refuse') toast.success(t('restaurant.refused'))
       else toast.success(data.refund?.state === 'pending' ? t('restaurant.refundPending') : t('restaurant.accepted'))
       setRefusingId(null); setRefuseReason('')

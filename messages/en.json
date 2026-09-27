@@ -2962,7 +2962,6 @@
     "help": {
       "title": "Help",
       "back": "Back",
-      "online": "● Online",
       "searchPlaceholder": "Search help…",
       "problemLabel": "An issue with this order?",
       "items": "{count, plural, =0 {0 items} one {# item} other {# items}}",
@@ -2977,17 +2976,12 @@
       "optMissingSub": "Request a partial refund",
       "optLateTitle": "My order is late",
       "optLateSub": "See where the courier is",
-      "optCancelTitle": "Cancel the order",
-      "optCancelSub": "Possible before preparation",
       "topicsLabel": "Help topics",
       "topicPayments": "Payments & refunds",
       "topicAccount": "Account & sign-in",
       "topicRewards": "Points & rewards",
       "contactLabel": "Still need help?",
-      "contactChat": "Chat",
-      "contactChatEta": "~2 min",
       "contactEmail": "Email",
-      "contactEmailEta": "< 24 h",
       "refundTitle": "Missing item",
       "refundWhich": "Which items are a problem?",
       "refundNoItems": "No items on this order.",
@@ -3019,12 +3013,6 @@
       "claimInReview": "Claim under review.",
       "soonBadge": "soon",
       "supportTitle": "Support",
-      "chatToday": "Today · 19:48",
-      "chatAgent1": "Hi 👋 I can see your order {ref}. How can I help?",
-      "chatMe1": "An item was missing from my bag.",
-      "chatAgent2": "I'm passing your request to the team right now. Sorry for the trouble!",
-      "chatAiSuggest": "AI-suggested replies",
-      "chatPlaceholder": "Your message…",
       "signInTitle": "Sign in to get help with this order",
       "signInCta": "Sign in",
       "refundOffTitle": "Refunds — human support",
@@ -3040,7 +3028,11 @@
       "claimQtyOverPurchased": "The quantity claimed is more than the quantity ordered.",
       "claimAmountRequired": "Enter the amount you are claiming.",
       "claimAmountOverCeiling": "The amount requested is more than what can still be refunded on this order.",
-      "claimNoRefundableAmount": "This order has no refundable amount left: its total is already covered by a refund that is either completed or still being processed. Write to us if that looks wrong."
+      "claimNoRefundableAmount": "This order has no refundable amount left: its total is already covered by a refund that is either completed or still being processed. Write to us if that looks wrong.",
+      "claimInvalidScope": "Invalid claim scope. Start again from your order.",
+      "claimReasonNotSelectable": "This reason is not one a customer files: a paid cancellation is handled by Grubano.",
+      "claimItemsNotAllowed": "This scope is not about items: remove the item selection.",
+      "claimAmountNotAllowed": "This scope does not take an amount you enter yourself: choose “a specific amount” to enter one."
     },
     "home": {
       "seeAll": "See all",
@@ -3476,7 +3468,7 @@
       "refundedLabel": "Refunded",
       "refundedTotal": "Total refunded",
       "refundInProgress": "Refund in progress",
-      "refundRecorded": "A refund of <m>{amount}</m> has been recorded on this order.",
+      "refundRecorded": "A refund of <m>{amount}</m> is confirmed with our payment provider on this order.",
       "refundedInFullNote": "This total is the amount charged when the order was placed; it has been refunded in full.",
       "refundedNote": "<m>{amount}</m> has been refunded to you on this order.",
       "refundPendingNote": "A refund of <m>{amount}</m> is in progress on this order.",
@@ -4186,7 +4178,7 @@
       "refundedTotal": "This order has been refunded · <amt>{amount}</amt>.",
       "refundedPartial": "Partial refund of <amt>{amount}</amt> on this order.",
       "refundPending": "Refund of <amt>{amount}</amt> in progress.",
-      "refundRecorded": "A refund of <amt>{amount}</amt> has been recorded on this order.",
+      "refundRecorded": "A refund of <amt>{amount}</amt> is confirmed with our payment provider on this order.",
       "stateLabel": "Refund"
     }
   },
@@ -5662,63 +5654,6 @@
     "errStart": "Could not open the Stripe page — please retry.",
     "toastActivated": "Payouts activated ✓"
   },
-  "financeRail": {
-    "sectionTitle": "Payments & finances",
-    "periodDay": "Today",
-    "periodWeek": "7 days",
-    "periodMonth": "30 days",
-    "grossLabel": "Collected",
-    "feeLabel": "Grubano commission",
-    "netLabel": "Net paid out",
-    "opsLabel": "Operations",
-    "refundsLabel": "Refunds",
-    "refundsValue": "{count} · {amount}",
-    "refundRateLabel": "Refund rate",
-    "opsTitle": "Latest operations",
-    "opsEmpty": "No operations over the period. Collected payments will appear here.",
-    "loadMore": "Show more",
-    "typePayment": "Payment",
-    "typeDepositCapture": "No-show penalty",
-    "typeRefund": "Refund",
-    "typeAdjustment": "Adjustment",
-    "badgeRefundedPartial": "Partially refunded",
-    "badgeRefundedFull": "Refunded",
-    "badgePenaltyRefunded": "Penalty refunded",
-    "routedDirect": "Direct payout",
-    "tableLabel": "Table {name}",
-    "commissionShort": "incl. commission {amount}",
-    "btnRefund": "Refund",
-    "btnRefundPenalty": "Refund the penalty",
-    "modalTitle": "Refund this payment?",
-    "modalPenaltyTitle": "Refund the penalty?",
-    "modalFullOption": "Full refund — {amount}",
-    "modalPartialOption": "Partial amount",
-    "modalAmountLabel": "Amount to refund (€)",
-    "modalRemaining": "Refundable remaining: {amount}",
-    "modalRecap": "The customer will be refunded {amount}.",
-    "modalWarnRetained": "The refund will be deducted from your upcoming payouts.",
-    "modalWarnDelay": "The customer will be refunded within 5 to 10 business days.",
-    "modalConfirm": "Confirm the refund",
-    "modalCancel": "Cancel",
-    "errAmountInvalid": "Invalid amount.",
-    "errGeneric": "Action failed — please retry.",
-    "errLoad": "Could not load the financial data.",
-    "invoicesTitle": "Commission invoices",
-    "invoicesEmpty": "No invoice yet — the monthly invoice is issued at the start of the next month.",
-    "invoiceOpen": "View",
-    "htLabel": "Excl. VAT",
-    "tvaLabel": "VAT",
-    "ttcLabel": "Incl. VAT",
-    "ratesTitle": "Your commission rates",
-    "ratesDesc": "All-inclusive rates (card fees and VAT included), taken at the source on every payment.",
-    "rateDinein": "Dine-in / table bill",
-    "ratePickup": "Pickup",
-    "rateDelivery": "Delivery",
-    "rateReservation": "Reservation",
-    "rateFreeBadge": "Founders offer: 0% until {date}",
-    "rateFree": "Free",
-    "invoicePdf": "PDF"
-  },
   "auth": {
     "reset": {
       "forgotTitle": "Forgot password",
@@ -7088,7 +7023,8 @@
     "nav": {
       "mentions": "Legal notice",
       "confidentialite": "Privacy policy",
-      "cookies": "Cookies"
+      "cookies": "Cookies",
+      "cgv": "Terms of sale"
     },
     "mentions": {
       "title": "Legal notice",
@@ -7196,6 +7132,45 @@
       "purposeStripe": "Fraud prevention — set by js.stripe.com only when a payment module is displayed.",
       "manageTitle": "Managing cookies",
       "manageBody": "Strictly necessary cookies cannot be disabled without preventing the site from working. You can, however, configure your browser to block or delete them."
+    },
+    "cgv": {
+      "draftBanner": "⚠️ Terms of sale being finalised — this document has not yet been reviewed by legal counsel and the company details are not all final yet.",
+      "title": "Terms of sale",
+      "intro": "These terms describe the Grubano service, how an order proceeds and how a claim is handled. They are provided for information and restrict no right that the law grants you.",
+      "scopeTitle": "1. Purpose and scope",
+      "scopeBody": "These terms apply to orders placed by a customer through the Grubano service with a partner restaurant. They supplement the legal notice and the privacy policy without replacing them.",
+      "editorTitle": "2. Publisher of the service",
+      "editorBody": "The publisher, the publication director and the hosting provider are identified in the legal notice.",
+      "editorLink": "See the legal notice",
+      "serviceTitle": "3. The service",
+      "serviceBody": "Grubano presents partner restaurants and their menus, passes the order to the chosen restaurant, collects the payment and follows the order’s progress until it is handed over to the customer. The preparation of the dishes and their conformity fall to the restaurant; Grubano’s role covers the order, the payment and the processing of claims.",
+      "orderTitle": "4. Order and prices",
+      "orderBody": "The summary shown before payment sets out the items selected, the total to pay and any fees. Prices are shown in euros, inclusive of all taxes. An order is passed to the restaurant only once the payment has been authorised.",
+      "paymentTitle": "5. Payment",
+      "paymentBody": "Payment is handled by a payment provider; Grubano does not keep card numbers. Depending on the method chosen, the order may be charged immediately or be subject to a prior authorisation, for example a guarantee hold for a table reservation.",
+      "claimsTitle": "6. A problem with an order, claims and refunds",
+      "claimsIntro": "If an order does not match what you expected, you can report it from the service. The self-service claim form is being opened gradually; while it is not yet open, a request addressed to our team is examined in the same way. The process is as follows:",
+      "claimsSelfService": "You can file a claim from your order, without any prior written exchange, as soon as the order has been delivered or handed over.",
+      "claimsWindow": "The claim form stays open for {hours} hours from the moment the order is handed over. This time limit is specific to how the service works.",
+      "claimsMaxAge": "Beyond {days} days after the order, the claim form is no longer offered.",
+      "claimsSupport": "Once those time limits have passed, or if your order does not fall within this framework, you can still write to us: a request received through another channel is examined in the same way.",
+      "claimsReview": "The claim is first put to the restaurant concerned. If it is refused, you can ask Grubano to arbitrate; Grubano may also review certain cases directly.",
+      "claimsAmount": "Grubano may decide on an amount different from the one requested, in particular where the claim concerns only part of the order. The amount decided is shown in your claim.",
+      "claimsApprovedNotPaid": "A claim that is approved means the decision has been taken: the refund is then carried out separately by our team. An approval is therefore not a refund already made.",
+      "claimsBank": "When a refund is issued, it is sent back to the payment method used for the order. How long it then takes to appear on your account depends on your bank and your payment provider, and is outside Grubano’s control.",
+      "claimsPartial": "A refund may be full or partial, according to the decision taken.",
+      "claimsHistory": "The status of your claims, and of the refunds relating to them, can be seen from your account.",
+      "claimsCancelled": "An order that has been paid and then cancelled may give rise to a refund with nothing for you to do; if it does not, write to us and we will examine it.",
+      "claimsLoyalty": "Where part of an order is refunded, the loyalty points earned on that order are adjusted accordingly.",
+      "rightsTitle": "7. Your rights remain in full",
+      "rightsBody": "The time limits and arrangements described above organise how the service works; they are not a limitation of the rights the law recognises for you, and they do not amount to a waiver of those rights. The statutory guarantees applicable to your order, and any mandatory provision of consumer law, apply regardless of this document. The expiry of a time limit specific to the service therefore does not deprive you of the remedies the law provides.",
+      "disputesTitle": "8. Claims and dispute resolution",
+      "disputesBody": "Any claim may be addressed to us using the contact details given in the legal notice. Recourse to a consumer mediator and the available means of dispute resolution are set out in the legal notice.",
+      "dataTitle": "9. Personal data",
+      "dataBody": "The processing of your data, how long it is kept and how to exercise your rights are described in the privacy policy.",
+      "dataLink": "See the privacy policy",
+      "changesTitle": "10. Changes to these terms",
+      "changesBody": "These terms may change as the service changes. The version that applies to an order is the one published on this page at the time the order is placed."
     }
   },
   "claims": {
@@ -7269,7 +7244,12 @@
       "contestSuccess": "Contest submitted: the claim has been passed to Grubano for arbitration.",
       "arbitrationInfo": "This case is being reviewed by Grubano.",
       "refusalReasonShown": "Restaurant’s reason for refusal",
-      "grubanoDecisionReason": "Reason for Grubano’s decision"
+      "grubanoDecisionReason": "Reason for Grubano’s decision",
+      "contestNotFound": "This claim cannot be found.",
+      "contestNotContestable": "This claim cannot be contested.",
+      "contestWindowOver": "The window for contesting this decision has passed. You can still write to us.",
+      "contestAlreadyProcessed": "This claim has already been processed.",
+      "contestActiveClaim": "A claim is already in progress for this order."
     },
     "restaurant": {
       "title": "Customer claims",
@@ -7288,7 +7268,7 @@
       "confirmRefuse": "Confirm refusal",
       "accepted": "Claim accepted — forwarded to Grubano for the refund decision.",
       "refused": "Claim refused.",
-      "refundPending": "Accepted — refund pending activation.",
+      "refundPending": "Accepted — refund pending.",
       "processing": "Processing…",
       "responseNote": "An unanswered claim stays pending: respond as soon as possible. The customer sees your decision from their order and can contest a refusal with Grubano.",
       "status": {
@@ -7326,7 +7306,9 @@
       "financeNote": "Amounts taken from our confirmed accounting entries. Grubano fees returned cover the commission and, where applicable, the other fees withheld on the order.",
       "financeUnconfirmed": "No confirmed financial effect yet.",
       "financeFee": "Grubano fees returned",
-      "previouslyClaimedIncomplete": "The list of earlier claims is incomplete: a missing line does not mean there is none."
+      "previouslyClaimedIncomplete": "The list of earlier claims is incomplete: a missing line does not mean there is none.",
+      "respondNotFound": "This claim cannot be found.",
+      "respondAlreadyProcessed": "This claim has already been processed."
     },
     "admin": {
       "title": "Claim arbitration",
@@ -8878,8 +8860,8 @@
       "body": "Grubano ruled in your favour: a refund of {euros} has been issued on order {ref} to your payment method."
     },
     "approved": {
-      "subject": "Claim {ref}: accepted by Grubano",
-      "title": "Claim accepted",
+      "subject": "Claim {ref}: approved by Grubano",
+      "title": "Claim approved",
       "body": "A refund of {euros} has been approved by Grubano for order {ref}. It will be carried out separately by our team. Once issued, how long it takes to appear on your account depends on your bank."
     },
     "withdrawn": {
@@ -8932,6 +8914,15 @@
       "lineNet": "Confirmed net impact for your restaurant",
       "next": "These amounts come from our confirmed accounting entries; Grubano fees returned cover the commission and, where applicable, the other fees withheld on the order. For any question, reply to this e-mail quoting reference {ref}.",
       "lineFee": "Grubano fees returned"
+    },
+    "bankNoteIssued": "How long it takes to appear on your account depends on your bank.",
+    "refundConfirmation": {
+      "subject": "Your refund is confirmed — {resto}",
+      "subjectPartial": "Your partial refund is confirmed — {resto}",
+      "title": "Refund confirmed",
+      "body": "Your refund of {euros} is confirmed: this amount has been sent back to the payment method used for your order at {resto}.",
+      "bodyPartial": "Your partial refund of {euros} is confirmed: this amount has been sent back to the payment method used for your order at {resto}.",
+      "refLine": "Order {ref}."
     }
   }
 }

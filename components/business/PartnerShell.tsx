@@ -132,6 +132,7 @@ export default function PartnerShell({ mode, nav, cta, exitHref, steps, width, f
                 <Link href="/legal/mentions-legales">{tLanding('footerLegal')}</Link>
                 <Link href="/legal/confidentialite">{tLegal('nav.confidentialite')}</Link>
                 <Link href="/legal/cookies">{tLegal('nav.cookies')}</Link>
+                <Link href="/legal/cgv">{tLegal('nav.cgv')}</Link>
                 <a href="mailto:contact@grubano.com?subject=Grubano%20partenaire">{t('contact')}</a>
                 {/* Product behaviour preserved: the language switcher is not in the
                     reference but exists on the live landing — kept in the footer row. */}

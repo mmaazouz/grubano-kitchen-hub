@@ -458,6 +458,13 @@ export async function sendClaimDecisionEmail(p: {
       + (p.reason ? `<p style="font-size:13px;color:#6b7280">${esc(t('reasonLabel'))} ${esc(p.reason)}</p>` : '')
       // H12: the contest sentence is conditional (the 48 h window or a closed lease can withhold it) and carries the reference.
       + (p.decision === 'refused' ? `<p style="font-size:13px;color:#6b7280">${esc(t('refused.contest', { ref }))}</p>` : '')
+      // D′ L10 (§7, S-21 second half) — THE BANK CLAUSE BELONGS AFTER THE MONEY, and it was on the wrong
+      // e-mail. Measured across all five locales: the ONLY claim string carrying it was `approved.body` — a
+      // notice sent when NOTHING has moved — while `refunded.body` (« un remboursement de … a été émis … »)
+      // carried none. So the customer was told about their bank before the money left and told nothing once it
+      // had. It is added HERE, on 'refunded' only, from the SHARED key: the founder's §7 allows a proven refund
+      // to be stated as a fact PROVIDED the appearance on the account is attributed to the bank.
+      + (p.decision === 'refunded' ? `<p style="font-size:13px;color:#6b7280">${esc(t('bankNoteIssued'))}</p>` : '')
     const r = await sendTransactional({
       to:        consumer.to,
       subject:   t(tpl.subject, { ref }),
@@ -592,7 +599,10 @@ export async function sendClaimClosureEmail(p: {
         bodyHtml:
           (consumer.name ? `<p>${esc(t('greeting', { name: consumer.name }))}</p>` : '')
           + `<p>${esc(tpl.body)}</p>`
-          + `<p style="font-size:13px;color:#6b7280">${esc(tpl.next)}</p>`,
+          + `<p style="font-size:13px;color:#6b7280">${esc(tpl.next)}</p>`
+          // D′ L10 (§7, S-21) — a closure that ANNOUNCES A REFUND states the bank dependency; a closure that
+          // announces nothing of the kind (closedBySupport) must NOT, or it would imply money moved.
+          + (kind === 'refunded' ? `<p style="font-size:13px;color:#6b7280">${esc(t('bankNoteIssued'))}</p>` : ''),
       }),
     })
     return { ...transportResult(trigger, c.id, r), kind }

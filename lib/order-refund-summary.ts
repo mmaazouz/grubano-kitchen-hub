@@ -222,8 +222,11 @@ export function deriveOrderRefundSummary(input: RefundSummaryInput): OrderRefund
   // §6 defines it as a line whose `re_` « n'est attribué à aucune Refund correspondante connue ». A row that
   // is still `pending` — or `failed`, or released — is not a CORRESPONDANCE that establishes the refund: it
   // is an unfinished or abandoned attempt of ours. So the money is confirmed (the ledger says so) while its
-  // origin is not, which is exactly what the neutral copy « un remboursement a été enregistré sur cette
-  // commande » states and all it states. The three buckets are therefore DISJOINT by construction: settled,
+  // origin is not — which is exactly what the neutral copy states and all it states. (D′ L10 reworded that copy:
+  // it now says the refund is « confirmé auprès de notre prestataire de paiement » rather than « a été
+  // enregistré », because « enregistré » read as « our own record is closed » and contradicted the
+  // « Remboursement en cours » the claim widget renders three rows below on the same screen. The BUCKETS are
+  // unchanged; only the sentence is.) The three buckets are therefore DISJOINT by construction: settled,
   // in-flight-and-unproven-at-the-ledger, and confirmed-but-unattributed.
   //
   // The status filter is deliberately ABSENT from the SETTLED side above: `markRefundRowFailed` writes the

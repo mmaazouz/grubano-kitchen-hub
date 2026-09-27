@@ -24,12 +24,16 @@
         (never an older row). If the claim INSERT degrades (a non-P2002 error) the
         product sends WITHOUT a claim; this operator then reports NOT CORRELATABLE
         instead of guessing a row — fail-closed, never a false PASS.
-     2. EXPECTED SUBJECT — rebuilt from measured data exactly as
-        `sendRefundConfirmation` builds it: `Votre remboursement ${partial ?
-        'partiel ' : ''}est confirmé — <restaurant name>`, where `partial` comes
-        from STRIPE truth (base charge.amount, cumulative = Stripe's own refunds),
-        the same source the engine uses — never a sum of DB rows, which would miss
-        any refund issued outside the rail (Stripe Dashboard).
+     2. EXPECTED SUBJECTS — a FIVE-ELEMENT SET since D′ L10, rebuilt from measured
+        data exactly as `sendRefundConfirmation` builds it, from
+        REFUND_SUBJECT_TEMPLATES below (one row per locale, byte-pinned against
+        messages/*.json by tests/l10-refund-confirmation-i18n.test.ts). `partial`
+        comes from STRIPE truth (base charge.amount, cumulative = Stripe's own
+        refunds), the same source the engine uses — never a sum of DB rows, which
+        would miss any refund issued outside the rail (Stripe Dashboard). The
+        e-mail is localized and `EmailLog` stores NO locale, so the content key
+        must be the whole set: matching one language only would silently lose the
+        correlation for the other four.
      3. NEXT CLAIM (any order, same trigger) — upper bound of the window, used as
         a tiebreaker only, so a racing send can never be excluded.
 
@@ -122,9 +126,38 @@ function computeTemplateFlag({ chargeAmount, refunds, target }) {
   return { cumulativeThrough, remainingAfter, partial: remainingAfter > 0 }
 }
 
-/** Subject built EXACTLY as lib/transactional-emails.sendRefundConfirmation builds it. */
-function expectedRefundSubject(restaurantName, partial) {
-  return 'Votre remboursement ' + (partial ? 'partiel ' : '') + 'est confirmé — ' + restaurantName
+/**
+ * The subject lib/transactional-emails.sendRefundConfirmation builds — IN EVERY LOCALE SINCE D′ L10.
+ *
+ * WHY THESE FIVE STRINGS ARE HARDCODED HERE, which is a duplication and is deliberate. This script runs ON THE
+ * SERVER, where `messages/*.json` DOES NOT EXIST: the deploy ships `.next/standalone` (the locale files are
+ * compiled into the bundle), `public/`, `prisma/schema.prisma` and `scripts/server/*.js` — nothing else. A
+ * version of this function that read the locale files would work on a developer's machine and fail in the one
+ * place it is used. And `EmailLog` stores recipient/subject/trigger/status with NO locale, so the script cannot
+ * know which language a row is in either: it must try them all.
+ *
+ * THE DUPLICATION IS PINNED, not trusted: tests/l10-refund-confirmation-i18n.test.ts renders
+ * `claimEmails.refundConfirmation.subject{,Partial}` from messages/*.json and asserts the five templates below
+ * are byte-identical to it. Change the copy and that test goes red — which is the whole point, because the
+ * alternative is a correlation tool that silently stops matching for four locales out of five.
+ */
+const REFUND_SUBJECT_TEMPLATES = {
+  fr: { full: 'Votre remboursement est confirmé — {resto}',        partial: 'Votre remboursement partiel est confirmé — {resto}' },
+  en: { full: 'Your refund is confirmed — {resto}',                partial: 'Your partial refund is confirmed — {resto}' },
+  es: { full: 'Su reembolso está confirmado — {resto}',           partial: 'Su reembolso parcial está confirmado — {resto}' },
+  it: { full: 'Il Suo rimborso è confermato — {resto}',            partial: 'Il Suo rimborso parziale è confermato — {resto}' },
+  ar: { full: 'تم تأكيد استرداد مبلغك — {resto}',            partial: 'تم تأكيد استرداد مبلغك الجزئي — {resto}' },
+}
+
+/** The FR subject, kept as the default so every existing caller and pin is unchanged. */
+function expectedRefundSubject(restaurantName, partial, locale) {
+  const tpl = REFUND_SUBJECT_TEMPLATES[locale || 'fr'] || REFUND_SUBJECT_TEMPLATES.fr
+  return (partial ? tpl.partial : tpl.full).replace('{resto}', restaurantName)
+}
+
+/** EVERY subject this refund could have been sent under. A non-FR recipient must still correlate. */
+function expectedRefundSubjects(restaurantName, partial) {
+  return Object.keys(REFUND_SUBJECT_TEMPLATES).map((l) => expectedRefundSubject(restaurantName, partial, l))
 }
 
 /**
@@ -132,7 +165,7 @@ function expectedRefundSubject(restaurantName, partial) {
  * key and the expected subject as the content key. Returns the selected row plus
  * everything needed to explain the choice. NEVER returns a row sent before the claim.
  */
-function correlateRefundEmail({ dispatches, logs, orderId, amountCents, expectedSubject, nextClaimAt }) {
+function correlateRefundEmail({ dispatches, logs, orderId, amountCents, expectedSubject, expectedSubjects, nextClaimAt }) {
   const claimKey = 'order:' + orderId + ':' + amountCents
   const claims = (dispatches || []).slice().sort((a, b) => ms(a.createdAt) - ms(b.createdAt))
   const claim = claims.find((d) => d.dedupeKey === claimKey) || null
@@ -144,7 +177,12 @@ function correlateRefundEmail({ dispatches, logs, orderId, amountCents, expected
   // (1) never a row older than the claim — this is what the first version got wrong.
   const atOrAfter = sent.filter((l) => ms(l.sentAt) >= t0)
   // (2) content key: the exact subject this refund must have produced.
-  const bySubject = expectedSubject ? atOrAfter.filter((l) => l.subject === expectedSubject) : []
+  // D′ L10: the subject is localized, so the content key is a SET. `expectedSubject` (one string) is still
+  // accepted — the FR default and every existing test path — and `expectedSubjects` widens it to five.
+  const subjectSet = Array.isArray(expectedSubjects) && expectedSubjects.length
+    ? expectedSubjects
+    : (expectedSubject ? [expectedSubject] : [])
+  const bySubject = subjectSet.length ? atOrAfter.filter((l) => subjectSet.includes(l.subject)) : []
   let pool = bySubject.length ? bySubject : atOrAfter
   let how = bySubject.length ? 'claim + exact expected subject' : 'claim only (no exact subject match)'
   // (3) upper bound as a TIEBREAKER only — never empties a non-empty pool.
@@ -160,7 +198,7 @@ function correlateRefundEmail({ dispatches, logs, orderId, amountCents, expected
     selection: log ? how + ' (' + pool.length + ' candidate(s) at/after the claim, earliest taken)' : 'no sent e-mail at/after the claim',
     candidates: atOrAfter.length,
     ignored: sent.length - atOrAfter.length,
-    subjectMatch: log && expectedSubject ? log.subject === expectedSubject : null,
+    subjectMatch: log && subjectSet.length ? subjectSet.includes(log.subject) : null,
   }
 }
 
@@ -255,8 +293,13 @@ async function main() {
     } else A('4 stripe: refund list not measured — partial/full template cannot be derived')
   } else A('4 stripe: charge not measured — partial/full template cannot be derived')
   const expectedSubject = partial === null ? null : expectedRefundSubject(restaurantName, partial)
+  const expectedSubjectSet = partial === null ? null : expectedRefundSubjects(restaurantName, partial)
   F('EXPECTED EMAIL TEMPLATE', partial === null ? 'NOT MEASURED' : (partial ? 'PARTIAL' : 'FULL'))
-  F('EXPECTED SUBJECT', expectedSubject === null ? 'NOT MEASURED' : '"' + expectedSubject + '"')
+  // D′ L10: the VERDICT accepts any of the five localized subjects, so the REPORT must say so — printing one
+  // while matching five made the report look like it had matched the French when it had matched Arabic.
+  F('EXPECTED SUBJECT (fr)', expectedSubject === null ? 'NOT MEASURED' : '"' + expectedSubject + '"')
+  F('ACCEPTED SUBJECTS', expectedSubjectSet === null ? 'NOT MEASURED'
+    : expectedSubjectSet.length + ' locales: ' + expectedSubjectSet.map(function (x) { return '"' + x + '"' }).join(' | '))
 
   console.log('[5] correlate the e-mail to THIS refund')
   try {
@@ -267,7 +310,7 @@ async function main() {
     }
   } catch (e) { A('5 correlate: next-claim bound not measured — ' + scrub(e)) } finally { await prisma.$disconnect().catch(() => {}) }
 
-  const sel = correlateRefundEmail({ dispatches, logs, orderId: ORDER_ID, amountCents: target.refund.amountCents, expectedSubject, nextClaimAt })
+  const sel = correlateRefundEmail({ dispatches, logs, orderId: ORDER_ID, amountCents: target.refund.amountCents, expectedSubject, expectedSubjects: expectedSubjectSet, nextClaimAt })
   F('CORRELATION KEY', sel.claimKey.replace(ORDER_ID, '<order>') + ' (EmailDispatch dedupeKey — exact per order+amount; EmailLog has NO order/refund foreign key)')
   F('CORRELATION METHOD', sel.selection)
   F('NEXT CLAIM (any order) — window bound', nextClaimAt ? iso(nextClaimAt) : 'none (this is the latest claim)')
@@ -299,4 +342,4 @@ async function main() {
 
 if (require.main === module) main().catch((e) => fail('unexpected: ' + scrub(e)))
 
-module.exports = { selectTargetRefund, correlateRefundEmail, expectedRefundSubject, computeTemplateFlag }
+module.exports = { selectTargetRefund, correlateRefundEmail, expectedRefundSubject, expectedRefundSubjects, REFUND_SUBJECT_TEMPLATES, computeTemplateFlag }

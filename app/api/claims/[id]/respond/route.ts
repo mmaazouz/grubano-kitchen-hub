@@ -40,7 +40,13 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     action:        parsed.data.action,
     reason:        parsed.data.reason,
   })
-  if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
+  // D′ L10 (§2): the CODE travels beside the sentence so the restaurant panel renders it in its own language.
+  if (!result.ok) {
+    return NextResponse.json(
+      result.reason ? { error: result.error, reason: result.reason } : { error: result.error },
+      { status: result.status },
+    )
+  }
 
   // ── T43 (vague 3) — notification de DÉCISION au client, post-succès, BEST-
   // EFFORT. Additif : la transition (P0-24 accept → arbitration / refuse →

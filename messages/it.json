@@ -2962,7 +2962,6 @@
     "help": {
       "title": "Aiuto",
       "back": "Indietro",
-      "online": "● Online",
       "searchPlaceholder": "Cerchi nell'aiuto…",
       "problemLabel": "Un problema con questo ordine?",
       "items": "{count, plural, =0 {0 articoli} one {# articolo} other {# articoli}}",
@@ -2977,17 +2976,12 @@
       "optMissingSub": "Richieda un rimborso parziale",
       "optLateTitle": "Il mio ordine è in ritardo",
       "optLateSub": "Veda dov'è il corriere",
-      "optCancelTitle": "Annulli l'ordine",
-      "optCancelSub": "Possibile prima della preparazione",
       "topicsLabel": "Argomenti di aiuto",
       "topicPayments": "Pagamenti e rimborsi",
       "topicAccount": "Account e accesso",
       "topicRewards": "Punti e premi",
       "contactLabel": "Ha ancora bisogno di aiuto?",
-      "contactChat": "Chat",
-      "contactChatEta": "~2 min",
       "contactEmail": "E-mail",
-      "contactEmailEta": "< 24 h",
       "refundTitle": "Articolo mancante",
       "refundWhich": "Quali articoli hanno un problema?",
       "refundNoItems": "Nessun articolo in questo ordine.",
@@ -3019,12 +3013,6 @@
       "claimInReview": "Reclamo in fase di revisione.",
       "soonBadge": "presto",
       "supportTitle": "Assistenza",
-      "chatToday": "Oggi · 19:48",
-      "chatAgent1": "Buongiorno 👋 Vedo il Suo ordine {ref}. Come posso aiutarLa?",
-      "chatMe1": "Mancava un articolo nel mio sacchetto.",
-      "chatAgent2": "Passo subito la Sua richiesta al team. Mi scuso per il disagio!",
-      "chatAiSuggest": "Risposte suggerite dall'IA",
-      "chatPlaceholder": "Il Suo messaggio…",
       "signInTitle": "Acceda per ricevere assistenza su questo ordine",
       "signInCta": "Acceda",
       "refundOffTitle": "Rimborsi — assistenza umana",
@@ -3040,7 +3028,11 @@
       "claimQtyOverPurchased": "La quantità reclamata supera la quantità ordinata.",
       "claimAmountRequired": "Inserisci l’importo che stai reclamando.",
       "claimAmountOverCeiling": "L’importo richiesto supera quanto può ancora essere rimborsato su questo ordine.",
-      "claimNoRefundableAmount": "Questo ordine non ha più un importo rimborsabile: il suo totale è già coperto da un rimborso effettuato o ancora in corso. Scrivici se ti sembra sbagliato."
+      "claimNoRefundableAmount": "Questo ordine non ha più un importo rimborsabile: il suo totale è già coperto da un rimborso effettuato o ancora in corso. Scrivici se ti sembra sbagliato.",
+      "claimInvalidScope": "Ambito del reclamo non valido. Ricominci dal Suo ordine.",
+      "claimReasonNotSelectable": "Questo motivo non viene presentato dal cliente: l’annullamento di un ordine già pagato è gestito da Grubano.",
+      "claimItemsNotAllowed": "Questo ambito non riguarda i singoli articoli: rimuova la selezione di articoli.",
+      "claimAmountNotAllowed": "Questo ambito non accetta un importo libero: scelga «un importo preciso» per inserirne uno."
     },
     "home": {
       "seeAll": "Veda tutto",
@@ -3476,7 +3468,7 @@
       "refundedLabel": "Rimborsato",
       "refundedTotal": "Totale rimborsato",
       "refundInProgress": "Rimborso in corso",
-      "refundRecorded": "Su questo ordine è stato registrato un rimborso di <m>{amount}</m>.",
+      "refundRecorded": "Un rimborso di <m>{amount}</m> per questo ordine è confermato presso il nostro fornitore di pagamento.",
       "refundedInFullNote": "Questo totale è l'importo addebitato al momento dell'ordine; è stato rimborsato per intero.",
       "refundedNote": "Su questo ordine ti sono stati rimborsati <m>{amount}</m>.",
       "refundPendingNote": "Su questo ordine è in corso un rimborso di <m>{amount}</m>.",
@@ -4186,7 +4178,7 @@
       "refundedTotal": "Questo ordine è stato rimborsato · <amt>{amount}</amt>.",
       "refundedPartial": "Rimborso parziale di <amt>{amount}</amt> su questo ordine.",
       "refundPending": "Rimborso di <amt>{amount}</amt> in corso.",
-      "refundRecorded": "Su questo ordine è stato registrato un rimborso di <amt>{amount}</amt>.",
+      "refundRecorded": "Un rimborso di <amt>{amount}</amt> per questo ordine è confermato presso il nostro fornitore di pagamento.",
       "stateLabel": "Rimborso"
     }
   },
@@ -5662,63 +5654,6 @@
     "errStart": "Impossibile aprire la pagina Stripe — riprova.",
     "toastActivated": "Incassi attivati ✓"
   },
-  "financeRail": {
-    "sectionTitle": "Incassi e finanze",
-    "periodDay": "Oggi",
-    "periodWeek": "7 giorni",
-    "periodMonth": "30 giorni",
-    "grossLabel": "Incassato",
-    "feeLabel": "Commissione Grubano",
-    "netLabel": "Netto versato",
-    "opsLabel": "Operazioni",
-    "refundsLabel": "Rimborsi",
-    "refundsValue": "{count} · {amount}",
-    "refundRateLabel": "Tasso di rimborso",
-    "opsTitle": "Ultime operazioni",
-    "opsEmpty": "Nessuna operazione nel periodo. I pagamenti incassati appariranno qui.",
-    "loadMore": "Mostra altro",
-    "typePayment": "Pagamento",
-    "typeDepositCapture": "Penale no-show",
-    "typeRefund": "Rimborso",
-    "typeAdjustment": "Rettifica",
-    "badgeRefundedPartial": "Parzialmente rimborsato",
-    "badgeRefundedFull": "Rimborsato",
-    "badgePenaltyRefunded": "Penale rimborsata",
-    "routedDirect": "Versamento diretto",
-    "tableLabel": "Tavolo {name}",
-    "commissionShort": "di cui commissione {amount}",
-    "btnRefund": "Rimborsa",
-    "btnRefundPenalty": "Rimborsa la penale",
-    "modalTitle": "Rimborsare questo pagamento?",
-    "modalPenaltyTitle": "Rimborsare la penale?",
-    "modalFullOption": "Rimborso totale — {amount}",
-    "modalPartialOption": "Importo parziale",
-    "modalAmountLabel": "Importo da rimborsare (€)",
-    "modalRemaining": "Rimborsabile rimanente: {amount}",
-    "modalRecap": "Il cliente sarà rimborsato di {amount}.",
-    "modalWarnRetained": "Il rimborso sarà trattenuto dai prossimi incassi.",
-    "modalWarnDelay": "Il cliente sarà rimborsato entro 5-10 giorni lavorativi.",
-    "modalConfirm": "Conferma il rimborso",
-    "modalCancel": "Annulla",
-    "errAmountInvalid": "Importo non valido.",
-    "errGeneric": "Azione impossibile — riprova.",
-    "errLoad": "Impossibile caricare i dati finanziari.",
-    "invoicesTitle": "Fatture di commissione",
-    "invoicesEmpty": "Nessuna fattura per ora — la fattura mensile viene emessa a inizio mese successivo.",
-    "invoiceOpen": "Vedi",
-    "htLabel": "Imponibile",
-    "tvaLabel": "IVA",
-    "ttcLabel": "Totale",
-    "ratesTitle": "Le tue commissioni",
-    "ratesDesc": "Tariffe tutto incluso (spese bancarie e IVA comprese), trattenute alla fonte su ogni incasso.",
-    "rateDinein": "In sala / conto al tavolo",
-    "ratePickup": "Asporto",
-    "rateDelivery": "Consegna",
-    "rateReservation": "Prenotazione",
-    "rateFreeBadge": "Offerta fondatore: 0% fino al {date}",
-    "rateFree": "Gratis",
-    "invoicePdf": "PDF"
-  },
   "auth": {
     "reset": {
       "forgotTitle": "Password dimenticata",
@@ -7088,7 +7023,8 @@
     "nav": {
       "mentions": "Note legali",
       "confidentialite": "Informativa sulla privacy",
-      "cookies": "Cookie"
+      "cookies": "Cookie",
+      "cgv": "Condizioni generali di vendita"
     },
     "mentions": {
       "title": "Note legali",
@@ -7196,6 +7132,45 @@
       "purposeStripe": "Prevenzione delle frodi — depositati da js.stripe.com solo quando viene visualizzato un modulo di pagamento.",
       "manageTitle": "Gestire i cookie",
       "manageBody": "I cookie strettamente necessari non possono essere disattivati senza impedire il funzionamento del sito. Puoi comunque configurare il browser per bloccarli o eliminarli."
+    },
+    "cgv": {
+      "draftBanner": "⚠️ Condizioni generali di vendita in fase di finalizzazione — questo documento non è ancora stato validato da un consulente legale e le informazioni relative alla società non sono tutte definitive.",
+      "title": "Condizioni generali di vendita",
+      "intro": "Le presenti condizioni descrivono il servizio Grubano, lo svolgimento di un ordine e il modo in cui un reclamo viene trattato. Hanno carattere informativo e non limitano alcun diritto che la legge Le riconosce.",
+      "scopeTitle": "1. Oggetto e ambito di applicazione",
+      "scopeBody": "Le presenti condizioni si applicano agli ordini effettuati da un cliente tramite il servizio Grubano presso un ristorante partner. Integrano le note legali e l’informativa sulla privacy, senza sostituirle.",
+      "editorTitle": "2. Editore del servizio",
+      "editorBody": "L’identità dell’editore, il direttore della pubblicazione e l’hosting sono indicati nelle note legali.",
+      "editorLink": "Consulti le note legali",
+      "serviceTitle": "3. Il servizio",
+      "serviceBody": "Grubano presenta i ristoranti partner e i loro menu, trasmette l’ordine al ristorante scelto, incassa il pagamento e segue l’avanzamento dell’ordine fino alla sua consegna al cliente. La preparazione dei piatti e la loro conformità competono al ristorante; Grubano interviene sull’ordine, sul pagamento e sul trattamento dei reclami.",
+      "orderTitle": "4. Ordine e prezzi",
+      "orderBody": "Il riepilogo visualizzato prima del pagamento indica gli articoli selezionati, il totale da pagare e le eventuali spese. I prezzi sono indicati in euro, IVA e imposte incluse. Un ordine viene trasmesso al ristorante solo dopo l’autorizzazione del pagamento.",
+      "paymentTitle": "5. Pagamento",
+      "paymentBody": "Il pagamento è trattato da un fornitore di pagamento; Grubano non conserva i numeri di carta. A seconda della modalità scelta, l’ordine può essere incassato immediatamente oppure essere oggetto di un’autorizzazione preventiva, per esempio una pre-autorizzazione di garanzia per la prenotazione di un tavolo.",
+      "claimsTitle": "6. Problema su un ordine, reclamo e rimborso",
+      "claimsIntro": "Se un ordine non corrisponde a quanto si aspettava, può segnalarlo dal servizio. Il modulo di reclamo da compilare in autonomia viene aperto progressivamente; finché non lo è, una richiesta rivolta al nostro team viene esaminata allo stesso modo. Lo svolgimento è il seguente:",
+      "claimsSelfService": "Può presentare un reclamo dal Suo ordine, senza passare per uno scambio scritto preliminare, purché l’ordine sia stato consegnato o ritirato.",
+      "claimsWindow": "Il modulo di reclamo resta aperto per {hours} ore a partire dalla consegna o dal ritiro dell’ordine. Questo termine è proprio del funzionamento del servizio.",
+      "claimsMaxAge": "Oltre {days} giorni dall’ordine, il modulo di reclamo non è più proposto.",
+      "claimsSupport": "Superati questi termini, o se il Suo ordine non rientra in questo ambito, può sempre scriverci: una richiesta ricevuta tramite un altro canale viene esaminata allo stesso modo.",
+      "claimsReview": "Il reclamo è sottoposto in primo luogo al ristorante interessato. In caso di rifiuto, può chiedere l’arbitrato di Grubano; Grubano può inoltre esaminare direttamente alcune pratiche.",
+      "claimsAmount": "Grubano può stabilire un importo diverso da quello richiesto, in particolare quando il reclamo riguarda solo una parte dell’ordine. L’importo stabilito è indicato nella Sua pratica.",
+      "claimsApprovedNotPaid": "Un reclamo approvato significa che la decisione è presa: il rimborso viene poi eseguito separatamente dal nostro team. Un’approvazione non è quindi un rimborso già effettuato.",
+      "claimsBank": "Quando un rimborso viene emesso, è indirizzato verso il metodo di pagamento utilizzato per l’ordine. Il momento in cui compare sul Suo conto dipende poi dalla Sua banca e dal Suo fornitore di pagamento, ed è fuori dal controllo di Grubano.",
+      "claimsPartial": "Un rimborso può essere totale o parziale, secondo la decisione adottata.",
+      "claimsHistory": "Lo stato dei Suoi reclami e dei rimborsi che li riguardano è consultabile dal Suo account.",
+      "claimsCancelled": "Un ordine pagato e poi annullato può dare luogo a un rimborso senza alcuna iniziativa da parte Sua; in caso contrario, ci scriva ed esaminiamo il caso.",
+      "claimsLoyalty": "Quando una parte di un ordine viene rimborsata, i punti fedeltà acquisiti su quell’ordine sono adeguati di conseguenza.",
+      "rightsTitle": "7. I Suoi diritti restano integri",
+      "rightsBody": "I termini e le modalità descritti sopra organizzano il funzionamento del servizio; non costituiscono una limitazione dei diritti che la legge Le riconosce e non equivalgono a una rinuncia a tali diritti. Le garanzie legali applicabili al Suo ordine, così come ogni disposizione inderogabile del diritto dei consumatori, si applicano indipendentemente dal presente documento. La scadenza di un termine proprio del servizio non La priva quindi dei rimedi previsti dalla legge.",
+      "disputesTitle": "8. Reclami e risoluzione delle controversie",
+      "disputesBody": "Qualsiasi reclamo ci può essere inviato tramite i mezzi di contatto indicati nelle note legali. Il ricorso a un mediatore del consumo e le vie di risoluzione delle controversie sono precisati nelle note legali.",
+      "dataTitle": "9. Dati personali",
+      "dataBody": "Il trattamento dei Suoi dati, i periodi di conservazione e l’esercizio dei Suoi diritti sono descritti nell’informativa sulla privacy.",
+      "dataLink": "Consulti l’informativa sulla privacy",
+      "changesTitle": "10. Evoluzione delle presenti condizioni",
+      "changesBody": "Le presenti condizioni possono evolversi con il servizio. La versione applicabile a un ordine è quella pubblicata su questa pagina nel momento in cui l’ordine viene effettuato."
     }
   },
   "claims": {
@@ -7269,7 +7244,12 @@
       "contestSuccess": "Contestazione inviata: il reclamo è stato trasmesso a Grubano per l’arbitrato.",
       "arbitrationInfo": "Questa pratica è in fase di esame da parte di Grubano.",
       "refusalReasonShown": "Motivo del rifiuto del ristorante",
-      "grubanoDecisionReason": "Motivo della decisione di Grubano"
+      "grubanoDecisionReason": "Motivo della decisione di Grubano",
+      "contestNotFound": "Questo reclamo non è stato trovato.",
+      "contestNotContestable": "Questo reclamo non può essere contestato.",
+      "contestWindowOver": "Il termine per contestare questa decisione è scaduto. Può comunque scriverci.",
+      "contestAlreadyProcessed": "Questo reclamo è già stato trattato.",
+      "contestActiveClaim": "È già in corso un reclamo per quest'ordine."
     },
     "restaurant": {
       "title": "Reclami dei clienti",
@@ -7288,7 +7268,7 @@
       "confirmRefuse": "Conferma il rifiuto",
       "accepted": "Reclamo accettato — inoltrato a Grubano per la decisione sul rimborso.",
       "refused": "Reclamo rifiutato.",
-      "refundPending": "Accettata — rimborso in attesa di attivazione.",
+      "refundPending": "Accettato — rimborso in attesa.",
       "processing": "Elaborazione…",
       "responseNote": "Un reclamo senza risposta resta in attesa: risponda al più presto. Il cliente vede la decisione dal proprio ordine e può contestare un rifiuto presso Grubano.",
       "status": {
@@ -7326,7 +7306,9 @@
       "financeNote": "Importi tratti dalle nostre scritture contabili confermate. Gli oneri Grubano restituiti comprendono la commissione e, se applicabile, gli altri oneri trattenuti sull’ordine.",
       "financeUnconfirmed": "Nessun effetto finanziario confermato per ora.",
       "financeFee": "Oneri Grubano restituiti",
-      "previouslyClaimedIncomplete": "L’elenco dei reclami precedenti è incompleto: l’assenza di una riga non significa che non ce ne siano."
+      "previouslyClaimedIncomplete": "L’elenco dei reclami precedenti è incompleto: l’assenza di una riga non significa che non ce ne siano.",
+      "respondNotFound": "Questo reclamo non è stato trovato.",
+      "respondAlreadyProcessed": "Questo reclamo è già stato trattato."
     },
     "admin": {
       "title": "Arbitrato dei reclami",
@@ -8878,8 +8860,8 @@
       "body": "Grubano ha deciso a Suo favore: è stato emesso un rimborso di {euros} sull’ordine {ref} verso il Suo metodo di pagamento."
     },
     "approved": {
-      "subject": "Reclamo {ref}: accettato da Grubano",
-      "title": "Reclamo accettato",
+      "subject": "Reclamo {ref}: approvato da Grubano",
+      "title": "Reclamo approvato",
       "body": "Grubano ha approvato un rimborso di {euros} per l’ordine {ref}. Sarà eseguito separatamente dal nostro team. Una volta emesso, il tempo di comparsa sul suo conto dipende dalla sua banca."
     },
     "withdrawn": {
@@ -8932,6 +8914,15 @@
       "lineNet": "Impatto netto confermato per il suo locale",
       "next": "Questi importi provengono dalle nostre scritture contabili confermate; gli oneri Grubano restituiti comprendono la commissione e, se applicabile, gli altri oneri trattenuti sull’ordine. Per qualsiasi domanda, risponda a questa e-mail indicando il riferimento {ref}.",
       "lineFee": "Oneri Grubano restituiti"
+    },
+    "bankNoteIssued": "Il tempo di comparsa sul suo conto dipende dalla sua banca.",
+    "refundConfirmation": {
+      "subject": "Il Suo rimborso è confermato — {resto}",
+      "subjectPartial": "Il Suo rimborso parziale è confermato — {resto}",
+      "title": "Rimborso confermato",
+      "body": "Il Suo rimborso di {euros} è confermato: questo importo viene restituito sul metodo di pagamento utilizzato per il Suo ordine presso {resto}.",
+      "bodyPartial": "Il Suo rimborso parziale di {euros} è confermato: questo importo viene restituito sul metodo di pagamento utilizzato per il Suo ordine presso {resto}.",
+      "refLine": "Ordine {ref}."
     }
   }
 }

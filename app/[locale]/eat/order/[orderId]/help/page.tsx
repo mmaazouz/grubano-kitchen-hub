@@ -7,6 +7,9 @@ import { useSession } from 'next-auth/react'
 import { useTranslations, useLocale } from 'next-intl'
 import { useRouter } from '@/navigation'
 import { formatEuros, formatAmount } from '@/lib/format-money'
+// D′ L10 (§2): the code→key map moved to a shared LEAF so this page and components/claims/ClaimSection
+// cannot drift, and so an unmapped code degrades to a LOCALIZED generic instead of the server's French.
+import { claimRefusalKey } from '@/lib/claim-refusal-labels'
 import './help.css'
 // gb-* design FOUNDATION (Agent 168) — tokens + Material `.ms` font. The page wraps in
 // `.gb` so the foundation tokens/font resolve; all component CSS lives in help.css.
@@ -94,7 +97,7 @@ interface ClaimEligibility {
   // L7 (T-50): this union is the ELIGIBILITY codes — the ones GET /api/claims can answer about the order.
   // The POST answers those too, plus a second family about WHAT was claimed (items_required,
   // qty_over_purchased, …). Those never appear here because they are not properties of the order; they
-  // arrive on the POST response and are rendered through the same REFUSAL_LABEL map below.
+  // arrive on the POST response and are rendered through the shared lib/claim-refusal-labels map.
   reason?: 'not_owner' | 'not_paid' | 'not_delivered' | 'window_expired' | 'active_claim' | 'no_refundable_amount' | 'intake_closed'
   /**
    * D′ L6: with `reason: 'active_claim'`, the id of the claim that HOLDS the key — which is not always
@@ -350,51 +353,21 @@ export default function OrderHelpScreen() {
         return
       }
       setSubmitState('error')
-      // D' L6: an eligibility refusal now carries its CODE, so the customer reads the refusal in their own
-      // language instead of the server's French sentence. Anything without a code keeps the server text.
-      const code = typeof data?.reason === 'string' ? (data.reason as string) : null
-      const localized = code ? REFUSAL_LABEL[code] : null
-      setSubmitError(localized ? t(localized) : typeof data?.error === 'string' ? data.error : t('claimError'))
+      // D' L6: an eligibility refusal carries its CODE, so the customer reads it in their own language.
+      //
+      // D′ L10 (§2) — THE FALLBACK NO LONGER SHOWS THE SERVER'S SENTENCE. It used to read
+      // `localized ? t(localized) : data.error`, so any code without an entry — and four of them provably had
+      // none in ANY locale — printed French prose to a reader in English, Spanish, Italian or Arabic. An
+      // unmapped code now degrades to a LOCALIZED generic, and the map moved to lib/claim-refusal-labels so
+      // this page and components/claims/ClaimSection cannot answer the same code differently.
+      const localized = claimRefusalKey(data?.reason)
+      setSubmitError(localized ? t(localized) : t('claimError'))
     } catch {
       setSubmitState('error')
       setSubmitError(t('claimError'))
     }
   }
 
-/**
- * D' L6 (spec v2 §7.1): the server's refusal CODE → the i18n key the customer reads. The POST and the GET
- * answer the same codes because they ask the same rules (lib/claim-eligibility), so one map serves both.
- * A code with no entry falls back to the server's own sentence rather than to silence.
- */
-const REFUSAL_LABEL: Record<string, string> = {
-  not_owner:            'claimNotEligible',
-  not_paid:             'claimNotPaid',
-  not_delivered:        'claimNotDelivered',
-  window_expired:       'claimWindowExpired',
-  active_claim:         'claimAlreadyFiled',
-  no_refundable_amount: 'claimNoRefundableAmount',
-  intake_closed:        'claimIntakeClosed',
-  // L7 (T-50) — the refusals about WHAT WAS CLAIMED, as opposed to whether the order is claimable.
-  //
-  // This page files ONE reason (`missing_item`, items-only) and always states `scope: 'items'`, so the
-  // codes it can actually meet are the selection ones: a quantity above what was purchased, an index the
-  // order no longer has after a reload, a duplicate, or an order whose lines are unreadable. The rest of
-  // the family is mapped anyway — the same map serves any surface that reuses it, and a code with no
-  // label falls back to the server's French sentence, which is exactly what should not happen twice.
-  // Left UNMAPPED on purpose: `items_not_allowed`, `amount_not_allowed`, `invalid_scope` and
-  // `reason_not_selectable`. Those require a client that contradicts itself or offers a withdrawn reason;
-  // writing five translations for a state no working client can reach is noise in five locales.
-  scope_required:         'claimScopeRequired',
-  scope_not_allowed:      'claimItemsRequired',
-  items_required:         'claimItemsRequired',
-  item_lines_unavailable: 'claimItemLinesUnavailable',
-  invalid_selection:      'claimInvalidSelection',
-  duplicate_selection:    'claimDuplicateSelection',
-  invalid_qty:            'claimInvalidQty',
-  qty_over_purchased:     'claimQtyOverPurchased',
-  amount_required:        'claimAmountRequired',
-  amount_over_ceiling:    'claimAmountOverCeiling',
-}
 
   // Eligibility → a human label for the disabled-submit reason (flag ON, not eligible).
   // Mirrors getClaimEligibility's reason union + the active-claim status.
@@ -424,20 +397,14 @@ const REFUSAL_LABEL: Record<string, string> = {
       if (ex.status === 'refused' || ex.status === 'refused_final' || ex.status === 'refused_by_grubano') return t('claimRefused')
       if (ex.status === 'arbitration') return t('claimInReview')
     }
-    switch (eligibility?.reason) {
-      case 'window_expired': return t('claimWindowExpired')
-      case 'not_paid':       return t('claimNotPaid')
-      // D′ L1 (S-23): the surface is open, the intake is paused — an existing claim above still shows its status.
-      case 'intake_closed':  return t('claimIntakeClosed')
-      case 'not_owner':      return t('claimNotEligible')
-      case 'active_claim':   return t('claimAlreadyFiled')
-      // D' L6 (spec v2 §7.1): the two refusals the server added. Without their own sentence they would fall
-      // to « pas éligible », which tells a customer nothing about what to do next — and what to do differs:
-      // wait for the delivery, or write to support because the money is already back.
-      case 'not_delivered':  return t('claimNotDelivered')
-      case 'no_refundable_amount': return t('claimNoRefundableAmount')
-      default:               return t('claimNotEligible')
-    }
+    // D′ L10 (§2) — THE SECOND HAND-WRITTEN MAP IS GONE TOO. A `switch` over the same codes lived here, so
+    // this lot un-duplicated one table and left another one standing: a code added to the shared map would have
+    // appeared on the POST refusal and NOT on this disabled-submit label. The existing-claim precedence above
+    // is unchanged — it is richer than a lookup and stays — but the tail now asks the ONE map, with
+    // « pas éligible » as the last word. Behaviour-identical today for every code `getClaimEligibility`
+    // returns (they are all in the map, with the same keys), and correct for any code added later.
+    // Found by this lot's own adversarial review.
+    return t(claimRefusalKey(eligibility?.reason) ?? 'claimNotEligible')
   }
 
   // ── Not signed in → invite to sign in (the order needs a session) ──────────

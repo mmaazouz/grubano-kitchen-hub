@@ -22,6 +22,22 @@ const { sendMail, db } = vi.hoisted(() => ({
 vi.mock('nodemailer', () => ({ default: { createTransport: () => ({ sendMail }) } }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
 vi.mock('@/i18n', () => ({ locales: ['fr', 'en', 'es', 'it', 'ar'], defaultLocale: 'fr', rtlLocales: ['ar'] }))
+// D′ L10 (§6) — sendRefundConfirmation is no longer French-in-the-code: it renders
+// `claimEmails.refundConfirmation.*` through next-intl's SERVER translator, which throws outside a request.
+// The mock below is deliberately NOT a stub: it reads the real messages/<locale>.json and substitutes {vars},
+// so every assertion in this file still checks the SHIPPED French copy, byte for byte. A key-echoing stub
+// would have made these tests pass while the e-mail said anything at all.
+vi.mock('next-intl/server', () => ({
+  getTranslations: async ({ locale, namespace }: { locale?: string; namespace?: string }) => {
+    const msgs = JSON.parse(readFileSync(join(process.cwd(), 'messages', `${locale || 'fr'}.json`), 'utf8'))
+    const root = namespace ? namespace.split('.').reduce((o: Record<string, unknown>, k: string) => (o?.[k] ?? {}) as Record<string, unknown>, msgs) : msgs
+    return (key: string, vars?: Record<string, string | number>) => {
+      const raw = key.split('.').reduce((o: unknown, k: string) => (o as Record<string, unknown>)?.[k], root)
+      if (typeof raw !== 'string') return key
+      return raw.replace(/\{(\w+)\}/g, (_m, v) => String(vars?.[v] ?? `{${v}}`))
+    }
+  },
+}))
 vi.mock('@/lib/email-otp', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   issueEmailOtp: async () => ({ ok: true, code: '424242' }),
@@ -217,7 +233,12 @@ describe('REFUND — source scan: success e-mail only after Stripe `succeeded`, 
     for (const rel of ['app/api/tickets/[id]/refund/route.ts', 'app/api/reservations/[id]/refund-deposit/route.ts']) {
       const src = read(rel)
       expect(/result\.refund\.status === 'succeeded'/.test(src)).toBe(true)
-      const emailBlock = src.slice(src.indexOf('sendRefundConfirmation({'), src.indexOf('sendRefundConfirmation({') + 600)
+      // The ARGUMENT LIST, not a byte count. D′ L10 added the locale-resolution lines to this call and pushed
+      // `refundedCents` past the old 600-char window; widening the window instead pulled in the AUDIT metadata
+      // that legitimately logs `result.refundedCents`, so the third assertion flipped. Slicing to the closing
+      // `})` makes the block exactly the call, and immune to a comment growing inside it.
+      const callAt = src.indexOf('sendRefundConfirmation({')
+      const emailBlock = src.slice(callAt, src.indexOf('})', callAt) + 2)
       expect(/refundedCents:\s*result\.refund\.amount/.test(emailBlock)).toBe(true)
       expect(/refundedCents:\s*result\.refundedCents/.test(emailBlock)).toBe(false) // the audit metadata may still log the estimate
     }
@@ -263,7 +284,14 @@ describe('REFUND — rail A route behaviour with a Stripe refund object (determi
     vi.doMock('@/lib/rate-limit', () => ({ rateLimit: () => null }))
     vi.doMock('@/lib/refunds', () => ({ refundPayment: async () => ({ ok: true, refund: { id: 're_1', status: refundState.status, amount: refundState.amount }, refundedCents: 999, remainingCents: 1000, routed: false }) }))
     const sendRefund = vi.fn(async () => {})
-    vi.doMock('@/lib/transactional-emails', () => ({ sendRefundConfirmation: sendRefund }))
+    // D′ L10 (§6): the reservation/ticket routes resolve the recipient's e-mail LANGUAGE through
+    // `userId → Operator.locale` (Reservation has no locale column), so the mock must expose that helper
+    // too — a factory mock replaces the WHOLE module, and a missing export is swallowed by the route's
+    // best-effort try/catch, which is how a mail regression hides as « 0 e-mails ».
+    vi.doMock('@/lib/transactional-emails', () => ({
+      sendRefundConfirmation: sendRefund,
+      resolveReservationLocale: async () => null,
+    }))
     vi.doMock('@/lib/prisma', () => ({ prisma: {
       tableTicket: { findUnique: async () => ({ id: 't1', restaurantId: 'r1', reservationId: 'rsv1', status: 'paid', stripePaymentIntentId: 'pi_1' }) },
       reservation: { findUnique: async () => ({ email: 'lea@example.invalid', customerName: 'Léa' }) },

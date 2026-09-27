@@ -290,6 +290,8 @@ export default function AuthScreen() {
               <Link href="/legal/confidentialite">{tl('confidentialite')}</Link>
               {' · '}
               <Link href="/legal/cookies">{tl('cookies')}</Link>
+              {' · '}
+              <Link href="/legal/cgv">{tl('cgv')}</Link>
             </p>
           </div>
         </section>
@@ -426,6 +428,8 @@ export default function AuthScreen() {
             <Link href="/legal/confidentialite">{tl('confidentialite')}</Link>
             {' · '}
             <Link href="/legal/cookies">{tl('cookies')}</Link>
+            {' · '}
+            <Link href="/legal/cgv">{tl('cgv')}</Link>
           </p>
         </div>
       </div>

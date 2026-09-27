@@ -205,6 +205,9 @@ export default function EatShell({ children }: { children: React.ReactNode }) {
           <Link href="/legal/confidentialite">{tl('confidentialite')}</Link>
           <span aria-hidden="true">·</span>
           <Link href="/legal/cookies">{tl('cookies')}</Link>
+          <span aria-hidden="true">·</span>
+          {/* D′ L10 (D-8): the CGV must be findable by a CONSUMER, not only from inside /legal/*. */}
+          <Link href="/legal/cgv">{tl('cgv')}</Link>
         </div>
       </aside>
 

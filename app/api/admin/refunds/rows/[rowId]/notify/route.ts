@@ -137,6 +137,10 @@ export async function POST(req: NextRequest, { params }: { params: { rowId: stri
       restaurantName: t.restaurantName,
       refundedCents:  stripeAmount as number,
       partial:        t.partial,
+      // D′ L10 (§6): the customer's own language, and the PUBLIC reference. Until this lot this one request
+      // sent a localized RESTAURANT notice and a French-only CUSTOMER notice for the same refund.
+      locale:         t.recipientLocale,
+      orderRef:       t.orderRef,
     })
 
     // ── (3b) DID THE DEDUPE MARKER ACTUALLY LAND? ───────────────────────────────────────────────────

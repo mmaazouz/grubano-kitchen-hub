@@ -133,21 +133,46 @@ describe("P6 — page d'aide /eat/order/[orderId]/help (caractérisation source)
 
 // ════════════════════════════════════════════════════════════════════════════════════
 describe('P6 — i18n : script de conversation pré-écrit (fr.json)', () => {
-  it("[FAIL-ATTENDU: simulation humain via i18n] fr.json embarque le dialogue agent + des délais de réponse (~2 min / < 24 h) sans backend", () => {
-    // AUDIT: the "human" replies and the promised response times live as static copy
-    // in messages/fr.json — they are promises with no system behind them. After fix:
-    // these keys should either disappear or be backed by a real channel.
-    const fr = JSON.parse(readFileSync(join(ROOT, 'messages', 'fr.json'), 'utf8')) as {
-      eat?: { help?: Record<string, string> }
+  // D′ L10 — FIXED, AND THIS ASSERTION IS THE INVERSION THE OLD ONE ASKED FOR.
+  //
+  // The FAIL-ATTENDU above said, in its own words: « After fix: these keys should either disappear or be
+  // backed by a real channel ». No chat backend was built, so the keys disappeared — from all FIVE locales in
+  // one edit, because deleting from fr.json alone would leave four ‘extra’ keys and
+  // scripts/check-translations.js only WARNS on those, which is the silent drift the no-key-deletion rule
+  // exists to prevent. Deletion is authorised by the founder's D′ L10 order (« supprimer uniquement les clés
+  // réellement superseded / mortes »), the documented exception to « aucune clé supprimée ».
+  //
+  // WHAT WAS REMOVED AND WHY EACH ONE: a scripted three-turn human dialogue (chatAgent1, chatMe1,
+  // chatAgent2), its chrome (chatToday, chatAiSuggest, chatPlaceholder), a simulated presence badge
+  // (« ● En ligne »), a chat channel that does not exist (contactChat) and — the reason this belongs in a
+  // TRUTHFULNESS lot rather than a tidy-up — two RESPONSE-TIME PROMISES with nothing behind them
+  // (contactChatEta « ~2 min », contactEmailEta « < 24 h »). Plus optCancelTitle/optCancelSub, whose option
+  // the page no longer offers. Measured before deleting: zero references in app/, lib/ or components/.
+  it('[CORRIGÉ — D′ L10] les bulles de conversation simulées et les délais de réponse promis N’EXISTENT PLUS, dans les 5 locales', () => {
+    const GONE = ['chatToday', 'chatAgent1', 'chatMe1', 'chatAgent2', 'chatAiSuggest', 'chatPlaceholder',
+      'online', 'contactChat', 'contactChatEta', 'contactEmailEta', 'optCancelTitle', 'optCancelSub']
+    for (const locale of ['fr', 'en', 'es', 'ar', 'it']) {
+      const m = JSON.parse(readFileSync(join(ROOT, 'messages', `${locale}.json`), 'utf8')) as {
+        eat?: { help?: Record<string, string> }
+      }
+      const help = m.eat?.help ?? {}
+      for (const key of GONE) {
+        expect(help[key], `${locale}: eat.help.${key} came back`).toBeUndefined()
+      }
+      // …and the keys that ARE backed by something real stay: the refund view is wired to /api/claims.
+      expect(typeof help.refundEstimate, `${locale}: eat.help.refundEstimate must survive`).toBe('string')
+      expect(typeof help.contactEmail, `${locale}: eat.help.contactEmail must survive`).toBe('string')
+      expect(typeof help.optMissingTitle, `${locale}: the real options must survive`).toBe('string')
+      expect(typeof help.optLateTitle, `${locale}: the real options must survive`).toBe('string')
     }
-    const help = fr.eat?.help ?? {}
-    for (const key of ['chatAgent1', 'chatMe1', 'chatAgent2']) {
-      expect(typeof help[key], `eat.help.${key} is a scripted bubble`).toBe('string')
-      expect((help[key] ?? '').length).toBeGreaterThan(0)
-    }
-    expect(help.online).toContain('En ligne')       // simulated presence
-    expect(help.contactChatEta).toBe('~2 min')      // promised chat ETA, no chat backend
-    expect(help.contactEmailEta).toBe('< 24 h')     // promised email ETA, no email channel
+  })
+
+  it('NEGATIVE CONTROL — the assertion above is not vacuous: a resurrected key IS detected', () => {
+    // If the deletion were reverted, the shape below is what messages/*.json would hold again.
+    const resurrected: Record<string, string> = { chatAgent1: 'Bonjour 👋', contactChatEta: '~2 min' }
+    expect(() => {
+      for (const key of ['chatAgent1', 'contactChatEta']) expect(resurrected[key]).toBeUndefined()
+    }).toThrow()
   })
 })
 

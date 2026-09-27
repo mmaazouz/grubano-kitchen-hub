@@ -2,6 +2,12 @@ import nodemailer from 'nodemailer'
 import { prisma } from '@/lib/prisma'
 import { Prisma } from '@prisma/client'
 import { isDeliveryFulfillmentEnabled } from '@/lib/fulfillment'
+// D′ L10 (§6) — sendRefundConfirmation became localized, so this module needs what every other localized
+// sender already uses: next-intl's server translator, the recipient-locale resolver, and the shared e-mail
+// chrome (lib/claim-email-shell is a zero-import LEAF, so it adds no reach to this module's import graph).
+import { getTranslations } from 'next-intl/server'
+import { resolveNudgeLocale } from '@/lib/onboarding-nudge'
+import { claimShell, euros } from '@/lib/claim-email-shell'
 
 // ── Transactional emails v1 (Agent 13) ─────────────────────────────────────────
 //
@@ -86,6 +92,24 @@ function esc(s: string): string {
 }
 
 // ── Recipient resolution + traced skip (Emails v2, FIX 1) ───────────────────────
+
+/**
+ * D′ L10 (§6) — THE RESERVATION'S RECIPIENT LANGUAGE, through the hop that already exists.
+ *
+ * `model Reservation` has `customerName`, `phone`, `email` and `userId` — and NO locale column. Adding one
+ * would be a schema change for a text lot, so the language is read where it is actually stored, on the linked
+ * account, exactly the way `resolveReservationRecipient` finds the address. A walk-in reservation with no
+ * account has no stated language: null ⇒ 'fr', which is what it received before this lot anyway.
+ */
+export async function resolveReservationLocale(r: { userId: string | null }): Promise<string | null> {
+  if (!r.userId) return null
+  try {
+    const account = await prisma.operator.findUnique({ where: { id: r.userId }, select: { locale: true } })
+    return account?.locale ?? null
+  } catch {
+    return null
+  }
+}
 
 /** Client-destined reservation emails: the reservation's typed email when
  *  present, OTHERWISE the linked consumer ACCOUNT's email (userId →
@@ -737,6 +761,18 @@ export async function sendRefundConfirmation(p: {
   refundedCents:  number
   /** true when part of the payment remains (partial refund). */
   partial:        boolean
+  /**
+   * D′ L10 (§6) — THE RECIPIENT'S LANGUAGE. Absent ⇒ 'fr', which is what every caller effectively got before
+   * this lot: the whole template was a French literal and the parameter object had no locale field, so no
+   * caller COULD supply one. Callers now read `Operator.locale` and pass it.
+   */
+  locale?:        string | null
+  /**
+   * D′ L10 (§6) — the PUBLIC order reference (`GR-…`), never a cuid and never a Stripe id. Without it, two
+   * legitimate refunds of the same amount on one order (T-47's own case) produced two e-mails a customer
+   * could not tell apart. Optional so a caller that cannot form one still sends a truthful e-mail.
+   */
+  orderRef?:      string | null
   // D′ L9 (E3): the RETURN became meaningful. This used to be `Promise<void>` — it awaited
   // `sendTransactional` and threw the `{ status }` away — so a caller could not tell an admin whether the
   // notice was sent, was a duplicate, or was skipped because SMTP is off. The deferred-notice route needs
@@ -751,16 +787,39 @@ export async function sendRefundConfirmation(p: {
   //     the engine / Stripe refund amount, never a requested or estimated amount). The email
   //     speaks of CASH only; loyalty restoration (points) is never presented as cash.
   //   • STATE — callers send this ONLY after Stripe `succeeded` (pending/failed ⇒ no email).
+  //
+  // D′ L10 (§6) — AND IT IS NO LONGER FRENCH-ONLY. Every visible string now comes from
+  // `claimEmails.refundConfirmation.*` in the recipient's locale, the amount is formatted in that locale
+  // (the old helper hardcoded `fr-FR`, so an English recipient read « 12,50 € » and an Arabic one lost the
+  // RLM), the chrome is `claimShell` so an Arabic e-mail is rendered RTL, and the greeting is CONDITIONAL —
+  // `customerName` can legitimately be '' and the old template rendered « Bonjour , ».
+  //
+  // THE ONE THING THIS SENDER MUST NOT LOSE: it is the only post-money customer e-mail in the repository
+  // that states the bank dependency (S-21's second half). The clause is now a shared key,
+  // `claimEmails.bankNoteIssued`, so the two claim senders can state it too.
+  const locale = resolveNudgeLocale(p.locale ?? null)
+  const t = await getTranslations({ locale, namespace: 'claimEmails' })
+  const amount = euros(locale, p.refundedCents)
+  const bodyKey = p.partial ? 'refundConfirmation.bodyPartial' : 'refundConfirmation.body'
+  const subjectKey = p.partial ? 'refundConfirmation.subjectPartial' : 'refundConfirmation.subject'
+  const html = claimShell({
+    title:  t('refundConfirmation.title'),
+    rtl:    locale === 'ar',
+    footer: t('footer'),
+    bodyHtml:
+      (p.customerName ? `<p>${esc(t('greeting', { name: p.customerName }))}</p>` : '')
+      + `<p>${esc(t(bodyKey, { euros: amount, resto: p.restaurantName || t('theRestaurant') }))}</p>`
+      + (p.orderRef ? `<p style="font-size:13px;color:#6b7280">${esc(t('refundConfirmation.refLine', { ref: p.orderRef }))}</p>` : '')
+      + `<p style="font-size:13px;color:#6b7280">${esc(t('bankNoteIssued'))}</p>`,
+  })
   return await sendTransactional({
     to:      p.to,
-    subject: `Votre remboursement ${p.partial ? 'partiel ' : ''}est confirmé — ${p.restaurantName}`,
+    // The SAME fallback the body applies. Without it a nameless restaurant shipped a subject ending in a
+    // dangling « — », on a money e-mail. Found by this lot's adversarial review.
+    subject: t(subjectKey, { resto: p.restaurantName || t('theRestaurant') }),
     trigger: 'refund_confirmation',
     dedupeKey: p.dedupeKey,
-    html: shell('Remboursement confirmé', `
-      <p>Bonjour ${esc(p.customerName)}, votre remboursement ${p.partial ? '<strong>partiel</strong> ' : ''}de
-         <strong>${eurosFromCents(p.refundedCents)}</strong> est confirmé : ce montant est renvoyé sur le
-         moyen de paiement utilisé pour votre commande chez <strong>${esc(p.restaurantName)}</strong>.</p>
-      <p style="font-size:13px;color:#6b7280">Le délai d’apparition sur votre compte dépend de votre banque.</p>`),
+    html,
   })
 }
 

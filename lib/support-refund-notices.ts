@@ -215,6 +215,12 @@ export interface SupportNoticeTarget {
   orderRef:       string
   /** D′ L9.1: the owning restaurant, for the claim-agnostic post-money notice. */
   restaurantId:   string
+  /**
+   * D′ L10 (§6): the recipient's e-mail language. Measured before this lot: the route sent a fully
+   * localized notice to the RESTAURANT and a French-only one to the CUSTOMER, for the same refund — because
+   * this resolver never selected `Operator.locale`. null ⇒ 'fr' (resolveNudgeLocale).
+   */
+  recipientLocale: string | null
   stripeRefundId: string
   /** OUR amount. The route sends the amount it re-reads from STRIPE, never this one (§20). */
   rowAmountCents: number
@@ -272,7 +278,7 @@ export async function resolveSupportNoticeTarget(
   if (!order) return { ok: false, refusal: 'order_missing' }
 
   const consumer = order.consumerId
-    ? await prisma.operator.findUnique({ where: { id: order.consumerId }, select: { email: true, name: true } })
+    ? await prisma.operator.findUnique({ where: { id: order.consumerId }, select: { email: true, name: true, locale: true } })
     : null
   if (!consumer?.email) return { ok: false, refusal: 'no_recipient' }
 
@@ -288,6 +294,7 @@ export async function resolveSupportNoticeTarget(
       orderId:        row.orderId,
       orderRef:       orderRef(row.orderId),
       restaurantId:   order.restaurantId,
+      recipientLocale: consumer.locale ?? null,
       stripeRefundId: row.stripeRefundId as string,
       rowAmountCents: row.amountCents,
       partial:        chargeCents > 0 && totalRefunded < chargeCents,

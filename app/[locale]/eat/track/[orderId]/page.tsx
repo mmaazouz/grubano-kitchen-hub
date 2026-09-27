@@ -232,10 +232,26 @@ export default function OrderTrackingScreen() {
   // IS THE REFUND ESTABLISHED, or merely in flight? The loyalty ledger is driven by Stripe's succeeded set
   // and our own Refund row is not, so the two can legitimately disagree for a window — and when the row is
   // still pending while the points are already clawed back, a sentence ending « après le remboursement »
-  // asserts an accomplished past event the proof does not support. Found by the adversarial review of this
-  // lot: it slipped through because §5's banned words (« remboursé », « effectué ») do not appear in it.
+  // asserts an accomplished past event the proof does not support. Found by the adversarial review of L9:
+  // it slipped through because §5's banned words (« remboursé », « effectué ») do not appear in it.
+  //
+  // D′ L10 — THE GATE WAS A TAUTOLOGY AT TWO OF ITS THREE USE SITES, which is why the fix it shipped never
+  // fired. It counted the LOYALTY facts as evidence (`|| pointsAllReversed || pointsRestored > 0`), and two of
+  // the three sites are inside `pointsAllReversed && (…)` and `pointsRestored > 0 && (…)` — so the disjunct
+  // was always already true there and the false branch was unreachable.
+  //
+  // THE THIRD SITE (the « points conservés » box) was NOT a tautology and its behaviour DOES change, so it is
+  // stated rather than glossed: that box requires `pointsKept > 0`, which makes `pointsAllReversed` false, so
+  // the old formula reduced there to `money || pointsRestored > 0`. A restoration alone could therefore make
+  // it say « … après le remboursement » with no refund proven — the SAME category error, one step smaller.
+  // It now needs the money too, and a test pins all three sites. Found by this lot's adversarial review, which
+  // also caught that the first version of this comment claimed two sites.
+  // Measured consequence in the exact state the gate exists for
+  // (points fully clawed back while our row is still `pending` with a `re_`): the screen rendered
+  // « … repris APRÈS LE REMBOURSEMENT » three rows below « Remboursement en cours », and the two
+  // `*PendingNote` strings were dead in all five locales. A clawback is a CONSEQUENCE of a refund, never its
+  // proof; the proof is the money. So the gate now asks the money and nothing else.
   const refundEstablished = refundedCents > 0 || refundOtherCents > 0
-    || pointsAllReversed || pointsRestored > 0
 
   // No date helper exists on this page (the recap has never carried one). A refund line needs a day
   // and it is the locale-aware built-in, never a hand-built string. `ar` resolves to `ar-MA` — the

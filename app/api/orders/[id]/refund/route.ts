@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
+import { orderRef } from '@/lib/order-ref'
 import { requireRefundAdmin } from '@/lib/refund-route-guard'
 import { recordAdminAudit } from '@/lib/admin-audit'
 import { isRefundsEnabled, executeRefund } from '@/lib/refund'
@@ -142,15 +143,21 @@ export async function POST(
       const [consumer, resto] = await Promise.all([
         prisma.operator.findUnique({
           where:  { id: order.consumerId },
-          select: { email: true, name: true },
+          // D′ L10 (§6): `locale` too — the refund confirmation is localized now.
+          select: { email: true, name: true, locale: true },
         }),
         prisma.restaurant.findUnique({ where: { id: order.restaurantId }, select: { name: true } }),
       ])
       if (consumer?.email) {
         await sendRefundConfirmation({
           to:             consumer.email,
-          customerName:   consumer.name ?? consumer.email,
-          restaurantName: resto?.name ?? 'votre restaurant',
+          // D′ L10 (§6): the recipient's language, and the PUBLIC order reference. `name ?? email` is gone —
+          // greeting a customer by their own e-mail address inside a money e-mail was never intended; the
+          // sender now omits the greeting entirely when there is no name.
+          customerName:   consumer.name ?? '',
+          locale:         consumer.locale,
+          orderRef:       orderRef(order.id),
+          restaurantName: resto?.name ?? '',
           refundedCents:  result.amountCents,
           partial:        remainingCents > 0,
           // T-47 — the e-mail identity is the REFUND, not the amount. Two distinct legitimate

@@ -11,6 +11,11 @@ import { useTranslations, useLocale } from 'next-intl'
 import { AlertCircle } from 'lucide-react'
 import { Button, Modal, useToast } from '@/components/design-system'
 import { formatEuros } from '@/lib/format-money'
+// D′ L10 (§2) — THIS SURFACE WAS THE LAST FRENCH AUTHORITY ON THE CONSUMER SIDE. Both handlers below
+// rendered `data.error`, i.e. the server's French sentence, to a customer reading /eat in English, Spanish,
+// Italian or Arabic — while the localized keys existed in all five locales. The shared code→key map is the
+// same one the help page uses, so two surfaces cannot answer one code differently.
+import { claimRefusalKey, contestRefusalKey } from '@/lib/claim-refusal-labels'
 
 // L7 (T-50) — THE REASONS A CUSTOMER MAY FILE, and what each one requires them to SAY.
 //
@@ -54,6 +59,9 @@ function fileToBase64(file: File): Promise<string> {
 
 export default function ClaimSection({ orderId }: { orderId: string }) {
   const t = useTranslations('claims')
+  // D′ L10: the eligibility refusal keys live under `eat.help.*` — the namespace the help page already uses —
+  // so ONE set of sentences serves both surfaces. The contest refusals are new and live under `claims.client.*`.
+  const th = useTranslations('eat.help')
   const locale = useLocale()
   const toast = useToast()
   const [el, setEl] = useState<Eligibility | null>(null)
@@ -132,7 +140,12 @@ export default function ClaimSection({ orderId }: { orderId: string }) {
           body: JSON.stringify({ reason: contestReason || undefined }),
         })
         const data = await res.json().catch(() => ({}))
-        if (!res.ok) { toast.error(data.error || t('client.errorGeneric')); return }
+        if (!res.ok) {
+          // Same rule for the contest refusals, which gained codes in this lot.
+          const key = contestRefusalKey(data?.reason)
+          toast.error(key ? t(`client.${key}`) : t('client.errorGeneric'))
+          return
+        }
         toast.success(t('client.contestSuccess'))
         setContesting(false); setContestReason('')
         await load()
@@ -240,7 +253,13 @@ export default function ClaimSection({ orderId }: { orderId: string }) {
         }),
       })
       const data = await res.json().catch(() => ({}))
-      if (!res.ok) { toast.error(data.error || t('client.errorGeneric')); return }
+      if (!res.ok) {
+        // The CODE decides the sentence; `data.error` (French, for logs and for an operator reading a 409)
+        // is never shown. An unmapped code degrades to the localized generic — not to French prose.
+        const key = claimRefusalKey(data?.reason)
+        toast.error(key ? th(key) : t('client.errorGeneric'))
+        return
+      }
       toast.success(t('client.success'))
       setOpen(false)
       setFile(null); setDescription(''); setAmountEuros(''); setScope(''); setPicked({})

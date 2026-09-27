@@ -5,7 +5,7 @@ import { recordAdminAudit } from '@/lib/admin-audit'
 import { isRefundsEnabled } from '@/lib/refund'
 import { rateLimit } from '@/lib/rate-limit'
 import { refundPayment } from '@/lib/refunds'
-import { sendRefundConfirmation } from '@/lib/transactional-emails'
+import { sendRefundConfirmation, resolveReservationLocale } from '@/lib/transactional-emails'
 
 // ── POST /api/reservations/[id]/refund-deposit ────────────────────────────────
 // P0-03 (vague 1, Q3 fondateur) : refund a CAPTURED empreinte in full — ADMIN
@@ -39,6 +39,8 @@ export async function POST(
       select: {
         id: true, restaurantId: true, depositStatus: true, stripePaymentIntentId: true,
         email: true, customerName: true,
+        // D′ L10 (§6): `userId` is the hop to the account's e-mail LANGUAGE — see resolveReservationLocale.
+        userId: true,
       },
     })
     if (!reservation) return NextResponse.json({ error: 'Réservation introuvable' }, { status: 404 })
@@ -80,7 +82,13 @@ export async function POST(
         await sendRefundConfirmation({
           to:             reservation.email,
           customerName:   reservation.customerName,
-          restaurantName: resto?.name ?? 'votre restaurant',
+        // D′ L10 (§6): the recipient's language, read through `userId → Operator.locale` — Reservation has no
+        // locale column and a text lot does not add one. A walk-in with no account stays 'fr', as before.
+        locale:         await resolveReservationLocale(reservation),
+          // D′ L10 (§6): NOT the French literal any more. This e-mail is localized, so a French fallback
+            // would be spliced into an English or Arabic subject and body. Empty ⇒ the sender uses the
+            // locale's own `claimEmails.theRestaurant`.
+            restaurantName: resto?.name ?? '',
           refundedCents:  result.refund.amount,
           partial:        false,
           dedupeKey:      `resv:${reservation.id}:${result.refund.amount}`,

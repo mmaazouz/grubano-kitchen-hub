@@ -24,6 +24,25 @@
 // notice (Stripe-proven refund) and an explicit terminal CLOSURE are always sendable — hiding a paid
 // refund or a closed file behind a feature flag is how money questions go silent.
 
+/**
+ * D′ L10 — THE SUBMISSION WINDOW LIVES HERE, because a PUBLIC page has to be able to state it.
+ *
+ * `/legal/cgv` tells the customer how long the claim form stays open, and that number must be the one
+ * `getClaimEligibility` actually enforces — a « 48 h » typed into five locales becomes false the day the env
+ * changes, and a legal page that contradicts the product is worse than one that says nothing. It could not be
+ * read from `lib/claims`: that module pulls Prisma, Stripe and the refund engine, which have no business in a
+ * public legal route. So the read sits in this file, which imports NOTHING, and `lib/claims` re-exports it —
+ * ONE definition, the same value on both sides, pinned by a test.
+ *
+ * Anchored on `Order.deliveredAt` — the delivery instant, written once by the transition (D′ L6,
+ * lib/claim-eligibility E4). NEVER `Order.updatedAt`: that moves on every later write (a note, a
+ * reconciliation, a repair) and would silently reopen the window days after the meal.
+ */
+export function claimWindowHours(): number {
+  const v = Number.parseInt(process.env.CLAIM_WINDOW_HOURS ?? '', 10)
+  return Number.isFinite(v) && v > 0 ? v : 48
+}
+
 /** Compiled ceiling of the legacy lease (T-53): a deadline further ahead is refused, never clamped. */
 export const CLAIMS_WINDOW_MAX_MS = 60 * 60 * 1000
 

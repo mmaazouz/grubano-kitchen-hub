@@ -6,6 +6,8 @@ import { useTranslations, useLocale } from 'next-intl'
 import { Link, useRouter } from '@/navigation'
 import { formatEuros } from '@/lib/format-money'
 import { ACCEPTED_REASONS } from '@/lib/claim-reasons'
+// D′ L10 (§2): a refusal is a CODE. This page used to surface the server's French sentence as-is.
+import { contestRefusalKey } from '@/lib/claim-refusal-labels'
 import { showToast } from '@/lib/eat-cart'
 // gb-foundation FIRST: gb-tokens.css opens with `@import …Material+Symbols…`, valid
 // only when it is the route stylesheet's first rule — keep it before page CSS so the
@@ -236,8 +238,12 @@ function ClaimRow({ claim, dateLabel, onContested }: { claim: ClaimCard; dateLab
       })
       const data = await res.json().catch(() => null)
       if (!res.ok) {
-        // Project rule: a UI-facing server error is already French — surface it as-is.
-        setErr(typeof data?.error === 'string' ? data.error : tc('client.errorGeneric'))
+        // D′ L10 (§2) — THE COMMENT THAT USED TO SIT HERE SAID THE OPPOSITE OF THE RULE: « a UI-facing server
+        // error is already French — surface it as-is ». It is deleted on purpose, because it would be cited as
+        // licence by the next reader. A refusal is a CODE; the code picks the sentence in the reader's own
+        // language, and an unmapped code degrades to the localized generic — never to French prose.
+        const key = contestRefusalKey((data as { reason?: unknown } | null)?.reason)
+        setErr(key ? tc(`client.${key}`) : tc('client.errorGeneric'))
         return
       }
       showToast(tc('client.contestSuccess'))

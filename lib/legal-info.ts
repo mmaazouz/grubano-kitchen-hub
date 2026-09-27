@@ -171,6 +171,25 @@ export const LEGAL_INFO: LegalInfo = {
   },
 }
 
+/**
+ * D′ L10 — HAS A LAWYER READ THE TERMS OF SALE? A SEPARATE FACT FROM « IS THE COMPANY IDENTITY FILLED IN ».
+ *
+ * The CGV page first gated its « not yet reviewed by legal counsel » banner AND its `noindex` on
+ * `isLegalInfoComplete()`. That function knows about a SIREN, an address and a mediator — it knows nothing
+ * about a lawyer. So the day Mohammed fills the company facts, an unreviewed terms-of-sale page would have
+ * become indexable and lost its warning, silently, as a side effect of an unrelated edit. Found by this lot's
+ * adversarial review.
+ *
+ * Set this to `true` ONLY when a lawyer has actually reviewed `legal.cgv.*` in the five locales. It is a
+ * DECISION, not a build artefact: nothing in CI may flip it.
+ */
+export const CGV_COUNSEL_REVIEWED = false
+
+/** Publishable = the company facts are filled in AND counsel has reviewed the text. Both, or it is a draft. */
+export function isCgvPublishable(info: LegalInfo = LEGAL_INFO): boolean {
+  return isLegalInfoComplete(info) && CGV_COUNSEL_REVIEWED
+}
+
 /** True when a value is still an unfilled placeholder. */
 export function isPlaceholder(value: string): boolean {
   return typeof value !== 'string' || value.trim() === '' || value.startsWith(LEGAL_PLACEHOLDER_PREFIX)
