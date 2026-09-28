@@ -84,6 +84,25 @@ const LINE_SELECT   = { id: true, royaltyCents: true, refundedCents: true, settl
  *  `notIn`: a chargeback rate that high is a fault to investigate, not a filter to apply. */
 const MAX_HELD_ORDER_IDS = 5000
 
+/** T-115 — orders whose chargeback was LOST and never unwound. `splitReversed` is the field that says whether
+ *  WE acted: an OPEN dispute has taken nothing yet, and an already-unwound one has had its real,
+ *  Stripe-derived slice written into `refundedCents`, so holding either back would UNDER-pay the franchisor. */
+async function unUnwoundLostDisputeOrderIds(): Promise<string[]> {
+  const rows = await prisma.dispute.findMany({
+    where:  { status: 'lost', splitReversed: false, NOT: { orderId: null } },
+    select: { orderId: true },
+  })
+  return Array.from(new Set(rows.map((d) => d.orderId).filter((id): id is string => !!id)))
+}
+
+/** The Prisma fragment that excludes them — or 'too_many', because a `notIn` of implausible size is a query
+ *  better refused than sent blind. An empty object when there is nothing to hold, which keeps the claim
+ *  byte-identical to its pre-T-115 shape in the normal case. */
+function heldOrderIdsFilter(ids: string[]): { orderId?: { notIn: string[] } } | 'too_many' {
+  if (ids.length > MAX_HELD_ORDER_IDS) return 'too_many'
+  return ids.length ? { orderId: { notIn: ids } } : {}
+}
+
 /** Royalty STILL owed to the franchisor for one line = held-back minus what was
  *  refunded to the customer (P4.5-A). `refundedCents` is null/absent on legacy rows
  *  and pre-refund rows → 0 → byte-identical to the raw royaltyCents. */
@@ -371,57 +390,42 @@ export async function settleFranchisor(operatorId: string): Promise<SettlementOu
     }
   }
 
-  // 2. NORMAL — pre-check the threshold on PENDING (read-only), then CLAIM atomically.
+  // 2. NORMAL — hold back what a chargeback took (T-115), pre-check the threshold on what is LEFT
+  //    (read-only), then CLAIM atomically.
   // Refund-aware: compare the NON-refunded sum (Σ royaltyCents − Σ refundedCents) —
   // byte-identical to Σ royaltyCents while nothing was refunded.
+  /* THE HOLD IS READ BEFORE THE THRESHOLD, and that ordering is the correction to this ticket's own first
+     version. With the hold read after the aggregate, the threshold was decided on money that was then held
+     back: a franchisor could clear the minimum on the strength of a chargebacked sale, get a claim, and be
+     bounced by the post-claim re-validation — a pointless claim/revert cycle whose skip reason said
+     « below_threshold » when the truth was « that sale was disputed ». The threshold must measure SETTLEABLE
+     money, so the filter is applied to both reads, from one list. */
+  const held = heldOrderIdsFilter(await unUnwoundLostDisputeOrderIds())
+  if (held === 'too_many') {
+    console.error(`[franchise settlement] [MONEY REVIEW] implausible number of un-unwound lost disputes — refusing to build the claim`)
+    return { status: 'skipped', operatorId, reason: 'too_many_held_disputes' }
+  }
   const agg = await prisma.franchiseRoyalty.aggregate({
-    where: { franchisorOperatorId: operatorId, status: 'pending' },
+    where: { franchisorOperatorId: operatorId, status: 'pending', ...held },
     _sum:  { royaltyCents: true, refundedCents: true },
     _count: true,
   })
-  if (agg._count === 0) return { status: 'skipped', operatorId, reason: 'nothing_pending' }
+  if (agg._count === 0) {
+    // Say WHICH emptiness this is: « nothing accrued » and « everything is held by a chargeback » are
+    // different facts, and an operator reading the log deserves the second one by name.
+    return { status: 'skipped', operatorId, reason: Object.keys(held).length ? 'all_pending_held_by_disputes' : 'nothing_pending' }
+  }
   const pendingNetCents = (agg._sum.royaltyCents ?? 0) - (agg._sum.refundedCents ?? 0)
   if (pendingNetCents < minSettlementCents()) {
     return { status: 'skipped', operatorId, reason: 'below_threshold' }
   }
 
-  /* T-115 — DO NOT PAY A ROYALTY ON A SALE STRIPE ALREADY TOOK BACK.
-     Found by the final invariant review, on the dispute side: while `CHARGEBACKS_ENABLED` is closed a LOST
-     chargeback is now RECORDED (T-107) but no unwind runs, so `FranchiseRoyalty.refundedCents` is never
-     reduced — and `netOwedCents` therefore still reports the FULL royalty as owed. The settlement would pay
-     the franchisor for revenue the platform no longer has.
-     The tempting fix — write the royalty slice down at observation time — was REJECTED, because computing
-     that slice needs the charge total and the application fee, which only Stripe knows, and
-     `recordDisputeObservation` is defined by making no Stripe call at all. A number I cannot derive is a
-     number I must not write; the whole chantier has already paid for one invented-but-plausible fact.
-     So the refusal happens where the money would actually leave, using a fact we DO hold: an order carrying
-     a dispute that is `lost` and NOT yet `splitReversed` is held back from the batch. Its lines stay
-     'pending' — the re-claimable state, not an absorbing one — and become settleable the moment the unwind
-     runs and writes the real, Stripe-derived slice.
-     Only the FRESH claim is filtered. A resume re-drives a batch that was already claimed and may already
-     have an executed transfer; dropping a line from it would fight the amount-drift detector and could strand
-     a franchisor's whole batch. That case is bounded by the same drift check that already guards it. */
-  const unwound = await prisma.dispute.findMany({
-    where:  { status: 'lost', splitReversed: false, NOT: { orderId: null } },
-    select: { orderId: true },
-  })
-  const heldOrderIds = Array.from(new Set(unwound.map((d) => d.orderId).filter((id): id is string => !!id)))
-  if (heldOrderIds.length > MAX_HELD_ORDER_IDS) {
-    /* A list this long is not a normal chargeback rate — it is a data or query fault, and a `notIn` of that
-       size is a query I would rather not send than send blind. Skip: settling later costs nothing, settling
-       wrongly costs money. */
-    console.error(`[franchise settlement] [MONEY REVIEW] ${heldOrderIds.length} un-unwound lost disputes — refusing to build the claim`)
-    return { status: 'skipped', operatorId, reason: 'too_many_held_disputes' }
-  }
-
   // ATOMIC CLAIM — one UPDATE; concurrent runs get disjoint sets (the loser claims 0).
   const settlementId = randomUUID()
   const claim = await prisma.franchiseRoyalty.updateMany({
-    where: {
-      franchisorOperatorId: operatorId,
-      status: 'pending',
-      ...(heldOrderIds.length ? { orderId: { notIn: heldOrderIds } } : {}),
-    },
+    // the SAME `held` filter the threshold was measured with: one read, two uses, so a dispute recorded
+    // between the two can never make the claim disagree with the decision that authorized it
+    where: { franchisorOperatorId: operatorId, status: 'pending', ...held },
     data:  { status: 'settling', settlementId },
   })
   if (claim.count === 0) return { status: 'skipped', operatorId, reason: 'nothing_pending' }

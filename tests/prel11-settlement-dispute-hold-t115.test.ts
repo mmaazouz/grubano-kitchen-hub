@@ -90,6 +90,39 @@ describe('T-115 — an un-unwound LOST chargeback holds its order back from the 
     expect(claimWhere().orderId).toEqual({ notIn: ['ord_x', 'ord_y'] })
   })
 
+  it('the THRESHOLD is measured on settleable money — the aggregate carries the same filter', () => {
+    /* The correction to this ticket's own first version. With the hold read AFTER the aggregate, a franchisor
+       could clear the minimum on the strength of a chargebacked sale, get a claim, and be bounced by the
+       post-claim re-validation — a pointless claim/revert whose skip reason said « below_threshold » when the
+       truth was « that sale was disputed ». */
+    return (async () => {
+      db.dispute.findMany.mockResolvedValue([{ orderId: 'ord_lost_1' }])
+      await settleFranchisor('op_fr')
+      const aggWhere = db.franchiseRoyalty.aggregate.mock.calls[0][0].where
+      expect(aggWhere).toMatchObject({
+        franchisorOperatorId: 'op_fr', status: 'pending', orderId: { notIn: ['ord_lost_1'] },
+      })
+      // and it is the SAME list the claim used — one read, two uses, so they cannot disagree
+      expect(claimWhere().orderId).toEqual(aggWhere.orderId)
+      expect(db.dispute.findMany).toHaveBeenCalledTimes(1)
+    })()
+  })
+
+  it('« everything is held by a chargeback » is reported under its OWN name, not as `nothing_pending`', async () => {
+    // Two different facts. An operator reading the log deserves the second one by name.
+    db.dispute.findMany.mockResolvedValue([{ orderId: 'ord_lost_1' }])
+    db.franchiseRoyalty.aggregate.mockResolvedValue({ _count: 0, _sum: { royaltyCents: null, refundedCents: null } })
+    const out = await settleFranchisor('op_fr')
+    expect(out).toEqual({ status: 'skipped', operatorId: 'op_fr', reason: 'all_pending_held_by_disputes' })
+    expect(db.franchiseRoyalty.updateMany).not.toHaveBeenCalled()
+  })
+
+  it('NEGATIVE CONTROL — nothing accrued and nothing held → still plain `nothing_pending`', async () => {
+    db.franchiseRoyalty.aggregate.mockResolvedValue({ _count: 0, _sum: { royaltyCents: null, refundedCents: null } })
+    const out = await settleFranchisor('op_fr')
+    expect(out).toEqual({ status: 'skipped', operatorId: 'op_fr', reason: 'nothing_pending' })
+  })
+
   it('an implausible number of held orders REFUSES the run instead of sending a blind `notIn`', async () => {
     db.dispute.findMany.mockResolvedValue(
       Array.from({ length: 5001 }, (_, i) => ({ orderId: `ord_${i}` })),
