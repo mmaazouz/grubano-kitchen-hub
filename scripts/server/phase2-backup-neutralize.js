@@ -92,9 +92,14 @@ function neutralize(text, key) {
 }
 const sha256 = (buf) => crypto.createHash('sha256').update(buf).digest('hex')
 
+/* T-99: Node's `fetch` has no default timeout, so a host that accepts the connection and then says
+   nothing hangs this probe forever — and with it the only control that removes a restorable true-flag
+   backup. A refused connection already returned promptly; the silent one is the dangerous shape. */
+const PROBE_TIMEOUT_MS = Number(process.env.PHASE2_PROBE_TIMEOUT_MS || 15000)
 async function probeGate(base) {
   try {
-    const r = await fetch(base + '/api/admin/refunds/run', { method: 'POST', headers: { 'Content-Type': 'application/json', 'User-Agent': 'grubano-phase2-backup-neutralize/1' }, body: '{}', redirect: 'manual' })
+    const signal = (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(PROBE_TIMEOUT_MS) : undefined
+    const r = await fetch(base + '/api/admin/refunds/run', { method: 'POST', headers: { 'Content-Type': 'application/json', 'User-Agent': 'grubano-phase2-backup-neutralize/1' }, body: '{}', redirect: 'manual', signal })
     const b = await r.json().catch(() => null)
     if (r.status === 403 && b && b.gated === true) return '403'
     return String(r.status)
@@ -180,4 +185,11 @@ async function main() {
   done(backupSafety ? (DRY ? 'PASS (dry run — nothing needed remediation)' : 'PASS') : 'FAIL')
 }
 
-main().catch((e) => fail('unexpected: ' + scrub(e)))
+// T-93 (d) — THE PREDICATE IS NOW SHARED, NOT COPIED. phase2-refund-gate.js must be able to say, after a
+// window it opened itself, whether the backup IT created is still restorable. Writing a second
+// « is this backup dangerous » expression there would put a money rule in two places, and a money rule in
+// two copies eventually disagrees with itself. Requiring this file has no side effect: everything above is
+// constants and pure functions, and main() now runs only when this file is the entry point.
+if (require.main === module) main().catch((e) => fail('unexpected: ' + scrub(e)))
+
+module.exports = { GUARDED_FLAGS, effective, dangerousFlags, neutralize, neutralizeAll }

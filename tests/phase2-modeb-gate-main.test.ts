@@ -583,7 +583,10 @@ describe('MODE B — main() EXÉCUTÉ en mode window (ouvre, observe Stripe, ref
   it('⭐ écriture de fermeture en ÉCHEC (quota disque) ⇒ la fermeture d’urgence reprend clé par clé : tout est fermé, FAIL', () => {
     const r = runOp(mkRoot({ net: netOk({ appear: appear([RE_OK]), failFirstCloseWrite: true }) }), 'window', { PHASE2_MODEB_CONFIRM: SENTENCE })
     expect(r.netLog).toMatch(/^ENVWRITEFAIL /m)
-    expect(r.out).toMatch(/10 refreeze: EDQUOT/)
+    // T-93: the write loop names the KEY that resisted before the error text, and the emergency close
+    // is now invoked as an immediate RETRY rather than as the consequence of an aborted try.
+    expect(r.out).toMatch(/10 refreeze: écriture REFUNDS_WINDOW_UNTIL ÉCHOUÉE — EDQUOT/)
+    expect(r.out).toMatch(/reprise immédiate des clés en échec/)
     expect(r.out).toMatch(/EMERGENCY CLOSE — les quatre clés sont fermées sur le disque/)
     expect(r.out).toMatch(/GATES APRÈS FERMETURE D’URGENCE: claims CLOSED · refunds CLOSED/)
     expect(r.out).toMatch(/RESULT = FAIL/)

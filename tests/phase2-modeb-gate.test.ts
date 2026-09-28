@@ -222,9 +222,27 @@ describe('MODE B opérateur — corrections issues de la revue adversariale', ()
   it('⭐ P0 — rien n’est refermé ni redémarré tant qu’une tentative est NON RÉSOLUE', () => {
     expect(SRC).toMatch(/SETTLE BEFORE CLOSE|encore NON RÉSOLUE à la fermeture/)
     const settleAt = SRC.indexOf('settleUntil')
-    const closeAt = SRC.indexOf("writeFlag(envFile, 'REFUNDS_WINDOW_UNTIL', past")
+    // T-93: the four close writes became a per-key LOOP (a throw on one must not suppress the others),
+    // so the anchor follows the rule to where it now lives. Asserting the old single-statement shape
+    // would pin the very defect the loop removed.
+    const closeAt = SRC.indexOf("for (const [k, v] of [['REFUNDS_WINDOW_UNTIL', past]")
     expect(settleAt).toBeGreaterThan(-1)
     expect(settleAt).toBeLessThan(closeAt)   // on attend AVANT de fermer
+  })
+
+  it('T-93 — le désarmement de la fermeture d’urgence est le DERNIER geste, et il est CONDITIONNEL', () => {
+    // Il était exécuté ENTRE l’écriture du drapeau et `touchRestart()` : un signal dans cet intervalle
+    // sortait avec « false » sur le disque, aucun redémarrage demandé, et un processus VIVANT portant
+    // encore le « true » de son démarrage — les deux gates ouvertes pour le reste du bail.
+    const fin = SRC.slice(SRC.indexOf("for (const [k, v] of [['REFUNDS_WINDOW_UNTIL', past]"))
+    const restart = fin.indexOf('try { touchRestart(); restartRequested = true }')
+    const proof = fin.indexOf('const w2 = await waitBoth(base')
+    const disarm = fin.indexOf('if (w2.ok && !closeFailedKeys.length && restartRequested) armedClose = null')
+    expect(restart).toBeGreaterThan(-1)
+    expect(proof).toBeGreaterThan(restart)
+    expect(disarm).toBeGreaterThan(proof)
+    // chaque écriture dans SON try, et le redémarrage tenté quoi qu’il arrive
+    expect(SRC).toMatch(/catch \(e\) \{ closeFailedKeys\.push\(k\); A\('10 refreeze: écriture /)
   })
 
   it('une sonde isolée ne referme pas : il faut DEUX lectures non-OPEN consécutives', () => {

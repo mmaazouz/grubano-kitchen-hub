@@ -12,7 +12,8 @@
 //  2. refund_application_fee était envoyé même sans commission (les empreintes sont créées avec
 //     applicationFeeCents: 0, donc sans application_fee_amount du tout) ;
 //  3. aucune garde litige : un chargeback sort l'argent sans toucher amount_refunded.
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi , afterEach} from 'vitest'
+import { openRefundWindow, closeRefundWindow } from './support/refund-window'
 
 const { stripeMock } = vi.hoisted(() => ({
   stripeMock: { paymentIntents: { retrieve: vi.fn() }, refunds: { create: vi.fn() } },
@@ -30,9 +31,17 @@ const pi = (chargeOver: ChargeOver = {}, piOver: Record<string, unknown> = {}) =
 const ROUTED = { transfer_data: { destination: 'acct_1' } }
 
 beforeEach(() => {
+  // T-90: this suite drives the money engine DIRECTLY, bypassing the route gate production always
+  // applies. `assertMoneyWriteAllowed` refuses an initiating write whose rail is closed — exactly as
+  // strict as the callers — so the lease is opened here, once, to say what production says.
+  openRefundWindow()
   vi.clearAllMocks()
   stripeMock.paymentIntents.retrieve.mockResolvedValue(pi())
   stripeMock.refunds.create.mockResolvedValue({ id: 're_1', status: 'succeeded' })
+
+afterEach(() => {
+  closeRefundWindow()
+})
 })
 
 describe('PRE-MODE-B — le plafond du rail empreinte est le CAPTURÉ, jamais l’AUTORISÉ', () => {

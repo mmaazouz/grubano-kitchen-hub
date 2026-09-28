@@ -1,4 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+/** T-90: the settlement rail's flag, opened the way the route requires it. */
+const openSettlementRail = () => { process.env.FRANCHISE_SETTLEMENT_ENABLED = 'true' }
+const closeSettlementRail = () => { delete process.env.FRANCHISE_SETTLEMENT_ENABLED }
 
 // ── P4.5-A — franchise SETTLEMENT is refund-aware (Agent 49) ──────────────────────
 // The settlement must disburse ONLY the NON-refunded royalty (royaltyCents −
@@ -42,6 +45,16 @@ const fx = {
 const callsWith = (status: string) => db.franchiseRoyalty.updateMany.mock.calls.filter((c) => c[0]?.data?.status === status)
 
 beforeEach(() => {
+
+  // T-90: this suite drives the settlement rail DIRECTLY, bypassing the route gate production always
+
+  // applies (app/api/admin/franchise-settlements/run checks FRANCHISE_SETTLEMENT_ENABLED).
+
+  // `assertMoneyWriteAllowed` refuses a `transfers.create` whose rail is closed, so the flag is set
+
+  // here to say what production says.
+
+  openSettlementRail()
   vi.clearAllMocks()
   fx.live = null
   fx.settling = []
@@ -118,6 +131,7 @@ describe('settleFranchisor — D-G v2 over-transfer detection (fresh + adopt pat
     { id: 'l2', royaltyCents: 200, refundedCents: 0,  settlementId: 'SID' },
   ]
   beforeEach(() => {
+    openSettlementRail()
     fx.claimed = claimedBatch
     fx.pendingRoyaltySum = 300; fx.pendingRefundedSum = 40; fx.pendingCount = 2; fx.claimCount = 2
   })
@@ -178,3 +192,6 @@ describe('settleFranchisor — D-G v2 over-transfer detection (fresh + adopt pat
     }))
   })
 })
+
+// T-90: no suite may leak an open money rail into the next file.
+afterEach(() => { closeSettlementRail() })

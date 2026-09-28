@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi , afterEach} from 'vitest'
+import { openRefundWindow, closeRefundWindow } from './support/refund-window'
 import { readFileSync } from 'node:fs'
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════
@@ -192,6 +193,10 @@ const ORDER = {
 
 describe('§18 — a proven refund is an ORDER truth, and no product flag erases it', () => {
   beforeEach(() => {
+    // T-90: this suite drives the money engine DIRECTLY, bypassing the route gate production always
+    // applies. `assertMoneyWriteAllowed` refuses an initiating write whose rail is closed — exactly as
+    // strict as the callers — so the rail is opened here, once, to say what production says.
+    openRefundWindow()
     for (const m of [db.order.findUnique, db.refund.findMany, db.ledgerEntry.findMany, db.loyaltyTransaction.findMany, db.promotion.findUnique, tokenMock]) m.mockReset()
     tokenMock.mockResolvedValue({ sub: 'u1' })
     db.order.findUnique.mockResolvedValue(ORDER)
@@ -632,3 +637,5 @@ describe('L10 — the loyalty sentence follows the MONEY, and the pending varian
     expect(JSON.parse(readFileSync('messages/fr.json', 'utf8')).eat.refund.refundRecorded).toContain('<amt>{amount}</amt>')
   })
 })
+
+afterEach(() => { closeRefundWindow() })

@@ -112,7 +112,34 @@ describe('PRE-L11 — the money flags and the provenance watch list cannot drift
     for (const k of ['ALLOW_PLATFORM_FALLBACK', 'CLAIMS_WINDOW_UNTIL', 'REFUNDS_WINDOW_UNTIL']) {
       expect(prov.WATCHED_SECRET_KEYS, k).toContain(k)
     }
-    expect(prov.MONEY_ADJACENT_KEYS).toEqual(['ALLOW_PLATFORM_FALLBACK', 'CLAIMS_WINDOW_UNTIL', 'REFUNDS_WINDOW_UNTIL'])
+    // T-100 widened this list; the pin is on the MEMBERSHIP each entry earns, not on the exact array, so
+    // adding a key a future finding justifies does not have to break a test that was not about it.
+    for (const k of ['ALLOW_PLATFORM_FALLBACK', 'CLAIMS_WINDOW_UNTIL', 'REFUNDS_WINDOW_UNTIL']) {
+      expect(prov.MONEY_ADJACENT_KEYS, k).toContain(k)
+    }
+  })
+
+  it('T-100 — CHARGEBACKS_ENABLED is required false, because it is the ONLY gate on two transfer reversals', () => {
+    // lib/dispute.ts:242 debits the RESTAURANT's connected account and :264 the FRANCHISOR's, and the
+    // only thing holding them back is this flag — read in ONE place, from a PUBLIC signed webhook, with
+    // no re-check inside the module. It was watched by nothing.
+    expect(prov.MONEY_FLAGS_MUST_BE_FALSE).toContain('CHARGEBACKS_ENABLED')
+    expect(prov.WATCHED_SECRET_KEYS).toContain('CHARGEBACKS_ENABLED')
+    // the gate really is that flag, and really is read in exactly one place — measured, not assumed
+    const dispute = readFileSync('lib/dispute.ts', 'utf8')
+    expect(dispute).toContain("process.env.CHARGEBACKS_ENABLED === 'true'")
+    expect(dispute).toContain('transfers.createReversal')
+    const webhook = readFileSync('app/api/webhooks/stripe/route.ts', 'utf8')
+    expect(webhook).toContain('if (!isChargebacksEnabled())')
+  })
+
+  it('T-100 — the franchise rail that CREATES the reversible transfers is watched too', () => {
+    // A clawback can only exist because a settlement transfer exists. Those flags are PRINTED rather than
+    // required false (the project's own choice, phase2-preflight FLAGS_TO_PRINT) — but their SOURCE is now
+    // reported, which is what « the cPanel selector can set anything » makes necessary.
+    for (const k of ['FRANCHISE_ENABLED', 'FRANCHISE_ROYALTY_ENABLED', 'FRANCHISE_SETTLEMENT_ENABLED']) {
+      expect(prov.WATCHED_SECRET_KEYS, k).toContain(k)
+    }
   })
 
   it('phase2-preflight declares NO second copy of the list', () => {

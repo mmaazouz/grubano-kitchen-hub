@@ -1080,5 +1080,73 @@ Et un P1 de plus, trouvé **deux fois indépendamment** : **T-47 n'était pas fe
 
 **AUCUN EFFET ARGENT, et voici par quoi.** (1) Un déploiement n'exécute par lui-même ni migration ni script serveur, et le recensement confirme `schema.ready` sans qu'aucune colonne n'ait été ajoutée. (2) Les quatre sondes se sont arrêtées au garde AVANT toute logique (403 / `{"enabled":false}`). (3) **Aucun appel authentifié contre staging** : aucune commande, aucune réclamation, aucun e-mail (ni client ni restaurant), aucun remboursement. Le recensement est une lecture de COMPTEURS derrière le jeton interne, déclenchée depuis GitHub Actions — il n'écrit rien et n'imprime aucun identifiant. (4) `lib/refund.ts` reste byte-identique (blob `e2dc42b8eb89cd3249a4497682b8bc94080ef725`) et les seize épingles §22 sont inchangées vs `51a6c225`. (5) `CERTIFIED_SHAS` reste VIDE : `7f3699bd` n'y a pas été ajouté, donc `phase2-claims-pay-window.js` refuse toujours. (6) Aucune commande cPanel, aucune fenêtre, `main` et la production intactes.
 
+## PRE-L11 DURCISSEMENT T-90 / T-93 — la serrure passe du commentaire au code (aucun argent déplacé)
+
+Aucune répétition. Aucun drapeau ouvert. Aucune écriture Stripe. Aucune commande cPanel. `main` et la production intactes. `CERTIFIED_SHAS` toujours VIDE.
+
+### Le recensement d'abord : six agents, six directions, une question
+
+Avant de corriger quoi que ce soit, un recensement **en lecture seule** a énuméré les verbes d'écriture Stripe du dépôt puis remonté vers chaque point d'entrée — webhooks, crons, routes publiques, routes gatées par une AUTRE clé, opérateurs serveur. Le résultat tient en une phrase : **les drapeaux produit sont lus chez les APPELANTS et nulle part ailleurs.**
+
+`lib/refund.ts` le dit dans son en-tête (« All routes are GATED by REFUNDS_ENABLED ») ; `lib/dispute.ts:341` le dit aussi (« called ONLY when CHARGEBACKS_ENABLED is ON — the webhook gates it »). Les deux affirmations étaient **vraies** et **aucune n'était appliquée** : `executeRefund`, `finalizeRefundRowFromStripe` et `handleDisputeEvent` atteignaient tous une écriture Stripe sans qu'un seul drapeau soit consulté à l'intérieur du module. Le trou n'est pas une porte ouverte aujourd'hui — c'est **une serrure manquante à l'intérieur**, et l'invariant qui en tient lieu est un commentaire.
+
+### T-90 : ce qui n'était PAS un défaut, et qu'il ne fallait surtout pas « corriger »
+
+Le chemin webhook est non gaté **exprès**. Quand Stripe annonce un remboursement `succeeded`, l'argent est **déjà parti** : refuser de finaliser laisserait le ledger, les soldes de fidélité et les écrans du client en désaccord avec la réalité. Le drapeau gouverne ce qui **INITIE**, jamais l'enregistrement de ce qui a déjà eu lieu. Un garde qui aurait bloqué le chemin de complétion aurait transformé une exposition **bornée** en **trou comptable silencieux** — strictement pire que ce qu'il prétendait fermer. Cette distinction est la décision centrale du lot, et elle est écrite en tête de `lib/stripe-money-guard.ts` pour que le prochain lecteur ne la refasse pas à l'envers.
+
+### Et la borne, énoncée exactement
+
+Une écriture Stripe financière reste atteignable les quatre drapeaux fermés : la **reprise de royalty** qui complète un remboursement que Stripe a déjà payé au client. Elle exige **simultanément** (i) une ligne `Refund` en `pending` — or une telle ligne ne peut naître que par `executeRefund`, dont les quatre appelants sont gatés, donc **seulement pendant une fenêtre ouverte** ; (ii) cette ligne **âgée de moins de 20 h**, sinon le moteur lève `ResumeIdempotencyExpired` (épinglé, avec contrôle négatif, par `tests/refund-engine.test.ts`) ; (iii) une `FranchiseRoyalty` en `settled`/`settling` avec un transfert localisable — état que seul `FRANCHISE_SETTLEMENT_ENABLED` peut produire, et qui est fermé. Elle **débite le franchiseur au profit de la plateforme** : une récupération, personne n'est surpayé.
+
+**Donc :** hors des 20 h qui suivent une fenêtre, aucune écriture Stripe financière n'est atteignable. Et à l'intérieur de ces 20 h, la question cesse d'être un raisonnement : le compteur `pendingRowsUnder20hWithSettledRoyalty` (recensement ET opérateur, parité épinglée) mesure exactement cette population. **Quand il vaut 0, cette écriture ne peut pas partir.** La moitié « au-delà de 20 h » était déjà comptée — c'est-à-dire la moitié REFUSÉE ; celle qui peut tirer ne l'était pas.
+
+### La serrure : déclarer avant de déplacer
+
+`lib/stripe-money-guard.ts` (LEAF, n'importe rien, donc aucun cycle et aucun bundle client) exige de chaque écriture financière qu'elle **déclare** son autorisation :
+
+- `rail_open` — REFUNDS_ENABLED. L'appelant passe **sa propre** gate (`refundGateState().open`, `isRefundsEnabled()`), et le garde relit le drapeau brut comme **plancher**. Deux lectures indépendantes ; le plancher est délibérément **plus faible** que la gate (il ignore le bail et son plafond), pour ne jamais pouvoir autoriser ce que la gate refuse. Réimplémenter `refundGateState` ici aurait mis une règle d'argent dans deux fichiers, ce que ce dépôt a déjà payé.
+- `dispute_rail_open` — CHARGEBACKS_ENABLED. `settlement_rail_open` — FRANCHISE_SETTLEMENT_ENABLED.
+- `completing_settled_movement` — **aucun drapeau**, par conception, et une **preuve** obligatoire : l'identifiant Stripe qui établit le mouvement. Un appelant incapable de le nommer est en train d'INITIER, et doit déclarer autre chose. La règle refuse le vide, refuse une chaîne quelconque, et refuse un `pi_` — un PaymentIntent prouve une intention, pas un mouvement.
+
+Et **chaque tentative laisse une ligne `[MONEY WRITE]`** nommant le verbe, l'autorisation, la preuve, la commande et le montant — un refus en `console.error`, un passage en `console.warn`. Avant ce lot, une écriture financière Stripe ne laissait **aucune trace propre** : la seule preuve était ce que l'appelant avait pensé à journaliser.
+
+`finalizeRefundRowFromStripe` porte en plus une **capacité** `RefundFinalizeSource` : le seul point d'entrée exempté des drapeaux ne peut être emprunté que par un appelant qui le NOMME. Une future route de rejeu admin devra ajouter son propre membre à l'union et le justifier — un acte relisible, pas un accident.
+
+### La sixième écriture : trouvée par un test, pas par un relecteur
+
+`tests/prel11-money-write-guard.test.ts` énumère les verbes d'écriture dans les sources et exige une déclaration **immédiatement au-dessus** de chacune, sans liste d'exceptions. À sa première exécution il a trouvé un site que **personne** n'avait rapporté : `lib/franchise-settlement.ts:241`, `transfers.create` — le versement de royalty au franchiseur. **La seule écriture du dépôt qui PAIE un tiers au lieu de récupérer chez lui**, donc celle dont la gate compte le plus. Six agents avaient parcouru les rails remboursement et litige ; aucun ne regardait le rail qui **crée** les transferts que les deux autres inversent.
+
+Le test porte son propre contrôle négatif (une écriture fabriquée doit être détectée comme non déclarée) et refuse de compter un verbe **nommé en commentaire** comme un appel — sans quoi l'en-tête de `lib/refund.ts` aurait produit un faux positif permanent, ce qui apprend à un lecteur à ignorer le test.
+
+### Le gel du moteur, rebasé UNE fois et pourquoi
+
+`tests/claims-r13-engine-closed.test.ts` épinglait `sha256(lib/refund.ts)`. Cette épingle a fait exactement son travail : le durcissement a dû venir s'expliquer ici avant de pouvoir passer au vert. Les trois ajouts **ne peuvent que refuser** : deux déclarations et une capacité. **Pas une** répartition, pas un curseur, pas un plafond, pas une clé d'idempotence, pas une transition d'état, pas un montant de ledger, pas un delta de fidélité n'a changé — et `tests/refund-engine.test.ts` (48) plus `tests/claims-r13-engine-parity.test.ts` (111) le re-prouvent sur les mêmes fixtures. Le contrôle négatif de l'épingle reste actif : toute édition ULTÉRIEURE la fait rougir.
+
+### T-93 : quatre défauts, et la même classe dans deux opérateurs frères
+
+**(a) Le re-gel d'urgence était désarmé au mauvais moment.** `armedRefreeze = null` se trouvait **entre** l'écriture du drapeau et `touchRestart()`. Un signal dans cet intervalle sortait avec `false` sur le disque, **aucun redémarrage demandé**, donc un processus Passenger **vivant** portant encore le `true` de son démarrage : la gate restait OUVERTE pour le reste du bail, le gestionnaire déjà désarmé, et personne d'averti. **Un drapeau fermé sur le disque que le processus n'a pas relu n'a rien fermé.** L'ordre est désormais l'argument : bail, drapeau, redémarrage, **PREUVE**, désarmement — et le désarmement n'a lieu que si les trois tiennent. Laisser le gestionnaire armé ne coûte rien (ses écritures sont idempotentes) ; le désarmer une instruction trop tôt est irrécupérable.
+
+**(b) Les écritures partageaient un `try`.** Une levée sur la **première** — le bail, la moins importante des trois — supprimait l'écriture `REFUNDS_ENABLED=false`, celle qui ferme réellement la gate, **et** le redémarrage. Chaque écriture a son try, le redémarrage est tenté quoi qu'il arrive, et une clé qui résiste déclenche une **reprise immédiate** par la fermeture d'urgence.
+
+**(c) Un `PHASE2_REFUND_WINDOW_MS` non numérique franchissait le plafond.** `Number('abc')` vaut NaN, et le garde était `if (ms + 120000 > 30*60*1000)` : **`NaN > 1800000` est faux**, donc le garde passait. Le refus arrivait trois lignes plus loin, sous forme de `RangeError`, **après** l'armement — un plantage au lieu d'un refus nommé. `windowMsRefusalFor` valide la FORME d'abord et refuse **par le nom de la variable**, avant le stamp, avant l'armement, avant toute écriture.
+
+**(d) Le mode fenêtre ne nommait même pas le neutraliseur.** `writeFlag` venait de laisser `.env.local.bak-refund-gate-<stamp>` dans la racine, portant `REFUNDS_ENABLED=true` : un `cp` et un respawn rouvrent la gate. Le mode fenêtre invoque désormais `phase2-backup-neutralize.js` (processus enfant, après la fermeture — le neutraliseur refuse pendant qu'un drapeau est true, ce qui est exactement juste), écho sa sortie, et **re-vérifie lui-même** la racine avec **le prédicat du neutraliseur**, requis et non recopié : une regex maison aurait été **fausse**, dotenv étant « dernière occurrence gagne » — un fichier portant `=true` puis `=false` est SÛR, et une regex naïve le déclare dangereux. Toute défaillance devient une anomalie nommée portant la commande.
+
+**La même classe (a)+(b) était non corrigée dans `phase2-modeb-gate.js`** — où elle gouverne les DEUX drapeaux et neutralisait sa propre reprise compensatoire — **et dans `phase2-claims-gate.js`**. Corrigée dans les deux.
+
+### Trois défauts trouvés en chemin, dont un P1
+
+**T-98 (P1).** Les sauvegardes des opérateurs **ne sont pas ignorées par git**, et ce sont des copies **octet** de `.env.local`. `.gitignore` portait `.env*.bak`, qui ne matche qu'un nom **finissant** par `.bak` : `.env.local.bak` était couvert, `.env.local.bak-refund-gate-<stamp>` ne l'était pas — mesuré avec `git check-ignore`, pas déduit. Ces fichiers portent `DATABASE_URL`, `STRIPE_SECRET_KEY`, `NEXTAUTH_SECRET`, `SMTP_PASS` et `INTERNAL_CRON_TOKEN` en clair, et le rituel de session de ce dépôt est littéralement `git add .`. **Un seul `git add .` sur une machine ayant lancé une fenêtre aurait poussé tous les secrets staging sur GitHub.** Vérifié : aucune telle livraison n'existe dans `git log --all` — le risque était latent. Les motifs sont ancrés sur le **préfixe**, pour couvrir le prochain opérateur avant qu'il ne soit écrit.
+
+**T-99.** `fetch` de Node **n'a aucun délai par défaut**, et `waitGate` est une boucle de sondes : un hôte qui accepte la connexion puis se taise bloquait l'opérateur indéfiniment, sans avoir prouvé la gate ni averti personne. **Mesuré, pas théorisé** — le test bout-en-bout de T-93 a bloqué les 120 s complètes du timeout enfant pour exactement cette raison, et c'est ainsi que le défaut a été trouvé. L'argent reste borné par le bail dans tous les cas, mais **un opérateur de preuve qui se bloque a cessé d'être une preuve**.
+
+**T-100.** Deux drapeaux argent n'étaient surveillés par **rien** : `CHARGEBACKS_ENABLED`, seule gate sur deux `transfers.createReversal` (l'un débite le RESTAURANT, l'autre le FRANCHISEUR), lue en un seul endroit depuis un webhook public signé ; et `PUNITIVE_CAPTURE_ENABLED`, seule gate sur le seul `paymentIntents.capture` du dépôt — la pénalité no-show, un vrai débit de carte sur une empreinte détenue. Le rapport de provenance que le fondateur lit pour affirmer « aucun argent ne peut bouger » ne disait rien d'eux.
+
+**T-101.** `phase2-preflight.js` pouvait **ré-armer la gate** : sur le chemin où il trouve un drapeau argent à TRUE, il restaurait `.env.local` depuis la sauvegarde prise avant sa propre écriture de `REFUNDS_ENABLED=false`. Le seul contrôle dont le métier est de prouver que l'argent ne peut pas bouger pouvait sortir en laissant le drapeau armé. La sauvegarde n'est plus restaurée que si elle est elle-même sûre.
+
+### Ce que les tests coûtent, et ce qu'ils achètent
+
+Le garde est **exactement aussi strict** que les quatre appelants de production (`isRefundsEnabled()` **EST** `refundGateState().open`), donc rien qui passe en production n'échoue ici. Ce qu'il a révélé, c'est que **huit suites conduisaient le moteur d'argent directement**, en contournant la gate de route que la production applique toujours : elles vérifiaient l'arithmétique d'un remboursement que le rail n'avait jamais autorisé. `tests/support/refund-window.ts` ouvre le bail explicitement dans leur `beforeEach` et le referme après, de sorte qu'aucune suite ne laisse un rail ouvert à la suivante. Chacune dit maintenant ce que dit la production — et le cas inverse (le moteur refuse rail fermé) est devenu un test à lui, au lieu d'un accident de configuration.
+
 ## Lots suivants
 (complété lot par lot : SHA, preuves, CI, SHA déployé)

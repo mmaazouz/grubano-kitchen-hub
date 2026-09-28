@@ -6,6 +6,8 @@
 // (released on arrival, nothing charged). No Stripe Connect / commission yet.
 
 import Stripe from 'stripe'
+// T-90: the declaration every financial Stripe write must make. LEAF module, no cycle, no client bundle.
+import { assertMoneyWriteAllowed } from '@/lib/stripe-money-guard'
 
 let _stripe: Stripe | null = null
 
@@ -64,8 +66,24 @@ export async function createDepositHold(opts: {
   )
 }
 
-/** Capture (no-show): take up to the authorised amount. amountCents must be ≤ hold. */
-export async function captureDeposit(piId: string, amountCents: number): Promise<Stripe.PaymentIntent> {
+/**
+ * Capture (no-show): take up to the authorised amount. amountCents must be ≤ hold.
+ *
+ * T-90 — THE ONE WRITE THAT DEBITS A CUSTOMER'S CARD, and it now declares itself. `auth.railOpen` is the
+ * caller's own `isPunitiveCaptureEnabled()` (lib/deposit.ts captureHold, the single caller): this module is a
+ * thin Stripe wrapper and has no business knowing about product flags, so the gate is passed IN rather than
+ * re-derived here. The declaration sits next to the verb because that is what the enumeration test requires
+ * — a guard one level up in the caller would leave this line looking naked, and « looking naked » is exactly
+ * the signal the oracle exists to raise.
+ */
+export async function captureDeposit(piId: string, amountCents: number, auth: { railOpen: boolean }): Promise<Stripe.PaymentIntent> {
+  assertMoneyWriteAllowed({
+    verb: 'paymentIntents.capture',
+    authorization: 'capture_rail_open',
+    railOpen: auth.railOpen,
+    why: 'no-show / walk-out penalty: capturing part of a held empreinte',
+    amountCents,
+  })
   return getStripe().paymentIntents.capture(piId, { amount_to_capture: amountCents })
 }
 

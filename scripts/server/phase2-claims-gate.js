@@ -300,6 +300,19 @@ async function censusCounts(db, opts) {
     const settled = new Set(roy.map((r) => r.orderId))
     return rows.filter((r) => settled.has(r.orderId)).length
   })
+  /* T-90 (PRE-L11) — THE HALF THAT CAN STILL FIRE. The counter above is the REFUSED half (past 20 h, the
+     engine throws ResumeIdempotencyExpired). This is the half in which a Stripe `refund.updated` delivery
+     reaches `transfers.createReversal` — the one financial Stripe write reachable with the four product
+     flags closed, because the webhook completing an already-authorized refund is ungated by design. When
+     this reads 0, that write cannot fire. Mirrors lib/claims-census.ts exactly; the parity test runs both
+     on one fixture. */
+  out.pendingRowsUnder20hWithSettledRoyalty = await censusMeasure(async () => {
+    const rows = await db.refund.findMany({ where: { status: 'pending', royaltyRefundCents: { gt: 0 }, createdAt: { gte: new Date(nowMs - CENSUS_RESUME_WINDOW_MS) } }, select: { id: true, orderId: true } })
+    if (!rows.length) return 0
+    const roy = await db.franchiseRoyalty.findMany({ where: { orderId: { in: Array.from(new Set(rows.map((r) => r.orderId))) }, status: { in: ['settled', 'settling'] } }, select: { orderId: true } })
+    const settled = new Set(roy.map((r) => r.orderId))
+    return rows.filter((r) => settled.has(r.orderId)).length
+  })
   out.approvedUnpaid = await censusMeasure(() => db.claim.count({ where: { status: 'approved', refundAttempted: false } }))
   // MODE B commit B — lignes LIBEREES : (failed, stripeRefundId NULL) ET cle marquee ':void:'.
   out.voidedRefundRows = await censusMeasure(() => db.refund.count({ where: { status: 'failed', stripeRefundId: null, idempotencyKey: { contains: ':void:' } } }))
@@ -332,6 +345,7 @@ const CENSUS_LINES = [
   ['refundedBoundToOtherClaimStamp', 'refundedBoundToOtherClaimStamp', (n) => n + ' standing rows stamped for a claim not settled on them (E-04)'],
   ['rowsBoundToMultipleClaims', 'rowsBoundToMultipleClaims', (n) => n + ' rows bound to two or more claims (E-12)'],
   ['pendingRowsOver20hWithSettledRoyalty', 'pendingRowsOver20hWithSettledRoyalty', (n) => n + ' pending rows over 20 h with a settled royalty: engine resume may refuse forever (E-01 A-S10c)'],
+  ['pendingRowsUnder20hWithSettledRoyalty', 'pendingRowsUnder20hWithSettledRoyalty', (n) => n + ' pending rows UNDER 20 h with a settled royalty (T-90): a refund.updated delivery would reach transfers.createReversal with the four product flags closed — this must read 0 before the rail is called inert'],
   ['approvedUnpaid', 'approvedUnpaid', (n) => n + ' approved and unpaid claims, exits gated by CLAIMS+REFUNDS (E-10)'],
   ['voidedRefundRows', 'voidedRefundRows', (n) => n + ' released refund rows (proven never established at Stripe; the order rail was reopened)'],
   ['closureMissing', 'closure.missing', (n) => n + ' closures of this build without a dispatched notice (E-16)'],
@@ -544,20 +558,39 @@ async function main() {
     F('WINDOW END', 'TTL reached or aborted at ' + new Date().toISOString())
   } catch (e) { A('3 window: ' + scrub(e)) } finally {
     // UNCONDITIONAL CLOSE
+    /* T-93 (a)(b), the same defect as phase2-refund-gate.js. Both writes shared ONE try, so a throw on
+       the lease suppressed the CLAIMS_ENABLED=false write; and the handler was disarmed BETWEEN the flag
+       write and touchRestart(), so a signal in that gap left `false` on disk, no restart requested, and a
+       LIVE process still holding the `true` it booted with. Each write in its own try, restart attempted
+       regardless, disarm LAST and only on proof. */
+    const closeFailedKeys = []
+    let closed = null, restartRequested = false
+    const past = new Date(Date.now() - 1000).toISOString()
+    for (const [k, v] of [['CLAIMS_WINDOW_UNTIL', past], ['CLAIMS_ENABLED', 'false']]) {
+      try {
+        const r = writeFlag(envFile, k, v, stamp + 'Z')
+        if (k === 'CLAIMS_ENABLED') closed = r
+      } catch (e) { closeFailedKeys.push(k); A('3 close: write ' + k + ' FAILED — ' + scrub(e)) }
+    }
+    F('CLAIMS WINDOW CLOSE WRITE', closeFailedKeys.length
+      ? 'FAILED for ' + closeFailedKeys.join(', ') + ' — HUMAN ACTION REQUIRED in ' + envFile
+      : (closed && closed.changed ? 'CLAIMS_ENABLED=false (backup ' + closed.backup + ')' : 'no change'))
+    try { touchRestart(); restartRequested = true } catch (e) {
+      A('3 close: tmp/restart.txt NOT written — the LIVE process keeps the flag it booted with until the lease expires: ' + scrub(e))
+    }
+    F('RESTART REQUESTED', restartRequested ? 'YES (tmp/restart.txt touched)' : 'NO — the file says closed, the process does not')
     try {
-      // Expire the lease FIRST: even if the flag write below fails, the application is already
-      // refusing the surface. Order matters — belt before braces.
-      writeFlag(envFile, 'CLAIMS_WINDOW_UNTIL', new Date(Date.now() - 1000).toISOString(), stamp + 'Z')
-      const closed = writeFlag(envFile, 'CLAIMS_ENABLED', 'false', stamp + 'Z')
-      armedClose = null // disarm ONLY once false is on disk
-      F('CLAIMS WINDOW CLOSE WRITE', closed.changed ? 'CLAIMS_ENABLED=false (backup ' + closed.backup + ')' : 'no change')
-      touchRestart()
       const w2 = await waitGate(base, '/api/claims', 'CLOSED', RELOAD_DEADLINE_MS, RELOAD_INTERVAL_MS)
       F('CLAIMS GATE AFTER CLOSE', w2.last + ' after ' + Math.round(w2.elapsedMs / 1000) + ' s')
       if (!w2.ok) A('3 close: CLAIMS gate NOT proven CLOSED (' + w2.last + ') — HUMAN ATTENTION REQUIRED')
       const rg = await probeGate(base, '/api/admin/refunds/run')
       F('REFUND GATE AFTER CLOSE', rg)
       if (rg !== 'CLOSED') A('3 close: the REFUND gate is not CLOSED — HUMAN ATTENTION REQUIRED')
+      // DISARM — last, and ONLY on proof of all three.
+      if (w2.ok && rg === 'CLOSED' && !closeFailedKeys.length && restartRequested) armedClose = null
+      F('EMERGENCY CLOSE HANDLER', armedClose === null
+        ? 'DISARMED (gate proven CLOSED, flag written, restart requested)'
+        : 'STILL ARMED — the close was not fully proven; any signal from here re-writes the keys and re-touches restart.txt')
     } catch (e) { A('3 close: ' + scrub(e)) }
   }
   // AUDIT FIX (T-49 audit): the residue report sat on the happy path only, so aborting the

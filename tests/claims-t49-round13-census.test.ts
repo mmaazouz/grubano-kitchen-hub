@@ -129,7 +129,10 @@ function populate() {
 const ONES = {
   legacyPayableProofs: 1, refundedBoundToFailedRow: 1, refundedRowUnproven: 1, ownRowResumeMismatch: { nonTerminal: 1, terminal: 1 },
   terminalDeclarationWithArbitrationReason: 1, refundedAfterContradictionAttribution: 1, refundedBoundToOtherClaimStamp: 1,
-  rowsBoundToMultipleClaims: 1, pendingRowsOver20hWithSettledRoyalty: 1, approvedUnpaid: 1,
+  rowsBoundToMultipleClaims: 1, pendingRowsOver20hWithSettledRoyalty: 1,
+  // T-90: the fixture's pending row is OVER 20 h, so the new UNDER-20 h counter reads 0 on the same world.
+  // That asymmetry is the point: one counter measures the refused backlog, the other the half that can fire.
+  pendingRowsUnder20hWithSettledRoyalty: 0, approvedUnpaid: 1,
   // MODE B commit B — les lignes LIBEREES sont MESUREES, des deux cotes (parite I-07).
   voidedRefundRows: 1,
 }
@@ -217,6 +220,10 @@ describe('J-M53 — GET /api/admin/claims/census: claims.legacy and claims.closu
   const REJECTIONS: Array<[string, (l: Record<string, unknown>, c: Record<string, unknown>) => unknown[]]> = [
     ['adminAuditLog.findMany', (l) => [l.refundedAfterContradictionAttribution]],
     ['claim.groupByHaving', (l) => [l.rowsBoundToMultipleClaims]],
+    // T-90 note: `pendingRowsUnder20hWithSettledRoyalty` is NOT listed here on purpose. With no under-20 h
+    // pending row in this world it short-circuits to 0 before it ever reads franchiseRoyalty, so it is
+    // legitimately a measured 0 rather than null. Its own fail-to-null is proven by the test below, on a
+    // world that DOES have such a row — which is a stronger statement than this shared map could make.
     ['franchiseRoyalty.findMany', (l) => [l.pendingRowsOver20hWithSettledRoyalty]],
     // Track B §M: refundedAfterContradictionAttribution reads the contradiction park's EmailDispatch record too.
     ['emailDispatch.findMany', (l, c) => [c.missing, c.terminalWithoutRecord, l.refundedAfterContradictionAttribution]],
@@ -231,6 +238,23 @@ describe('J-M53 — GET /api/admin/claims/census: claims.legacy and claims.closu
       expect(nulls.length, `${op}: ${nulls.join(',')}`).toBe(nulled(body.claims.legacy, body.claims.closure).length)
     })
   }
+
+  it('T-90 — the UNDER-20 h counter measures the row that CAN fire, and fails to NOT MEASURED, never to 0', async () => {
+    // The population this counter exists for: a pending row YOUNGER than 20 h on an order whose royalty is
+    // settled. That is the state in which a Stripe refund.updated delivery reaches transfers.createReversal
+    // with the four product flags closed. The founder's «no financial write is reachable» rests on it, so a
+    // read that FAILED must never be reported as a reassuring zero.
+    store.refunds.push(row('R_hot', { status: 'pending', orderId: 'o_roy', stripeRefundId: null, royaltyRefundCents: 50, createdAt: new Date(NOW - 2 * H) }))
+    const measured = await claimsLegacyCensus(new Date(NOW))
+    expect(measured.pendingRowsUnder20hWithSettledRoyalty, 'the hot row must be counted').toBe(1)
+    expect(measured.pendingRowsOver20hWithSettledRoyalty, 'the old row is still counted separately').toBe(1)
+    // …and when the royalty read is rejected it is null, not 0
+    store.reject.add('franchiseRoyalty.findMany')
+    const failed = await claimsLegacyCensus(new Date(NOW))
+    expect(failed.pendingRowsUnder20hWithSettledRoyalty).toBeNull()
+    expect(failed.pendingRowsOver20hWithSettledRoyalty).toBeNull()
+    store.reject.delete('franchiseRoyalty.findMany')
+  })
 
   it('BREAK/RESTORE witness — a single shared catch would null every legacy field: the fields are measured independently', async () => {
     store.reject.add('claim.count')
@@ -292,7 +316,10 @@ describe('J-M53 / J-C35 — phase2-claims-gate.js census lines (I-07)', () => {
       ownRowResumeMismatchNonTerminal: l.ownRowResumeMismatch.nonTerminal, ownRowResumeMismatchTerminal: l.ownRowResumeMismatch.terminal,
       terminalDeclarationWithArbitrationReason: l.terminalDeclarationWithArbitrationReason, refundedAfterContradictionAttribution: l.refundedAfterContradictionAttribution,
       refundedBoundToOtherClaimStamp: l.refundedBoundToOtherClaimStamp, rowsBoundToMultipleClaims: l.rowsBoundToMultipleClaims,
-      pendingRowsOver20hWithSettledRoyalty: l.pendingRowsOver20hWithSettledRoyalty, approvedUnpaid: l.approvedUnpaid,
+      pendingRowsOver20hWithSettledRoyalty: l.pendingRowsOver20hWithSettledRoyalty,
+      // T-90: the new counter is covered by the same parity — if the operator and the library disagree on
+      // « pending, under 20 h, settled royalty », this test goes red before an operator ever prints it.
+      pendingRowsUnder20hWithSettledRoyalty: l.pendingRowsUnder20hWithSettledRoyalty, approvedUnpaid: l.approvedUnpaid,
       // MODE B commit B — la parité I-07 couvre aussi la nouvelle mesure : si l'un des deux côtés
       // définit « ligne libérée » autrement que l'autre, ce test rougit.
       voidedRefundRows: l.voidedRefundRows,
@@ -335,7 +362,8 @@ describe('J-M53 / J-C35 — phase2-claims-gate.js census lines (I-07)', () => {
     GATE.reportCensus(await GATE.censusCounts(db, { adminAuditEnabled: true, nowMs: NOW }))
     const after = GATE._residueLinesForTests()
     expect(after.census.slice(before.census.length)).toEqual([])
-    expect(after.facts.slice(before.facts.length)).toHaveLength(14)
+    // T-90 added one census fact (pendingRowsUnder20hWithSettledRoyalty), so the operator prints 15.
+    expect(after.facts.slice(before.facts.length)).toHaveLength(15)
   })
 
   it('source: C never pushes to anomalies; done() prints the CENSUS block after ANOMALIES; RESULT and WINDOW READINESS read anomalies only', () => {

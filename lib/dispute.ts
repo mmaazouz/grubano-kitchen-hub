@@ -28,6 +28,8 @@
 
 import type Stripe from 'stripe'
 import { getStripe } from '@/lib/stripe'
+// T-90: the declaration every financial Stripe write in this file must make. LEAF module, no cycle.
+import { assertMoneyWriteAllowed } from '@/lib/stripe-money-guard'
 import { prisma } from '@/lib/prisma'
 import { computeRefundSplit } from '@/lib/refund'
 import { recordLedgerEntry } from '@/lib/ledger'
@@ -239,6 +241,19 @@ async function settleDisputeLost(dispute: Stripe.Dispute, ctx: DisputeContext): 
   const toReverse = Math.min(split.restaurantReverseCents, ctx.transferReversableCents)
   if (ctx.transferId && toReverse > 0) {
     try {
+      /* T-90 — DECLARE BEFORE YOU MOVE MONEY. This debits the RESTAURANT's connected account. The only
+         gate is CHARGEBACKS_ENABLED, read in ONE place (app/api/webhooks/stripe/route.ts) from a PUBLIC
+         signed webhook, and this module's own header asserted the invariant it did not enforce: « called
+         ONLY when CHARGEBACKS_ENABLED is ON ». Now the write says so itself, and refuses if the flag is
+         not literally 'true'. */
+      assertMoneyWriteAllowed({
+        verb: 'transfers.createReversal',
+        authorization: 'dispute_rail_open',
+        railOpen: isChargebacksEnabled(),
+        why: 'lost dispute: reversing the restaurant NET share Grubano was debited for',
+        orderId: ctx.orderId,
+        amountCents: toReverse,
+      })
       const rev = await getStripe().transfers.createReversal(
         ctx.transferId,
         { amount: toReverse, metadata: { disputeId: dispute.id, orderId: ctx.orderId, kind: 'dispute_net_reversal' } },
@@ -261,6 +276,16 @@ async function settleDisputeLost(dispute: Stripe.Dispute, ctx: DisputeContext): 
     if (transferId) {
       const amount = Math.min(split.royaltyRefundCents, royalty.royaltyCents)
       try {
+        // T-90 — DECLARE BEFORE YOU MOVE MONEY. This debits the FRANCHISOR's connected account, behind the
+        // same single flag as the reversal above.
+        assertMoneyWriteAllowed({
+          verb: 'transfers.createReversal',
+          authorization: 'dispute_rail_open',
+          railOpen: isChargebacksEnabled(),
+          why: 'lost dispute: clawing back the franchise royalty already settled on this order',
+          orderId: ctx.orderId,
+          amountCents: amount,
+        })
         await getStripe().transfers.createReversal(
           transferId,
           { amount, metadata: { disputeId: dispute.id, orderId: ctx.orderId, kind: 'dispute_royalty_clawback' } },

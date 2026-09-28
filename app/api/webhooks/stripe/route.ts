@@ -292,7 +292,26 @@ async function handleTicketPaid(pi: Stripe.PaymentIntent) {
       // billTotalCents === subtotalCents → byte-identical to pre-G1.
       const serviceCents   = Number(pi.metadata?.dinein_service_cents ?? 0) || 0
       const billTotalCents = subtotalCents + Math.max(0, serviceCents)
-      const totalCents     = Math.round((ticket.amountPaid ?? 0) * 100) + receivedCents
+      /* T-102 (PRE-L11 hardening, found by the adversarial review). A REDELIVERY OF THE SAME EVENT USED TO
+         DOUBLE-COUNT THE CASH. Stripe delivers at least once, and a dashboard resend is a click; the old
+         expression was `stored + receivedCents`, unconditionally. On a bill of 2000 c paid 1000 c: delivery
+         one stored amountPaid=10.00 and stamped this PI; delivery two then passed the stale-PI guard
+         (because the PI now MATCHES) and computed 1000 + 1000 = 2000 — the bill was marked SETTLED on half
+         the money, the table freed and the customer's empreinte released. Reachable with every product flag
+         closed, because the dine-in money-IN rail is deliberately live.
+         `amount_received` is the PaymentIntent's OWN cumulative figure, so when this event's PI is already
+         the recorded one, the collected total FOR THAT PI is `receivedCents` — never `stored + received`.
+         `Math.max` preserves what a PREVIOUS, superseded PI had contributed: PI_A 500 then PI_B 1500 gives
+         2000, and a redelivery of PI_B still gives max(2000, 1500) = 2000.
+         If `amount_received` ever GREW between deliveries (an incremental authorization this rail does not
+         perform), the max would under-count — which keeps the ticket OPEN and the remainder collectable.
+         That is the safe direction: under-collecting is recoverable, declaring a bill paid is not. */
+      const samePi         = ticket.stripePaymentIntentId === pi.id
+      const priorCents     = Math.round((ticket.amountPaid ?? 0) * 100)
+      const totalCents     = samePi ? Math.max(priorCents, receivedCents) : priorCents + receivedCents
+      if (samePi && priorCents >= receivedCents && priorCents > 0) {
+        console.warn(`[stripe webhook] ticket ${ticket.id}: REDELIVERY of PI ${pi.id} — ${receivedCents}c already accounted, not counted twice (stored ${priorCents}c)`)
+      }
 
       if (totalCents < billTotalCents) {
         // PARTIAL PAYMENT — the safety net fires. Ticket stays OPEN with the
@@ -987,7 +1006,10 @@ async function handleRefundStatusEvent(refund: Stripe.Refund) {
 
       let finalized: string | null = null
       if (row && row.status === 'pending') {
-        const out = await finalizeRefundRowFromStripe(row.id)
+        // T-90: the completing path is exempt from the product flags by design, so its caller must NAME
+        // itself. The signature was verified at route.ts:83 before this dispatch — that is what makes
+        // this claim true, and it is the only place in the repository entitled to make it.
+        const out = await finalizeRefundRowFromStripe(row.id, 'stripe_webhook_signed_event')
         if (!out.ok) {
           if (out.pending) {
             // Stripe says succeeded but our retrieve still saw pending — retry later.

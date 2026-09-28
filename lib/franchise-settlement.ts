@@ -1,6 +1,8 @@
 import { randomUUID } from 'crypto'
 import { Prisma } from '@prisma/client'
 import { getStripe } from '@/lib/stripe'
+// T-90: the declaration every financial Stripe write in this file must make. LEAF module, no cycle.
+import { assertMoneyWriteAllowed } from '@/lib/stripe-money-guard'
 import { prisma } from '@/lib/prisma'
 import { recordPartnerTransferLedgerEntry } from '@/lib/ledger'
 import { sendAdminMoneyReviewAlert } from '@/lib/admin-alerts'
@@ -238,6 +240,19 @@ async function finalizeBatch(
   // PASS-THROUGH: a pure Transfer of the exact batch sum to the franchisor — NO
   // application_fee, nothing retained by Grubano. transfer_group enables the >24h
   // reconciliation above; the deterministic idempotency key dedupes within 24h.
+  /* T-90 — DECLARE BEFORE YOU MOVE MONEY. This is the only write in the repository that PAYS a third
+     party rather than recovering from one: a pass-through Transfer of the batch sum to the franchisor.
+     Found by the enumeration test in tests/prel11-money-write-guard.ts, not by a reviewer — six recon
+     agents walked the refund and dispute rails and none reported the rail that CREATES the transfers those
+     two reverse. `FRANCHISE_SETTLEMENT_ENABLED` is checked at the route
+     (app/api/admin/franchise-settlements/run); the declaration puts the lock on the inside too. */
+  assertMoneyWriteAllowed({
+    verb: 'transfers.create',
+    authorization: 'settlement_rail_open',
+    railOpen: isFranchiseSettlementEnabled(),
+    why: 'paying a franchisor their settled royalty batch (pass-through, no application fee)',
+    amountCents: p.amountCents,
+  })
   const transfer = await getStripe().transfers.create(
     {
       amount:         p.amountCents,

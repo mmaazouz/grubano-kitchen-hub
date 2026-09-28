@@ -1,4 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+/** T-90: the settlement rail's flag, opened the way the route requires it. */
+const openSettlementRail = () => { process.env.FRANCHISE_SETTLEMENT_ENABLED = 'true' }
+const closeSettlementRail = () => { delete process.env.FRANCHISE_SETTLEMENT_ENABLED }
 
 // ── Franchise settlement → ledger TRACE (Agent 94, calque Agent 84) ───────────────────
 // A 'partner_transfer' ledger line is recorded AFTER a franchise Payout becomes 'paid',
@@ -41,6 +44,16 @@ const fx = {
 }
 
 beforeEach(() => {
+
+  // T-90: this suite drives the settlement rail DIRECTLY, bypassing the route gate production always
+
+  // applies (app/api/admin/franchise-settlements/run checks FRANCHISE_SETTLEMENT_ENABLED).
+
+  // `assertMoneyWriteAllowed` refuses a `transfers.create` whose rail is closed, so the flag is set
+
+  // here to say what production says.
+
+  openSettlementRail()
   vi.clearAllMocks()
   fx.settling = []; fx.claimed = TWO_LINES; fx.pendingCount = 2; fx.pendingSum = 300; fx.claimCount = 2; fx.distinct = []
   uuidMock.mockReturnValue('SID')
@@ -125,3 +138,6 @@ describe('(no trace when nothing was disbursed)', () => {
     expect(ledgerMock).not.toHaveBeenCalled()
   })
 })
+
+// T-90: no suite may leak an open money rail into the next file.
+afterEach(() => { closeSettlementRail() })

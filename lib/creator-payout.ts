@@ -1,5 +1,7 @@
 import { Prisma } from '@prisma/client'
 import { getStripe } from '@/lib/stripe'
+// T-90: the declaration every financial Stripe write in this file must make. LEAF module, no cycle.
+import { assertMoneyWriteAllowed, type PartnerPayoutFlag } from '@/lib/stripe-money-guard'
 import { prisma } from '@/lib/prisma'
 import { computePartnerBalance, type PartnerBalanceRole } from '@/lib/partner-balance'
 import { payoutMinCents } from '@/lib/payout-threshold'
@@ -112,6 +114,13 @@ interface RoleAdapter {
   refData(refId: string): RefData
 }
 
+/** T-90: which flag governs each payout rail, for the declaration and the audit line. */
+const PAYOUT_FLAG_BY_ROLE: Record<PayoutPartnerRole, PartnerPayoutFlag> = {
+  creator:   'CREATOR_PAYOUT_ENABLED',
+  affiliate: 'AFFILIATE_CONNECT_ENABLED',
+  logistics: 'LOGISTICS_PAYOUT_ENABLED',
+}
+
 const ADAPTERS: Record<PayoutPartnerRole, RoleAdapter> = {
   creator: {
     balanceRole:    'creator',
@@ -162,6 +171,22 @@ async function settlePending(
   payout: PendingPayout, ref: PartnerRef, role: PayoutPartnerRole, refData: RefData, resumed: boolean,
 ): Promise<PartnerPayoutOutcome> {
   const idempotencyKey = payout.idempotencyKey ?? `payout_${payout.id}`
+  /* T-90 — DECLARE BEFORE YOU MOVE MONEY. THE SEVENTH FINANCIAL WRITE, and the one that nearly escaped:
+     four reviewers found it at once, because the enumeration test's first version walked a hand-written
+     list of six files rather than the filesystem. This is a Transfer that PAYS a partner — a creator, an
+     affiliate or a courier — from a rail a scheduled job can poke, and it declared nothing at all.
+     The flag differs by role, so the declaration names it. `adapter.enabled()` is the gate `payPartner`
+     already applies; for `creator` that gate is literally `() => true` (the flag lives at the admin
+     route), which is a residual recorded as a ticket rather than tightened here: refusing a payout the
+     product may be making today, on a guess about a production env var, is worse than the exposure. */
+  assertMoneyWriteAllowed({
+    verb: 'transfers.create',
+    authorization: 'partner_payout_rail_open',
+    flag: PAYOUT_FLAG_BY_ROLE[role],
+    railOpen: ADAPTERS[role].enabled(),
+    why: `paying a ${role} partner a settled payout (${resumed ? 'resume of a pending row' : 'fresh'})`,
+    amountCents: payout.amountCents,
+  })
   const transfer = await getStripe().transfers.create(
     {
       amount:      payout.amountCents,

@@ -10,8 +10,33 @@ import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
 
-/** Computed once from `git show 40da45e:lib/refund.ts` with CRLF normalized to LF. */
-const SHA256_REFUND_40DA45E = '1745dee70e936871beb23608b3bdf024ec4b0eae23c42ed1e98849108bd3a252'
+/**
+ * THE ENGINE FREEZE, RE-BASELINED ONCE — T-90, 2026-09-28, on explicit founder authorization.
+ *
+ * This hash existed to make any edit to lib/refund.ts a deliberate, visible act. It did its job: the T-90
+ * hardening had to come here and explain itself before it could be green.
+ *
+ * WHAT CHANGED, AND WHY IT WAS WORTH BREAKING THE FREEZE. The money-write recon established that the
+ * product flags are read at CALLERS and nowhere else — `executeRefund`, `finalizeRefundRowFromStripe` and
+ * `handleDisputeEvent` all reached a Stripe write with no flag consulted inside the module, and the
+ * invariant lived in a comment. Three additions, ALL of which can only REFUSE:
+ *   1. `assertMoneyWriteAllowed` before `stripe.refunds.create` (declares `rail_open`, passing
+ *      `refundGateState().open` — the module's own gate, not a literal);
+ *   2. `assertMoneyWriteAllowed` before `transfers.createReversal` (declares
+ *      `completing_settled_movement` and names the `re_` that proves Stripe already paid the customer);
+ *   3. a `RefundFinalizeSource` capability on `finalizeRefundRowFromStripe`, so the one entry that is
+ *      exempt from the flags by design can only be entered by a caller that says so;
+ *   4. a gate read at the ENTRY of `executeRefund`, added after this lot's own review pointed out that
+ *      declaring inside `driveRefund` — which runs AFTER `prisma.refund.create` — would have turned
+ *      « moves money now » into « stages a pending row that RESUME-FIRST executes at the next window ».
+ *      It returns a typed 409 rather than throwing, because `executeRefund`'s contract is a RefundOutcome.
+ * NOT CHANGED: not one split, cursor, cap, idempotency key, status transition or ledger amount. The
+ * arithmetic is byte-identical in behaviour, and tests/refund-engine.test.ts (48) plus
+ * tests/claims-r13-engine-parity.test.ts (111) re-prove it on the same fixtures.
+ *
+ * The negative control below still guarantees what this pin is for: any FURTHER edit changes the hash.
+ */
+const SHA256_REFUND_40DA45E = '1ab5bd59bc59676b59e2a1c302fa4e0f7dea797507adbc1b2f255ffce7742d0c'
 const read = (p: string) => readFileSync(p, 'utf8').replace(/\r\n/g, '\n')
 const stripComments = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '')
 
@@ -100,7 +125,7 @@ const ROWS: Record<string, { status: string; event: string }> = {
 }
 
 describe('J-M06 — lib/refund.ts is byte-identical and the withdrawn guard exists nowhere', () => {
-  it('sha256(lib/refund.ts, LF) equals the 40da45e blob', () => {
+  it('sha256(lib/refund.ts, LF) equals the T-90 baseline (re-based once, with the reason above)', () => {
     expect(createHash('sha256').update(read('lib/refund.ts')).digest('hex')).toBe(SHA256_REFUND_40DA45E)
   })
 

@@ -25,6 +25,8 @@ export type ClaimsLegacyCensus = {
   refundedBoundToOtherClaimStamp: number | null
   rowsBoundToMultipleClaims: number | null
   pendingRowsOver20hWithSettledRoyalty: number | null
+  /** T-90: the half of that population that can still fire a Stripe write with the flags closed. */
+  pendingRowsUnder20hWithSettledRoyalty: number | null
   approvedUnpaid: number | null
   /** MODE B commit B — lignes LIBEREES (prouvees jamais etablies chez Stripe) : une mesure, pas une simple alerte. */
   voidedRefundRows: number | null
@@ -52,7 +54,7 @@ const CONTRADICTION_PARK_KEY_TAIL = ':stripe_refund_contradiction'
 export async function claimsLegacyCensus(now: Date = new Date()): Promise<ClaimsLegacyCensus> {
   const [
     legacyPayableProofs, refundedBoundToFailedRow, refundedRowUnproven, ownRows, terminalDeclarationWithArbitrationReason,
-    refundedAfterContradictionAttribution, refundedBoundToOtherClaimStamp, rowsBoundToMultipleClaims, pendingRowsOver20hWithSettledRoyalty, approvedUnpaid, voidedRefundRows,
+    refundedAfterContradictionAttribution, refundedBoundToOtherClaimStamp, rowsBoundToMultipleClaims, pendingRowsOver20hWithSettledRoyalty, pendingRowsUnder20hWithSettledRoyalty, approvedUnpaid, voidedRefundRows,
   ] = await Promise.all([
     // A-S32-*: a pre-v13 proof of absence (approval suspended, D14 (1)).
     measure('legacyPayableProofs', () => prisma.claim.count({
@@ -157,6 +159,27 @@ export async function claimsLegacyCensus(now: Date = new Date()): Promise<Claims
       const settled = new Set(royalties.map((r) => r.orderId))
       return rows.filter((r) => settled.has(r.orderId)).length
     }),
+    /* T-90 (PRE-L11 hardening) — THE HALF OF THAT POPULATION THAT CAN STILL FIRE.
+       The counter above measures pending rows PAST the 20 h resume window: those are REFUSED by the engine
+       (`ResumeIdempotencyExpired`), so they are a reconciliation backlog, not an exposure. The dangerous
+       half was not measured at all: a pending row YOUNGER than 20 h on an order whose royalty is
+       settled/settling is exactly the state in which a Stripe `refund.updated` delivery reaches
+       `transfers.createReversal` — the one financial Stripe write reachable with the four product flags
+       closed, because the webhook that completes an already-authorized refund is ungated by design.
+       Measuring it turns an argument into a number: WHEN THIS COUNTER IS 0, that write cannot fire, and
+       « no financial Stripe write is reachable » stops being a claim about code paths and becomes a
+       statement about the estate. A pending row can only be created while the refund rail is open
+       (all four `executeRefund` callers are gated), so this counter is 0 except within 20 h of a window. */
+    measure('pendingRowsUnder20hWithSettledRoyalty', async () => {
+      const rows = await prisma.refund.findMany({
+        where:  { status: 'pending', royaltyRefundCents: { gt: 0 }, createdAt: { gte: new Date(now.getTime() - RESUME_CREATE_WINDOW_MS) } },
+        select: { id: true, orderId: true },
+      })
+      if (!rows.length) return 0
+      const royalties = await prisma.franchiseRoyalty.findMany({ where: { orderId: { in: Array.from(new Set(rows.map((r) => r.orderId))) }, status: { in: ['settled', 'settling'] } }, select: { orderId: true } })
+      const settled = new Set(royalties.map((r) => r.orderId))
+      return rows.filter((r) => settled.has(r.orderId)).length
+    }),
     // E-10: approved and unpaid (this build's claims included).
     measure('approvedUnpaid', () => prisma.claim.count({ where: { status: 'approved', refundAttempted: false } })),
     // MODE B commit B — une ligne LIBEREE = (failed, stripeRefundId NULL) ET cle marquee.
@@ -165,7 +188,7 @@ export async function claimsLegacyCensus(now: Date = new Date()): Promise<Claims
   return {
     legacyPayableProofs, refundedBoundToFailedRow, refundedRowUnproven, ownRowResumeMismatch: ownRows,
     terminalDeclarationWithArbitrationReason, refundedAfterContradictionAttribution, refundedBoundToOtherClaimStamp,
-    rowsBoundToMultipleClaims, pendingRowsOver20hWithSettledRoyalty, approvedUnpaid, voidedRefundRows,
+    rowsBoundToMultipleClaims, pendingRowsOver20hWithSettledRoyalty, pendingRowsUnder20hWithSettledRoyalty, approvedUnpaid, voidedRefundRows,
   }
 }
 

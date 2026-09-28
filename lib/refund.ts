@@ -56,6 +56,8 @@ import type Stripe from 'stripe'
 import { Prisma } from '@prisma/client'
 import { getStripe } from '@/lib/stripe'
 import { prisma } from '@/lib/prisma'
+// T-90: the declaration every financial Stripe write in this file must make. LEAF module, no cycle.
+import { assertMoneyWriteAllowed, logMoneyWrite } from '@/lib/stripe-money-guard'
 import { recordRefundLedgerEntry } from '@/lib/ledger'
 import { recomputeRoyaltyRefundedCents } from '@/lib/royalty-refunded'
 import { recoveredRoyaltyClawbackCents, capClawback } from '@/lib/royalty-recovered'
@@ -352,6 +354,19 @@ async function driveRefund(row: RefundRow, pi: Stripe.PaymentIntent, routed: boo
     const ageMs = Date.now() - new Date(row.createdAt).getTime()
     if (!(ageMs >= 0 && ageMs < RESUME_CREATE_WINDOW_MS)) throw new ResumeIdempotencyExpired(row.id)
   }
+  // T-90 — DECLARE BEFORE YOU MOVE MONEY. `driveRefund` INITIATES a refund, so it may only run under an
+  // open rail. The flag has always been checked at the four callers of executeRefund and nowhere else; the
+  // declaration puts a lock on the inside too, so a future caller cannot reach Stripe by forgetting.
+  // `refundGateState()` is this module's own gate (flag AND live lease AND the 30-min ceiling) — the guard
+  // re-reads only the raw flag, as a floor that can never authorize more than the gate.
+  assertMoneyWriteAllowed({
+    verb: 'refunds.create',
+    authorization: 'rail_open',
+    railOpen: refundGateState().open,
+    why: 'executeRefund is initiating a customer refund on an order the rail authorized',
+    orderId: row.orderId,
+    amountCents: row.amountCents,
+  })
   return stripe.refunds.create(
     {
       payment_intent: pi.id,
@@ -550,6 +565,25 @@ async function finalizeRefund(
           if (adopted) {
             royaltyClawbackCents = adopted.amount
           } else {
+            /* T-90 — THE ONE FINANCIAL WRITE REACHABLE WITH THE FOUR PRODUCT FLAGS CLOSED, AND WHY IT IS
+               ALLOWED TO BE. This recovers royalty already transferred to the franchisor for a refund
+               STRIPE HAS ALREADY PAID the customer — `stripeRefund.id` is the proof, and the refund was
+               authorized by an open rail when its row was created (only `executeRefund`, gated at all four
+               callers, can create a `pending` Refund row). Declaring `rail_open` here would be WRONG: the
+               webhook that completes an authorized refund runs after the window has closed, by design, and
+               refusing it would leave our ledger and the franchisor's balance disagreeing with Stripe.
+               So the authorization is `completing_settled_movement`, it must name the `re_`, and it leaves
+               a [MONEY WRITE] line naming itself. The residual exposure is bounded by the 20 h resume
+               window enforced just above, and MEASURED by the census counter
+               `pendingRowsUnder20hWithSettledRoyalty`: when that counter is 0, this write cannot fire. */
+            assertMoneyWriteAllowed({
+              verb: 'transfers.createReversal',
+              authorization: 'completing_settled_movement',
+              proof: stripeRefund.id,
+              why: 'royalty clawback completing a refund Stripe has already paid the customer',
+              orderId: order.id,
+              amountCents: amount,
+            })
             await getStripe().transfers.createReversal(
               transferId,
               { amount, metadata: { orderId: order.id, refundId: row.id, kind: 'royalty_refund_clawback' } },
@@ -680,7 +714,35 @@ async function finalizeRefund(
  * PHASE 2 (§16 B1) — finalize a 'pending' Refund row from the refund.updated webhook once
  * Stripe reports the refund succeeded (or make it 'failed'). Same code path as RESUME-FIRST.
  */
-export async function finalizeRefundRowFromStripe(rowId: string): Promise<RefundOutcome> {
+/**
+ * WHO MAY CALL THE UNGATED COMPLETING PATH.
+ *
+ * T-90: this function is the one entry that reaches a financial Stripe write with no product flag on the
+ * chain, and that is DELIBERATE — the flag gates what INITIATES, never the recording of a movement Stripe
+ * has already made. The exposure is not the absence of a flag; it is that nothing stopped a SECOND caller
+ * appearing. An admin replay route, a reconciliation cron or a sweeper would have inherited the exemption
+ * silently, because the invariant lived in a comment.
+ *
+ * So the exemption is now something a caller has to CLAIM, in writing, at the call site. There is one legal
+ * value and one legal caller; adding a second means editing this union, which is a reviewable act rather
+ * than an accident.
+ */
+export type RefundFinalizeSource =
+  /** app/api/webhooks/stripe — a Stripe-signed event whose signature was verified before dispatch. */
+  | 'stripe_webhook_signed_event'
+
+export async function finalizeRefundRowFromStripe(rowId: string, source: RefundFinalizeSource = 'stripe_webhook_signed_event'): Promise<RefundOutcome> {
+  /* The capability is checked, not decorative. It defaults to the webhook so the change is additive for the
+     single existing caller and for the suites that drive this path — but a value outside the union is
+     refused with a 403-shaped outcome rather than silently accepted, and TypeScript refuses it at compile
+     time. A future caller that is NOT a signed webhook event must add its own member here and justify it. */
+  if (source !== 'stripe_webhook_signed_event') {
+    console.error(`[MONEY WRITE] REFUSED · verb=finalizeRefundRowFromStripe · auth=${String(source)} · row=${rowId} · why=the completing path is exempt from the product flags and may only be entered from a Stripe-signed event`)
+    // 400, not 403: RefundOutcome's status union is part of the money contract and widening it would
+    // ripple through every consumer. A caller naming a source outside the union is a programming error,
+    // which 400 says exactly — and TypeScript refuses it before it can ever be sent.
+    return { ok: false, status: 400, error: 'Finalisation refusée : source non autorisée.' }
+  }
   const row = await prisma.refund.findUnique({ where: { id: rowId }, select: { ...REFUND_SELECT, status: true } })
   if (!row) return { ok: false, status: 404, error: 'Ligne de remboursement introuvable.' }
   if (row.status === 'succeeded') return { ok: false, status: 409, error: 'Déjà finalisé.' }
@@ -721,6 +783,25 @@ export async function executeRefund(input: {
   amountCents?: number
   reason?: string
 }): Promise<RefundOutcome> {
+  /* T-90, CORRECTED BY THE REVIEW OF THIS LOT — DECLARE BEFORE THE FIRST DB WRITE, NOT ONLY BEFORE STRIPE.
+     The first version declared inside `driveRefund`, which runs AFTER `prisma.refund.create`. An
+     unauthorized caller therefore got a REFUSED Stripe call — but left a `pending` Refund row holding the
+     cumul cursor behind it, and RESUME-FIRST would have executed that row at the next legitimate window.
+     The guard would have converted « moves money now » into « stages money to move later », which is not an
+     improvement on any reading. The gate is read HERE, before a single row exists, and again at the write
+     (defence in depth, and what the enumeration test requires next to the call).
+     The refusal is returned as a typed outcome rather than thrown: `executeRefund`'s contract is a
+     RefundOutcome, and a caller that forgot its gate should read a 403-shaped refusal, not catch an
+     exception from the depths. */
+  const gate = refundGateState()
+  if (!gate.open) {
+    logMoneyWrite({
+      verb: 'executeRefund', authorization: 'rail_open', railOpen: false,
+      why: 'a caller reached the refund engine with the rail closed', orderId: input.orderId,
+      amountCents: input.amountCents ?? null,
+    }, `refund rail closed (${gate.reason}) — no row is created and no Stripe call is made`)
+    return { ok: false, status: 409, error: 'Remboursements indisponibles — aucune autorisation en cours.' }
+  }
   const order = await prisma.order.findUnique({
     where:  { id: input.orderId },
     select: { id: true, restaurantId: true, paymentStatus: true, stripePaymentIntentId: true },

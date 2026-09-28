@@ -56,6 +56,9 @@ const { execSync } = require('child_process')
 const SHELL_HAS_TOKEN = typeof process.env.INTERNAL_CRON_TOKEN !== 'undefined'
 
 const prov = require(path.join(__dirname, 'env-provenance.js'))
+// T-101: ONE definition of « which flags does this file re-enable », owned by the neutralizer. Used
+// below to refuse restoring a backup that would re-arm a money gate.
+const NEUT = require(path.join(__dirname, 'phase2-backup-neutralize.js'))
 const H = require(path.join(__dirname, 'reconcile-helpers.js'))
 
 const APP_ROOT       = process.env.PHASE2_APP_ROOT || path.join(__dirname, '..', '..')
@@ -401,8 +404,31 @@ async function main() {
   for (const k of FLAGS_TO_PRINT) F('FLAG ' + k + ' (Next merged view)', eff(flag(k)) + ((mergedA.definedIn[k] || []).length > 1 ? ' [defined in ' + mergedA.definedIn[k].join(' > ') + ']' : ''))
   for (const k of MONEY_FLAGS_MUST_BE_FALSE) {
     if (flag(k) === 'true') {
-      if (backup) fs.copyFileSync(backup, envFile)
-      return fail('3 flags: ' + k + ' is TRUE in the Next merged view (' + (mergedA.definedIn[k] || []).join(',') + ')' + (backup ? ' — env RESTORED from ' + path.basename(backup) : '') + ', restart REFUSED', 'human decision required')
+      /* T-101 (PRE-L11 hardening, found by the money-write recon). THIS RESTORE COULD RE-ARM THE GATE.
+         The intent is sound — undo my own cosmetic writes before refusing — but the backup is the state
+         from BEFORE this operator wrote `REFUNDS_ENABLED=false`. So on the one path where a money flag is
+         found TRUE, the operator used to copy the PRE-write file back, potentially putting
+         `REFUNDS_ENABLED=true` on disk and then exiting with a refusal. The one control whose whole job is
+         to prove money cannot move would have left the money flag armed.
+         Now the backup is restored ONLY when it is itself safe, judged by the NEUTRALIZER'S OWN predicate
+         (one definition, and it honours dotenv's last-occurrence-wins rule, which a hand-rolled regex does
+         not). A dangerous backup is KEPT OUT: the current file already says false, which is the safer of
+         the two, and the operator says plainly that it declined to revert. */
+      let restored = 'NOT ATTEMPTED (no backup was taken)'
+      if (backup) {
+        let dangerous = ['UNREADABLE']
+        try { dangerous = NEUT.dangerousFlags(fs.readFileSync(backup, 'utf8')) } catch (e) { A('3 flags: backup unreadable — ' + scrub(e)) }
+        if (dangerous.length === 0) {
+          try { fs.copyFileSync(backup, envFile); restored = 'YES — from ' + path.basename(backup) + ' (verified safe: no money flag true in it)' }
+          catch (e) { restored = 'FAILED — ' + scrub(e); A('3 flags: restore failed — ' + scrub(e)) }
+        } else {
+          restored = 'REFUSED — ' + path.basename(backup) + ' carries ' + dangerous.join(', ') + '=true; restoring it would RE-ARM the money gate. '
+            + '.env.local is LEFT as this operator wrote it (money flags false), which is the safer of the two states.'
+          A('3 flags: the backup was NOT restored because it carries ' + dangerous.join(', ') + '=true — inspect ' + path.basename(backup) + ' by hand')
+        }
+      }
+      F('ENV RESTORE ON REFUSAL', restored)
+      return fail('3 flags: ' + k + ' is TRUE in the Next merged view (' + (mergedA.definedIn[k] || []).join(',') + ') — restart REFUSED · env restore: ' + restored, 'human decision required')
     }
   }
   if (flag('LOGISTICS_SIGNUP_ENABLED') === 'true' && flag('RATE_LIMIT_ENABLED') !== 'true') O('RATE_LIMIT_ENABLED effective false while the public courier signup is open (flags.md recommends enabling it — FOUNDER DECISION)')
@@ -460,6 +486,29 @@ async function main() {
     }
     const tok = provRep.keys && provRep.keys.INTERNAL_CRON_TOKEN
     if (tok) F('INTERNAL_CRON_TOKEN PRESENT BEFORE ENV LOAD (Passenger process)', tok.presentBeforeEnvLoad ? 'YES' : 'NO')
+
+    /* T-103 (PRE-L11 hardening) — T-100 MADE HOSTING INJECTION VISIBLE; THIS MAKES IT A VERDICT.
+       Step 3's money-flag loop reads the merged view of the env FILES. A flag set in the cPanel Node.js
+       selector never appears there — `@next/env` does not override `process.env` — so the operator printed
+       « ABSENT -> EFFECTIVE FALSE », then « RESULT: PASS », about a flag that was OPEN in the running
+       process. T-100 added those flags to the watch list, so the provenance block above now PRINTS
+       `effective=process` for them — but a fact among forty facts is not a refusal, and the whole purpose of
+       this operator is to be the refusal.
+       A money flag whose EFFECTIVE SOURCE is the process, with no env file defining it, is exactly the
+       shape the spec forbids (« jamais l'UI cPanel »). It is a FAILED STEP, not a note. */
+    const injected = []
+    for (const k of MONEY_FLAGS_MUST_BE_FALSE) {
+      const e = provRep.keys && provRep.keys[k]
+      if (!e) continue
+      if (e.effectiveSource === 'process' || (e.presentBeforeEnvLoad && !e.presentInEnvFiles)) injected.push(k)
+    }
+    F('MONEY FLAGS INJECTED BY THE HOSTING LAYER', injected.length ? 'YES (' + injected.join(', ') + ')' : 'NO — every money flag the process holds comes from an env file')
+    if (injected.length) {
+      return fail('5 provenance: ' + injected.join(', ') + ' present in the Passenger process BEFORE the env load and absent from every env file '
+        + '— set outside the files (the cPanel Node.js selector is the documented channel, and the spec forbids it). '
+        + 'The file view reads ABSENT while the RUNNING process may hold true. No verdict can be given about money safety in that state.',
+      'remove the variable from the cPanel Node.js selector, restart Passenger, re-run')
+    }
   }
 
   // ── 6. HEALTH ×3 ──────────────────────────────────────────────────────────────

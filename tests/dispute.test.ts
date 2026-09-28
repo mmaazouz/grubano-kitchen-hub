@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi , afterEach} from 'vitest'
+import { openChargebackRail, closeChargebackRail } from './support/refund-window'
 
 // ── P4.5-B — lib/dispute (chargeback unwind) ─────────────────────────────────────
 // Lost dispute → reverse_transfer the resto NET + clawback the franchise royalty,
@@ -50,9 +51,15 @@ const created    = (d = makeDispute()) => ({ type: 'charge.dispute.created', dat
 const upsertReturns = (o: Record<string, unknown> = {}) => ({ id: 'D1', splitReversed: false, feeCents: 1500, refundedCents: 0, ...o })
 
 beforeEach(() => {
+  // T-90: this suite drives the money engine DIRECTLY, bypassing the route gate production always
+  // applies. `assertMoneyWriteAllowed` refuses an initiating write whose rail is closed — exactly as
+  // strict as the callers — so the rail is opened here, once, to say what production says.
+  openChargebackRail()
   vi.clearAllMocks()
   stripeMock.charges.retrieve.mockResolvedValue(makeCharge())
   stripeMock.transfers.createReversal.mockResolvedValue({ id: 'trr_1' })
+
+afterEach(() => { closeChargebackRail() })
   stripeMock.transfers.list.mockResolvedValue({ data: [] })
   db.dispute.upsert.mockResolvedValue(upsertReturns())
   db.dispute.update.mockResolvedValue({})

@@ -190,10 +190,17 @@ describe('the claims window operator refuses to open unless every precondition h
     const flagAt  = src.indexOf("const opened = writeFlag(envFile, 'CLAIMS_ENABLED', 'true', stamp)")
     expect(openAt).toBeGreaterThan(-1)
     expect(flagAt).toBeGreaterThan(openAt) // lease first: no instant where the flag stands alone
-    const closeLease = src.indexOf("writeFlag(envFile, 'CLAIMS_WINDOW_UNTIL', new Date(Date.now() - 1000).toISOString(), stamp + 'Z')")
-    const closeFlag  = src.indexOf("const closed = writeFlag(envFile, 'CLAIMS_ENABLED', 'false', stamp + 'Z')")
-    expect(closeLease).toBeGreaterThan(-1)
-    expect(closeFlag).toBeGreaterThan(closeLease) // expire first: belt before braces
+    // T-93: the two close writes became a per-key LOOP, so a throw on the lease can no longer suppress
+    // the flag. The RULE is unchanged and still asserted — the lease is expired FIRST — but it now lives
+    // in the ORDER OF THE LOOP'S ENTRIES. Pinning the old two-statement shape would pin the shared `try`
+    // that was the defect.
+    const closeLoop = src.indexOf("for (const [k, v] of [['CLAIMS_WINDOW_UNTIL', past], ['CLAIMS_ENABLED', 'false']])")
+    expect(closeLoop).toBeGreaterThan(-1)
+    const entries = src.slice(closeLoop, closeLoop + 120)
+    expect(entries.indexOf('CLAIMS_WINDOW_UNTIL')).toBeLessThan(entries.indexOf("'CLAIMS_ENABLED', 'false'")) // expire first
+    expect(src).toContain("const past = new Date(Date.now() - 1000).toISOString()")
+    // …and the handler is disarmed LAST, only once both gates are proven and a restart was requested
+    expect(src).toContain("if (w2.ok && rg === 'CLOSED' && !closeFailedKeys.length && restartRequested) armedClose = null")
   })
 
   it('it refuses a TTL its own lease could not cover', () => {

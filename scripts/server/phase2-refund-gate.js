@@ -28,13 +28,73 @@ const path = require('path')
 const os = require('os')
 const prov = require(path.join(__dirname, 'env-provenance.js'))
 const H = require(path.join(__dirname, 'reconcile-helpers.js'))
+// T-93 (d): ONE definition of « which flags does a restorable backup re-enable », owned by the
+// neutralizer. Requiring it has no side effect — its main() runs only as an entry point.
+const NEUT = require(path.join(__dirname, 'phase2-backup-neutralize.js'))
 
 const MODE = process.argv[2] === 'window' ? 'window' : 'precheck'
 const APP_ROOT = process.env.PHASE2_APP_ROOT || path.join(__dirname, '..', '..')
 const ORDER_ID = process.env.PHASE2_REFUND_ORDER_ID || 'cmtju919h0001h7t6bkn5tsm0'
 const AMOUNT_CENTS = Number(process.env.PHASE2_REFUND_AMOUNT_CENTS || 500)
 const CONFIRM_SENTENCE = 'I AUTHORIZE THE STAGING REFUND REHEARSAL'
-const WINDOW_DEADLINE_MS = Number(process.env.PHASE2_REFUND_WINDOW_MS || 15 * 60 * 1000)
+/* T-93 (c) — A NON-NUMERIC WINDOW LENGTH USED TO SLIP PAST THE CEILING GUARD AND THROW AFTER ARMING.
+   `Number('abc')` is NaN, and the ceiling guard was `if (WINDOW_DEADLINE_MS + 120000 > 30*60*1000)` —
+   `NaN > 1800000` is **false**, so the guard PASSED. The refusal then happened three lines later, inside
+   `new Date(Date.now() + NaN).toISOString()`, as a RangeError — raised AFTER the emergency re-freeze had
+   been armed, and reported as an unexpected crash rather than as a named refusal of a bad input. A window
+   operator must refuse a malformed authorization BY NAME, before it touches anything.
+   The raw text is kept so the refusal can quote what was actually set.                                */
+const WINDOW_MS_RAW = process.env.PHASE2_REFUND_WINDOW_MS
+const WINDOW_DEADLINE_MS = (WINDOW_MS_RAW === undefined || String(WINDOW_MS_RAW).trim() === '')
+  ? 15 * 60 * 1000
+  : Number(WINDOW_MS_RAW)
+/** The lease is `window + 2 min` and lib/refund.ts REFUND_WINDOW_MAX_MS caps it at 30 min. */
+const WINDOW_MS_LEASE_MARGIN_MS = 120000
+const WINDOW_MS_HARD_CEILING_MS = 30 * 60 * 1000
+/* The floor is 1 ms, deliberately, and that is a JUDGEMENT worth writing down. A SHORT window is not a
+   money risk — it opens the gate for less time, not more — while a floor of one minute would make this
+   operator's window mode untestable at speed, and this repository has already paid twice for operators
+   whose main() no test had ever executed. So the shape and the CEILING are enforced (those are the two
+   that can hurt), and an implausibly short window is REPORTED instead of refused.                     */
+const WINDOW_MS_FLOOR_MS = 1
+const WINDOW_MS_PLAUSIBLE_MS = 60 * 1000
+/**
+ * Why a window length is refused, or null when it is legal — PURE in its argument, so every shape can be
+ * enumerated by a test without spawning a process. `raw` is the env value exactly as read (or undefined).
+ */
+function windowMsRefusalFor(raw) {
+  const blank = raw === undefined || String(raw).trim() === ''
+  const ms = blank ? 15 * 60 * 1000 : Number(raw)
+  const shown = JSON.stringify(String(blank ? '' : raw).slice(0, 40))
+  // THE SHAPE FIRST, BECAUSE NaN DEFEATS EVERY COMPARISON BELOW. `Number('abc')` is NaN and
+  // `NaN > 1800000` is FALSE, which is exactly how the old ceiling guard was walked past.
+  if (!blank && !/^[0-9]+$/.test(String(raw).trim())) {
+    return 'PHASE2_REFUND_WINDOW_MS=' + shown + ' is not a whole number of milliseconds. `Number()` turns it into '
+      + (Number.isNaN(ms) ? 'NaN' : String(ms))
+      + ', and NaN passes every `>` comparison — including this operator’s own 30-minute ceiling — because '
+      + 'NaN > x is FALSE. Set a positive integer (milliseconds).'
+  }
+  if (!Number.isFinite(ms) || !Number.isInteger(ms)) {
+    return 'PHASE2_REFUND_WINDOW_MS=' + shown + ' is not a finite whole number of milliseconds.'
+  }
+  if (ms < WINDOW_MS_FLOOR_MS) {
+    return 'PHASE2_REFUND_WINDOW_MS=' + shown + ' is not a positive number of milliseconds.'
+  }
+  // AUDIT FIX (batch 2, P3 honesty) — THE OPERATOR MUST NOT OUTLIVE ITS OWN AUTHORIZATION. With a window
+  // above ~28 min the T-48 lease clamps at the compiled ceiling while this script keeps printing
+  // 'WINDOW OPEN' — the gate is already CLOSED by the application and the human reads a false statement
+  // from an EVIDENCE operator. Money is never at risk in that direction (the gate fails closed), but a
+  // lying operator is exactly the defect class this train exists to remove. Refuse rather than shorten.
+  if (ms + WINDOW_MS_LEASE_MARGIN_MS > WINDOW_MS_HARD_CEILING_MS) {
+    return 'PHASE2_REFUND_WINDOW_MS=' + Math.round(ms / 60000)
+      + ' min exceeds what the T-48 lease can cover (lease = window + 2 min, hard ceiling 30 min). '
+      + 'This script would keep reporting the window OPEN after the application had already closed it. '
+      + 'Set PHASE2_REFUND_WINDOW_MS to 28 min or less.'
+  }
+  return null
+}
+/** The refusal for THIS process's env. Called before the stamp, the arm and every write. */
+function windowMsRefusal() { return windowMsRefusalFor(WINDOW_MS_RAW) }
 const RELOAD_DEADLINE_MS = Number(process.env.PHASE2_RELOAD_DEADLINE_MS || 240000)
 const RELOAD_INTERVAL_MS = Number(process.env.PHASE2_RELOAD_INTERVAL_MS || 10000)
 const POLL_MS = Number(process.env.PHASE2_REFUND_POLL_MS || 15000)
@@ -74,9 +134,17 @@ function done(result, failedStep) {
 }
 const fail = (step) => done('FAIL', step)
 
+/* T-99 (found while testing T-93) — NODE'S `fetch` HAS NO DEFAULT TIMEOUT. A probe against a host that
+   accepts the connection and then says nothing hangs FOREVER, and `waitGate` is a loop of probes: the
+   operator would stop at a black-holed TCP connection, having neither proved the gate nor told anyone.
+   Measured, not theorised: the T-93 end-to-end test hung for the full 120 s child timeout for exactly
+   this reason. Money is bounded either way by the T-48 lease, but an EVIDENCE operator that hangs has
+   stopped being evidence. A refused connection already returned promptly; this covers the silent one. */
+const PROBE_TIMEOUT_MS = Number(process.env.PHASE2_PROBE_TIMEOUT_MS || 15000)
+const probeSignal = () => (typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(PROBE_TIMEOUT_MS) : undefined)
 async function probeGate(base) {
   try {
-    const r = await fetch(base + '/api/admin/refunds/run', { method: 'POST', headers: { 'Content-Type': 'application/json', 'User-Agent': 'grubano-phase2-refund-gate/1' }, body: '{}', redirect: 'manual' })
+    const r = await fetch(base + '/api/admin/refunds/run', { method: 'POST', headers: { 'Content-Type': 'application/json', 'User-Agent': 'grubano-phase2-refund-gate/1' }, body: '{}', redirect: 'manual', signal: probeSignal() })
     const b = await r.json().catch(() => null)
     if (r.status === 403 && b && b.gated === true) return 'CLOSED'
     if (r.status === 401) return 'OPEN'
@@ -86,7 +154,7 @@ async function probeGate(base) {
 /** D′ L1: the claims-surface probe (same shape as the Mode A operator's). */
 async function probeClaimsGate(base) {
   try {
-    const r = await fetch(base + '/api/claims', { method: 'POST', headers: { 'Content-Type': 'application/json', 'User-Agent': 'grubano-phase2-refund-gate/1' }, body: '{}', redirect: 'manual' })
+    const r = await fetch(base + '/api/claims', { method: 'POST', headers: { 'Content-Type': 'application/json', 'User-Agent': 'grubano-phase2-refund-gate/1' }, body: '{}', redirect: 'manual', signal: probeSignal() })
     const b = await r.json().catch(() => null)
     if (r.status === 403 && b && (b.gated === true || b.enabled === false)) return 'CLOSED'
     if (r.status === 401) return 'OPEN'
@@ -134,28 +202,197 @@ function touchRestart() { fs.mkdirSync(path.join(APP_ROOT, 'tmp'), { recursive: 
    has written false. SIGKILL / a power cut cannot be caught — the printed banner
    tells the operator exactly what to check in that case.                        */
 let armedRefreeze = null
-function emergencyRefreeze(reason) {
+/* T-93 (b) — EACH WRITE IN ITS OWN try. The three statements used to share ONE try, so a throw on the
+   FIRST (the lease) suppressed both the `REFUNDS_ENABLED=false` write AND the restart touch: the one
+   write that actually closes the gate was skipped because a different, less important one failed. The
+   sibling operator phase2-modeb-gate.js emergencyClose() already carried this shape; this one did not.
+   Order matters too: the LEASE expires first (the authorization dies of old age even if a flag resists),
+   then the flag, then the restart — and the restart is attempted whatever the writes did, because a
+   flag closed on disk that the live process has not re-read has closed nothing.                       */
+/* `deps` exists ONLY so a test can make ONE of the two writes fail and prove the OTHER still happens.
+   That asymmetry is the whole of T-93 (b), and it is not inducible from outside: both writes go through
+   the same primitive, to the same backup path, on the same stamp. A test that patched `fs` would be
+   testing Node, and `node:fs` exports are not redefinable in any case. Production passes nothing. */
+function emergencyRefreeze(reason, deps) {
   if (!armedRefreeze) return false
+  const wf = (deps && deps.writeFlagFn) || writeFlag
+  const tr = (deps && deps.touchRestartFn) || touchRestart
   const { envFile, stamp } = armedRefreeze
   armedRefreeze = null // once only
-  try {
-    writeFlag(envFile, 'REFUNDS_WINDOW_UNTIL', new Date(Date.now() - 1000).toISOString(), stamp + '-emergency')
-    const r = writeFlag(envFile, 'REFUNDS_ENABLED', 'false', stamp + '-emergency')
-    touchRestart()
-    console.log('  !! EMERGENCY REFREEZE (' + reason + '): REFUNDS_ENABLED=false written' + (r.changed ? ' (backup ' + r.backup + ')' : ' (was already false)') + ' and tmp/restart.txt touched.')
-    console.log('  !! VERIFY THE GATE MANUALLY: POST /api/admin/refunds/run {} must answer 403 {gated:true} within a few minutes.')
-    return true
-  } catch (e) {
-    console.log('  !! EMERGENCY REFREEZE FAILED (' + reason + '): ' + scrub(e))
+  const past = new Date(Date.now() - 1000).toISOString()
+  const writes = [['REFUNDS_WINDOW_UNTIL', past], ['REFUNDS_ENABLED', 'false']]
+  const failedKeys = []
+  let flagResult = null
+  for (const [k, v] of writes) {
+    try {
+      const r = wf(envFile, k, v, stamp + '-emergency')
+      if (k === 'REFUNDS_ENABLED') flagResult = r
+    } catch (e) {
+      failedKeys.push(k)
+      console.log('  !! EMERGENCY REFREEZE — write ' + k + ' FAILED (' + reason + '): ' + scrub(e))
+    }
+  }
+  let restarted = false
+  try { tr(); restarted = true } catch (e) {
+    console.log('  !! EMERGENCY REFREEZE — tmp/restart.txt NOT written (' + reason + '): ' + scrub(e))
+  }
+  if (failedKeys.length || !restarted) {
+    console.log('  !! EMERGENCY REFREEZE FAILED (' + reason + '): '
+      + (failedKeys.length ? 'unwritten key(s) ' + failedKeys.join(', ') : 'flags written')
+      + (restarted ? ', restart requested' : ', NO restart requested — the LIVE process keeps the flag it booted with'))
     console.log('  !! HUMAN ACTION REQUIRED NOW: set REFUNDS_ENABLED=false in ' + envFile + ' and touch tmp/restart.txt')
     return false
   }
+  console.log('  !! EMERGENCY REFREEZE (' + reason + '): REFUNDS_ENABLED=false written'
+    + (flagResult && flagResult.changed ? ' (backup ' + flagResult.backup + ')' : ' (was already false)')
+    + ', the lease expired, and tmp/restart.txt touched.')
+  console.log('  !! VERIFY THE GATE MANUALLY: POST /api/admin/refunds/run {} must answer 403 {gated:true} within a few minutes.')
+  console.log('  !! THEN NEUTRALIZE THE BACKUPS: node scripts/server/phase2-backup-neutralize.js '
+    + '— a `.env.local.bak-refund-gate-…` copy carrying REFUNDS_ENABLED=true is restorable and would re-open the gate.')
+  return true
 }
 for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGBREAK', 'SIGQUIT']) {
   try { process.on(sig, () => { emergencyRefreeze(sig); process.exit(130) }) } catch { /* signal not supported on this platform */ }
 }
 process.on('uncaughtException', (e) => { emergencyRefreeze('uncaughtException'); console.log('  !! ' + scrub(e)); process.exit(1) })
 process.on('unhandledRejection', (e) => { emergencyRefreeze('unhandledRejection'); console.log('  !! ' + scrub(e)); process.exit(1) })
+
+/* ── T-93 (d) — NEUTRALIZE THE BACKUP THIS OPERATOR ITSELF CREATED ────────────────────────────────
+   `writeFlag` copies .env.local to `.env.local.bak-refund-gate-<stamp>` before its first change, so a
+   window always leaves a restorable copy in the app root carrying REFUNDS_ENABLED=true. One `cp` over
+   .env.local plus a Passenger respawn re-opens the money gate — and the window operator neither removed
+   that copy nor named the control that does. phase2-backup-neutralize.js archives it outside the app
+   root (mode 0700) and removes the restorable one; it REFUSES while the live flag is still true, which
+   is why it is invoked only after the re-freeze.
+
+   Deliberately a CHILD PROCESS, not a require: the neutralizer is a top-level script that calls
+   process.exit, and running it in-process would take this operator down with it. Its whole stdout is
+   echoed, because the human is reading one report.
+
+   THE FAILURE MODE THAT MATTERS is silence, so every way this can go wrong is an ANOMALY carrying the
+   exact command to run by hand.                                                                      */
+function backupNames() {
+  try {
+    return fs.readdirSync(APP_ROOT).filter((n) => /^\.env\.local\.bak/.test(n)).sort()
+  } catch { return null }
+}
+async function neutralizeOwnBackups() {
+  const script = path.join(__dirname, 'phase2-backup-neutralize.js')
+  const before = backupNames()
+  F('BACKUPS IN APP ROOT AFTER CLOSE', before === null ? 'NOT MEASURED (app root unreadable)' : (before.length ? before.join(', ') : 'none'))
+  const byHand = 'node ' + script
+  if (!fs.existsSync(script)) {
+    A('7 neutralize: phase2-backup-neutralize.js is not deployed next to this operator — a restorable true-flag backup may remain. Run it by hand from a checkout: ' + byHand)
+    return
+  }
+  if (before !== null && before.length === 0) {
+    F('BACKUP NEUTRALIZER', 'SKIPPED — no .env.local.bak* file exists, so there is nothing restorable')
+    return
+  }
+  let code = null, out = ''
+  try {
+    /* A TIGHT env, not `process.env` wholesale. The neutralizer needs four variables and reads
+       NEXTAUTH_URL from the FILES, so inheriting the rest buys nothing and can cost a lot: anything
+       that injects a loader (NODE_OPTIONS above all) would run inside a child whose job is to disarm a
+       money footgun, and a child that hangs is a control that silently did not run. Measured: under a
+       test runner the inherited NODE_OPTIONS made this child hang until the timeout. */
+    const childEnv = { PHASE2_APP_ROOT: APP_ROOT }
+    for (const k of ['PATH', 'Path', 'SystemRoot', 'windir', 'TEMP', 'TMP', 'HOME', 'USERPROFILE', 'LANG', 'LC_ALL',
+      'PHASE2_EVIDENCE_DIR', 'PHASE2_BASE_URL', 'PHASE2_BACKUP_DRY_RUN']) {
+      if (process.env[k] !== undefined) childEnv[k] = process.env[k]
+    }
+    const r = require('child_process').spawnSync(process.execPath, [script], {
+      cwd: APP_ROOT,
+      env: childEnv,
+      encoding: 'utf8',
+      timeout: 120000,
+    })
+    code = r.status
+    out = String((r.stdout || '') + (r.stderr || ''))
+    if (r.error) A('7 neutralize: could not start the neutralizer — ' + scrub(r.error))
+  } catch (e) {
+    A('7 neutralize: could not start the neutralizer — ' + scrub(e))
+  }
+  if (out) {
+    console.log('  --- phase2-backup-neutralize.js output ---')
+    for (const line of out.split(/\r?\n/)) if (line !== '') console.log('  | ' + line)
+    console.log('  --- end of phase2-backup-neutralize.js output ---')
+  }
+  F('BACKUP NEUTRALIZER EXIT', code === null ? 'NOT MEASURED' : String(code))
+  if (code !== 0) A('7 neutralize: the neutralizer did not report success (exit ' + String(code) + ') — a restorable true-flag backup may remain in the app root. Run by hand and read its report: ' + byHand)
+  // PROOF, not trust: re-read the directory ourselves and say what is still restorable.
+  const after = backupNames()
+  if (after === null) { A('7 neutralize: app root unreadable after the run — restorable backups NOT MEASURED'); return }
+  // THE PREDICATE IS THE NEUTRALIZER'S OWN, required not retyped. A second regex here would be a money
+  // rule in two copies — and it would have been WRONG: dotenv semantics are last-occurrence-wins, so a
+  // file holding `REFUNDS_ENABLED=true` followed by `=false` is SAFE while a naive regex calls it dangerous.
+  const stillDangerous = after.filter((n) => {
+    try { return NEUT.dangerousFlags(fs.readFileSync(path.join(APP_ROOT, n), 'utf8')).length > 0 } catch { return true }
+  })
+  F('RESTORABLE TRUE-FLAG BACKUP LEFT BY THIS WINDOW', stillDangerous.length ? 'YES (' + stillDangerous.join(', ') + ')' : 'NO')
+  if (stillDangerous.length) A('7 neutralize: ' + stillDangerous.join(', ') + ' still carries REFUNDS_ENABLED=true in the app root — restoring it re-opens the money gate. ' + byHand)
+}
+
+/* ── T-93 (a)(b)(d) — CLOSING THE WINDOW, AS ONE AUDITABLE SEQUENCE ───────────────────────────────
+   WHAT WAS WRONG, in the order it mattered:
+   (b) the two flag writes and the restart shared ONE `try`, so a throw on the FIRST — the lease, the
+       least important of the three — suppressed the `REFUNDS_ENABLED=false` write that actually closes
+       the gate, and the restart as well.
+   (a) `armedRefreeze = null` sat BETWEEN the flag write and `touchRestart()`. A signal in that gap left
+       `false` on disk, no restart requested, and therefore a LIVE Passenger process still holding the
+       `true` it had booted with: the gate stayed OPEN for the remainder of the lease, with the emergency
+       handler already disarmed and nobody told. A flag closed on disk that the running process has not
+       re-read has closed NOTHING.
+   (d) nothing here invoked, or even named, phase2-backup-neutralize.js — while `writeFlag` had just left
+       a `.env.local.bak-refund-gate-<stamp>` copy carrying REFUNDS_ENABLED=true in the app root.
+
+   THE ORDER IS NOW THE ARGUMENT: lease, flag, restart, PROOF, disarm, neutralize. Each write in its own
+   try; the restart attempted whatever the writes did; the handler disarmed LAST and ONLY on proof.
+   Leaving the handler armed costs nothing — its writes are idempotent — while disarming it one statement
+   too early cannot be recovered from.
+
+   `waitCloseGate` is injected so a test can supply the gate proof (and its absence).                  */
+async function closeRefundWindow({ envFile, stamp, base, waitCloseGate, writeFlagFn, touchRestartFn }) {
+  const wait = waitCloseGate || ((b) => waitGate(b, 'CLOSED', RELOAD_DEADLINE_MS, RELOAD_INTERVAL_MS))
+  const wf = writeFlagFn || writeFlag
+  const tr = touchRestartFn || touchRestart
+  const past = new Date(Date.now() - 1000).toISOString()
+  // LEASE FIRST: the authorization dies of old age even if a flag write resists.
+  const closeWrites = [['REFUNDS_WINDOW_UNTIL', past], ['REFUNDS_ENABLED', 'false']]
+  const closeFailed = []
+  let closed = null
+  for (const [k, v] of closeWrites) {
+    try {
+      const r = wf(envFile, k, v, stamp + 'Z')
+      if (k === 'REFUNDS_ENABLED') closed = r
+    } catch (e) {
+      closeFailed.push(k)
+      A('7 refreeze: write ' + k + ' FAILED — ' + scrub(e))
+    }
+  }
+  F('WINDOW CLOSE WRITE', closeFailed.length
+    ? 'FAILED for ' + closeFailed.join(', ') + ' — HUMAN ACTION REQUIRED: set REFUNDS_ENABLED=false in ' + envFile
+    : (closed && closed.changed ? 'REFUNDS_ENABLED=false (backup ' + closed.backup + ')' : 'no change'))
+  let restartRequested = false
+  try { tr(); restartRequested = true } catch (e) {
+    A('7 refreeze: tmp/restart.txt NOT written — the LIVE process keeps the flag it booted with until the lease expires: ' + scrub(e))
+  }
+  F('RESTART REQUESTED', restartRequested ? 'YES (tmp/restart.txt touched)' : 'NO — the file says closed, the process does not')
+  let proven = false
+  try {
+    const w2 = await wait(base)
+    F('GATE AFTER CLOSE', w2.last + ' after ' + Math.round(w2.elapsedMs / 1000) + ' s')
+    proven = !!w2.ok
+    if (!proven) A('7 refreeze: gate NOT proven CLOSED (' + w2.last + ') — HUMAN ATTENTION REQUIRED')
+  } catch (e) { A('7 refreeze: gate proof failed — ' + scrub(e)) }
+  // DISARM — last, and ONLY when all three hold. Anything less keeps the handler for the next signal.
+  if (proven && !closeFailed.length && restartRequested) armedRefreeze = null
+  F('EMERGENCY REFREEZE HANDLER', armedRefreeze === null
+    ? 'DISARMED (gate proven CLOSED, flags written, restart requested)'
+    : 'STILL ARMED — the close was not fully proven; any signal from here re-writes the flags and re-touches restart.txt')
+  await neutralizeOwnBackups()
+  return { closeFailed, restartRequested, proven, disarmed: armedRefreeze === null }
+}
 
 async function main() {
   console.log('[1] identity + env (mode ' + MODE + ')')
@@ -561,19 +798,17 @@ async function main() {
   F('WINDOW PRE-STATE CAPTURE', 'PASS (refund rows ' + preState.refundRows + ', ledger lines ' + preState.ledgerLines + ', loyalty customer YES, earn ' + (preState.earn ? 'PRESENT' : 'ABSENT') + ', redeem ' + (preState.redeem ? 'PRESENT' : 'ABSENT') + ', prior refund evidence NO)')
   if (!verdict.startsWith('READY')) return fail('7 window: precheck verdict ' + verdict + ' — window REFUSED, nothing changed')
   if (gate0 !== 'CLOSED') return fail('7 window: gate not CLOSED before opening — refusing')
-  // AUDIT FIX (batch 2, P3 honesty) — THE OPERATOR MUST NOT OUTLIVE ITS OWN AUTHORIZATION.
-  // The T-48 lease is capped at the compiled 30-minute ceiling (lib/refund.ts REFUND_WINDOW_MAX_MS).
-  // With PHASE2_REFUND_WINDOW_MS above ~28 min the lease would clamp while this script kept
-  // polling and kept printing 'WINDOW OPEN' — the gate would already be CLOSED by the app and the
-  // human would be reading a false statement from an EVIDENCE operator. Money is never at risk in
-  // that direction (the gate fails closed), but a lying operator is exactly the defect class this
-  // train exists to remove. Refuse rather than silently shorten: the human picks a legal window.
-  if (WINDOW_DEADLINE_MS + 120000 > 30 * 60 * 1000) {
-    return fail('7 window: PHASE2_REFUND_WINDOW_MS=' + Math.round(WINDOW_DEADLINE_MS / 60000) +
-      ' min exceeds what the T-48 lease can cover (lease = window + 2 min, hard ceiling 30 min). ' +
-      'This script would keep reporting the window OPEN after the application had already closed it. ' +
-      'Set PHASE2_REFUND_WINDOW_MS to 28 min or less. Nothing changed.')
-  }
+  // T-93 (c): the window LENGTH is validated by name HERE — before the stamp, before the arm, before any
+  // write — so a malformed authorization changes nothing. The check it replaces was bypassable: it
+  // compared a possibly-NaN duration with `>`, and NaN fails every comparison.
+  const windowMsBad = windowMsRefusal()
+  if (windowMsBad) return fail('7 window: ' + windowMsBad + ' Nothing changed.')
+  F('WINDOW LENGTH', Math.round(WINDOW_DEADLINE_MS / 1000) + ' s (validated: a positive whole number of ms, '
+    + 'and window + 2 min ≤ the 30 min lease ceiling)'
+    + (WINDOW_DEADLINE_MS < WINDOW_MS_PLAUSIBLE_MS
+      ? ' — NOTE: under ' + (WINDOW_MS_PLAUSIBLE_MS / 1000) + ' s. Legal and SAFER (the gate is open for less '
+        + 'time), but too short to observe a real refund: this is a test-harness length, not a rehearsal length.'
+      : ''))
   const stamp = new Date().toISOString()
   const refundsBefore = refunds.length
   let opened = null
@@ -606,18 +841,11 @@ async function main() {
       if (seen.some((r) => r.status !== 'succeeded')) F('REFUND STATUS TRUTH', 'at least one refund is NOT succeeded — do NOT claim success (pending/failed follow refund.updated/refund.failed)')
     } else F('REFUND OBSERVED (Stripe)', 'NONE within the window — nothing executed')
   } catch (e) { A('7 window: ' + scrub(e)) } finally {
-    // UNCONDITIONAL RE-FREEZE
-    try {
-      // Expire the lease FIRST: even if the flag write below fails, the authorization is dead.
-      writeFlag(envFile, 'REFUNDS_WINDOW_UNTIL', new Date(Date.now() - 1000).toISOString(), stamp + 'Z')
-      const closed = writeFlag(envFile, 'REFUNDS_ENABLED', 'false', stamp + 'Z')
-      armedRefreeze = null // disarm ONLY once false is actually on disk; a throw above keeps the handler armed
-      F('WINDOW CLOSE WRITE', closed.changed ? 'REFUNDS_ENABLED=false (backup ' + closed.backup + ')' : 'no change')
-      touchRestart()
-      const w2 = await waitGate(base, 'CLOSED', RELOAD_DEADLINE_MS, RELOAD_INTERVAL_MS)
-      F('GATE AFTER CLOSE', w2.last + ' after ' + Math.round(w2.elapsedMs / 1000) + ' s')
-      if (!w2.ok) A('7 refreeze: gate NOT proven CLOSED (' + w2.last + ') — HUMAN ATTENTION REQUIRED')
-    } catch (e) { A('7 refreeze: ' + scrub(e)) }
+    /* UNCONDITIONAL RE-FREEZE — the whole sequence lives in closeRefundWindow() so that a TEST can
+       exercise its partial-failure paths (a write that throws, a restart that throws, a gate that never
+       proves closed) without opening a real window. Three of T-93's four defects were HERE, and none of
+       them was reachable by any test, because the sequence was inline in main(). */
+    await closeRefundWindow({ envFile, stamp, base })
   }
   return done(anomalies.length ? 'FAIL' : 'PASS')
 }
@@ -631,4 +859,13 @@ module.exports = {
   emergencyRefreeze,
   armRefreeze: (envFile, stamp) => { armedRefreeze = { envFile, stamp } },
   isRefreezeArmed: () => armedRefreeze !== null,
+  // T-93: the pieces a test must be able to exercise WITHOUT opening a window.
+  windowMsRefusalFor,
+  windowMsRefusal,
+  backupNames,
+  neutralizeOwnBackups,
+  closeRefundWindow,
+  WINDOW_MS_FLOOR_MS,
+  WINDOW_MS_LEASE_MARGIN_MS,
+  WINDOW_MS_HARD_CEILING_MS,
 }

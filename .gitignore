@@ -28,6 +28,16 @@ yarn-error.log*
 .env*.local
 .env*.bak
 .env
+# T-98 (PRE-L11 hardening) — THE OPERATOR BACKUPS WERE NOT IGNORED, AND THEY ARE BYTE COPIES OF
+# .env.local. `.env*.bak` above only matches a name ENDING in `.bak`, so `.env.local.bak` was ignored
+# while every name the window operators actually write — `.env.local.bak-refund-gate-<stamp>`,
+# `.bak-modeb-gate-…`, `.bak-claims-gate-…`, `.bak-phase2-…` — was NOT (measured with
+# `git check-ignore`). Those files carry DATABASE_URL, STRIPE_SECRET_KEY, NEXTAUTH_SECRET, SMTP_PASS
+# and INTERNAL_CRON_TOKEN verbatim, and the house session ritual is `git add .`. One `git add .` on a
+# host that had run a window would have pushed every staging secret to GitHub. Anchored on the prefix,
+# not on the suffix, so a new operator inventing a new stamp is covered before it is written.
+.env*.bak*
+.env.local.bak*
 
 # vercel
 .vercel

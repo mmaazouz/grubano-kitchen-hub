@@ -99,6 +99,9 @@ export async function captureHold(
     return { ok: false, status: 400, error: 'Montant de pénalité trop faible.' }
   }
 
-  try { await captureDeposit(piId, captureCents) } catch (err) { return fatal(err) }
+  /* T-90: the gate this function already checked at its top is PASSED to the write, so the declaration at
+     the verb (lib/stripe.ts captureDeposit) can refuse on it. Re-reading the flag here rather than passing a
+     literal is what makes the declaration mean something. */
+  try { await captureDeposit(piId, captureCents, { railOpen: isPunitiveCaptureEnabled() }) } catch (err) { return fatal(err) }
   return { ok: true, depositStatus: 'captured', capturedAmount: captureCents }
 }

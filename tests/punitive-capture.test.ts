@@ -83,7 +83,10 @@ describe('V4-1 — le POINT D’ÉTRANGLEMENT captureHold (lib partagée)', () =
     vi.stubEnv('PUNITIVE_CAPTURE_ENABLED', 'true')
     const r = await captureHold('pi_1', 10, 10)
     expect(r).toEqual({ ok: true, depositStatus: 'captured', capturedAmount: 1000 })
-    expect(stripe.captureDeposit).toHaveBeenCalledWith('pi_1', 1000)
+    // T-90: `captureDeposit` now takes the caller's gate, so the declaration at the verb can refuse on
+    // it. Asserting the third argument is the point — a literal there would make the guard decorative,
+    // and this suite is where that would be caught.
+    expect(stripe.captureDeposit).toHaveBeenCalledWith('pi_1', 1000, { railOpen: true })
   })
 
   it('⭐ la LIBÉRATION n’est PAS gouvernée par le flag : releaseHold fonctionne flag OFF (la garantie et sa levée restent intactes)', async () => {
@@ -227,7 +230,10 @@ describe('V4-1 — POST /api/tickets/[id]/close deposit=capture (lib deposit RÉ
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.deposit.settled).toEqual({ depositStatus: 'captured', capturedAmount: 1000 })
-    expect(stripe.captureDeposit).toHaveBeenCalledWith('pi_hold_1', 1000)
+    // T-90: `captureDeposit` now takes the caller's gate, so the declaration at the verb can refuse on
+    // it. Asserting the third argument is the point — a literal there would make the guard decorative,
+    // and this suite is where that would be caught.
+    expect(stripe.captureDeposit).toHaveBeenCalledWith('pi_hold_1', 1000, { railOpen: true })
     const w = (db.reservation.update.mock.calls[0][0] as { data: Record<string, unknown> }).data
     expect(w).toMatchObject({ depositStatus: 'captured', depositPaid: true })
   })

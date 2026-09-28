@@ -152,6 +152,29 @@ const MONEY_FLAGS_MUST_BE_FALSE = [
   'REFUNDS_ENABLED', 'CLAIMS_ENABLED', 'CLAIMS_AUTO_APPROVE_ENABLED', 'CLAIM_AUTO_RESOLVE_ENABLED',
   'GHOST_ORDER_AUTO_REFUND_ENABLED', 'LOGISTICS_COURIER_ACTIVATION_ENABLED', 'TIPS_ENABLED',
   'LOGISTICS_PAYOUT_ENABLED', 'DELIVERY_FULFILLMENT_ENABLED',
+  /* T-100 (PRE-L11 hardening, found by the money-write recon and reported by four agents independently).
+     CHARGEBACKS_ENABLED IS THE ONLY GATE ON TWO `transfers.createReversal` CALLS — lib/dispute.ts:242
+     debits the RESTAURANT's connected account for its net share of a lost dispute, and lib/dispute.ts:264
+     debits the FRANCHISOR's for the royalty slice. It is read in exactly one place
+     (app/api/webhooks/stripe/route.ts:135), from a PUBLIC signed webhook, and `handleDisputeEvent` does
+     not re-check it. Yet it appeared in NEITHER of these lists, so the provenance report the founder reads
+     to assert « no money can move » said nothing at all about it, and phase2-preflight never required it
+     to be false. A gate nobody watches is a gate nobody will notice opening — least of all one that can be
+     set from the cPanel Node selector, where @next/env never overrides it. */
+  'CHARGEBACKS_ENABLED',
+  /* T-100 (same recon): PUNITIVE_CAPTURE_ENABLED is the SOLE gate on the only `paymentIntents.capture`
+     in the repository (lib/deposit.ts:22 and :71 — the no-show / walk-out penalty, a REAL card debit of
+     a held empreinte). Like CHARGEBACKS_ENABLED it was watched by nothing, so the provenance report said
+     nothing about the one flag that turns a pre-authorization into money taken from a customer. */
+  'PUNITIVE_CAPTURE_ENABLED',
+  /* T-90 (the seventh write site). `lib/creator-payout.ts` pays a partner with `transfers.create`, and its
+     three role flags govern it. `LOGISTICS_PAYOUT_ENABLED` was already required false; the affiliate one
+     belongs here by the same argument — the module's own header documents it as OFF by default and it gates
+     a payout to a third party. `CREATOR_PAYOUT_ENABLED` is deliberately NOT here: the creator rail's
+     internal switch is `() => true` with the flag at the admin route, an active cron matures creator
+     earnings, and requiring a flag false when the product may be relying on it would be a founder decision
+     dressed up as a safety check. It is WATCHED below instead, so its source is visible either way. */
+  'AFFILIATE_CONNECT_ENABLED',
 ]
 
 /**
@@ -159,7 +182,17 @@ const MONEY_FLAGS_MUST_BE_FALSE = [
  * money can move: the treasury-advance danger flag, and the two time-boxed LEASES. `CLAIMS_ENABLED` is a
  * DISJUNCT with `CLAIMS_WINDOW_UNTIL` — watching one without the other bounds nothing.
  */
-const MONEY_ADJACENT_KEYS = ['ALLOW_PLATFORM_FALLBACK', 'CLAIMS_WINDOW_UNTIL', 'REFUNDS_WINDOW_UNTIL']
+const MONEY_ADJACENT_KEYS = [
+  'ALLOW_PLATFORM_FALLBACK', 'CLAIMS_WINDOW_UNTIL', 'REFUNDS_WINDOW_UNTIL',
+  /* T-100: the franchise rail creates the settlement transfers that the two clawbacks above reverse. The
+     project's own choice is to PRINT these rather than require them false (phase2-preflight FLAGS_TO_PRINT),
+     and that choice is respected — but their SOURCE is now watched, because a royalty that reached
+     'settled' is the precondition of every clawback in the repository. */
+  'FRANCHISE_ENABLED', 'FRANCHISE_ROYALTY_ENABLED', 'FRANCHISE_SETTLEMENT_ENABLED',
+  /* T-90: the creator payout rail. Watched, not required false — see the note above. Its SOURCE matters
+     most precisely because its in-module gate is hardcoded open. */
+  'CREATOR_PAYOUT_ENABLED',
+]
 
 const WATCHED_SECRET_KEYS = [
   'INTERNAL_CRON_TOKEN', 'CRON_SECRET', 'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET',

@@ -194,7 +194,19 @@ describe('AUDIT FIX — the operator refuses a window the lease cannot cover', (
   it('the guard is actually present in the operator, not only in this test', async () => {
     const fs = await import('node:fs')
     const src = fs.readFileSync('scripts/server/phase2-refund-gate.js', 'utf8')
-    expect(src).toContain('WINDOW_DEADLINE_MS + 120000 > 30 * 60 * 1000')
+    /* T-93 (c) MOVED THIS GUARD, AND FOR A REASON THIS TEST SHOULD STATE. The inline check was
+       `if (WINDOW_DEADLINE_MS + 120000 > 30 * 60 * 1000)`, and it was WALKED PAST by any value `Number()`
+       turns into NaN — `NaN > 1800000` is false. The same ceiling now lives in `windowMsRefusalFor`, which
+       validates the SHAPE first and is called before the stamp, the arm and every write. Pinning the old
+       expression would pin the bypassable form; the rule is pinned instead, together with the shape check
+       that made it sound. */
+    expect(src).toContain('function windowMsRefusalFor(raw)')
+    expect(src).toContain('ms + WINDOW_MS_LEASE_MARGIN_MS > WINDOW_MS_HARD_CEILING_MS')
+    expect(src).toContain('const WINDOW_MS_HARD_CEILING_MS = 30 * 60 * 1000')
+    expect(src).toContain('NaN > x is FALSE')
+    expect(src).not.toContain('if (WINDOW_DEADLINE_MS + 120000 > 30 * 60 * 1000)')
     expect(src).toContain('Nothing changed.')
+    // …and the refusal happens before anything is armed, which the old placement did not guarantee
+    expect(src.indexOf('const windowMsBad = windowMsRefusal()')).toBeLessThan(src.indexOf('armedRefreeze = { envFile, stamp }'))
   })
 })

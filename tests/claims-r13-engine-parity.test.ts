@@ -5,7 +5,8 @@
 // inside the engine. Each state of the J-M01 table says what the engine does with a fresh refund of the claim's
 // amount (J-M03) or with the oldest pending row it resumes first (J-M04); the G5 mirror must name the same step on
 // the loader's facts, so no copy or control can offer an exit the engine would refuse.
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi , afterEach} from 'vitest'
+import { openRefundWindow, closeRefundWindow } from './support/refund-window'
 import { payableWorld, refundRow, stripeRefund, HOURS } from './support/claims-world'
 import { wireEngineWorld, royaltyRow, type EngineWorld } from './support/claims-engine-world'
 import { stateOf, J_M03_STATES, J_M04_STATES, ENGINE_QUOTES, RESUME_QUOTES } from './fixtures/claims-r13-states'
@@ -53,9 +54,17 @@ const allMocks = () => [
   ledgerMock,
 ]
 beforeEach(() => {
+  // T-90: this suite drives the money engine DIRECTLY, bypassing the route gate production always
+  // applies. `assertMoneyWriteAllowed` refuses an initiating write whose rail is closed — exactly as
+  // strict as the callers — so the lease is opened here, once, to say what production says.
+  openRefundWindow()
   vi.clearAllMocks()
   for (const m of allMocks()) m.mockReset()
   ledgerMock.mockResolvedValue({ ok: true })
+
+afterEach(() => {
+  closeRefundWindow()
+})
 })
 const refund = () => executeRefund({ orderId: 'o1', amountCents: 500, reason: 'claim:cl1' })
 const cursorOf = (x: EngineWorld) => Number((x.pis.pi_1.latest_charge as { amount_refunded?: number } | null)?.amount_refunded ?? 0)

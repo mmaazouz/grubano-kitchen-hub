@@ -23,6 +23,9 @@
 import type Stripe from 'stripe'
 import { chargeIsDisputed, DISPUTED_REFUND_REFUSAL } from '@/lib/refund-dispute-guard'
 import { getStripe } from '@/lib/stripe'
+// T-90: the declaration + the flag this rail already depends on, asserted at the write itself.
+import { assertMoneyWriteAllowed } from '@/lib/stripe-money-guard'
+import { isRefundsEnabled } from '@/lib/refund'
 
 export type RefundResult =
   | { ok: true; refund: Stripe.Refund; refundedCents: number; remainingCents: number; routed: boolean }
@@ -82,6 +85,17 @@ export async function refundPayment(opts: {
   const routed = !!pi.transfer_data
 
   try {
+    /* T-90 — DECLARE BEFORE YOU MOVE MONEY. This module is the ticket / reservation-deposit refund rail.
+       Its callers gate on REFUNDS_ENABLED through lib/refund-route-guard; the declaration adds the lock on
+       the inside, so a future caller of `refundPayment` cannot reach Stripe by forgetting to check. The
+       guard re-reads only the raw flag — a floor, never a second copy of the lease arithmetic. */
+    assertMoneyWriteAllowed({
+      verb: 'refunds.create',
+      authorization: 'rail_open',
+      railOpen: isRefundsEnabled(),
+      why: 'refundPayment is initiating a refund on a ticket or reservation deposit',
+      amountCents: amountCents ?? null,
+    })
     const refund = await getStripe().refunds.create(
       {
         payment_intent: pi.id,

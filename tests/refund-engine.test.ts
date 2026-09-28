@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi , afterEach} from 'vitest'
+import { openRefundWindow, closeRefundWindow } from './support/refund-window'
 import { Prisma } from '@prisma/client'
 
 // ── P4.5-A — lib/refund.executeRefund (the engine) · PHASE 2 additions ───────────
@@ -70,6 +71,10 @@ const truthFor = (amount: number, feeBack: number, id = 're_1') => {
 }
 
 beforeEach(() => {
+  // T-90: this suite drives the money engine DIRECTLY, bypassing the route gate production always
+  // applies. `assertMoneyWriteAllowed` refuses an initiating write whose rail is closed — exactly as
+  // strict as the callers — so the lease is opened here, once, to say what production says.
+  openRefundWindow()
   vi.clearAllMocks()
   db.order.findUnique.mockResolvedValue(paidOrder)
   stripeMock.paymentIntents.retrieve.mockResolvedValue(makePI())
@@ -659,3 +664,6 @@ describe('guards', () => {
     expect(stripeMock.paymentIntents.retrieve).not.toHaveBeenCalled()
   })
 })
+
+// T-90: no suite may leak an open money rail into the next file.
+afterEach(() => { closeRefundWindow() })

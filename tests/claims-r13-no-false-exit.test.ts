@@ -14,6 +14,7 @@
 // on every J-M01 fixture world, with every pre-image D1 knows, both leases open, and scans every text the run renders
 // (detail, decision toast, rail toast, refusal, MONEY label, GUIDANCE, customer status, reconcile toast).
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { openRefundWindow, closeRefundWindow } from './support/refund-window'
 import { readFileSync } from 'node:fs'
 
 const { db, stripeMock, lease, engineSpy, ledgerMock } = vi.hoisted(() => ({
@@ -295,6 +296,14 @@ describe('J-M28 (3) — each reconcile / stuck_close in a state’s set is accep
   const CLOSE_REFUSED = 'Cette réclamation n’est pas bloquée sur un remboursement — utilisez l’arbitrage.'
 
   beforeEach(() => {
+
+    // T-90: this suite drives the money engine DIRECTLY, bypassing the route gate production always
+
+    // applies. `assertMoneyWriteAllowed` refuses an initiating write whose rail is closed — exactly as
+
+    // strict as the callers — so the rail is opened here, once, to say what production says.
+
+    openRefundWindow()
     vi.clearAllMocks()
     for (const m of [db.claim.findUnique, db.claim.findMany, db.claim.updateMany, db.refund.findMany, db.refund.findUnique, db.order.findUnique]) m.mockReset()
     // Every write loses its CAS: acceptance is decided before any write, and no money truth changes here.
@@ -344,6 +353,8 @@ describe('J-M28 (5) — the D14 phrase scan on every text a state renders: appro
   const scan = (t: string) => FORBIDDEN.filter((p) => t.toLowerCase().includes(p.toLowerCase()))
 
   beforeEach(() => {
+
+    openRefundWindow()
     db.claim.findMany.mockReset()
     db.refund.findMany.mockReset()
   })
@@ -457,6 +468,7 @@ describe('J-M28 (D′ L2) — every J-M01 state × every D1 pre-image: arbitrate
   let w: EngineWorld
   const allMocks = () => [...Object.values(db).flatMap((m) => Object.values(m)), ...Object.values(stripeMock).flatMap((m) => Object.values(m)), ledgerMock, engineSpy.fn]
   beforeEach(() => {
+    openRefundWindow()
     vi.clearAllMocks()
     for (const m of allMocks()) m.mockReset()
     lease.refunds = true
@@ -683,3 +695,5 @@ describe('J-M28 (D′ L2) — every J-M01 state × every D1 pre-image: arbitrate
     expect(runViolations({ ...run, stripe: { standing: 1, overCap: false }, texts: [`no_refund_proven_rail_locked: ${HEAD_A}`] })).toHaveLength(1)
   })
 })
+
+afterEach(() => { closeRefundWindow() })

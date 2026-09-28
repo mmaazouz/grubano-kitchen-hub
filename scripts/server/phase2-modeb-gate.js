@@ -725,18 +725,58 @@ async function main() {
     A('9 window: ' + scrub(e))
   } finally {
     // FERMETURE INCONDITIONNELLE — baux expirés D'ABORD (l'autorisation meurt même si un drapeau résiste)
+    /* T-93 (a)(b), MÊME DÉFAUT QUE DANS phase2-refund-gate.js, ET ICI IL GOUVERNE LES DEUX DRAPEAUX.
+       Les quatre écritures partageaient UN `try` : une levée sur la première (un bail, la moins
+       importante) supprimait les deux écritures de drapeau ET le redémarrage. Et `armedClose = null`
+       était exécuté AVANT `touchRestart()` : un signal dans cet intervalle sortait avec `false` sur le
+       disque, AUCUN redémarrage demandé, donc un processus Passenger VIVANT portant encore le `true`
+       de son démarrage — les deux gates restaient OUVERTES pour le reste du bail, la fermeture
+       d'urgence déjà désarmée et personne d'averti. Un drapeau fermé sur le disque que le processus n'a
+       pas relu n'a rien fermé.
+       Désormais : chaque écriture dans SON try, le redémarrage tenté quoi qu'il arrive, et le désarmement
+       EN DERNIER, uniquement sur PREUVE. Laisser le handler armé ne coûte rien (ses écritures sont
+       idempotentes) ; le désarmer une instruction trop tôt est irrécupérable. */
+    const closeFailedKeys = []
+    let cr = null, cc = null, restartRequested = false
+    const past = new Date(Date.now() - 1000).toISOString()
+    for (const [k, v] of [['REFUNDS_WINDOW_UNTIL', past], ['CLAIMS_WINDOW_UNTIL', past], ['REFUNDS_ENABLED', 'false'], ['CLAIMS_ENABLED', 'false']]) {
+      try {
+        const r = writeFlag(envFile, k, v, stamp + 'Z')
+        if (k === 'REFUNDS_ENABLED') cr = r
+        if (k === 'CLAIMS_ENABLED') cc = r
+      } catch (e) { closeFailedKeys.push(k); A('10 refreeze: écriture ' + k + ' ÉCHOUÉE — ' + scrub(e)) }
+    }
+    F('CLOSE WRITE', closeFailedKeys.length
+      ? 'ÉCHEC pour ' + closeFailedKeys.join(', ') + ' — ACTION HUMAINE REQUISE dans ' + envFile
+      : 'REFUNDS_ENABLED ' + (cr && cr.changed ? 'false' : 'inchangé') + ' · CLAIMS_ENABLED ' + (cc && cc.changed ? 'false' : 'inchangé'))
+    try { touchRestart(); restartRequested = true } catch (e) {
+      A('10 refreeze: tmp/restart.txt NON écrit — le processus VIVANT garde le drapeau de son démarrage jusqu\'à expiration du bail : ' + scrub(e))
+    }
+    F('REDÉMARRAGE DEMANDÉ', restartRequested ? 'OUI (tmp/restart.txt touché)' : 'NON — le fichier dit fermé, le processus non')
+    /* UNE CLÉ QUI A RÉSISTÉ MÉRITE UNE SECONDE TENTATIVE, TOUT DE SUITE. Avant T-93 une levée sur la
+       première écriture abandonnait les trois autres et le `catch` appelait `emergencyClose()` pour les
+       reprendre clé par clé ; la boucle ci-dessus a supprimé l'abandon, mais elle ne doit pas supprimer la
+       REPRISE : un bail resté dans le futur, ou un drapeau resté à true, doit être re-tenté avant que cet
+       opérateur ne rende son verdict. `emergencyClose()` fait exactement cela (clé par clé, baux d'abord,
+       puis redémarrage) et se désarme lui-même. */
+    if (closeFailedKeys.length && armedClose !== null) {
+      A('10 refreeze: reprise immédiate des clés en échec par la fermeture d\'urgence — ' + closeFailedKeys.join(', '))
+      emergencyClose()
+      try {
+        const w3 = await waitBoth(base, 'CLOSED', RELOAD_DEADLINE_MS, RELOAD_INTERVAL_MS)
+        F('GATES APRÈS FERMETURE D’URGENCE', 'claims ' + w3.claims + ' · refunds ' + w3.refunds + ' après ' + Math.round(w3.elapsedMs / 1000) + ' s')
+        if (!w3.ok) A('10 refreeze: après reprise, les gates NE SONT PAS prouvées fermées — ATTENTION HUMAINE REQUISE')
+      } catch (e) { A('10 refreeze: preuve après reprise impossible — ' + scrub(e)) }
+    }
     try {
-      const past = new Date(Date.now() - 1000).toISOString()
-      writeFlag(envFile, 'REFUNDS_WINDOW_UNTIL', past, stamp + 'Z')
-      writeFlag(envFile, 'CLAIMS_WINDOW_UNTIL', past, stamp + 'Z')
-      const cr = writeFlag(envFile, 'REFUNDS_ENABLED', 'false', stamp + 'Z')
-      const cc = writeFlag(envFile, 'CLAIMS_ENABLED', 'false', stamp + 'Z')
-      armedClose = null    // désarmé SEULEMENT une fois les valeurs fermées sur le disque
-      F('CLOSE WRITE', 'REFUNDS_ENABLED ' + (cr.changed ? 'false' : 'inchangé') + ' · CLAIMS_ENABLED ' + (cc.changed ? 'false' : 'inchangé'))
-      touchRestart()
       const w2 = await waitBoth(base, 'CLOSED', RELOAD_DEADLINE_MS, RELOAD_INTERVAL_MS)
       F('GATES APRÈS FERMETURE', 'claims ' + w2.claims + ' · refunds ' + w2.refunds + ' après ' + Math.round(w2.elapsedMs / 1000) + ' s')
       if (!w2.ok) A('10 refreeze: les deux gates NE SONT PAS prouvées fermées — ATTENTION HUMAINE REQUISE')
+      // DÉSARMEMENT — en dernier, et UNIQUEMENT si les trois conditions tiennent.
+      if (w2.ok && !closeFailedKeys.length && restartRequested) armedClose = null
+      F('FERMETURE D\'URGENCE', armedClose === null
+        ? 'DÉSARMÉE (gates prouvées fermées, drapeaux écrits, redémarrage demandé)'
+        : 'ENCORE ARMÉE — la fermeture n\'est pas entièrement prouvée ; tout signal réécrit les clés et re-touche restart.txt')
     } catch (e) {
       A('10 refreeze: ' + scrub(e))
       // Les quatre écritures partageaient UN try : si l'une a levé, les suivantes n'ont pas eu lieu.

@@ -1,4 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+/** T-90: the settlement rail's flag, opened the way the route requires it. */
+const openSettlementRail = () => { process.env.FRANCHISE_SETTLEMENT_ENABLED = 'true' }
+const closeSettlementRail = () => { delete process.env.FRANCHISE_SETTLEMENT_ENABLED }
 import { Prisma } from '@prisma/client'
 
 // ── P4-Franchise-B — franchise settlement (Agent 42) — IDEMPOTENCE IS THE CORE ──
@@ -46,6 +49,16 @@ const settleCall = () => callsWith('settled')[0]
 const revertCall = () => callsWith('pending')[0]
 
 beforeEach(() => {
+
+  // T-90: this suite drives the settlement rail DIRECTLY, bypassing the route gate production always
+
+  // applies (app/api/admin/franchise-settlements/run checks FRANCHISE_SETTLEMENT_ENABLED).
+
+  // `assertMoneyWriteAllowed` refuses a `transfers.create` whose rail is closed, so the flag is set
+
+  // here to say what production says.
+
+  openSettlementRail()
   vi.clearAllMocks()
   delete process.env.FRANCHISE_SETTLEMENT_MIN_CENTS
   fx.settling = []; fx.claimed = TWO_LINES; fx.pendingCount = 2; fx.pendingSum = 300; fx.claimCount = 2; fx.distinct = []
@@ -250,3 +263,6 @@ describe('runFranchiseSettlements — batch', () => {
     expect(summary.results.map((r) => r.operatorId).sort()).toEqual(['op1', 'op2'])
   })
 })
+
+// T-90: no suite may leak an open money rail into the next file.
+afterEach(() => { closeSettlementRail() })
