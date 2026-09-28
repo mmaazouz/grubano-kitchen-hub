@@ -107,6 +107,21 @@ interface ClaimEligibility {
   maxRefundableCents: number
   /** T-59: true only when the ceiling was proven against live Stripe cash truth. */
   ceilingVerified?: boolean
+  /**
+   * T-86 — THE SERVER'S PRICE BASIS, per line, exactly as `publicClaimScope` publishes it.
+   *
+   * `Order.items[].price` is the MenuItem LIST price. When the order total is BELOW the sum of its
+   * lines — a promotion, a bundle, points redeemed — lib/claim-scope scales every unit down to the
+   * basis actually paid (`scale = paidBasis / grossLines`), and `resolveClaimAmount` prices the claim
+   * from THOSE units. So the list price is not what the claim is worth, and this page must not add it
+   * up. `components/claims/ClaimSection.tsx` already reads `unitCents`; this page did not, which is
+   * how two consumer surfaces on the same order came to state two different requested amounts.
+   *
+   * Optional because the page types the RAW API object; absent ⇒ no figure is stated at all.
+   */
+  scope?: {
+    lines?: Array<{ index: number; name: string; maxQty: number; unitCents: number; lineCents: number }>
+  }
   windowHours: number
   existingClaim:
     | { id: string; status: string; canContest: boolean; restaurantResponseReason: string | null; arbitrationReason: string | null }
@@ -204,9 +219,37 @@ export default function OrderHelpScreen() {
   // one number and the acknowledgement e-mail then stated a smaller one. The server's ceiling is
   // already fetched here; the displayed figure is now clamped to it, so the page cannot promise
   // money the server will not grant. It can only ever shrink — never inflate.
+  // T-86 (PRE-L11 adversarial review). The clamp above is on the ORDER ceiling, and an order ceiling
+  // does not bind a ONE-LINE selection: on 40 € of lines paid 20 €, ticking an 8 € dish stayed 8 €
+  // (well under the 20 € cap) while the server recorded 4 €. The customer read 8 € here, then 4 € in
+  // the acknowledgement e-mail, 4 € on /eat/account/claims and 4 € on the tracking widget — three
+  // surfaces plus the e-mail contradicting the form they had just filled in. The fix is not another
+  // clamp: it is to stop summing list prices and read the SERVER's per-line unit, which is the number
+  // `resolveClaimAmount` will use. `scope.lines[].index` is the position in `Order.items` ITSELF, so it
+  // indexes this list directly (claim-scope keeps the raw position for exactly this reason).
+  const unitCentsByIndex = useMemo(() => {
+    const m = new Map<number, number>()
+    for (const l of eligibility?.scope?.lines ?? []) {
+      if (Number.isInteger(l?.index) && Number.isFinite(l?.unitCents)) m.set(l.index, Math.max(0, Math.round(l.unitCents)))
+    }
+    return m
+  }, [eligibility])
   const rawEstimate = useMemo(
-    () => items.reduce((s, it, i) => s + it.price * Math.min(picked[i] ?? 0, it.qty ?? 1), 0),
-    [items, picked],
+    () => items.reduce((s, it, i) => {
+      const unit = unitCentsByIndex.get(i)
+      if (unit === undefined) return s
+      return s + (unit / 100) * Math.min(picked[i] ?? 0, it.qty ?? 1)
+    }, 0),
+    [items, picked, unitCentsByIndex],
+  )
+  /**
+   * A line the SERVER did not price — claim-scope DROPS a malformed line rather than guess it — cannot
+   * be added up here either. Such a selection states NO figure instead of a quietly understated one: the
+   * figure is a promise, and a promise nobody can honour is worse than no promise.
+   */
+  const estimatePriceable = useMemo(
+    () => unitCentsByIndex.size > 0 && !items.some((_, i) => (picked[i] ?? 0) > 0 && !unitCentsByIndex.has(i)),
+    [items, picked, unitCentsByIndex],
   )
   const ceilingEuros = (eligibility?.maxRefundableCents ?? 0) / 100
   const estimate = eligibility ? Math.min(rawEstimate, ceilingEuros) : rawEstimate
@@ -518,7 +561,12 @@ export default function OrderHelpScreen() {
                           ))}
                         </select>
                       )}
-                      <span className="pr">{formatEuros(it.price * (on ? qty : maxQty), locale)}</span>
+                      {/* T-86 — the same basis as the total below: the server's scaled unit, never the
+                          list price. A line the server did not price shows no price rather than a
+                          wrong one. */}
+                      {unitCentsByIndex.has(i) && (
+                        <span className="pr">{formatEuros((unitCentsByIndex.get(i)! / 100) * (on ? qty : maxQty), locale)}</span>
+                      )}
                     </div>
                   )
                 })
@@ -583,7 +631,7 @@ export default function OrderHelpScreen() {
             <div className="refund-note">
               <span className="ms" aria-hidden="true">verified_user</span>
               <p>
-                {anySelected
+                {anySelected && estimatePriceable
                   ? t.rich('refundEstimate', { amount: formatAmount(estimate, locale), b: (c) => <b><bdi>{c} €</bdi></b> })
                   : t('refundPickToEstimate')}
               </p>

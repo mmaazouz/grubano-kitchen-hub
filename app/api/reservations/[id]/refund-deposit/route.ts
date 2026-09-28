@@ -5,7 +5,7 @@ import { recordAdminAudit } from '@/lib/admin-audit'
 import { isRefundsEnabled } from '@/lib/refund'
 import { rateLimit } from '@/lib/rate-limit'
 import { refundPayment } from '@/lib/refunds'
-import { sendRefundConfirmation, resolveReservationLocale } from '@/lib/transactional-emails'
+import { sendRefundConfirmation, resolveReservationLocale, refundEmailDedupeKey } from '@/lib/transactional-emails'
 
 // ── POST /api/reservations/[id]/refund-deposit ────────────────────────────────
 // P0-03 (vague 1, Q3 fondateur) : refund a CAPTURED empreinte in full — ADMIN
@@ -91,7 +91,14 @@ export async function POST(
             restaurantName: resto?.name ?? '',
           refundedCents:  result.refund.amount,
           partial:        false,
-          dedupeKey:      `resv:${reservation.id}:${result.refund.amount}`,
+          // T-47, CLOSED HERE TOO (PRE-L11 review, found independently by two reviewers). The key was
+          // `resv:<id>:<amount>`, so a SECOND distinct refund of the SAME amount on the same reservation
+          // collided with the first and the customer was never told their money had come back — real
+          // cash, silently unannounced, which is the exact defect T-47 named and closed on the order
+          // rails. The identity of a refund is its `re_`, never its size. Replays still collapse (same
+          // `re_` ⇒ one e-mail); a refund already announced under the old key may produce one extra
+          // notice, the trade the order rail already made — a duplicate is visible, a silence is not.
+          dedupeKey:      refundEmailDedupeKey({ stripeRefundId: result.refund.id }),
         })
       } catch (e) {
         console.error('[EMAIL MISS] [POST /api/reservations/[id]/refund-deposit] context lookup failed',

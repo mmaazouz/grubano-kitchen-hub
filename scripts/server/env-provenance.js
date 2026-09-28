@@ -137,13 +137,40 @@ function assertNoValues(report) {
   return report
 }
 
+/**
+ * PRE-L11 (adversarial review P1) — THE FLAGS THAT MUST BE FALSE FOR MONEY SAFETY, DECLARED ONCE.
+ *
+ * This list lived in `phase2-preflight.js` while the watch list below was maintained by hand, and the two
+ * had drifted: seven of these nine were UNWATCHED. On this host, hosting-level injection is not a theory —
+ * `@next/env` never overrides `process.env`, so a flag set in the cPanel Node.js selector (the channel the
+ * spec forbids, and one already measured live for three keys) is TRUE in the running process while every
+ * env FILE stays silent. An operator then read « ABSENT → EFFECTIVE FALSE » and « RESULT: PASS » about a
+ * flag that was open. Declaring the list here, where the watch list is built, is what makes the drift
+ * impossible rather than merely noticed: a new money flag is watched the moment it is named.
+ */
+const MONEY_FLAGS_MUST_BE_FALSE = [
+  'REFUNDS_ENABLED', 'CLAIMS_ENABLED', 'CLAIMS_AUTO_APPROVE_ENABLED', 'CLAIM_AUTO_RESOLVE_ENABLED',
+  'GHOST_ORDER_AUTO_REFUND_ENABLED', 'LOGISTICS_COURIER_ACTIVATION_ENABLED', 'TIPS_ENABLED',
+  'LOGISTICS_PAYOUT_ENABLED', 'DELIVERY_FULFILLMENT_ENABLED',
+]
+
+/**
+ * The money-adjacent keys that are not flags-that-must-be-false but whose SOURCE still decides whether
+ * money can move: the treasury-advance danger flag, and the two time-boxed LEASES. `CLAIMS_ENABLED` is a
+ * DISJUNCT with `CLAIMS_WINDOW_UNTIL` — watching one without the other bounds nothing.
+ */
+const MONEY_ADJACENT_KEYS = ['ALLOW_PLATFORM_FALLBACK', 'CLAIMS_WINDOW_UNTIL', 'REFUNDS_WINDOW_UNTIL']
+
 const WATCHED_SECRET_KEYS = [
   'INTERNAL_CRON_TOKEN', 'CRON_SECRET', 'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET',
   'NEXTAUTH_SECRET', 'SMTP_USER', 'SMTP_PASS', 'DATABASE_URL', 'ANTHROPIC_API_KEY',
-  'REFUNDS_ENABLED', 'LOGISTICS_SIGNUP_ENABLED', 'TIPS_ENABLED', 'ALERT_EMAIL',
+  'LOGISTICS_SIGNUP_ENABLED', 'ALERT_EMAIL',
   // D′ L1 (spec v2 §3.4): the claims PRODUCT flags — a change of either is a provenance event.
   'CLAIMS_SURFACE_ENABLED', 'CLAIMS_INTAKE_ENABLED',
-]
+  // PRE-L11: the money set, by DERIVATION and not by hand. `REFUNDS_ENABLED` and `TIPS_ENABLED` were
+  // already here and arrive through the list now — the de-duplication below keeps the report stable.
+  ...MONEY_FLAGS_MUST_BE_FALSE, ...MONEY_ADJACENT_KEYS,
+].filter((k, i, a) => a.indexOf(k) === i)
 
 /** Read the env files present in `dir` (raw text, in-process only). */
 function readNextEnvFiles(fs, path, dir) {
@@ -154,4 +181,4 @@ function readNextEnvFiles(fs, path, dir) {
   return texts
 }
 
-module.exports = { NEXT_ENV_FILES, parseEnvDotenv, parseEnvStrict, countDotenvOccurrences, mergeNextEnvFiles, computeProvenance, assertNoValues, readNextEnvFiles, WATCHED_SECRET_KEYS }
+module.exports = { NEXT_ENV_FILES, parseEnvDotenv, parseEnvStrict, countDotenvOccurrences, mergeNextEnvFiles, computeProvenance, assertNoValues, readNextEnvFiles, WATCHED_SECRET_KEYS, MONEY_FLAGS_MUST_BE_FALSE, MONEY_ADJACENT_KEYS }

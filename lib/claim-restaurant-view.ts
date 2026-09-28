@@ -153,10 +153,17 @@ export const RESTAURANT_FORBIDDEN_KEYS = [
   'stripeRefundId', 'paymentIntentId', 'stripePaymentIntentId', 'chargeId', 'stripeChargeId',
   'grossAmount', 'applicationFeeAmount', 'netToRestaurant', 'sourceEventId',
   'modeSource', 'itemId', 'unitCents',
+  // PRE-L11 (review P2): the three names the list INTENDED to cover and missed. `contestedAt` was listed
+  // while `arbitratedAt` — the only arbitration column left out of a family whose other three members are
+  // all here — was not; `ceilingVerified` is the T-59 provenance of the CUSTOMER's ceiling, which is not
+  // the restaurant's business; `no_refund_bound` is the one diagnosis value the vocabulary line below
+  // forgot. An oracle that omits a name cannot fail on it, which is the only way a leak test lies.
+  'arbitratedAt', 'ceilingVerified',
   // D′ L8: the server's own diagnosis vocabulary. It is written for whoever repairs the accounting, and it
-  // must not ride to a restaurant inside the unconfirmed shape.
-  'ledger_line_missing', 'ledger_inconsistent', 'ledger_ambiguous', 'claim_money_state_open',
-  'refund_not_succeeded', 'refund_id_unknown',
+  // must not ride to a restaurant inside the unconfirmed shape. Every member of
+  // `FinancialEffectUnconfirmedReason` belongs here — asserted in tests/claims-dprime-l8-restaurant.
+  'no_refund_bound', 'ledger_line_missing', 'ledger_inconsistent', 'ledger_ambiguous',
+  'claim_money_state_open', 'refund_not_succeeded', 'refund_id_unknown',
 ] as const
 
 /** The facts the caller must have read. Written out so no row object can be handed in wholesale. */

@@ -7170,7 +7170,11 @@
       "dataBody": "Le traitement de vos données, les durées de conservation et l’exercice de vos droits sont décrits dans la politique de confidentialité.",
       "dataLink": "Voir la politique de confidentialité",
       "changesTitle": "10. Évolution de ces conditions",
-      "changesBody": "Ces conditions peuvent évoluer avec le service. La version applicable à une commande est celle publiée sur cette page au moment où la commande est passée."
+      "changesBody": "Ces conditions peuvent évoluer avec le service. La version applicable à une commande est celle publiée sur cette page au moment où la commande est passée.",
+      "versionLabel": "Version",
+      "lastUpdatedLabel": "Dernière mise à jour",
+      "effectiveDateLabel": "Entrée en vigueur",
+      "notInForce": "Projet — version bêta, non entrée en vigueur. Ce document décrit le service tel qu’il fonctionne aujourd’hui ; il n’a pas encore été validé par un conseil juridique et ne s’applique pas encore comme contrat."
     }
   },
   "claims": {

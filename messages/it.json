@@ -7170,7 +7170,11 @@
       "dataBody": "Il trattamento dei Suoi dati, i periodi di conservazione e l’esercizio dei Suoi diritti sono descritti nell’informativa sulla privacy.",
       "dataLink": "Consulti l’informativa sulla privacy",
       "changesTitle": "10. Evoluzione delle presenti condizioni",
-      "changesBody": "Le presenti condizioni possono evolversi con il servizio. La versione applicabile a un ordine è quella pubblicata su questa pagina nel momento in cui l’ordine viene effettuato."
+      "changesBody": "Le presenti condizioni possono evolversi con il servizio. La versione applicabile a un ordine è quella pubblicata su questa pagina nel momento in cui l’ordine viene effettuato.",
+      "versionLabel": "Versione",
+      "lastUpdatedLabel": "Ultimo aggiornamento",
+      "effectiveDateLabel": "Entrata in vigore",
+      "notInForce": "Bozza — versione beta, non entrata in vigore. Il presente documento descrive il servizio così come funziona oggi; non è ancora stato validato da un consulente legale e non si applica ancora come contratto."
     }
   },
   "claims": {

@@ -3,6 +3,10 @@ import { AlertTriangle } from 'lucide-react'
 import { getTranslations, setRequestLocale } from 'next-intl/server'
 import { Link } from '@/navigation'
 import { isCgvPublishable } from '@/lib/legal-info'
+// PRE-L11 (T-78): the support channel comes from the ONE place that names it, never a fifth literal.
+import { SUPPORT_EMAIL, SUPPORT_MAILTO } from '@/lib/support-contact'
+// PRE-L11 (T-79): three separate facts — which text, when the text changed, and whether it is in force.
+import { cgvState } from '@/lib/cgv-version'
 import { claimWindowHours } from '@/lib/claim-flags'
 import { CLAIM_MAX_ORDER_AGE_DAYS } from '@/lib/claim-eligibility'
 
@@ -64,6 +68,7 @@ export default async function CgvPage(props: { params: { locale: string } }) {
   // The banner asks the SAME question the robots tag asks: is this page publishable at all?
   const publishable = isCgvPublishable()
   // The real product values, read once and passed to the copy as variables.
+  const state = cgvState()
   const hours = claimWindowHours()
   const days = CLAIM_MAX_ORDER_AGE_DAYS
 
@@ -131,6 +136,17 @@ export default async function CgvPage(props: { params: { locale: string } }) {
 
       <Section title={t('cgv.disputesTitle')}>
         <Body>{t('cgv.disputesBody')}</Body>
+        {/* T-78 — THE SUPPORT CHANNEL, FROM THE SOURCE THAT ALREADY NAMES IT. The founder's ruling: for the
+            beta the terms point at the support contact the application already has, and no second address is
+            hardcoded. The LABEL is the one the sibling legal page already uses (`legal.mentions.labelEmail`),
+            so this costs no new copy in five locales. This is NOT the editor's legal contact — that is a
+            company fact, still an unfilled placeholder on the mentions légales, and §12 forbids inventing it. */}
+        <dl className="mt-3 grid gap-x-6 gap-y-2 sm:grid-cols-[max-content_1fr]">
+          <dt className="text-grubano-sm font-semibold text-grubano-ink-muted">{t('mentions.labelEmail')}</dt>
+          <dd className="text-grubano-sm text-grubano-ink">
+            <a href={SUPPORT_MAILTO} className="font-semibold text-grubano-primary hover:underline">{SUPPORT_EMAIL}</a>
+          </dd>
+        </dl>
         <LegalLink href="/legal/mentions-legales">{t('cgv.editorLink')}</LegalLink>
       </Section>
 
@@ -141,6 +157,24 @@ export default async function CgvPage(props: { params: { locale: string } }) {
 
       <Section title={t('cgv.changesTitle')}>
         <Body>{t('cgv.changesBody')}</Body>
+      </Section>
+
+      {/* T-79 — THREE FACTS, AND THE THIRD IS NOT A DATE. `version` names WHICH text, `lastUpdated` says when
+          the TEXT changed, and `effectiveDate` says whether it BINDS anyone. The founder's ruling forbids
+          inventing the third: while no lawyer has reviewed the text, the honest value is the sentence, not a
+          day. Printing one date would invite the reader — and us — to treat it as the date the terms took
+          effect, which is the easiest legal fact to invent by accident, because every document has one. */}
+      <Section title={t('cgv.versionLabel')}>
+        <dl className="grid gap-x-6 gap-y-2 sm:grid-cols-[max-content_1fr]">
+          <dt className="text-grubano-sm font-semibold text-grubano-ink-muted">{t('cgv.versionLabel')}</dt>
+          <dd className="text-grubano-sm text-grubano-ink">{state.version}</dd>
+          <dt className="text-grubano-sm font-semibold text-grubano-ink-muted">{t('cgv.lastUpdatedLabel')}</dt>
+          <dd className="text-grubano-sm text-grubano-ink">{state.lastUpdated}</dd>
+          <dt className="text-grubano-sm font-semibold text-grubano-ink-muted">{t('cgv.effectiveDateLabel')}</dt>
+          <dd className={state.inForce ? 'text-grubano-sm text-grubano-ink' : 'text-grubano-sm italic text-grubano-ink-faint'}>
+            {state.inForce ? state.effectiveDate : t('cgv.notInForce')}
+          </dd>
+        </dl>
       </Section>
     </article>
   )

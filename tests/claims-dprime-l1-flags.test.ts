@@ -90,6 +90,15 @@ afterEach(clearFlags)
 
 // ── the pure matrix ──────────────────────────────────────────────────────────────────────────────────────────────
 describe('lib/claim-flags — the matrix (spec v2 §3.1)', () => {
+  // PRE-L11 (review P2) — WHAT ` true` PROVES, AND WHAT IT DOES NOT. The gates compare the raw value
+  // (`process.env.X === 'true'`), so a leading space reads OFF, and that is the fail-closed direction. But
+  // it is not reachable through any loader this project ships: `server.js` strips quotes and TRIMS before
+  // assigning, and `@next/env` does the same, so ` true` in a file becomes `true` in the process and the
+  // gate OPENS. The case therefore pins the READER's strictness, not an end-to-end refusal — and the
+  // distinction is written here rather than the case deleted, because the reader's strictness is worth
+  // pinning and a silently mis-read assertion is worse than a narrow one. Adding `.trim()` to the gates
+  // would make them MORE permissive, which a closure lot does not do, and one of the four readers is
+  // `lib/refund.ts`, pinned byte-identical for this lot.
   it("exact 'true' only: 'TRUE', '1', '' are OFF for both product flags", () => {
     for (const v of ['TRUE', '1', '', ' true', 'yes', 'True']) {
       product(v, v)

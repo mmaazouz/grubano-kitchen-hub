@@ -152,6 +152,28 @@ describe('A — the restaurant payload contains none of the internal fields', ()
     for (const k of RESTAURANT_FORBIDDEN_KEYS) expect(json, k).not.toContain(k)
   })
 
+  it('PRE-L11 — THE ORACLE IS COMPLETE: every diagnosis value and every arbitration column is in it', () => {
+    // A leak test can only fail on a name its list holds, so the list itself is the thing to verify. Three
+    // names were missing: `arbitratedAt` (the only arbitration column left out of a family whose other
+    // three members were all listed), `ceilingVerified` (T-59, the CUSTOMER's ceiling provenance) and
+    // `no_refund_bound` (the one member of the diagnosis union the vocabulary line forgot).
+    const set = new Set<string>(RESTAURANT_FORBIDDEN_KEYS)
+    // (a) the diagnosis vocabulary, read out of the union's own declaration rather than restated here
+    const fs = require('node:fs') as typeof import('node:fs')
+    const effect = fs.readFileSync('lib/claim-financial-effect.ts', 'utf8')
+    const decl = effect.slice(effect.indexOf('export type FinancialEffectUnconfirmedReason'))
+    const union = decl.slice(0, decl.indexOf(String.fromCharCode(10, 10)))
+    const reasons = Array.from(union.matchAll(/^ *\| '([a-z_]+)'$/gm)).map((m) => m[1])
+    expect(reasons.length, 'the union was not parsed').toBeGreaterThanOrEqual(6)
+    for (const r of reasons) expect(set.has(r), `diagnosis value ${r} is not in the oracle`).toBe(true)
+    // (b) the arbitration family is complete
+    for (const k of ['arbitratedAt', 'arbitratedBy', 'arbitrationDecision', 'arbitrationReason']) {
+      expect(set.has(k), k).toBe(true)
+    }
+    // (c) and the customer's ceiling provenance is not the restaurant's business
+    expect(set.has('ceilingVerified')).toBe(true)
+  })
+
   it('not one internal VALUE survives either — the ids and the marker text are gone', async () => {
     world({ claims: [FULL_CLAIM] })
     const json = JSON.stringify(await listRestaurantClaims(['r1']))

@@ -67,10 +67,10 @@ const RELOAD_DEADLINE_MS = Number(process.env.PHASE2_RELOAD_DEADLINE_MS || 24000
 const RELOAD_INTERVAL_MS = Number(process.env.PHASE2_RELOAD_INTERVAL_MS || 10000)
 const NODEVENV_ACTIVATE  = process.env.PHASE2_NODEVENV_ACTIVATE || path.join(os.homedir(), 'nodevenv', 'app.grubano.com', '24', 'bin', 'activate')
 
-const MONEY_FLAGS_MUST_BE_FALSE = [
-  'REFUNDS_ENABLED', 'CLAIMS_ENABLED', 'CLAIMS_AUTO_APPROVE_ENABLED', 'CLAIM_AUTO_RESOLVE_ENABLED',
-  'GHOST_ORDER_AUTO_REFUND_ENABLED', 'LOGISTICS_COURIER_ACTIVATION_ENABLED', 'TIPS_ENABLED', 'LOGISTICS_PAYOUT_ENABLED', 'DELIVERY_FULFILLMENT_ENABLED',
-]
+// PRE-L11 (review P1): ONE declaration, in env-provenance, so the flags that must be false are exactly the
+// flags whose SOURCE is watched. This list and the watch list had drifted — seven of these nine were
+// unwatched, i.e. a cPanel-injected `true` produced « ABSENT → EFFECTIVE FALSE » and « RESULT: PASS ».
+const MONEY_FLAGS_MUST_BE_FALSE = prov.MONEY_FLAGS_MUST_BE_FALSE
 const FLAGS_TO_PRINT = [
   ...MONEY_FLAGS_MUST_BE_FALSE,
   'FRANCHISE_ENABLED', 'FRANCHISE_ROYALTY_ENABLED', 'FRANCHISE_SETTLEMENT_ENABLED',

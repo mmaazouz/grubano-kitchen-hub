@@ -164,7 +164,33 @@ async function main() {
   const texts = prov.readNextEnvFiles(fs, path, APP_ROOT)
   const merged = prov.mergeNextEnvFiles(texts).merged
   const dbName = ((merged.DATABASE_URL || '').match(/\/([A-Za-z0-9_\-]+)(\?|$)/) || [])[1] || 'unknown'
-  if (/prod/i.test(dbName)) return fail('1 env: PROD-named database (' + dbName + ') — refusing')
+  // PRE-L11 — THE NAME TEST WIDENED, and it is the sibling's expression. `/prod/i` alone passes
+  // `deyi0010_grubano`, which IS the production database: it contains no « prod ». The staging one ends in
+  // `_staging`, so anything that looks like the bare product name and is not staging-named is refused.
+  const dbLooksStaging = /_staging$/.test(dbName)
+  const dbLooksProd = /prod/i.test(dbName) || dbName === 'deyi0010_grubano' || (/grubano$/.test(dbName) && !dbLooksStaging)
+  if (dbLooksProd) return fail('1 env: the database name looks like PRODUCTION (' + dbName + ') — refusing before any read')
+  if (dbName === 'unknown') return fail('1 env: no DATABASE_URL in the file view — the target database is AMBIGUOUS, refusing')
+  // PRE-L11 — THE GUARD JUDGED THE FILES; THE PRISMA CLIENT BELOW CONNECTS WITH THE SHELL. Found by this
+  // lot's adversarial review, and it is the same hole the sibling operator already closes
+  // (phase2-claims-pay-window.js): `@next/env` never overrides a pre-existing `process.env` value, and the
+  // house protocol teaches PREFIXING operator commands — so a DSN exported in the shell (or left over in an
+  // SSH session) is the one `new PrismaClient({ url: process.env.DATABASE_URL })` uses at line ~227, while
+  // every check above read `.env.local`. Step 1 would then pass on a staging file view and the whole report
+  // would measure a database it does not name. Values are never printed, only the fact that they diverge.
+  const shellDsn = (process.env.DATABASE_URL || '').trim()
+  const fileDsn = (merged.DATABASE_URL || '').trim()
+  if (shellDsn && fileDsn && shellDsn !== fileDsn) {
+    return fail('1 env: the shell DATABASE_URL diverges from the files — the database this operator would MEASURE is not the one the application uses. Refusing to be moved off target (values never printed)')
+  }
+  if (shellDsn && !fileDsn) {
+    return fail('1 env: a DATABASE_URL is exported in the shell but absent from the files — the target database is AMBIGUOUS, refusing')
+  }
+  const shellStripe = (process.env.STRIPE_SECRET_KEY || '').trim()
+  const fileStripe = (merged.STRIPE_SECRET_KEY || '').trim()
+  if (shellStripe && fileStripe && shellStripe !== fileStripe) {
+    return fail('1 env: the shell STRIPE_SECRET_KEY diverges from the files — the Stripe account this operator would MEASURE is not the one the application charges. Refusing (values never printed)')
+  }
   const nextauthUrl = (merged.NEXTAUTH_URL || '').replace(/\/$/, '')
   if (!/app\.grubano\.com/.test(nextauthUrl)) return fail('1 env: NEXTAUTH_URL is not staging')
   const base = (process.env.PHASE2_BASE_URL || nextauthUrl).replace(/\/$/, '')
@@ -249,7 +275,29 @@ async function main() {
     const consumer = await prisma.operator.findUnique({ where: { id: order.consumerId }, select: { email: true } })
     consumerEmailDomain = consumer && consumer.email ? consumer.email.replace(/^[^@]*@/, '…@') : 'none'
     const lc = consumer ? await prisma.loyaltyCustomer.findUnique({ where: { email: consumer.email }, select: { id: true, pointsBalance: true, recoveryOffsetPoints: true } }) : null
-    loyalty = { earnRow: !!earnRow, earnPoints: earnRow ? earnRow.points : 0, balance: lc ? lc.pointsBalance : null, offset: lc ? lc.recoveryOffsetPoints : null, custId: lc ? lc.id : custId }
+    // L6.1 — THE EFFECT ALREADY APPLIED, READ FROM THE ROWS, and its high-water key. This is what the
+    // convergence subtracts from the target, so the operator's expectation cannot be stated without it:
+    // `appliedMagnitude(rows, sign)` in lib/loyalty-refund-apply is Σ(sign × points) over the rows of one side
+    // (D1 `earn_reversal`, NEGATIVE points, sign -1 → a positive magnitude ; D2 `refund`, POSITIVE, sign +1).
+    // The keys are `prorata:v1:<orderId>:<cum>`, so the largest `<cum>` is the FLOOR the reconciliation will
+    // not go below — a proof set that shrank never hands points back.
+    const appliedEarn = lts.filter((t) => t.type === 'earn_reversal').reduce((a, t) => a + -1 * Math.floor(Number(t.points) || 0), 0)
+    const appliedSpent = lts.filter((t) => t.type === 'refund').reduce((a, t) => a + Math.floor(Number(t.points) || 0), 0)
+    const prorataCums = lts
+      .map((t) => (typeof t.sourceEventId === 'string' ? /^prorata:v1:[^:]+:(\d+)$/.exec(t.sourceEventId) : null))
+      .filter(Boolean).map((m) => Number(m[1])).filter((n) => Number.isFinite(n))
+    const highWaterCum = prorataCums.length ? Math.max.apply(null, prorataCums) : 0
+    // REVIEW P2 — THE ENGINE'S FIRST DECISION IS NOT AN ARITHMETIC ONE. lib/loyalty-refund-apply checks the
+    // GRANDFATHER GUARD before any target is computed: an order carrying a legacy `refund` row with a NULL
+    // `sourceEventId` (written by the pre-Phase-1 webhook, which fully re-credited the spent points) is left
+    // exactly as it stands and the reconciliation returns `grandfathered` having written NOTHING. The gate
+    // printed a DELTA TO WRITE for such an order, i.e. announced a write the engine refuses by design. The
+    // signal is already in `lts` — no extra query.
+    const legacyRefundRow = lts.some((t) => t.type === 'refund' && t.sourceEventId === null)
+    loyalty = { earnRow: !!earnRow, earnPoints: earnRow ? earnRow.points : 0, balance: lc ? lc.pointsBalance : null, offset: lc ? lc.recoveryOffsetPoints : null, custId: lc ? lc.id : custId,
+      appliedEarn: appliedEarn, appliedSpent: appliedSpent, highWaterCum: highWaterCum, prorataKeys: prorataCums.length,
+      grandfathered: legacyRefundRow }
+    F('LOYALTY EFFECT ALREADY APPLIED (DB rows, L6.1 magnitudes)', 'D1 earn clawback ' + appliedEarn + ' pt · D2 spent restore ' + appliedSpent + ' pt · prorata keys ' + prorataCums.length + ' · high-water cum ' + highWaterCum + ' c')
     F('LOYALTY customer (DB)', lc ? 'pointsBalance ' + lc.pointsBalance + ' · recoveryOffsetPoints ' + lc.recoveryOffsetPoints : 'none')
     F('CONSUMER EMAIL DOMAIN (DB, masked)', consumerEmailDomain)
     // ── BEFORE-STATE (evidence for the post-refund reconciliation; captured BEFORE any gate action) ──
@@ -320,11 +368,143 @@ async function main() {
     F('CONNECTED NET EFFECT (engine restaurantReverse)', String(reversal))
     if (C === T) F('FULL REFUND EXPECTATION', 'remaining refundable 0 · charge.refunded true · Transfer.amount_reversed = ' + T + ' · ApplicationFee.amount_refunded = ' + Fee)
     if (order && loyalty) {
-      const cum = (base, x) => Math.round((base * x) / T)
-      const earnRev = loyalty.earnRow ? cum(order.pointsEarned, C) - cum(order.pointsEarned, Cprev) : 0
-      const spentRestore = cum(order.pointsRedeemed, C) - cum(order.pointsRedeemed, Cprev)
-      const offsetDelta = loyalty.balance == null ? 'NOT MEASURED' : Math.max(0, earnRev - Math.max(0, loyalty.balance))
-      F('EXPECTED LOYALTY (planLoyaltyRefund formula with MEASURED inputs)', 'earn reversal ' + earnRev + (loyalty.earnRow ? '' : ' (no earn row → 0)') + ' · spent restore ' + spentRestore + ' · recovery offset delta ' + offsetDelta)
+      // ══ LOYALTY EXPECTATION — THE CUMULATIVE CONTRACT (L6.1), NOT THE PER-EVENT MODEL ═════════════════
+      //
+      // WHAT THIS BLOCK USED TO PRINT, AND WHY IT WAS THE PRE-L11 BLOCKER. It printed
+      // `cum(E,C) - cum(E,Cprev)` under the label « planLoyaltyRefund formula » — the PER-EVENT model.
+      // lib/loyalty-refund.ts says so in its own header: « planLoyaltyRefund … they are the pure statement of
+      // the per-event model, they are what the refund-gate operator's expected vector mirrors … they are no
+      // longer what persists the effect ». Since L6.1 the reconciliation CONVERGES: each pass reduces the
+      // proven set to ONE number (Σ refunded cents, deduplicated by `re_`), computes the §9 target for that
+      // number, READS the effect really applied in the ledger, and writes only the difference.
+      //
+      // For an in-order prefix the two agree, which is exactly why the old line looked correct for three
+      // years of rehearsals. They DIVERGE whenever: an older refund arrives late (the per-event delta prices
+      // it from a cumulative of zero and over-books), a pre-L6.1 row over-applied by one point, the base or
+      // the charge amount moved, or a prior effect was only partly applied. In any of those the operator
+      // would read a MISMATCH that is not one — or, worse, treat the per-event number as the oracle and
+      // conclude the engine misbehaved. A human gate that disagrees with the contract it certifies is not a
+      // gate. So the expectation below is the DELTA TO THE TARGET, and the per-event figure is printed only
+      // as a cross-check, explicitly labelled NOT the oracle.
+      //
+      // THE CANONICAL EXAMPLE (the founder's, and the one the suite pins): T=1410, E=14, three refunds of
+      // 470 ⇒ targets 5, 9, 14 ⇒ deltas −5 / −4 / −5. NEVER −5 / −5 / −5.
+      //
+      // THE ARITHMETIC IS RESTATED HERE, and that duplication is deliberate: this file runs on the o2switch
+      // server as plain Node, where lib/*.ts cannot be required (the deploy ships the compiled bundle, not
+      // the sources). tests/prel11-refund-gate-loyalty.test.ts pins every line of it against
+      // loyaltyPointsCumulative / loyaltyConvergenceDelta on a shared fixture, so the restatement cannot
+      // drift from the engine without a red test.
+      const clamp = (v, hi) => Math.max(0, Math.min(v, hi))
+      const targetFor = (base, cumCents) => clamp(Math.round((Number(base) || 0) * cumCents / T), Number(base) || 0)
+
+      // (1) THE PROVEN CUMULATIVE. Stripe's `charge.amount_refunded` IS Σ of the succeeded refunds, so it is
+      //     the same number `cumulativeRefundedCents(refunds)` computes after deduplicating by `re_`. Both are
+      //     printed: a disagreement would mean our view of the set is not Stripe's, which is an anomaly and
+      //     not something to average.
+      // Σ OF THE SUCCEEDED REFUNDS, DEDUPLICATED BY `re_` — and THAT is the cumulative, not
+      // `charge.amount_refunded`. Found by this lot's adversarial review, in this very block: the first version
+      // computed this number as a « cross-check » and then priced the target on `Cprev` anyway.
+      // `charge.amount_refunded` COUNTS PENDING REFUNDS (a fact this repository has already paid for once — see
+      // `amount_refunded` in lib/refund.ts's ceiling reasoning), while `cumulativeRefundedCents` in
+      // lib/loyalty-refund.ts sums the PROVEN set. On a charge carrying a pending refund the two differ, and the
+      // operator would have read a target, and a DELTA TO WRITE, that the engine will not produce — under a
+      // label saying it is the expectation. So the proven set decides, and `amount_refunded` becomes what it
+      // actually is: a cross-check, and an upper bound worth naming when it disagrees.
+      const listRead = Array.isArray(refunds)
+      const succeeded = (refunds || []).filter((r) => r && r.status === 'succeeded')
+      const seen = {}
+      let cumFromList = 0
+      for (const r of succeeded) { if (!seen[r.id]) { seen[r.id] = 1; cumFromList += r.amount } }
+      const pendingOnCharge = (refunds || []).filter((r) => r && r.status === 'pending')
+      // NOT MEASURED, never a measured 0: an unread refunds list is not an empty one, and the file's own
+      // evidence rule forbids printing the difference. Without the list there is no proven set, so there is no
+      // honest expectation either — the block says so and stops rather than pricing on a number it distrusts.
+      F('CUM REFUNDED BEFORE (Σ succeeded refunds, deduped by re_ — THE PROVEN SET, what the engine uses)',
+        listRead ? cumFromList + ' c (' + Object.keys(seen).length + ' distinct succeeded refund' + (Object.keys(seen).length === 1 ? '' : 's') + ')' : 'NOT MEASURED')
+      F('CUM REFUNDED BEFORE (Stripe charge.amount_refunded — CROSS-CHECK; INCLUDES PENDING)', Cprev + ' c'
+        + (listRead ? (cumFromList === Cprev ? ' — AGREES with the proven set' : ' — DISAGREES: ' + (Cprev > cumFromList ? 'higher, i.e. a refund is PENDING or unproven' : 'LOWER than the proven set, which should be impossible')) : ''))
+      if (listRead && pendingOnCharge.length) {
+        A('5 loyalty: ' + pendingOnCharge.length + ' PENDING refund(s) on this charge — charge.amount_refunded counts them, the loyalty target does NOT; the expectation below is priced on the PROVEN set only')
+      }
+      if (listRead && cumFromList !== Cprev && !pendingOnCharge.length) {
+        A('5 loyalty: Σ deduped succeeded refunds ' + cumFromList + ' c ≠ charge.amount_refunded ' + Cprev + ' c with NO pending refund to explain it — our view of the proven set is not Stripe\'s')
+      }
+      if (!listRead) A('5 loyalty: the Stripe refunds list was not read — no proven set, so NO loyalty expectation is stated')
+      const cumBefore = listRead ? cumFromList : null
+      const cumAfter = cumBefore === null ? null : Math.min(cumBefore + AMOUNT_CENTS, T)
+      F('CUM REFUNDED AFTER this ' + AMOUNT_CENTS + ' c (clamped to T=' + T + ')', cumAfter === null ? 'NOT MEASURED' : cumAfter + ' c')
+
+      // (2) THE FLOOR. `cumEff = max(cumProven, highWaterCum(rows))`: a proof set that shrank never hands
+      //     points back, and when the floor engages the reconciliation says so rather than passing silently.
+      const cumEff = cumAfter === null ? null : Math.max(cumAfter, loyalty.highWaterCum || 0)
+      if (cumEff !== null && cumEff > cumAfter) {
+        F('L6.1 FLOOR ENGAGED', 'high-water key cum ' + loyalty.highWaterCum + ' c > proven ' + cumAfter
+          + ' c → the target is priced on the HIGH WATER; nothing is handed back')
+        A('5 loyalty: the proof set is SMALLER than what this order was already reconciled against (high water '
+          + loyalty.highWaterCum + ' c > proven ' + cumAfter + ' c)')
+      }
+
+      // (3) THE TARGET, THE APPLIED EFFECT, AND THE ONLY NUMBER THAT WILL BE WRITTEN: their difference.
+      // THE D1 BASE IS THE EARN ROW'S POINTS, NOT `Order.pointsEarned`. Also from the review: the engine reads
+      // `earnTx.points` (lib/loyalty-refund-apply, « if that row is absent the base is 0 ») because the ROW is
+      // what was actually credited at `delivered`, while the column is written at creation and can differ. The
+      // column is printed beside it, and a divergence is an anomaly rather than a choice to make quietly.
+      const baseEarn = loyalty.earnRow ? Math.max(0, Math.floor(Number(loyalty.earnPoints) || 0)) : 0
+      if (loyalty.earnRow && baseEarn !== order.pointsEarned) {
+        A('5 loyalty: the earn ROW credits ' + baseEarn + ' pt while Order.pointsEarned says ' + order.pointsEarned + ' — the engine prices D1 on the ROW; the column is not the base')
+      }
+      const tgtEarn = cumEff === null ? null : targetFor(baseEarn, cumEff)
+      const tgtSpent = cumEff === null ? null : targetFor(order.pointsRedeemed, cumEff)
+      const dEarn = tgtEarn === null ? null : tgtEarn - (loyalty.appliedEarn || 0)
+      const dSpent = tgtSpent === null ? null : tgtSpent - (loyalty.appliedSpent || 0)
+      // REVIEW P2 — TWO SIGN CONVENTIONS, ONE LINE APART. `loyaltyConvergenceDelta` is a MAGNITUDE to claw
+      // back (positive = take more points), while the founder's canonical « −5 / −4 / −5 » are the movements of
+      // the CUSTOMER'S BALANCE. Both are correct and they are opposite, so the convention is now stated on the
+      // line itself: a gate whose two numbers disagree in sign teaches the operator to distrust the right one.
+      F('LOYALTY SIGN CONVENTION', 'DELTA TO WRITE is a MAGNITUDE: +N = claw N more points back ⇒ the customer\'s balance moves −N. A NEGATIVE delta gives points BACK.')
+      if (loyalty.grandfathered) {
+        F('EXPECTED LOYALTY — GRANDFATHERED', 'this order carries a legacy `refund` row with a NULL sourceEventId ⇒ lib/loyalty-refund-apply returns `grandfathered` BEFORE computing any target and writes NOTHING. The figures below are the contract\'s arithmetic, NOT an expected write.')
+        A('5 loyalty: GRANDFATHERED order — the reconciliation writes NOTHING whatever the delta below says')
+      }
+      F('EXPECTED LOYALTY — D1 EARN CLAWBACK (L6.1 convergence)', tgtEarn === null ? 'NOT MEASURED (no proven set)'
+        : 'target ' + tgtEarn + ' pt (round(' + baseEarn + '×' + cumEff + '/' + T + '), clamped; base = the earn ROW'
+        + (loyalty.earnRow ? '' : ', ABSENT ⇒ 0') + ')'
+        + ' · already applied ' + (loyalty.appliedEarn || 0) + ' pt · DELTA TO WRITE ' + (dEarn > 0 ? '+' : '') + dEarn + ' pt'
+        + (dEarn === 0 ? ' — CONVERGED, the reconciliation writes NOTHING'
+          : loyalty.grandfathered ? ' — BUT GRANDFATHERED: nothing is written'
+            : ' — what reaches the VISIBLE BALANCE may be smaller: a clawback beyond it becomes recovery offset, a give-back releases offset debt first (see the offset line)'))
+      F('EXPECTED LOYALTY — D2 SPENT RESTORE (L6.1 convergence)', tgtSpent === null ? 'NOT MEASURED (no proven set)'
+        : 'target ' + tgtSpent + ' pt (round(' + order.pointsRedeemed + '×' + cumEff + '/' + T + '), clamped)'
+        + ' · already applied ' + (loyalty.appliedSpent || 0) + ' pt · DELTA TO WRITE ' + (dSpent > 0 ? '+' : '') + dSpent + ' pt'
+        + (dSpent === 0 ? ' — CONVERGED, the reconciliation writes NOTHING'
+          : loyalty.grandfathered ? ' — BUT GRANDFATHERED: nothing is written' : ''))
+      F('EXPECTED LOYALTY KEY (L6.1)', cumEff === null ? 'NOT MEASURED' : 'prorata:v1:' + order.id + ':' + cumEff
+        + ' — the key names the TRANSITION (the cumulative), never a `re_`: a key naming ONE refund cannot express a total an older refund must move')
+
+      // (4) THE PER-EVENT FIGURE, PRINTED AND DISOWNED. Kept because a difference between the two is
+      //     information (it says the set arrived out of order, or an old row over-applied), and removing it
+      //     would hide that. It is NOT what the engine will write.
+      const perEventEarn = cumAfter === null ? null : targetFor(baseEarn, cumAfter) - targetFor(baseEarn, cumBefore)
+      const perEventSpent = cumAfter === null ? null : targetFor(order.pointsRedeemed, cumAfter) - targetFor(order.pointsRedeemed, cumBefore)
+      F('PER-EVENT MODEL (planLoyaltyRefund) — CROSS-CHECK ONLY, **NOT THE ORACLE**', perEventEarn === null ? 'NOT MEASURED'
+        : 'D1 ' + perEventEarn + ' pt · D2 ' + perEventSpent + ' pt'
+        + ((perEventEarn === dEarn && perEventSpent === dSpent)
+          ? ' — equal to the convergence delta here (in-order prefix, nothing already over-applied)'
+          : ' — DIFFERS from the convergence delta: the engine writes the DELTA above, and this difference is itself evidence (late arrival, or a pre-L6.1 row that over-applied)'))
+      F('LOYALTY CONTRACT (canonical example, pinned by the suite)',
+        'T=1410 E=14, three refunds of 470 ⇒ cumulative clawback targets 5/9/14 pt ⇒ DELTA TO WRITE +5/+4/+5 pt, '
+        + 'i.e. the balance moves −5/−4/−5 — never −5/−5/−5 (that is the per-event model, which books the same 5 three times)')
+
+      // (5) The offset side, unchanged in meaning: a clawback larger than the visible balance becomes
+      //     internal debt rather than a negative balance. Priced on the DELTA, which is what gets applied.
+      // A GIVE-BACK IS NOT A ZERO. When the delta is NEGATIVE (more was applied than the target — reachable on a
+      // pre-L6.1 row, or when the base moves) the engine does not add offset, it RELEASES it against the debt,
+      // and printing « 0 » there would describe the wrong operation. Third finding of the review in this block.
+      F('EXPECTED RECOVERY OFFSET DELTA (clawback beyond the visible balance)',
+        dEarn === null || loyalty.balance == null ? 'NOT MEASURED'
+          : dEarn < 0 ? 'GIVE-BACK of ' + (-dEarn) + ' pt — offset is RELEASED against the debt first, not increased (lib/loyalty-refund.applyGiveBackAgainstOffset)'
+            : String(Math.max(0, dEarn - Math.max(0, loyalty.balance))))
     }
     var requiredReversal = AMOUNT_CENTS // GROSS (T-42): Stripe needs the full cash amount available on the connected account
   } else { A('5 vector: inputs NOT MEASURED'); var requiredReversal = null }

@@ -7170,7 +7170,11 @@
       "dataBody": "The processing of your data, how long it is kept and how to exercise your rights are described in the privacy policy.",
       "dataLink": "See the privacy policy",
       "changesTitle": "10. Changes to these terms",
-      "changesBody": "These terms may change as the service changes. The version that applies to an order is the one published on this page at the time the order is placed."
+      "changesBody": "These terms may change as the service changes. The version that applies to an order is the one published on this page at the time the order is placed.",
+      "versionLabel": "Version",
+      "lastUpdatedLabel": "Last update",
+      "effectiveDateLabel": "Entry into force",
+      "notInForce": "Draft — beta version, not in force. This document describes the service as it works today; it has not yet been reviewed by legal counsel and does not yet apply as a contract."
     }
   },
   "claims": {

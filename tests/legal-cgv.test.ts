@@ -39,6 +39,8 @@ const RENDERED = [
   'disputesTitle', 'disputesBody',
   'dataTitle', 'dataBody', 'dataLink',
   'changesTitle', 'changesBody',
+  // PRE-L11 (T-79): the version block. `notInForce` is rendered WHERE A DATE WOULD GO — that is the point.
+  'versionLabel', 'lastUpdatedLabel', 'effectiveDateLabel', 'notInForce',
 ] as const
 
 // ── PARITY AND CONTENT ═══════════════════════════════════════════════════════════════════════════════
@@ -333,5 +335,137 @@ describe('L10 — the Arabic page is really Arabic (founder section 16)', () => 
     expect(src).toContain('<section')
     expect(read(LAYOUT)).toContain('focus:not-sr-only')
     for (const l of LOCALES) expect(typeof msgs(l).legal.shell.skipToContent, l).toBe('string')
+  })
+})
+
+// ── PRE-L11 — T-78 (the support contact) AND T-79 (version / not in force) ═══════════════════════════
+describe('PRE-L11 T-78 — the terms point at the support channel the app ALREADY has, and at no new address', () => {
+  it('ONE declaration, and the page reads it instead of carrying a literal', async () => {
+    const { SUPPORT_EMAIL, SUPPORT_MAILTO } = await import('@/lib/support-contact')
+    const src = page()
+    expect(src).toContain("from '@/lib/support-contact'")
+    expect(src).toContain('{SUPPORT_EMAIL}')
+    expect(src).toContain('href={SUPPORT_MAILTO}')
+    // the page itself must NOT contain the address — that is what « pas une deuxième adresse en dur » means
+    expect(src).not.toContain(SUPPORT_EMAIL)
+    expect(SUPPORT_MAILTO).toBe(`mailto:${SUPPORT_EMAIL}`)
+    // lib/support-contact is a LEAF, so any surface may read it
+    expect(read('lib/support-contact.ts')).not.toMatch(/^\s*import\s/m)
+  })
+
+  it('the declared address IS the one the product already publishes — measured, not assumed', async () => {
+    const { SUPPORT_EMAIL } = await import('@/lib/support-contact')
+    // (a) the transactional FROM, which the e-mail footer invites the customer to reply to
+    expect(read('lib/transactional-emails.ts')).toContain(`<${SUPPORT_EMAIL}>`)
+    // (b) the sentence the help screen shows, in ALL FIVE locales
+    for (const l of LOCALES) {
+      expect(msgs(l).eat.help.refundOffBody, `${l} help copy`).toContain(SUPPORT_EMAIL)
+    }
+    // A drift here means the terms would send a customer somewhere the product does not answer.
+  })
+
+  it('it is a SUPPORT channel, not a legal identity: LEGAL_INFO stays a placeholder and the page links out', async () => {
+    const legal = await import('@/lib/legal-info')
+    // §12 — the editor's published contact is a company fact the founder supplies; inventing one is forbidden.
+    expect(legal.isPlaceholder(legal.LEGAL_INFO.editor.email)).toBe(true)
+    expect(page()).toContain('/legal/mentions-legales')
+    // …and the mediator is NOT invented either
+    for (const f of ['nom', 'url', 'adresse'] as const) {
+      expect(legal.isPlaceholder(legal.LEGAL_INFO.mediation[f]), `mediation.${f}`).toBe(true)
+    }
+  })
+})
+
+describe('PRE-L11 T-79 — three facts, and the third is deliberately not a date', () => {
+  it('version, lastUpdated and effectiveDate are separate, and effectiveDate is null', async () => {
+    const { CGV_VERSION, CGV_LAST_UPDATED, CGV_EFFECTIVE_DATE, cgvState } = await import('@/lib/cgv-version')
+    expect(CGV_VERSION).toBe('0.1-beta')
+    expect(CGV_LAST_UPDATED).toBe('2026-09-28')
+    expect(CGV_EFFECTIVE_DATE).toBeNull()
+    const s = cgvState()
+    expect(s.inForce, 'nothing is in force while there is no date and no counsel review').toBe(false)
+    expect(s).toEqual({ version: '0.1-beta', lastUpdated: '2026-09-28', effectiveDate: null, inForce: false })
+  })
+
+  it('the page renders the NOT-IN-FORCE sentence where a date would go, in all five locales', () => {
+    const src = page()
+    expect(src).toContain("t('cgv.notInForce')")
+    expect(src).toContain('{state.inForce ? state.effectiveDate : ')
+    for (const l of LOCALES) {
+      const c = cgv(l)
+      for (const k of ['versionLabel', 'lastUpdatedLabel', 'effectiveDateLabel', 'notInForce'] as const) {
+        expect(typeof c[k], `${l}.legal.cgv.${k}`).toBe('string')
+        expect(c[k].trim().length, `${l}.${k} empty`).toBeGreaterThan(0)
+      }
+      // the sentence must not smuggle in a date or a promise of one
+      expect(c.notInForce, `${l} notInForce has a digit`).not.toMatch(/\d|[٠-٩]/)
+    }
+  })
+
+  it('inForce needs BOTH a date and a counsel review — neither alone is enough', async () => {
+    const { CGV_EFFECTIVE_DATE } = await import('@/lib/cgv-version')
+    const legal = await import('@/lib/legal-info')
+    // The two conditions, evaluated independently so the test says WHICH one is missing.
+    expect(CGV_EFFECTIVE_DATE).toBeNull()
+    expect(legal.CGV_COUNSEL_REVIEWED).toBe(false)
+    // …and the source states the conjunction, so a future date alone cannot flip it
+    expect(read('lib/cgv-version.ts')).toContain('CGV_EFFECTIVE_DATE !== null && CGV_COUNSEL_REVIEWED')
+  })
+})
+
+describe('PRE-L11 — THE PRODUCTION GATE cannot be satisfied today, and it says why', () => {
+  it('readiness is false, with every missing fact enumerated', async () => {
+    const { cgvProductionReadiness } = await import('@/lib/cgv-version')
+    const r = cgvProductionReadiness()
+    expect(r.ready).toBe(false)
+    // all four blockers hold right now: no counsel review, no effective date, placeholders, no mediator
+    expect([...r.blockers].sort()).toEqual([
+      'counsel_not_reviewed', 'legal_info_incomplete', 'no_effective_date', 'no_mediator',
+    ])
+  })
+
+  it('EACH of the three founder conditions is sufficient ON ITS OWN to block production', () => {
+    // Proven on the SOURCE, because the constants are compile-time: the function pushes a blocker for each
+    // condition independently, with no `else`, so no condition can be masked by another being false.
+    const src = read('lib/cgv-version.ts')
+    expect(src).toContain("if (!CGV_COUNSEL_REVIEWED) blockers.push('counsel_not_reviewed')")
+    expect(src).toContain("if (CGV_EFFECTIVE_DATE === null) blockers.push('no_effective_date')")
+    expect(src).toContain("if (!isLegalInfoComplete()) blockers.push('legal_info_incomplete')")
+    expect(src).toContain("blockers.push('no_mediator')")
+    expect(src).toContain('ready: blockers.length === 0')
+    // NO ESCAPE HATCH: no env read, no bypass identifier. Matched on the SHAPE of a hatch, not on the English
+    // words — /force/i fires on « in force » and on `inForce`, i.e. on the very concept this file is about.
+    // (Third time in this chantier: a ban that does not know the language it scans reports the language itself
+    // as a defect.)
+    expect(src).not.toMatch(/process\.env/)
+    expect(src).not.toMatch(/FORCE_|_FORCE|forceReady|allowUnreviewed|bypass|overrideGate|skipGate/i)
+  })
+
+  it('the MEDIATOR is its own blocker, not merely implied by the completeness check', () => {
+    // The founder named it specifically (« Si aucun médiateur réel n'est configuré … conserver la production
+    // bloquée »), and a blocker that is only implied by another gets waived by accident the day the other is
+    // satisfied. So it is listed separately — asserted here so a future refactor cannot collapse them.
+    const src = read('lib/cgv-version.ts')
+    const fn = src.slice(src.indexOf('export function cgvProductionReadiness'))
+    expect(fn).toContain('LEGAL_INFO.mediation')
+    expect(fn).toContain('no_mediator')
+    expect(fn.indexOf('legal_info_incomplete')).toBeLessThan(fn.indexOf('no_mediator'))
+  })
+
+  it('the page is NOT indexable and carries its draft banner while readiness is false', async () => {
+    const { cgvProductionReadiness } = await import('@/lib/cgv-version')
+    expect(cgvProductionReadiness().ready).toBe(false)
+    const src = page()
+    expect(src).toContain('robots: isCgvPublishable() ? undefined : { index: false, follow: false }')
+    expect(src).toContain('{!publishable && (')
+  })
+
+  it('this lot states no legal opinion — the gate reports MISSING FACTS only', () => {
+    const src = read('lib/cgv-version.ts')
+    // every blocker names something absent from the repository, never a judgement of the text
+    expect(src).toContain('NOT A LEGAL OPINION')
+    for (const judgement of ['compliant', 'lawful', 'enforceable', 'conforme au droit']) {
+      expect(src.toLowerCase(), judgement).not.toContain(judgement)
+    }
   })
 })

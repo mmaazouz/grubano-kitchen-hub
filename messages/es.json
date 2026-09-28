@@ -7170,7 +7170,11 @@
       "dataBody": "El tratamiento de sus datos, los plazos de conservación y el ejercicio de sus derechos se describen en la política de privacidad.",
       "dataLink": "Ver la política de privacidad",
       "changesTitle": "10. Evolución de estas condiciones",
-      "changesBody": "Estas condiciones pueden evolucionar con el servicio. La versión aplicable a un pedido es la publicada en esta página en el momento en que se realiza el pedido."
+      "changesBody": "Estas condiciones pueden evolucionar con el servicio. La versión aplicable a un pedido es la publicada en esta página en el momento en que se realiza el pedido.",
+      "versionLabel": "Versión",
+      "lastUpdatedLabel": "Última actualización",
+      "effectiveDateLabel": "Entrada en vigor",
+      "notInForce": "Borrador — versión beta, no vigente. Este documento describe el servicio tal como funciona hoy; aún no ha sido validado por un asesor jurídico y todavía no se aplica como contrato."
     }
   },
   "claims": {

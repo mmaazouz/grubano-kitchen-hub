@@ -288,9 +288,13 @@ describe('REFUND — rail A route behaviour with a Stripe refund object (determi
     // `userId → Operator.locale` (Reservation has no locale column), so the mock must expose that helper
     // too — a factory mock replaces the WHOLE module, and a missing export is swallowed by the route's
     // best-effort try/catch, which is how a mail regression hides as « 0 e-mails ».
-    vi.doMock('@/lib/transactional-emails', () => ({
+    vi.doMock('@/lib/transactional-emails', async () => ({
       sendRefundConfirmation: sendRefund,
       resolveReservationLocale: async () => null,
+      // T-47 (PRE-L11): the route now keys the notice on the refund's `re_`, so the mock must carry that
+      // helper too — and it carries the REAL one, so the key asserted below is the shipped expression and
+      // not a second copy of it. The comment above predicted this exact hole; here it is again.
+      refundEmailDedupeKey: (await import('@/lib/transactional-emails')).refundEmailDedupeKey,
     }))
     vi.doMock('@/lib/prisma', () => ({ prisma: {
       tableTicket: { findUnique: async () => ({ id: 't1', restaurantId: 'r1', reservationId: 'rsv1', status: 'paid', stripePaymentIntentId: 'pi_1' }) },
@@ -306,7 +310,12 @@ describe('REFUND — rail A route behaviour with a Stripe refund object (determi
     const r2 = await call()
     expect(r2.status).toBe(200)
     expect(sendRefund).toHaveBeenCalledTimes(1)
-    expect(sendRefund.mock.calls[0][0]).toMatchObject({ refundedCents: 500, dedupeKey: 'ticket:t1:500' }) // Stripe amount, NOT the 999 estimate
+    // Stripe amount, NOT the 999 estimate — that half of the pin is the hotfix's own subject and stands.
+    // T-47 (PRE-L11 review): the KEY was `ticket:t1:500`, and this line pinned it. Asserting an
+    // amount-keyed identity here rewarded the collision it describes: a second distinct 500 c refund on
+    // the same ticket would have been suppressed as a duplicate and the customer never told. The identity
+    // is the `re_`, exactly as on the order rails.
+    expect(sendRefund.mock.calls[0][0]).toMatchObject({ refundedCents: 500, dedupeKey: 'refund:re_1' })
     refundState.status = 'failed'
     await call()
     expect(sendRefund).toHaveBeenCalledTimes(1)           // failed ≠ succeeded

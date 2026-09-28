@@ -1,6 +1,7 @@
 // tests/env-provenance.test.ts — scripts/server/env-provenance.js: the decisive "present BEFORE
 // the env files are loaded" test + the loader Next REALLY uses (@next/env = dotenv), value-free.
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const prov = require('../scripts/server/env-provenance.js') as {
   NEXT_ENV_FILES: string[]
@@ -11,6 +12,9 @@ const prov = require('../scripts/server/env-provenance.js') as {
   computeProvenance: (pre: Record<string, string | undefined>, texts: Record<string, string>, keys: string[]) => { at: string; loader: string; filesPresent: string[]; keys: Record<string, { presentBeforeEnvLoad: boolean; presentInEnvFiles: boolean; definedIn: string[]; occurrences: Record<string, number>; equalProcessVsFiles: boolean | null; effectiveSource: string }> }
   assertNoValues: (r: unknown) => unknown
   WATCHED_SECRET_KEYS: string[]
+  // PRE-L11: the money set is DECLARED here and the watch list is derived from it (see T-88).
+  MONEY_FLAGS_MUST_BE_FALSE: string[]
+  MONEY_ADJACENT_KEYS: string[]
 }
 
 const LOCAL = 'INTERNAL_CRON_TOKEN=file-token-value-0001\nSTRIPE_SECRET_KEY="sk_test_filevalue"\n TIPS_ENABLED = true\nexport SMTP_PASS=p@ss # inline comment\nINTERNAL_CRON_TOKEN=second-occurrence-WINS\n'
@@ -84,5 +88,60 @@ describe('env-provenance — decisive pre-load test', () => {
     const bad2 = prov.computeProvenance({}, { '.env.local': LOCAL }, ['INTERNAL_CRON_TOKEN']) as unknown as { keys: Record<string, Record<string, unknown>> }
     bad2.keys.INTERNAL_CRON_TOKEN.definedIn = ['file-token-value-0001']
     expect(() => prov.assertNoValues(bad2)).toThrow(/unexpected array item/)
+  })
+})
+
+// ── PRE-L11 (adversarial review P1) — EVERY MONEY FLAG IS WATCHED, BY DERIVATION ═════════════════════
+//
+// The watch list was maintained by hand next to a separate money-flag list in phase2-preflight.js, and the
+// two had drifted: seven of the nine flags that MUST be false for money safety were unwatched. That matters
+// on this host specifically, because `@next/env` never overrides `process.env`: a flag set in the cPanel
+// Node.js selector is TRUE in the running process while every env FILE stays silent, so the operator read
+// « ABSENT → EFFECTIVE FALSE » and « RESULT: PASS » about an OPEN flag. Hosting-level injection here is a
+// measured fact, not a hypothesis. These assertions are what keeps the two lists from parting again.
+describe('PRE-L11 — the money flags and the provenance watch list cannot drift apart', () => {
+  it('every flag that must be false is watched', () => {
+    for (const k of prov.MONEY_FLAGS_MUST_BE_FALSE) {
+      expect(prov.WATCHED_SECRET_KEYS, `money flag ${k} is not watched`).toContain(k)
+    }
+    expect(prov.MONEY_FLAGS_MUST_BE_FALSE.length).toBeGreaterThanOrEqual(9)
+  })
+
+  it('the lease keys are watched too — CLAIMS_ENABLED is a DISJUNCT with CLAIMS_WINDOW_UNTIL', () => {
+    // Watching the flag without the lease bounds nothing: either one opens the surface on its own.
+    for (const k of ['ALLOW_PLATFORM_FALLBACK', 'CLAIMS_WINDOW_UNTIL', 'REFUNDS_WINDOW_UNTIL']) {
+      expect(prov.WATCHED_SECRET_KEYS, k).toContain(k)
+    }
+    expect(prov.MONEY_ADJACENT_KEYS).toEqual(['ALLOW_PLATFORM_FALLBACK', 'CLAIMS_WINDOW_UNTIL', 'REFUNDS_WINDOW_UNTIL'])
+  })
+
+  it('phase2-preflight declares NO second copy of the list', () => {
+    // The drift was possible only because there were two. A future editor adding a flag to one of them
+    // would reintroduce exactly this defect, so the source is asserted to hold one declaration.
+    const src = readFileSync('scripts/server/phase2-preflight.js', 'utf8')
+    expect(src).toContain('const MONEY_FLAGS_MUST_BE_FALSE = prov.MONEY_FLAGS_MUST_BE_FALSE')
+    expect(src).not.toMatch(/const MONEY_FLAGS_MUST_BE_FALSE = \[/)
+  })
+
+  it('the watch list has no duplicate, so the report keys stay 1:1 with it', () => {
+    const seen = new Set(prov.WATCHED_SECRET_KEYS)
+    expect(seen.size).toBe(prov.WATCHED_SECRET_KEYS.length)
+    const r = prov.computeProvenance({}, { '.env.local': LOCAL }, prov.WATCHED_SECRET_KEYS)
+    expect(Object.keys(r.keys)).toEqual(prov.WATCHED_SECRET_KEYS)
+  })
+
+  it('a hosting-injected money flag IS reported as coming from the process, not from the files', () => {
+    // The whole point: the report must be able to SAY it. With LOGISTICS_PAYOUT_ENABLED exported by the
+    // hosting layer and absent from every file, `effectiveSource` is 'process' — which is the anomaly an
+    // operator needs, and which was structurally unreachable while the key was unwatched.
+    const r = prov.computeProvenance({ LOGISTICS_PAYOUT_ENABLED: 'true' }, { '.env.local': LOCAL }, prov.WATCHED_SECRET_KEYS)
+    expect(r.keys.LOGISTICS_PAYOUT_ENABLED.presentBeforeEnvLoad).toBe(true)
+    expect(r.keys.LOGISTICS_PAYOUT_ENABLED.presentInEnvFiles).toBe(false)
+    expect(r.keys.LOGISTICS_PAYOUT_ENABLED.effectiveSource).toBe('process')
+    // And no VALUE leaks, which is the invariant that lets this be printed at all. The ban is on the
+    // string `"true"` — the report is full of legitimate JSON booleans, and banning the bare token would
+    // report the report's own structure as the leak. Fourth time in this chantier that a lexical ban has
+    // to be narrowed from the token to the shape.
+    expect(JSON.stringify(prov.assertNoValues(r))).not.toContain('"true"')
   })
 })
