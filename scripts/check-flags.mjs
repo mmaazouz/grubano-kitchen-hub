@@ -9,6 +9,8 @@
 // Usage:  node scripts/check-flags.mjs        (checks process.env)
 //         npm run check:flags
 
+import { readFileSync } from 'node:fs'
+
 const on = (env, k) => env[k] === 'true'
 
 /** The couplings. Flag names verified against the Phase-1 flag audit. */
@@ -82,6 +84,62 @@ export function checkFlagCoupling(env) {
   return { ok: errors.length === 0, errors }
 }
 
+// ── T-123 — ARBITRAGE FONDATEUR (2026-09-28) : LES DEUX RAILS MONEY-OUT SONT EXIGÉS FALSE ─────
+// « Oui : pendant la bêta, check:flags doit exiger explicitement false pour
+//   FRANCHISE_SETTLEMENT_ENABLED et CREATOR_PAYOUT_ENABLED. Je préfère un build qui échoue si
+//   l'un de ces rails money-OUT est accidentellement ouvert plutôt qu'une simple surveillance
+//   qui laisse compiler. »
+//
+// CE QUE CES DEUX CLÉS GARDENT, et pourquoi elles seules. Ce sont les uniques serrures sur les deux
+// écritures Stripe du dépôt qui PAIENT un tiers au lieu de récupérer chez lui :
+//   FRANCHISE_SETTLEMENT_ENABLED → transfers.create (lib/franchise-settlement.ts, règlement franchiseur)
+//   CREATOR_PAYOUT_ENABLED       → transfers.create (lib/creator-payout.ts, versement partenaire)
+// Un remboursement rend de l'argent au client ; une inversion récupère de l'argent. Ces deux-là seules
+// FONT SORTIR des fonds vers un bénéficiaire. C'est le critère, pas « c'est un drapeau argent ».
+//
+// POURQUOI CETTE LISTE N'EST PAS `MONEY_FLAGS_MUST_BE_FALSE` (scripts/server/env-provenance.js).
+// Cette autre liste (14 clés) est la posture RUNTIME que le préflight serveur asserte avant une
+// répétition, et elle contient REFUNDS_ENABLED et CLAIMS_ENABLED. Les exiger false ICI rendrait TOUTE
+// répétition bornée impossible à compiler — alors qu'un bail REFUNDS de 30 min est précisément le
+// mécanisme prévu, décrit par les WARNING_RULES ci-dessous comme une configuration légitime. Les deux
+// listes répondent donc à deux questions différentes au même mot « argent », et les fusionner
+// casserait le rail que l'autre existe pour encadrer. Elles restent séparées EXPRÈS.
+//
+// CE QUE CETTE RÈGLE PEUT ET NE PEUT PAS VOIR — à dire, sinon elle rassure à tort. `check:flags` lit
+// l'environnement du BUILD. La valeur qui compte en production vit dans le `.env.local` DU SERVEUR,
+// que la CI n'écrit jamais (voir deploy-staging.yml : « .env.local is INTENTIONALLY NOT written »).
+// Cette règle attrape donc : une clé posée dans l'environnement du runner, dans un fichier env local,
+// ou dans une variable de dépôt. Elle ne peut PAS voir le `.env.local` du serveur ni le sélecteur
+// Node.js de cPanel — c'est le travail de phase2-preflight.js (T-119). Les deux sont
+// COMPLÉMENTAIRES, jamais redondants, et aucun ne dispense de l'autre.
+export const BETA_MONEY_OUT_MUST_BE_FALSE = [
+  {
+    flag: 'FRANCHISE_SETTLEMENT_ENABLED',
+    why:  'seule serrure sur transfers.create du règlement franchiseur (lib/franchise-settlement.ts) — un rail qui PAIE un tiers',
+  },
+  {
+    flag: 'CREATOR_PAYOUT_ENABLED',
+    why:  'seule serrure sur transfers.create du versement partenaire (lib/creator-payout.ts) — un rail qui PAIE un tiers',
+  },
+]
+
+/** Pure — returns { ok, errors[] }. A flag ABSENT is OFF (`on` compares to the exact string 'true'),
+ *  so the normal state — the key not set at all — passes without a special case. Only an explicit
+ *  'true' fails. `sourceOf` is optional and only decorates the message with where the value came from. */
+export function checkMoneyOutFrozen(env, sourceOf) {
+  const errors = []
+  for (const r of BETA_MONEY_OUT_MUST_BE_FALSE) {
+    if (!on(env, r.flag)) continue
+    const src = sourceOf && sourceOf(r.flag)
+    errors.push(
+      `${r.flag}=true est INTERDIT pendant la bêta (arbitrage fondateur T-123)`
+      + (src ? ` [source : ${src}]` : '')
+      + ` — ${r.why}. Fermez-le avant de construire ; ce n'est pas un avertissement.`,
+    )
+  }
+  return { ok: errors.length === 0, errors }
+}
+
 // ── LOT C — WARNINGS (jamais bloquants : combos LÉGAUX mais à signaler) ────────
 // Contrairement aux COUPLING_RULES (exit 1), un WARNING laisse le check passer
 // (exit 0) : il signale un réglage risqué que le go-live doit voir en face.
@@ -135,8 +193,51 @@ export function checkFlagWarnings(env) {
   return WARNING_RULES.filter((r) => r.when(env)).map((r) => r.msg)
 }
 
+/* T-123 — the CLI also looks at the LOCAL env files, for the two required-false keys ONLY.
+   Reading only `process.env` would make the rule almost decorative: nobody exports
+   CREATOR_PAYOUT_ENABLED in a shell before `npm run build`; they write it in `.env.local`. In CI the
+   files are absent, so this is a no-op there (and CI is covered by the runner's own env). It can only
+   ever ADD an error — never remove one — and it never reads a value for any other key, so no other
+   rule's input changes. The source is reported, because « which file opened this rail » is the first
+   question an operator will ask. */
+const ENV_FILES = ['.env.local', '.env.production.local', '.env.production', '.env']
+function readMoneyOutFromFiles() {
+  const found = {}
+  for (const f of ENV_FILES) {
+    let text
+    try { text = readFileSync(f, 'utf8') } catch { continue }
+    for (const { flag } of BETA_MONEY_OUT_MUST_BE_FALSE) {
+      // last assignment wins inside one file, first FILE wins across files (Next's own precedence)
+      const m = text.split(/\r?\n/).filter((l) => new RegExp('^\\s*(?:export\\s+)?' + flag + '\\s*=').test(l)).pop()
+      if (m === undefined || found[flag] !== undefined) continue
+      const raw = m.slice(m.indexOf('=') + 1).trim().replace(/^['\"]|['\"]$/g, '')
+      found[flag] = { value: raw, file: f }
+    }
+  }
+  return found
+}
+
 // CLI runner — guarded so an `import` (tests) never triggers process.exit.
 if (process.argv[1] && process.argv[1].replace(/\\/g, '/').endsWith('scripts/check-flags.mjs')) {
+  /* T-123 — THE MONEY-OUT FREEZE RUNS FIRST, and the order is the point.
+     Measured while writing it: with `FRANCHISE_SETTLEMENT_ENABLED=true` and its Connect counterpart
+     absent, the COUPLING rule fired first and printed « exige FRANCHISE_CONNECT_ENABLED=true » — advice
+     that invites an operator to open MORE flags to go green, when the correct answer is that this rail
+     must stay shut. A refusal that can be satisfied by opening a second money flag is worse than no
+     refusal. The freeze is unconditional, cannot be satisfied that way, and therefore speaks first. */
+  const fromFiles = readMoneyOutFromFiles()
+  const moneyOutEnv = { ...process.env }
+  for (const [k, v] of Object.entries(fromFiles)) {
+    if (process.env[k] === undefined) moneyOutEnv[k] = v.value
+  }
+  const frozen = checkMoneyOutFrozen(moneyOutEnv, (flag) =>
+    process.env[flag] !== undefined ? 'process.env' : (fromFiles[flag] ? fromFiles[flag].file : null))
+  if (!frozen.ok) {
+    console.error('❌ RAIL MONEY-OUT OUVERT — build refusé (arbitrage fondateur T-123) :')
+    for (const e of frozen.errors) console.error('  - ' + e)
+    console.error('  → Ne satisfaites PAS ce refus en ouvrant un autre drapeau : refermez celui-ci.')
+    process.exit(1)
+  }
   const { ok, errors } = checkFlagCoupling(process.env)
   if (!ok) {
     console.error('❌ Couplage de feature-flags INCOHÉRENT :')
@@ -145,5 +246,5 @@ if (process.argv[1] && process.argv[1].replace(/\\/g, '/').endsWith('scripts/che
   }
   const warnings = checkFlagWarnings(process.env)
   for (const w of warnings) console.warn('⚠️  ' + w)
-  console.log('✅ Couplage de feature-flags cohérent.' + (warnings.length ? ` (${warnings.length} avertissement(s) ci-dessus)` : ''))
+  console.log('✅ Couplage de feature-flags cohérent · rails money-OUT gelés (FRANCHISE_SETTLEMENT_ENABLED, CREATOR_PAYOUT_ENABLED).' + (warnings.length ? ` (${warnings.length} avertissement(s) ci-dessus)` : ''))
 }

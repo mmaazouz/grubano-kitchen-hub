@@ -25,11 +25,11 @@ const walk = (dir: string): string[] => readdirSync(dir).flatMap((n) => {
 const WORKFLOWS_40DA45E: Record<string, string> = {
   '.github/workflows/claims-census.yml':        'f55626c91a4dc332a60284d9f3aee36f064ed44def7c71b4cbb89470a674c2b9',
   '.github/workflows/cron.yml':                 'fb2e484d1eb21cfbf308bdc86c35ce650384d4ea39c2a5be0257bbc317a1bd2a',
-  '.github/workflows/deploy-production.yml':    'b15b2cde6cbf37c3c74e21e4a0b66ac41732bb06a675cbf7996c4e3409775d4a',
+  '.github/workflows/deploy-production.yml':    'd51afa4da53d9a3c512c80db06738d4cd406a68aab51d71b2b8cc0ce8bf70769',
   // D′ L5 — moved from 03912758…7813 (40da45e): the staging workflow now also copies lib/claims-payable-core.js into
   // deploy-temp/lib, because the pay-window operator must recompute the rail's selection with the SAME query the rail
   // uses (spec v2 §8.8). One `cp` line: no schedule, no new job, no new workflow file.
-  '.github/workflows/deploy-staging.yml':       'fcff73434d1670f4403edaf1122fd68efb9650cecb3a288a92ee3285a3bbebb6',
+  '.github/workflows/deploy-staging.yml':       'ed4b9012516c52ec8cfc877958e65893340c7567ae717aed4c4a8c9f6605df84',
   '.github/workflows/internal-token-probe.yml': 'd171c534104f46fb3ac60b910bb12fcea98f3aebe61fbca556a5762e4d19db65',
   '.github/workflows/refund-rehearsal.yml':     '5d825384520defb44f6977324e92a2555b667204f1e4db35da9724ca1ca235a4',
   '.github/workflows/tests.yml':                '593120f3009bca35eac5be8556710036d2aec9644e88538333b5a44e0be26287',
