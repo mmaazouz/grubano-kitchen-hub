@@ -1062,5 +1062,23 @@ Et un P1 de plus, trouvé **deux fois indépendamment** : **T-47 n'était pas fe
 
 **Les 22 P2 restants sont enregistrés (T-90 → T-97) et non corrigés**, chacun avec la raison : le webhook non gaté qui peut atteindre `transfers.createReversal` est un changement MOTEUR interdit nommément pour ce lot ; la borne de conservation sautée quand les lignes de ledger sont absentes change la sémantique de confirmation financière ; les quatre constats du mode `window` concernent un mode qu'aucun lot n'a encore lancé et doivent être fermés **avant** toute répétition qui ouvrirait `REFUNDS_ENABLED`.
 
+### Déploiement staging vérifié — `7f3699bd` servi, aucun argent déplacé
+
+**CI** run 36392003587 (`Deploy to Staging`) : `completed success`, jobs `test` ✅ et `deploy` ✅. **Build SERVI** : `https://app.grubano.com/version.json` = `{"commit":"7f3699bdf83d5f3c43b8e08ef411ffbbbce28de0","shortCommit":"7f3699b","branch":"develop","buildDate":"2026-09-28T07:35:36.883Z","ciRunId":"36392003587"}` — c'est bien ce commit qui répond, pas un reste de `51a6c225`.
+
+**Santé** : `/eat` 200 ; les cinq CGV 200 (`/fr`, `/en`, `/es`, `/it`, `/ar` `/legal/cgv`).
+
+**Ce que la page CGV DÉPLOYÉE porte réellement** (mesuré dans le HTML servi, pas dans la source) :
+- `<meta name="robots" content="noindex, nofollow"/>` — la porte de production n'est pas satisfaite, donc la page n'est pas indexable ;
+- dans la case « Entrée en vigueur », aucune date mais la phrase : « Projet — version bêta, non entrée en vigueur. Ce document décrit le service tel qu'il fonctionne aujourd'hui ; il n'a pas encore été validé par un conseil juridique et ne s'applique pas encore comme contrat. » ;
+- `0.1-beta` et `2026-09-28` présents chacun une fois, et l'adresse support une fois — donc les trois faits T-79 et le contact T-78 sont bien rendus, et rien n'est dupliqué ;
+- `dir="rtl"` sur la version arabe.
+
+**Gates, sondées sans identifiant** (un rail gaté répond 403, un rail OUVERT répondrait 401) : `POST /api/admin/refunds/run` **403**, `POST /api/admin/claims/pay-approved` **403**, `POST /api/claims` **403**. `GET /api/claims?orderId=x` renvoie `{"enabled":false}` — la surface conso est fermée et le dit sans rien divulguer.
+
+**Recensement read-only** `claims-census.yml` run 36394215069, mesuré 2026-09-28T07:54:22Z **sur le build déployé** : `schema` = `{ready:true, clientReady:true, dbReady:true, missingClient:[], missingDb:[], why:null}` — aucune migration, aucun regen, et il n'en fallait aucun (`prisma/schema.prisma` est byte-identique à `51a6c225`). `gates` = `{claimsEnabled:false, claimsGate:"CLOSED (flag_off)", claimsSurfaceEnabled:false, claimsIntakeEnabled:false, claimsSurfaceOpen:false, claimsIntakeOpen:false, refundsEnabled:false}`. **Population IDENTIQUE à celle mesurée au déploiement de L10** (run 36354157233) — comparaison champ par champ, seuls les horodatages diffèrent : `total 9`, `active 0`, `nonTerminal 3`, `byStatus {refunded 4, refused 3, refused_final 2}`, **tous les compteurs `legacy` à 0**, `closure {missing: 0, terminalWithoutRecord: 4}`. Aucune réclamation créée, aucune ligne bougée.
+
+**AUCUN EFFET ARGENT, et voici par quoi.** (1) Un déploiement n'exécute par lui-même ni migration ni script serveur, et le recensement confirme `schema.ready` sans qu'aucune colonne n'ait été ajoutée. (2) Les quatre sondes se sont arrêtées au garde AVANT toute logique (403 / `{"enabled":false}`). (3) **Aucun appel authentifié contre staging** : aucune commande, aucune réclamation, aucun e-mail (ni client ni restaurant), aucun remboursement. Le recensement est une lecture de COMPTEURS derrière le jeton interne, déclenchée depuis GitHub Actions — il n'écrit rien et n'imprime aucun identifiant. (4) `lib/refund.ts` reste byte-identique (blob `e2dc42b8eb89cd3249a4497682b8bc94080ef725`) et les seize épingles §22 sont inchangées vs `51a6c225`. (5) `CERTIFIED_SHAS` reste VIDE : `7f3699bd` n'y a pas été ajouté, donc `phase2-claims-pay-window.js` refuse toujours. (6) Aucune commande cPanel, aucune fenêtre, `main` et la production intactes.
+
 ## Lots suivants
 (complété lot par lot : SHA, preuves, CI, SHA déployé)
