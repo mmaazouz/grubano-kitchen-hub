@@ -1306,5 +1306,78 @@ Deux commits sont partis sur `develop` : `a279410d` (le lot) puis `33b7ad70` (la
 
 **Ce que ce déploiement ne prouve pas, et qu'il faut dire.** Les sondes établissent que les gates refusent ; le recensement, que le parc est vide. Ni l'un ni l'autre n'exerce le garde `[MONEY WRITE]` **en exécution** sur staging — il ne peut l'être que lorsqu'une écriture financière est réellement tentée, c'est-à-dire pendant L11. Sa preuve aujourd'hui est la suite (497 fichiers, 7276 tests) et l'énumération qui interdit une écriture non déclarée, pas une observation runtime. De même, T-115 et T-116 sont prouvés par des tests et par lecture : à drapeaux fermés, staging ne peut pas les exécuter.
 
+## T-123 — le gel des rails money-OUT devient un GATE DE BUILD (arbitrage fondateur, aucun argent déplacé)
+
+« Oui : pendant la bêta, `check:flags` doit exiger explicitement `false` pour `FRANCHISE_SETTLEMENT_ENABLED` et `CREATOR_PAYOUT_ENABLED`. Je préfère un build qui échoue si l'un de ces rails money-OUT est accidentellement ouvert plutôt qu'une simple surveillance qui laisse compiler. »
+
+Ces deux clés sont les seules serrures sur les deux écritures Stripe du dépôt qui **PAIENT** un tiers au lieu de récupérer chez lui. Un remboursement rend de l'argent au client ; une inversion récupère de l'argent. Ces deux-là seules **font sortir** des fonds vers un bénéficiaire — c'est le critère, pas « c'est un drapeau argent ».
+
+Ajouter deux noms n'a pas suffi ; quatre choses ont dû suivre.
+
+**Le gel parle EN PREMIER, et l'ordre est le point.** Mesuré en l'écrivant : avec `FRANCHISE_SETTLEMENT_ENABLED=true` et son homologue Connect absent, la règle de COUPLAGE préexistante parlait d'abord et imprimait « exige `FRANCHISE_CONNECT_ENABLED=true` » — un conseil qui invite un opérateur à ouvrir **davantage** de drapeaux argent pour passer au vert. **Un refus qu'on peut satisfaire en ouvrant un second drapeau argent est pire qu'aucun refus.** Le gel est inconditionnel, ne peut pas être satisfait ainsi, et parle donc en premier. La sortie ajoute la phrase explicite : « Ne satisfaites PAS ce refus en ouvrant un autre drapeau : refermez celui-ci. »
+
+**Il lit les fichiers env, pour ces deux clés seulement.** Ne lire que `process.env` aurait rendu la règle presque décorative : personne n'exporte `CREATOR_PAYOUT_ENABLED` dans un shell avant `npm run build` — on l'écrit dans `.env.local`. La source fautive est **nommée** dans le message, parce que « quel fichier a ouvert ce rail » est la première question d'un opérateur. Cette lecture ne peut qu'**ajouter** une erreur, jamais en retirer, et ne lit aucune valeur pour aucune autre clé.
+
+**Il garde désormais un BUILD.** `check:flags` n'était invoqué que dans `tests.yml` — un workflow **séparé** qui ne bloque pas un déploiement — donc la règle exigée-false n'avait **aucune dent sur le chemin qui livre**. Ajouté au job `test` bloquant des **deux** workflows de déploiement, avant le gate de compilation. Mesuré au premier passage : le pas « Money-OUT rails frozen (T-123, build gate) » a tourné et réussi dans le job `test` de `a9d7f9eb`, dont `deploy` dépend.
+
+**Les deux listes restent séparées, EXPRÈS.** `MONEY_FLAGS_MUST_BE_FALSE` d'`env-provenance.js` (14 clés) est la posture **runtime** que le préflight serveur asserte, et elle contient `REFUNDS_ENABLED` et `CLAIMS_ENABLED`. Les exiger false **ici** rendrait toute répétition bornée impossible à compiler — alors qu'un bail REFUNDS de 30 min est précisément le mécanisme prévu, décrit par les `WARNING_RULES` comme une configuration légitime. Deux questions différentes au même mot « argent » ; les fusionner casserait le rail que l'autre existe pour encadrer. Un test l'asserte.
+
+**Portée, énoncée plutôt que sous-entendue.** `check:flags` juge l'environnement du **build**. La valeur qui compte en production vit dans le `.env.local` **du serveur**, que la CI n'écrit jamais (`deploy-staging.yml` le dit explicitement). Cette règle attrape une clé dans l'environnement du runner, dans un fichier env local, ou dans une variable de dépôt. Elle ne peut **pas** voir le `.env.local` du serveur ni le sélecteur Node.js de cPanel — c'est le travail de `phase2-preflight.js` (T-119). **Complémentaires, jamais redondants ; aucun ne dispense de l'autre.**
+
+**Une conséquence à connaître, mesurée et épinglée.** `FRANCHISE_ROYALTY_ENABLED=true` n'a désormais **aucune configuration compilable** : les couplages exigeaient déjà qu'il ait un rail de règlement, et ce rail est maintenant exigé false. L'**accumulation** de royalties est donc hors d'atteinte pendant la bêta, par construction. C'est probablement la bonne réponse — ne pas accumuler une obligation qu'on est interdit de régler — mais c'est une conséquence **produit**, pas un effet de bord à découvrir plus tard.
+
+Deux épingles de hash de workflow ré-étalonnées, raison écrite à côté : 18 insertions, 0 suppression, le même bloc de 9 lignes dans chaque fichier ; aucun `schedule`, aucun job, aucun workflow, aucun secret nouveaux.
+
+## L11 — AUTORISÉ, PRÉFLIGHT EXÉCUTÉ, ET **NON EXÉCUTABLE D'ICI** (aucun argent déplacé, aucune écriture)
+
+### Le STOP conditionnel du fondateur : NON DÉCLENCHÉ
+
+« Si le protocole L11 exige directement ou indirectement `CHARGEBACKS_ENABLED`, ARRÊTE-TOI. »
+
+**Il ne l'exige pas.** Établi par une revue en lecture seule à huit directions, chacune re-vérifiée de façon adversariale, et la conclusion a survécu : **CONFIRMÉE**. La raison est structurelle, pas circonstancielle : `assertMoneyWriteAllowed` est **par autorisation** — `lib/stripe-money-guard.ts` associe `rail_open → REFUNDS_ENABLED` et `dispute_rail_open → CHARGEBACKS_ENABLED` — et ne vérifie que le drapeau de l'autorisation **déclarée**, sans aucune condition croisée. Le rail remboursement déclare `rail_open` ; les deux seules déclarations `dispute_rail_open` vivent dans `handleDisputeEvent`, atteignable uniquement depuis la branche webhook qui est elle-même derrière `if (!isChargebacksEnabled())`.
+
+Trois nuances, chacune classée plutôt que confondue : le rail lit des **données** de litige (`prisma.dispute.aggregate` dans `royalty-refunded` / `royalty-recovered`, `?? 0` quand il n'y a aucune ligne) ; il **refuse** quand une charge est disputée (`assertChargeNotDisputed`, et le plafond de réclamation RETIENT si Stripe ne le confirme pas) ; il ne **requiert** jamais le drapeau. Lire une donnée de litige n'est pas exiger le drapeau ; être bloqué par un litige ne l'est pas davantage. Et le dépôt exige `CHARGEBACKS_ENABLED` **false** (T-119). **T-114 et T-121 ne bloquent donc pas L11** — ils restent bloquants avant toute ouverture de ce rail, comme décidé.
+
+### Préflight, exécuté sur le build servi `a9d7f9eb` — 9 points sur 10 PROUVÉS
+
+| # | Point | Mesure | Verdict |
+|---|---|---|---|
+| 1 | SHA exact servi | `/version.json` = `a9d7f9eb860863c6da14b476dd2af0c1997a05ae`, CI run 36459283998 = `git rev-parse HEAD` | ✅ identiques |
+| 2 | arbre propre | `git status --porcelain` = 0 ligne ; 0 commit non poussé | ✅ |
+| 3 | `CERTIFIED_SHAS` | `const CERTIFIED_SHAS = []` — VIDE | ✅ mesuré (et voir le bloqueur B2) |
+| 4 | flags financiers false avant armement | census : `claimsEnabled false · claimsSurfaceEnabled false · claimsIntakeEnabled false · refundsEnabled false` | ✅ |
+| 5 | population financière inchangée | IDENTIQUE champ par champ à `d28d2eff` : total 9, active 0, nonTerminal 3, `{refunded 4, refused 3, refused_final 2}`, closure `{missing 0, terminalWithoutRecord 4}`, **tous** les compteurs legacy à 0 | ✅ |
+| 6 | `pendingRowsUnder20hWithSettledRoyalty` | **0** (et `over20h` = 0) | ✅ |
+| 7 | gates fermées | `refunds/run` 403 · `claims/pay-approved` 403 · `franchise-settlements/run` 404 · `creator-payouts/run` 404 · `/api/claims` `{"enabled":false}` | ✅ |
+| 8 | **Stripe dans l'environnement prévu** | La preuve EXISTE et est intégrée aux opérateurs — `phase2-refund-gate.js` vérifie `!w.livemode` sur le webhook et ses trois événements ; `phase2-claims-pay-window.js` refuse tout `pi.livemode === true`. Mais elle n'est lisible **que depuis le serveur**, avec la clé Stripe. | ⛔ **NON PROUVABLE d'ici** |
+| 9 | aucun écart code testé ⇄ code servi | même SHA, même run CI ; le job `test` (497→498 fichiers, build de compilation) précède `deploy` par `needs: test` ; le pas bloquant « Client bundle integrity » a réussi | ✅ |
+| 10 | aucun autre déploiement en cours | aucun run non terminé ; `concurrency: group: deploy-staging` | ✅ |
+
+**Le point 8 suffit à imposer l'arrêt**, par la règle du fondateur lui-même : « Si un seul de ces points n'est pas prouvé : STOP avant toute écriture. »
+
+### Mais le blocage est plus profond que le point 8 : **l'acte d'armement est impossible d'ici**
+
+Le plus petit canary capable d'exercer réellement `[MONEY WRITE]` est **un remboursement admin** : `POST /api/admin/refunds/run` → `lib/refund.ts` où `assertMoneyWriteAllowed({verb:'refunds.create', authorization:'rail_open'})` est déclaré **immédiatement** avant `stripe.refunds.create`. Ce déclencheur **est** automatisé : `refund-rehearsal.yml` est dispatchable au `gh`, une opération, montant et commande explicites, phrase d'autorisation exigée.
+
+Mais il abandonne à son pas 2 si le bail n'est pas déjà ouvert — et **rien ne peut ouvrir ce bail depuis ici**. Mesuré par grep exhaustif de `.github/` : **aucun workflow n'exécute le moindre opérateur `phase2`** ; les deux pas SSH de `deploy-staging.yml` sont des scripts **littéraux figés** sans interpolation d'entrée (`prune-next.js`, `chmod`, `touch tmp/restart.txt`) ; le FTP **exclut** `.env*`. L'opérateur écrit le `.env.local` **du serveur** par `fs` et touche `<APP_ROOT>/tmp/restart.txt` : il doit tourner **sur le serveur**.
+
+### Les six bloqueurs, nommés
+
+**Voie A — le remboursement admin (le plus petit canary réel)**
+1. **`phase2-refund-gate.js window` doit être lancé SUR LE SERVEUR.** Aucun chemin automatisé n'existe. *(Voie A n'a, elle, aucun bloqueur de certification : `grep CERTIFIED_SHAS` sur ce fichier = 0.)*
+2. **Le point 8 n'est prouvable que par l'opérateur**, qui lit `livemode` chez Stripe.
+
+**Voie B — le rail PAYEUR réclamations (la « répétition D′ » au sens propre)**
+3. **`CLAIMS_SURFACE_ENABLED=true` et `ADMIN_AUDIT_ENABLED=true` doivent être posés sur le serveur.** L'opérateur en est **interdit par un garde compilé** (`FORBIDDEN_KEYS`), et il **exige** que le processus vivant rapporte `claimsSurfaceEnabled === true` — c'est une décision fondateur par conception, pas un oubli.
+4. **`CERTIFIED_SHAS` doit contenir le SHA déployé — et ne peut pas, aujourd'hui.** Deux obstacles indépendants : (i) un test **épingle sa vacuité** (`tests/claims-dprime-l5-pay-window-operator.test.ts`), et `deploy` a `needs: test`, donc **le build épinglé ne peut pas se déployer** tant que ce test n'est pas délibérément inversé ; (ii) **un commit ne peut pas contenir son propre SHA**, or la comparaison porte sur le SHA du build déployé, lu dans `public/version.json` **et** recroisé avec `/version.json` servi. **Aucun document ne dit comment la liste doit être peuplée : c'est une décision fondateur.**
+5. **Deux répétitions BASE DE DONNÉES RÉELLE sont BLOQUANTES** avant toute fenêtre Claims (`REFUND-FINANCIAL-CONTRACT.md` §20 et §26, « re-run on the final certified release-candidate SHA before any Claims window opens on any environment » ; `CLAIMS-R13-OPERATOR-PRECHECK.md` la marque **BLOQUANTE**). Elles exigent une MariaDB jetable (`127.0.0.1:3310`, base `claims_race`) : **indisponible ici** — aucun Docker, aucun binaire mysqld, rien en écoute.
+6. **Aucune réclamation payable n'existe** : census `approvedUnpaid = 0`. Un admin doit d'abord **décider** une réclamation avec un montant (ce qui ne déplace aucun argent, par conception D′).
+
+### Ce que je n'ai pas fait, et pourquoi
+
+**Je n'ai pas créé de workflow qui ouvrirait le bail par SSH.** Les secrets existent (`O2SWITCH_USER`, `O2SWITCH_SSH_KEY`) et ce serait techniquement faisable. Mais cela créerait une **capacité nouvelle, déclenchable à distance, d'ouvrir une porte d'argent sur staging** — une surface d'attaque neuve sur un rail financier, dont l'existence est précisément ce que la conception actuelle évite en gardant l'acte d'armement derrière un shell humain. Créer cela de ma propre initiative, dans un lot qui n'en parle pas, serait une extension de périmètre. C'est une **décision fondateur**, et elle est posée comme telle.
+
+**Aucune écriture, aucun argent.** Aucune opération financière n'a été tentée. Aucun drapeau n'a été ouvert. Aucune commande cPanel. `CERTIFIED_SHAS` inchangé. `main` et la production intactes. Tout ce qui précède est du grep, de la lecture de fichiers, des GET/POST non authentifiés observés par code HTTP, et deux workflows en lecture seule (recensement, déploiement).
+
 ## Lots suivants
 (complété lot par lot : SHA, preuves, CI, SHA déployé)
