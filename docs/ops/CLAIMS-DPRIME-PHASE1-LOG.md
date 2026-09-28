@@ -1148,5 +1148,24 @@ Le test porte son propre contrôle négatif (une écriture fabriquée doit être
 
 Le garde est **exactement aussi strict** que les quatre appelants de production (`isRefundsEnabled()` **EST** `refundGateState().open`), donc rien qui passe en production n'échoue ici. Ce qu'il a révélé, c'est que **huit suites conduisaient le moteur d'argent directement**, en contournant la gate de route que la production applique toujours : elles vérifiaient l'arithmétique d'un remboursement que le rail n'avait jamais autorisé. `tests/support/refund-window.ts` ouvre le bail explicitement dans leur `beforeEach` et le referme après, de sorte qu'aucune suite ne laisse un rail ouvert à la suivante. Chacune dit maintenant ce que dit la production — et le cas inverse (le moteur refuse rail fermé) est devenu un test à lui, au lieu d'un accident de configuration.
 
+### Déploiement staging vérifié — `d28d2eff` servi, et LE COMPTEUR QUI TRANSFORME L'ARGUMENT EN FAIT
+
+**CI** run 36411995200 (`Deploy to Staging`) : `completed success`, jobs `test` ✅ et `deploy` ✅. **Build SERVI** : `https://app.grubano.com/version.json` = `{"commit":"d28d2eff01981d329657c8e6e254d3a3d1c33439","shortCommit":"d28d2ef","branch":"develop","buildDate":"2026-09-28T10:56:06.611Z","ciRunId":"36411995200"}`.
+
+**Santé** : `/eat` 200 · `/fr/legal/cgv` 200 · `/ar/legal/cgv` 200.
+
+**Gates, sondées sans identifiant** (un rail gaté répond 403, un rail OUVERT répondrait 401) : `POST /api/admin/refunds/run` **403** · `POST /api/admin/claims/pay-approved` **403** · `POST /api/claims` **403** · `GET /api/claims?orderId=x` = `{"enabled":false}`.
+
+**Recensement read-only** `claims-census.yml` run 36415209389, mesuré 2026-09-28T11:22:02Z **sur le build déployé**, contre la base staging réelle :
+
+- **`pendingRowsUnder20hWithSettledRoyalty = 0`.** C'est le chiffre pour lequel ce lot existe. La borne T-90 cesse d'être un raisonnement sur des chemins de code et devient une affirmation sur le PARC : il n'existe, à cet instant, **aucune ligne qui pourrait déclencher** l'unique écriture Stripe financière atteignable les quatre drapeaux fermés. Son autre moitié, `pendingRowsOver20hWithSettledRoyalty`, vaut également 0 — donc pas même un arriéré de réconciliation.
+- `schema` = `{ready:true, clientReady:true, dbReady:true, missingClient:[], missingDb:[], why:null}` — **aucune migration, aucun regen**, et il n'en fallait aucun : `prisma/schema.prisma` est byte-identique.
+- `gates` = `{claimsEnabled:false, claimsGate:"CLOSED (flag_off)", claimsSurfaceEnabled:false, claimsIntakeEnabled:false, claimsSurfaceOpen:false, claimsIntakeOpen:false, refundsEnabled:false}`.
+- **Population par ailleurs IDENTIQUE** à celle mesurée au déploiement précédent (`ee443a66`), comparée champ par champ : le SEUL écart est l'apparition du nouveau compteur (absent → 0). `total 9`, `active 0`, `nonTerminal 3`, `byStatus {refunded 4, refused 3, refused_final 2}`, tous les compteurs `legacy` à 0, `closure {missing: 0, terminalWithoutRecord: 4}`.
+
+**AUCUN EFFET ARGENT, et voici par quoi.** (1) Un déploiement n'exécute par lui-même ni migration ni script serveur, et le recensement confirme `schema.ready` sans qu'aucune colonne n'ait été ajoutée. (2) Les quatre sondes se sont arrêtées au garde AVANT toute logique. (3) **Aucun appel authentifié contre staging** : aucune commande, aucune réclamation, aucun e-mail, aucun remboursement, aucun versement. Le recensement est une lecture de COMPTEURS derrière le jeton interne, déclenchée depuis GitHub Actions. (4) Le garde a été vérifié **présent dans les chunks serveur compilés** du build à froid — il est donc réellement livré, pas seulement écrit. (5) Tous les épinglages argent hors des sept fichiers déclarants sont byte-identiques à `ee443a66`, `prisma/schema.prisma` compris. (6) `CERTIFIED_SHAS` reste VIDE : `d28d2eff` n'y a pas été ajouté. (7) Aucune commande cPanel, aucune fenêtre, `main` et la production intactes.
+
+**Ce que ce déploiement ne prouve pas, et qu'il faut dire :** les sondes établissent que les gates refusent, et le recensement que le parc est vide. Ni l'un ni l'autre n'exerce le garde `[MONEY WRITE]` en production — il ne peut l'être que lorsqu'une écriture financière est réellement tentée, c'est-à-dire pendant L11. Sa preuve aujourd'hui est la suite (493 fichiers, 7203 tests) et l'énumération qui interdit une écriture non déclarée, pas une observation runtime sur staging.
+
 ## Lots suivants
 (complété lot par lot : SHA, preuves, CI, SHA déployé)
