@@ -33,7 +33,8 @@ const H = require(path.join(__dirname, 'reconcile-helpers.js'))
 const NEUT = require(path.join(__dirname, 'phase2-backup-neutralize.js'))
 
 const MODE = process.argv[2] === 'window' ? 'window' : 'precheck'
-const APP_ROOT = process.env.PHASE2_APP_ROOT || path.join(__dirname, '..', '..')
+const APP_ROOT_DEFAULT = process.env.PHASE2_APP_ROOT || path.join(__dirname, '..', '..')
+const APP_ROOT = APP_ROOT_DEFAULT
 const ORDER_ID = process.env.PHASE2_REFUND_ORDER_ID || 'cmtju919h0001h7t6bkn5tsm0'
 const AMOUNT_CENTS = Number(process.env.PHASE2_REFUND_AMOUNT_CENTS || 500)
 const CONFIRM_SENTENCE = 'I AUTHORIZE THE STAGING REFUND REHEARSAL'
@@ -102,6 +103,10 @@ const POLL_MS = Number(process.env.PHASE2_REFUND_POLL_MS || 15000)
 const facts = [], anomalies = []
 const F = (k, v) => { facts.push(k + ' = ' + v); console.log('  ' + k + ' = ' + v) }
 const A = (m) => { anomalies.push(m); console.log('  !! ANOMALY: ' + m) }
+/* T-108: stable aliases so `neutralizeOwnBackups` can default to THIS operator's reporter while a sibling
+   passes its own. Referencing `F`/`A` directly inside the helper would have bound it to this file forever. */
+const FACT = F
+const ANOM = A
 const mask = (s) => (typeof s === 'string' && s.length > 10 ? s.slice(0, 6) + '…' + s.slice(-4) : (s ? '***' : 'null'))
 const scrub = (m) => String(m == null ? '' : ((m && m.message) || m)).replace(/sk_(test|live)_[A-Za-z0-9]+/g, 'sk_***').replace(/[a-z][a-z0-9+.-]*:\/\/[^\s]+/gi, '<url>').replace(/[A-Za-z0-9_-]{24,}/g, '…').slice(0, 160)
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
@@ -271,14 +276,23 @@ process.on('unhandledRejection', (e) => { emergencyRefreeze('unhandledRejection'
 
    THE FAILURE MODE THAT MATTERS is silence, so every way this can go wrong is an ANOMALY carrying the
    exact command to run by hand.                                                                      */
-function backupNames() {
+function backupNames(root) {
   try {
-    return fs.readdirSync(APP_ROOT).filter((n) => /^\.env\.local\.bak/.test(n)).sort()
+    return fs.readdirSync(root || APP_ROOT_DEFAULT).filter((n) => /^\.env\.local\.bak/.test(n)).sort()
   } catch { return null }
 }
-async function neutralizeOwnBackups() {
+/* T-108 — SHARED, NOT COPIED. phase2-claims-gate.js and phase2-modeb-gate.js write money flags to true and
+   leave a restorable `.env.local.bak-…` behind, and neither invoked (nor named) the neutralizer. Copying this
+   function into them would put a money-safety control in three places, which this chantier has been bitten by
+   more than once. So the reporter and the app root are injectable: each operator passes its OWN `F`/`A` so the
+   facts and anomalies land in ITS report, and the logic exists once, already exercised end to end by
+   tests/prel11-refund-gate-window-t93.test.ts. Called with no argument it behaves exactly as before. */
+async function neutralizeOwnBackups(reporter) {
+  const F = (reporter && reporter.F) || FACT
+  const A = (reporter && reporter.A) || ANOM
+  const APP_ROOT = (reporter && reporter.appRoot) || APP_ROOT_DEFAULT
   const script = path.join(__dirname, 'phase2-backup-neutralize.js')
-  const before = backupNames()
+  const before = backupNames(APP_ROOT)
   F('BACKUPS IN APP ROOT AFTER CLOSE', before === null ? 'NOT MEASURED (app root unreadable)' : (before.length ? before.join(', ') : 'none'))
   const byHand = 'node ' + script
   if (!fs.existsSync(script)) {
@@ -321,7 +335,7 @@ async function neutralizeOwnBackups() {
   F('BACKUP NEUTRALIZER EXIT', code === null ? 'NOT MEASURED' : String(code))
   if (code !== 0) A('7 neutralize: the neutralizer did not report success (exit ' + String(code) + ') — a restorable true-flag backup may remain in the app root. Run by hand and read its report: ' + byHand)
   // PROOF, not trust: re-read the directory ourselves and say what is still restorable.
-  const after = backupNames()
+  const after = backupNames(APP_ROOT)
   if (after === null) { A('7 neutralize: app root unreadable after the run — restorable backups NOT MEASURED'); return }
   // THE PREDICATE IS THE NEUTRALIZER'S OWN, required not retyped. A second regex here would be a money
   // rule in two copies — and it would have been WRONG: dotenv semantics are last-occurrence-wins, so a
@@ -864,6 +878,7 @@ module.exports = {
   windowMsRefusal,
   backupNames,
   neutralizeOwnBackups,
+  // T-108: the sibling operators call this with their own reporter.
   closeRefundWindow,
   WINDOW_MS_FLOOR_MS,
   WINDOW_MS_LEASE_MARGIN_MS,

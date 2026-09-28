@@ -184,6 +184,13 @@ export function assertMoneyWriteAllowed(d: MoneyWriteDeclaration): void {
         + 'a payout must say which rail authorized it.'
     } else if (d.railOpen !== true) {
       refusal = `the ${d.flag} rail is not open (railOpen=${String(d.railOpen)}).`
+    } else if (process.env[d.flag] !== 'true') {
+      /* FOUND BY THE FINAL REVIEW: this was the ONE authorization with no env floor, so for the three payout
+         rails the guard added nothing beyond the caller's own boolean — a caller that hardcoded `true` would
+         have passed. The floor now applies here too, and it is the flag the declaration NAMED, which is what
+         makes it meaningful: the guard re-reads the same variable the rail's own gate reads. */
+      refusal = `${d.flag} is not 'true' in this process, yet the caller asserted its rail is open. Those two `
+        + 'cannot both be right — refusing rather than guessing which.'
     }
   } else {
     // The caller's own gate is the authority; the raw flag is a floor that cannot exceed it.
@@ -219,6 +226,109 @@ export function logMoneyWrite(d: MoneyWriteDeclaration, refusal: string | null):
   // A refusal is an error: it means a caller's declaration could not be true, which is a code defect.
   if (refusal) console.error(parts.join(' · '))
   else console.warn(parts.join(' · '))
+}
+
+// ════════════════════════════════════════════════════════════════════════════════════════════════════
+// T-104 — THREE KINDS OF FAILURE ON A MONEY PATH, AND THEY MUST NOT BE CONFUSED.
+//
+// FOUNDER ARBITRATION: « Un refus du money guard ne doit jamais être transformé silencieusement en erreur
+// transitoire réessayable. » The review measured four sites that did exactly that: lib/refunds.ts turned a
+// refusal into a 502 « Erreur paiement, réessayez. », lib/franchise-settlement.ts and lib/creator-payout.ts
+// into `'transfer_failed'` through a BARE catch that discarded the error entirely, and lib/dispute.ts into an
+// HTTP 200. A refusal retried is a code defect repeated; a refusal answered 200 is a code defect erased.
+//
+//   • POLICY_REFUSAL      — the guard said no. A caller reached a financial write without the authorization
+//                           it declared. NOT retryable, NOT transient, NOT the provider's fault: it is our
+//                           bug, and the only correct response is to surface it and stop.
+//   • TRANSIENT           — the provider or the network failed. Retrying is exactly right; the idempotency
+//                           key makes it safe.
+//   • EXTERNAL_ALREADY_DONE — Stripe says the movement ALREADY EXISTS (an idempotency replay, an
+//                           already-refunded charge, a reversal already made). Nothing more may be INITIATED;
+//                           what remains is internal finalization. Reporting this as a failure invites a
+//                           second attempt at something already done, which is the one outcome money code
+//                           must never produce.
+//
+// The classifier is here, in the LEAF, so all seven declaring modules share ONE definition. A money rule in
+// two copies eventually disagrees with itself.
+// ════════════════════════════════════════════════════════════════════════════════════════════════════
+
+export type MoneyFailureKind = 'policy_refusal' | 'transient' | 'external_already_done'
+
+/** Stripe error codes/types that mean « this movement already exists », not « it failed ». */
+const ALREADY_DONE_CODES = new Set([
+  'charge_already_refunded',
+  'charge_already_captured',
+  'transfer_already_reversed',
+  'idempotency_key_in_use',
+  'payment_intent_unexpected_state',
+])
+
+/**
+ * What kind of failure is this? Called by EVERY catch that encloses a declared financial write.
+ *
+ * It is deliberately conservative in one direction only: anything it cannot recognise is `transient`, because
+ * a retry under an idempotency key is safe while swallowing a refusal is not. A POLICY_REFUSAL is recognised
+ * by TYPE (`MoneyWriteRefused`), never by message matching — a string test would break the day a message is
+ * reworded, and it would break silently.
+ */
+export function classifyMoneyFailure(err: unknown): MoneyFailureKind {
+  if (err instanceof MoneyWriteRefused) return 'policy_refusal'
+  // Stripe's SDK errors carry `type` and `code`; the REST client used on the server carries the same shape.
+  const e = err as { type?: unknown; code?: unknown; rawType?: unknown } | null
+  const code = typeof e?.code === 'string' ? e.code : null
+  const type = typeof e?.type === 'string' ? e.type : (typeof e?.rawType === 'string' ? e.rawType : null)
+  if (code && ALREADY_DONE_CODES.has(code)) return 'external_already_done'
+  if (type === 'StripeIdempotencyError' || type === 'idempotency_error') return 'external_already_done'
+  return 'transient'
+}
+
+/** True when this failure is the guard refusing. Kept as its own predicate so call sites read plainly. */
+export function isMoneyPolicyRefusal(err: unknown): boolean {
+  return classifyMoneyFailure(err) === 'policy_refusal'
+}
+
+/**
+ * ESCALATE a policy refusal, then RE-THROW it.
+ *
+ * Every catch enclosing a declared write calls this FIRST. If the error is the guard refusing, the caller's
+ * degradation path is never reached: the refusal is logged as an error, sent to the MONEY REVIEW channel, and
+ * re-thrown so it propagates instead of becoming a retryable outcome. Anything else is returned to the caller
+ * to handle as it always did — this function changes nothing for a genuine provider failure.
+ *
+ * `alert` is injected rather than imported: this module is a LEAF (lib/admin-alerts pulls the mail chain), and
+ * a leaf that reaches for the mailer stops being a leaf. Callers pass `sendAdminMoneyReviewAlert`.
+ */
+export async function escalateIfPolicyRefusal(
+  err: unknown,
+  ctx: { verb: string; where: string; orderId?: string | null; amountCents?: number | null },
+  alert?: (p: { kind: 'money_write_refused'; dedupeKey: string; title: string; facts: Record<string, string | number | boolean | null | undefined> }) => Promise<unknown>,
+): Promise<void> {
+  if (!(err instanceof MoneyWriteRefused)) return
+  console.error(
+    `[MONEY WRITE] ESCALATED · verb=${err.verb} · auth=${err.authorization} · where=${ctx.where}`
+    + (ctx.orderId ? ` · order=${ctx.orderId}` : '')
+    + (typeof ctx.amountCents === 'number' ? ` · cents=${ctx.amountCents}` : '')
+    + ` · ${err.message}`,
+  )
+  if (!alert) return
+  try {
+    await alert({
+      kind: 'money_write_refused',
+      // One alert per verb+site+order: a loop must not mail a hundred times, and two different sites
+      // refusing on the same order are two different facts.
+      dedupeKey: `money_write_refused:${err.verb}:${ctx.where}:${ctx.orderId ?? 'no_order'}`,
+      title: 'Écriture financière REFUSÉE par le garde — défaut de code sur un chemin argent',
+      facts: {
+        verb: err.verb,
+        authorization: err.authorization,
+        where: ctx.where,
+        orderId: ctx.orderId ?? null,
+        amountCents: ctx.amountCents ?? null,
+        detail: err.message,
+        action: 'NE PAS réessayer : un appelant a atteint une écriture financière sans l’autorisation qu’il a déclarée. Corriger l’appelant.',
+      },
+    })
+  } catch { /* the log line above is the primary channel; a failed alert must not mask the refusal */ }
 }
 
 /**

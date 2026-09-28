@@ -8,6 +8,9 @@
 import {
   retrieveIntent, releaseDeposit, captureDeposit, eurosToCents, type DepositStatus,
 } from '@/lib/stripe'
+// T-104: the failure taxonomy — a guard refusal must never degrade into a retryable payment error.
+import { escalateIfPolicyRefusal, isMoneyPolicyRefusal } from '@/lib/stripe-money-guard'
+import { sendAdminMoneyReviewAlert } from '@/lib/admin-alerts'
 
 /** V4-1 (vague 4) — décision fondateur, motif JURIDIQUE : débiter une carte à
  *  titre de SANCTION (pénalité no-show, walk-out impayé) exige une base
@@ -102,6 +105,14 @@ export async function captureHold(
   /* T-90: the gate this function already checked at its top is PASSED to the write, so the declaration at
      the verb (lib/stripe.ts captureDeposit) can refuse on it. Re-reading the flag here rather than passing a
      literal is what makes the declaration mean something. */
-  try { await captureDeposit(piId, captureCents, { railOpen: isPunitiveCaptureEnabled() }) } catch (err) { return fatal(err) }
+  try {
+    await captureDeposit(piId, captureCents, { railOpen: isPunitiveCaptureEnabled() })
+  } catch (err) {
+    // T-104 — `fatal(err)` would have reported a guard refusal as a payment provider error the caller may
+    // retry. Classified first: a refusal is escalated and re-thrown; a real Stripe failure still degrades.
+    await escalateIfPolicyRefusal(err, { verb: 'paymentIntents.capture', where: 'lib/deposit.captureHold', amountCents: captureCents }, sendAdminMoneyReviewAlert)
+    if (isMoneyPolicyRefusal(err)) throw err
+    return fatal(err)
+  }
   return { ok: true, depositStatus: 'captured', capturedAmount: captureCents }
 }

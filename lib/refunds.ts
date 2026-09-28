@@ -24,7 +24,8 @@ import type Stripe from 'stripe'
 import { chargeIsDisputed, DISPUTED_REFUND_REFUSAL } from '@/lib/refund-dispute-guard'
 import { getStripe } from '@/lib/stripe'
 // T-90: the declaration + the flag this rail already depends on, asserted at the write itself.
-import { assertMoneyWriteAllowed } from '@/lib/stripe-money-guard'
+import { assertMoneyWriteAllowed, escalateIfPolicyRefusal, isMoneyPolicyRefusal } from '@/lib/stripe-money-guard'
+import { sendAdminMoneyReviewAlert } from '@/lib/admin-alerts'
 import { isRefundsEnabled } from '@/lib/refund'
 
 export type RefundResult =
@@ -119,6 +120,13 @@ export async function refundPayment(opts: {
       remainingCents: refundableCents - amountCents,
     }
   } catch (err) {
+      /* T-104 — A REFUSAL IS NOT A PROVIDER OUTAGE. Before this catch degrades anything, the failure is
+         CLASSIFIED: a `MoneyWriteRefused` is escalated to MONEY REVIEW and RE-THROWN, so it can never become
+         the retryable outcome below. A caller that reached a financial write without the authorization it
+         declared is a code defect on a money path; retrying it repeats the defect, and answering 200 erases
+         it. Anything that is NOT a refusal falls through and is handled exactly as before. */
+    await escalateIfPolicyRefusal(err, { verb: 'refunds.create', where: 'lib/refunds.refundPayment', amountCents: amountCents ?? null }, sendAdminMoneyReviewAlert)
+    if (isMoneyPolicyRefusal(err)) throw err
     return fatal(err)
   }
 }

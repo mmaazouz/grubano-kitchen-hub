@@ -11,7 +11,7 @@ import { join } from 'node:path'
 import { createHash } from 'node:crypto'
 
 /**
- * THE ENGINE FREEZE, RE-BASELINED ONCE — T-90, 2026-09-28, on explicit founder authorization.
+ * THE ENGINE FREEZE, RE-BASELINED TWICE — T-90 then T-104, 2026-09-28, on explicit founder authorization.
  *
  * This hash existed to make any edit to lib/refund.ts a deliberate, visible act. It did its job: the T-90
  * hardening had to come here and explain itself before it could be green.
@@ -30,13 +30,21 @@ import { createHash } from 'node:crypto'
  *      declaring inside `driveRefund` — which runs AFTER `prisma.refund.create` — would have turned
  *      « moves money now » into « stages a pending row that RESUME-FIRST executes at the next window ».
  *      It returns a typed 409 rather than throwing, because `executeRefund`'s contract is a RefundOutcome.
+ *   5. SECOND RE-BASELINE, T-104: four `catch` blocks now CLASSIFY before they degrade. The final review
+ *      measured that this module — the largest declaring one — was the only one that turned a
+ *      `MoneyWriteRefused` into a 502 « réessayez », i.e. a code defect on a money path dressed up as a
+ *      transient one and retried forever. Each of the four (`finalizeRefund:clawback`,
+ *      `finalizeRefundRowFromStripe`, `executeRefund:resume`, `executeRefund:fresh`) escalates a policy
+ *      refusal to MONEY REVIEW and RE-THROWS it; the pre-existing degradation path is kept verbatim and
+ *      merely became unreachable for a refusal. Like the four before it, this addition can only refuse,
+ *      alert or re-throw — it cannot initiate, and it cannot change an amount.
  * NOT CHANGED: not one split, cursor, cap, idempotency key, status transition or ledger amount. The
  * arithmetic is byte-identical in behaviour, and tests/refund-engine.test.ts (48) plus
  * tests/claims-r13-engine-parity.test.ts (111) re-prove it on the same fixtures.
  *
  * The negative control below still guarantees what this pin is for: any FURTHER edit changes the hash.
  */
-const SHA256_REFUND_40DA45E = '1ab5bd59bc59676b59e2a1c302fa4e0f7dea797507adbc1b2f255ffce7742d0c'
+const SHA256_REFUND_40DA45E = '27539fd94cbbb833377a6692bf529042ab5cbbbd6ce12d114eea09ff42df5f51'
 const read = (p: string) => readFileSync(p, 'utf8').replace(/\r\n/g, '\n')
 const stripComments = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '')
 
@@ -125,7 +133,7 @@ const ROWS: Record<string, { status: string; event: string }> = {
 }
 
 describe('J-M06 — lib/refund.ts is byte-identical and the withdrawn guard exists nowhere', () => {
-  it('sha256(lib/refund.ts, LF) equals the T-90 baseline (re-based once, with the reason above)', () => {
+  it('sha256(lib/refund.ts, LF) equals the T-90 baseline (re-based twice, with the reasons above)', () => {
     expect(createHash('sha256').update(read('lib/refund.ts')).digest('hex')).toBe(SHA256_REFUND_40DA45E)
   })
 

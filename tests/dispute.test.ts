@@ -9,7 +9,10 @@ import { openChargebackRail, closeChargebackRail } from './support/refund-window
 const { stripeMock } = vi.hoisted(() => ({
   stripeMock: {
     charges:   { retrieve: vi.fn() },
-    transfers: { createReversal: vi.fn(), list: vi.fn(), retrieve: vi.fn() },
+    // T-106: the unwind now ADOPTS an existing reversal rather than creating and hoping, so it READS the
+    // transfer's reversal list first. A list that cannot prove absence fails CLOSED — which is why this
+    // mock must model it: without it every test correctly refused to move money.
+    transfers: { createReversal: vi.fn(), list: vi.fn(), retrieve: vi.fn(), listReversals: vi.fn() },
     refunds:   { create: vi.fn() }, // must NEVER be called by the dispute path
   },
 }))
@@ -51,6 +54,8 @@ const created    = (d = makeDispute()) => ({ type: 'charge.dispute.created', dat
 const upsertReturns = (o: Record<string, unknown> = {}) => ({ id: 'D1', splitReversed: false, feeCents: 1500, refundedCents: 0, ...o })
 
 beforeEach(() => {
+  // T-106 default: Stripe holds NO reversal for this dispute → the unwind creates one.
+  stripeMock.transfers.listReversals.mockResolvedValue({ has_more: false, data: [] })
   // T-90: this suite drives the money engine DIRECTLY, bypassing the route gate production always
   // applies. `assertMoneyWriteAllowed` refuses an initiating write whose rail is closed — exactly as
   // strict as the callers — so the rail is opened here, once, to say what production says.

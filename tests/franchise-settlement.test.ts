@@ -17,6 +17,9 @@ const { db } = vi.hoisted(() => ({
   db: {
     operator:         { findUnique: vi.fn() },
     franchiseRoyalty: { findMany: vi.fn(), aggregate: vi.fn(), updateMany: vi.fn() },
+    // T-115: settleFranchisor now holds back orders carrying a LOST chargeback that was never
+    // unwound. Modelled as « none », so these suites keep proving the arithmetic they were written for.
+    dispute:          { findMany: vi.fn() },
     payout:           { findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
     $transaction:     vi.fn(),
   },
@@ -49,6 +52,7 @@ const settleCall = () => callsWith('settled')[0]
 const revertCall = () => callsWith('pending')[0]
 
 beforeEach(() => {
+  db.dispute.findMany.mockResolvedValue([])   // T-115: no un-unwound chargeback in these fixtures
 
   // T-90: this suite drives the settlement rail DIRECTLY, bypassing the route gate production always
 

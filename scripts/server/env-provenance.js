@@ -175,6 +175,21 @@ const MONEY_FLAGS_MUST_BE_FALSE = [
      earnings, and requiring a flag false when the product may be relying on it would be a founder decision
      dressed up as a safety check. It is WATCHED below instead, so its source is visible either way. */
   'AFFILIATE_CONNECT_ENABLED',
+  /* T-119 (final invariant review). THE TWO MONEY-OUT RAIL FLAGS WERE WATCHED, NOT REQUIRED FALSE.
+     `FRANCHISE_SETTLEMENT_ENABLED` is the sole gate on the only write in the repository that PAYS a third
+     party (`transfers.create`, lib/franchise-settlement.ts) and `CREATOR_PAYOUT_ENABLED` is the sole gate on
+     the partner payout rail (lib/creator-payout.ts). Both were in MONEY_ADJACENT_KEYS — printed in the
+     provenance report and nothing more — so a value injected through the cPanel Node.js selector, the exact
+     channel the spec forbids and that this repository has already MEASURED live for three keys, would have
+     been reported as a line of text while the rail it opens stayed open. The preflight exists to assert the
+     stated pre-L11 posture (« aucun flag ouvert »); a money-OUT rail flag it merely prints is a hole in that
+     assertion, not a product opinion. Requiring them false cannot open anything: this list only ever makes
+     the operator REFUSE.
+     NOT decided here: whether `scripts/check-flags.mjs` — the repository/CI contract, which fails a BUILD —
+     should also require them false. That changes the build contract during a beta and is the founder's call;
+     it is recorded as a ticket. */
+  'FRANCHISE_SETTLEMENT_ENABLED',
+  'CREATOR_PAYOUT_ENABLED',
 ]
 
 /**
@@ -188,10 +203,9 @@ const MONEY_ADJACENT_KEYS = [
      project's own choice is to PRINT these rather than require them false (phase2-preflight FLAGS_TO_PRINT),
      and that choice is respected — but their SOURCE is now watched, because a royalty that reached
      'settled' is the precondition of every clawback in the repository. */
-  'FRANCHISE_ENABLED', 'FRANCHISE_ROYALTY_ENABLED', 'FRANCHISE_SETTLEMENT_ENABLED',
+  'FRANCHISE_ENABLED', 'FRANCHISE_ROYALTY_ENABLED',   // the SETTLEMENT flag moved to MUST_BE_FALSE (T-119)
   /* T-90: the creator payout rail. Watched, not required false — see the note above. Its SOURCE matters
      most precisely because its in-module gate is hardcoded open. */
-  'CREATOR_PAYOUT_ENABLED',
 ]
 
 const WATCHED_SECRET_KEYS = [

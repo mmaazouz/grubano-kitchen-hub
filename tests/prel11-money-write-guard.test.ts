@@ -19,12 +19,14 @@
 //   4. THE EXCEPTION IS NAMED — the one authorization that bypasses every flag is the one that completes a
 //      movement Stripe already made, it requires a proof id, and exactly one site in the repository uses it.
 import { describe, it, expect, afterEach } from 'vitest'
-import { readFileSync, readdirSync, type Dirent } from 'node:fs'
+import { readFileSync, readdirSync, writeFileSync, rmSync, existsSync, type Dirent, mkdtempSync } from 'node:fs'
 import { join, sep } from 'node:path'
+import { tmpdir } from 'node:os'
 import {
   assertMoneyWriteAllowed,
   MoneyWriteRefused,
   FINANCIAL_STRIPE_WRITE_VERBS,
+  PARTNER_PAYOUT_FLAGS,
 } from '@/lib/stripe-money-guard'
 import { refundGateState } from '@/lib/refund'
 import { openRefundWindow, closeRefundWindow, openChargebackRail, closeChargebackRail } from './support/refund-window'
@@ -55,6 +57,21 @@ function walk(dir: string, out: string[] = []): string[] {
 const SOURCES = SOURCE_ROOTS.flatMap((r) => walk(r))
 const read = (p: string) => { try { return readFileSync(p, 'utf8').replace(/\r\n/g, '\n') } catch { return null } }
 
+/* T-120 — WHY THE PROBES DO NOT WRITE INTO `lib/`.
+   The first version of the T-118 probes created real files under `lib/` and deleted them straight after, the
+   way the T-109 probe had always done. Running the FULL suite immediately failed three unrelated files with
+   `ENOENT … lib/__t118_linebreak_probe__.ts`: vitest runs files in parallel workers, this repository has many
+   suites that walk `lib/` and read every file they find, and a probe that exists for a few milliseconds is
+   long enough to be LISTED by one of them and gone before it is READ. T-109 had the same hazard and was
+   simply lucky; three more probes widened the window until it wasn't.
+   A test that mutates the source tree is a test that can fail code it never meant to touch. So the probes now
+   write into an OS temp directory and the SHIPPED `walk` / `writeSites` / `stripeAliasSites` are pointed at
+   it — which still proves the mechanism (the real readdir, the real extension filter, the real normalisation,
+   the real guard rule) and not merely the algorithm. What a temp root cannot prove — that the shipped roots
+   really are `lib/`, `app/` and `scripts/` — is proven separately, and unconditionally, by the breadth
+   assertions over the real `SOURCES` above. Two checkable halves, and no race. */
+const sandbox = (): string => mkdtempSync(join(tmpdir(), 'grubano-oracle-'))
+
 afterEach(() => { closeRefundWindow(); closeChargebackRail() })
 
 // ══ 1. ENUMERATION — no financial write without a declaration ══════════════════════════════════════
@@ -64,16 +81,43 @@ describe('T-90 — every financial Stripe write in the repository declares itsel
    * {file, line, verb, guarded} for each. «Guarded» means an `assertMoneyWriteAllowed(` appears in the 30
    * lines above with no other call to the same verb in between — i.e. the declaration belongs to THIS write.
    */
-  const writeSites = () => {
+  const writeSites = (files: string[] = SOURCES) => {
     const sites: Array<{ file: string; line: number; verb: string; guarded: boolean }> = []
-    for (const file of SOURCES) {
+    for (const file of files) {
       const src = read(file)
       if (src === null) continue
       // strip line comments and JSDoc bodies so a verb NAMED in prose is never counted as a call
       const code = src.split('\n').map((l) => l.replace(/\/\/.*$/, '').replace(/^\s*\*.*$/, ''))
-      code.forEach((l, i) => {
-        for (const verb of FINANCIAL_STRIPE_WRITE_VERBS) {
-          if (!l.includes(`${verb}(`)) continue
+      /* T-118 — A LINE BREAK IS NOT A HIDING PLACE.
+         The final invariant review measured that this match was per-LINE and literal, so
+         `getStripe().transfers` + newline + `.create({...})` — valid, prettier-produced, and the shape any
+         formatter will eventually impose on a long call — returned NO site at all. Not « unguarded »: absent.
+         An oracle whose miss is silent is worse than no oracle, because the empty array reads as proof.
+         So the file is flattened ONCE with an index→line map, then whitespace adjacent to `.` and before `(`
+         is dropped while the map stays aligned. `a.b(` and `a\n  .b(` and `a . b (` become the same text, and
+         the site is still reported at the line the receiver sits on. */
+      const flatChars: string[] = []
+      const flatLine:  number[] = []
+      code.forEach((l, i) => { for (const ch of `${l}\n`) { flatChars.push(ch); flatLine.push(i) } })
+      const normChars: string[] = []
+      const normLine:  number[] = []
+      for (let k = 0; k < flatChars.length; k++) {
+        if (!/\s/.test(flatChars[k])) { normChars.push(flatChars[k]); normLine.push(flatLine[k]); continue }
+        let m = k
+        while (m < flatChars.length && /\s/.test(flatChars[m])) m++
+        const prev = normChars.length ? normChars[normChars.length - 1] : ''
+        const next = flatChars[m] ?? ''
+        // whitespace that merely separates a receiver from `.verb(` carries no meaning — drop it
+        if (!(prev === '.' || next === '.' || next === '(')) { normChars.push(' '); normLine.push(flatLine[k]) }
+        k = m - 1
+      }
+      const norm = normChars.join('')
+      for (const verb of FINANCIAL_STRIPE_WRITE_VERBS) {
+        let at = norm.indexOf(`${verb}(`)
+        while (at >= 0) {
+          const i = normLine[at]
+          const next = norm.indexOf(`${verb}(`, at + 1)
+          at = next
           /* «GUARDED» IS NOT MERE PROXIMITY — and the first version of this oracle only pretended it was.
              Its docstring promised « no other call to the same verb in between » while the code simply
              searched the 30 lines above for a declaration. Two reviewers named the consequence: a second,
@@ -89,9 +133,41 @@ describe('T-90 — every financial Stripe write in the repository declares itsel
           }
           sites.push({ file, line: i + 1, verb, guarded: declAt >= 0 && declAt > priorCallAt })
         }
-      })
+      }
     }
     return sites
+  }
+
+  /* T-118 — THE SECOND SHAPE: AN ALIASED RECEIVER.
+     `const t = getStripe().transfers` followed by `t.create(...)` contains no financial verb as text, so no
+     amount of whitespace normalisation can find it. Rather than teach the oracle to follow assignments —
+     which would be a type-checker, and would fail silently the first time it met a shape it did not model —
+     this asserts the much stronger and checkable property: the repository NEVER binds a Stripe namespace to
+     a local identifier. If nobody can write `t.create(`, the blind spot has nothing to hide in. */
+  const stripeAliasSites = (files: string[] = SOURCES) => {
+    const hits: Array<{ file: string; line: number; alias: string }> = []
+    const TAILS = Array.from(new Set(FINANCIAL_STRIPE_WRITE_VERBS.map((v) => v.split('.').pop()!)))
+    for (const file of files) {
+      const src = read(file)
+      if (src === null) continue
+      const code = src.split('\n').map((l) => l.replace(/\/\/.*$/, '').replace(/^\s*\*.*$/, ''))
+      // an identifier bound to getStripe() or to one of its namespaces
+      const aliases = new Set<string>()
+      code.forEach((l) => {
+        const m = l.match(/(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*[^=]*getStripe\(\)/)
+        if (m) aliases.add(m[1])
+      })
+      if (aliases.size === 0) continue
+      code.forEach((l, i) => {
+        for (const a of Array.from(aliases)) {
+          for (const tail of TAILS) {
+            // `alias.create(` — a financial verb reached through a binding, invisible to the text oracle
+            if (l.includes(`${a}.${tail}(`)) hits.push({ file, line: i + 1, alias: `${a}.${tail}` })
+          }
+        }
+      })
+    }
+    return hits
   }
 
   it('the walk covers the whole source tree, and every file it names exists', () => {
@@ -150,10 +226,194 @@ describe('T-90 — every financial Stripe write in the repository declares itsel
     const self = read('tests/prel11-money-write-guard.test.ts')!
     // Asserted on the FUNCTION's body, not on the file: a test file that quotes the old expression in
     // order to ban it would ban itself. (It just did — hence this note.)
-    const fn = self.slice(self.indexOf('const writeSites = () => {'), self.indexOf("  it('the walk covers"))
+    /* Anchored on the NAME, not on the signature: T-118 added a `files` parameter and this pin silently
+       sliced an EMPTY string, so every `toContain` below passed vacuously for one run. A pin that can match
+       nothing is not a pin. The anchor is asserted before it is used. */
+    const fnAt = self.indexOf('const writeSites = (')
+    expect(fnAt, 'the pin lost its anchor — writeSites was renamed or re-signed').toBeGreaterThan(0)
+    const fn = self.slice(fnAt, self.indexOf("  it('the walk covers"))
+    expect(fn.length, 'the pinned slice is empty — it would pass every assertion below vacuously').toBeGreaterThan(400)
     expect(fn).toContain('guarded: declAt >= 0 && declAt > priorCallAt')
     expect(fn).not.toContain('above.includes(')
     expect(fn).toContain('if (priorCallAt < 0 && code[j].includes(`${verb}(`)) priorCallAt = j')
+  })
+
+  it('T-120 — no probe in this file ever writes into the SOURCE tree (the race that broke three suites)', () => {
+    /* The rule, pinned so it cannot come back: every `writeFileSync` here targets a sandbox path. vitest runs
+       files in parallel workers and this repository is full of suites that walk lib/ and read what they list,
+       so a probe living inside the source tree for a few milliseconds is a real, intermittent failure in code
+       that has nothing to do with money. It happened; the ENOENT named three innocent files. */
+    const self = readFileSync('tests/prel11-money-write-guard.test.ts', 'utf8')
+    const writes = Array.from(self.matchAll(/writeFileSync\(([^,]+),/g)).map((m) => m[1].trim())
+    expect(writes.length, 'the probes vanished — this assertion would then be vacuous').toBeGreaterThanOrEqual(4)
+    for (const target of writes) {
+      // every one is the `probe` binding, and every `probe` binding is built from `sandbox()`
+      expect(target, 'a probe writes somewhere other than the sandboxed `probe` path').toBe('probe')
+    }
+    /* The needle is BUILT, not written: a literal `const probe = ` in this file would match ITSELF — which is
+       exactly how this assertion first failed, reporting its own regex source as a probe path. Third time a
+       source-scanning test in this repository has had to be taught not to read itself. */
+    const BT = String.fromCharCode(96)
+    const decls = Array.from(self.matchAll(new RegExp('const ' + 'probe = ' + BT + '([^' + BT + ']+)' + BT, 'g')))
+    const probeDecls = decls.map((m) => m[1])
+    expect(probeDecls.length).toBeGreaterThanOrEqual(4)
+    for (const d of probeDecls) expect(d, 'a probe path is not rooted in the sandbox').toContain('${dir}/')
+    expect(self).not.toMatch(/const probe = 'lib\//)
+  })
+
+  it('T-118 — a LINE-BROKEN call is CAUGHT (real file, shipped walk), because a formatter is not an exploit', () => {
+    /* The shape the final invariant review measured as INVISIBLE: receiver on one line, `.verb(` on the next.
+       Written as a real file so the SHIPPED walk and the SHIPPED normalisation are what gets tested — the
+       hardening is worthless if only a string fixture exercises it. */
+    const dir = sandbox()
+    const probe = `${dir}/__t118_linebreak_probe__.ts`
+    const body = [
+      '// Deleted by tests/prel11-money-write-guard.test.ts immediately after the assertion below.',
+      "import { getStripe } from '@/lib/stripe'",
+      'export async function payAcrossTwoLines(dest: string) {',
+      '  return getStripe().transfers',
+      '    .create({ amount: 100, currency: "eur", destination: dest })',
+      '}',
+      '',
+    ].join('\n')
+    writeFileSync(probe, body, 'utf8')
+    try {
+      // SOURCES was built at module load, before this file existed — so re-walk and feed the
+      // SHIPPED function, rather than re-implementing its rule here (a re-implementation proves
+      // the algorithm, never the code that runs in CI).
+      const walked = walk(dir)
+      expect(walked, 'the SHIPPED walk must see the probe file').toHaveLength(1)
+      const found = writeSites(walked).filter((w) => w.file === walked[0])
+      // BEFORE T-118 this array was EMPTY — not « unguarded », absent. That is the whole finding.
+      expect(found.length, 'the line-broken call was not seen at all').toBe(1)
+      expect(found[0]).toMatchObject({ verb: 'transfers.create', guarded: false })
+      // reported at the RECEIVER's line (4), which is where a human would look
+      expect(found[0].line).toBe(4)
+    } finally { rmSync(dir, { recursive: true, force: true }) }
+  })
+
+  it('T-118 — `a . b (` with spaces everywhere is the same call, and is CAUGHT', () => {
+    const dir = sandbox()
+    const probe = `${dir}/__t118_spaces_probe__.ts`
+    writeFileSync(probe, [
+      "import { getStripe } from '@/lib/stripe'",
+      'export async function spaced(dest: string) {',
+      '  return getStripe() . transfers . create ({ amount: 1, currency: "eur", destination: dest })',
+      '}',
+      '',
+    ].join('\n'), 'utf8')
+    try {
+      // SOURCES was built at module load, before this file existed — so re-walk and feed the
+      // SHIPPED function, rather than re-implementing its rule here (a re-implementation proves
+      // the algorithm, never the code that runs in CI).
+      const walked = walk(dir)
+      expect(walked, 'the SHIPPED walk must see the probe file').toHaveLength(1)
+      const found = writeSites(walked).filter((w) => w.file === walked[0])
+      expect(found.length).toBe(1)
+      expect(found[0]).toMatchObject({ verb: 'transfers.create', guarded: false })
+    } finally { rmSync(dir, { recursive: true, force: true }) }
+  })
+
+  it('T-118 — NO Stripe namespace is ever bound to a local identifier, so `t.create(` cannot exist', () => {
+    /* The second shape, and the one whitespace normalisation can never reach: `const t = getStripe().transfers`
+       then `t.create(...)` contains no financial verb as TEXT. Teaching the oracle to follow assignments would
+       make it a type-checker that fails silently on the first shape it does not model; asserting the property
+       instead is checkable and stronger. */
+    expect(stripeAliasSites()).toEqual([])
+  })
+
+  it('T-118 — POSITIVE CONTROL: the alias detector really fires on an aliased receiver', () => {
+    // Without this, the assertion above is indistinguishable from a detector that matches nothing.
+    const dir = sandbox()
+    const probe = `${dir}/__t118_alias_probe__.ts`
+    writeFileSync(probe, [
+      "import { getStripe } from '@/lib/stripe'",
+      'export async function payViaAlias(dest: string) {',
+      '  const t = getStripe().transfers',
+      '  return t.create({ amount: 100, currency: "eur", destination: dest })',
+      '}',
+      '',
+    ].join('\n'), 'utf8')
+    try {
+      const walked = walk(dir)
+      const hits = stripeAliasSites(walked).filter((h) => h.file === walked[0])
+      expect(hits).toEqual([{ file: walked[0], line: 4, alias: 't.create' }])
+      // and it is invisible to the text oracle — which is exactly why the property above is asserted
+      expect(writeSites(walked)).toEqual([])
+    } finally { rmSync(dir, { recursive: true, force: true }) }
+  })
+
+  it('T-109 — A REAL NEW FILE with an undeclared write is CAUGHT, end to end', () => {
+    /* FOUNDER ARBITRATION (T-109): « Je veux que l'oracle prouve que tout nouveau site Stripe financier
+       ajouté ultérieurement devra lui aussi déclarer explicitement son autorisation. »
+       Every control above reasons about STRINGS. This one writes an actual file, re-runs the SHIPPED walk over
+       a real filesystem, and requires the site to come back NAKED. It proves the mechanism rather than the
+       algorithm: an extension filter that misses `.ts`, a swallowed readdir, a guard rule that degraded into
+       proximity — each would pass every string-level control and fail this one.
+
+       TWO CORRECTIONS, both made after this test had been green for a whole lot.
+       (1) T-120 — it used to write into `lib/`. Running the full suite then failed THREE unrelated files with
+           `ENOENT … lib/__t118_*_probe__.ts` once three more probes joined it: vitest runs files in parallel
+           workers, many suites in this repository walk `lib/` and read every file they list, and a probe that
+           lives for milliseconds is long enough to be listed and gone before it is read. A test that mutates
+           the source tree can fail code it never meant to touch. The probe writes to an OS temp dir now; that
+           the shipped roots really are `lib/`, `app/` and `scripts/` is proven unconditionally above, over the
+           real `SOURCES`.
+       (2) It used to RE-IMPLEMENT the guard rule inline — a copy of the 30-line lookback, pasted into the
+           test. A re-implementation proves the algorithm and never the code that runs in CI: the shipped
+           function could have rotted while this test stayed green on its private copy. It now calls
+           `writeSites` itself. */
+    const dir = sandbox()
+    const probe = `${dir}/__t109_oracle_probe__.ts`
+    const body = [
+      "import { getStripe } from '@/lib/stripe'",
+      'export async function payAnUnsuspectingPartner(dest: string) {',
+      '  return getStripe().transfers.create({ amount: 100, currency: "eur", destination: dest })',
+      '}',
+      '',
+    ].join(String.fromCharCode(10))
+    try {
+      writeFileSync(probe, body, 'utf8')
+      // The walk is run fresh: SOURCES was built at module load, before this file existed.
+      const walked = walk(dir)
+      expect(walked, 'the SHIPPED walk must SEE a file created after module load').toHaveLength(1)
+      const found = writeSites(walked)
+      expect(found, 'the probe write was not detected at all').toHaveLength(1)
+      expect(found[0].verb).toBe('transfers.create')
+      expect(found[0].guarded, 'a NEW financial site with no declaration must be reported NAKED').toBe(false)
+    } finally {
+      try { rmSync(dir, { recursive: true, force: true }) } catch { /* best-effort */ }
+    }
+    expect(existsSync(probe), 'the probe must not survive the test').toBe(false)
+    // and nothing was ever created inside the real source tree
+    expect(existsSync('lib/__t109_oracle_probe__.ts')).toBe(false)
+  })
+
+  it('T-109 — all three payout rails obey the SAME guard, each with its OWN functional flag', () => {
+    /* FOUNDER ARBITRATION: « ils obéissent tous au même invariant de sécurité au niveau LEAF / money-write
+       guard … chaque rail peut conserver son autorisation fonctionnelle propre … mais aucun ne doit pouvoir
+       contourner le garde financier commun. » One guard, three flags — and the creator rail's flag is now a
+       real internal gate rather than `() => true` (T-90-ter). */
+    const src = read('lib/creator-payout.ts')!
+    // ONE guard, at the single shared write point
+    expect((src.match(/assertMoneyWriteAllowed\(/g) || []).length).toBe(1)
+    expect(src).toContain("authorization: 'partner_payout_rail_open',")
+    expect(src).toContain('flag: PAYOUT_FLAG_BY_ROLE[role],')
+    // THREE functional authorizations, each its own, none of them a literal
+    expect(src).toContain("creator:   'CREATOR_PAYOUT_ENABLED',")
+    expect(src).toContain("affiliate: 'AFFILIATE_CONNECT_ENABLED',")
+    expect(src).toContain("logistics: 'LOGISTICS_PAYOUT_ENABLED',")
+    // and EVERY adapter reads a flag — no rail is open by construction any more
+    expect(src).toContain('enabled:        () => isCreatorPayoutEnabled(),')
+    expect(src).toContain('enabled:        () => isAffiliateConnectEnabled(),')
+    expect(src).toContain('enabled:        () => isLogisticsPayoutEnabled(),')
+    expect(src, 'T-90-ter: no rail may be enabled by construction').not.toContain('enabled:        () => true,')
+    // the guard refuses a flag outside the declared set — a fourth rail cannot smuggle itself in
+    expect(PARTNER_PAYOUT_FLAGS).toEqual(['CREATOR_PAYOUT_ENABLED', 'AFFILIATE_CONNECT_ENABLED', 'LOGISTICS_PAYOUT_ENABLED'])
+    expect(() => assertMoneyWriteAllowed({
+      verb: 'transfers.create', authorization: 'partner_payout_rail_open',
+      why: 'test', railOpen: true, flag: 'SOME_OTHER_FLAG',
+    })).toThrow(/is not one of/)
   })
 
   it('NEGATIVE CONTROL — the walk really would catch an undeclared write', () => {
@@ -223,9 +483,15 @@ describe('T-90 — each initiating write passes its module\'s own gate, not a ha
     expect(src).toContain("creator:   'CREATOR_PAYOUT_ENABLED',")
     expect(src).toContain("affiliate: 'AFFILIATE_CONNECT_ENABLED',")
     expect(src).toContain("logistics: 'LOGISTICS_PAYOUT_ENABLED',")
-    // AND THE RESIDUAL, STATED WHERE IT LIVES: the creator rail's own gate is `() => true`.
-    expect(src).toContain('enabled:        () => true,')
-    expect(src).toContain('for `creator` that gate is literally `() => true`')
+    /* THE RESIDUAL THIS TEST ONCE DOCUMENTED IS CLOSED. It asserted `enabled: () => true` on the creator
+       adapter, because the previous lot deliberately did NOT tighten a rail that might be paying creators
+       today on a guess about a production env var — and said so rather than acting. The founder then ruled
+       (T-90-ter): « le rail créateur doit avoir une vraie autorisation interne explicite ». So the assertion
+       INVERTS: no rail may be open by construction, and the creator rail reads its own flag. */
+    expect(src).not.toContain('enabled:        () => true,')
+    expect(src).toContain('enabled:        () => isCreatorPayoutEnabled(),')
+    expect(src).toContain('T-90-ter — FOUNDER ARBITRATION')
+    expect(src).toContain('CREATOR_PAYOUT_ENABLED, not a borrowed one')
   })
 
   it('NO site anywhere passes a literal — that is the one way to make the declaration meaningless', () => {

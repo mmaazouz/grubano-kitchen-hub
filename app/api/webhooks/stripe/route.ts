@@ -6,7 +6,7 @@ import { getStripe, mapAccountStatus, retrieveChargeFacts, type DepositStatus } 
 import { releaseHold } from '@/lib/deposit'
 import { recordLedgerEntry, type LedgerEntryInput } from '@/lib/ledger'
 import { reconcileLoyaltyOnRefund } from '@/lib/loyalty-refund-apply'
-import { isChargebacksEnabled, handleDisputeEvent } from '@/lib/dispute'
+import { isChargebacksEnabled, handleDisputeEvent, recordDisputeObservation } from '@/lib/dispute'
 import { isGhostOrderAutoRefundEnabled, isRefundsEnabled, executeRefund, computeRefundSplit, finalizeRefundRowFromStripe, markRefundRowFailed } from '@/lib/refund'
 import { assertChargeNotDisputed } from '@/lib/refund-dispute-guard'
 import { preflightRefundFunding } from '@/lib/refund-preflight'
@@ -132,11 +132,37 @@ export async function POST(req: Request) {
   //        on a LOST dispute, UNWIND the sale (reverse the resto's net + clawback the
   //        franchise royalty, NO refund_application_fee — see lib/dispute).
   if (event.type.startsWith('charge.dispute.')) {
+    /* T-107 (founder arbitration) — THE FLAG STOPS THE UNWIND, NOT THE RECORD. With CHARGEBACKS_ENABLED
+       closed this branch used to answer `{gated:true}` and do NOTHING: no Dispute row, no alert. Stripe had
+       already pulled the funds from the platform balance, the restaurant was still invoiced for the order,
+       and nothing in our books knew. Same principle as a `refund.updated → succeeded` delivery: a flag must
+       prevent INITIATING a financial operation, never prevent recording an external reality that has already
+       happened. `recordDisputeObservation` makes NO Stripe call of any kind — everything it writes comes from
+       the signed event and from our own database — so this path cannot move money even in principle. */
     if (!isChargebacksEnabled()) {
-      return NextResponse.json({ received: true, ignored: event.type, gated: true })
+      try {
+        const recorded = await recordDisputeObservation(event)
+        if (recorded.retryable) {
+          // The record itself failed. Stripe redelivers; the fact is worth more than a tidy 200.
+          return NextResponse.json({ received: false, ...recorded }, { status: 503 })
+        }
+        return NextResponse.json({ received: true, ...recorded, gated: true })
+      } catch (err) {
+        console.error('[stripe webhook] dispute RECORD-ONLY failed:', err instanceof Error ? err.message : err)
+        return NextResponse.json({ error: 'Dispute record failed — retry' }, { status: 503 })
+      }
     }
     try {
       const result = await handleDisputeEvent(event)
+      /* T-106 — NO MISLEADING 200. A `retryable` outcome means money moved (or may have) at Stripe while our
+         internal state is NOT finalized: no coherent ledger line, `splitReversed` still false. Answering 200
+         would tell Stripe everything is settled and it would never ask again — the exact shape that let a
+         restaurant be debited with nothing in our books. 503 asks for the redelivery that completes it, and
+         the redelivery ADOPTS the existing reversals rather than making new ones. */
+      if (result.retryable) {
+        console.error(`[stripe webhook] dispute ${event.id} NOT finalized (${result.reason}) — answering 503 so Stripe redelivers`)
+        return NextResponse.json({ received: false, ...result }, { status: 503 })
+      }
       return NextResponse.json({ received: true, ...result })
     } catch (err) {
       console.error('[stripe webhook] dispute handler error:', err instanceof Error ? err.message : err)
@@ -778,6 +804,8 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
       : (charge.transfer_data?.destination as { id?: string } | null | undefined)?.id ?? null
 
     let recorded = 0
+    // T-106 (second instance): lines that SHOULD exist and do not. A duplicate is not a miss.
+    let ledgerMissed = 0
     for (let i = 0; i < refunds.length; i++) {
       const r = refunds[i]
       const feeBack = feeMatch.byRefundId.get(r.id) ?? 0
@@ -820,6 +848,13 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
       })
       if (!res.ok) {
         console.error(`[LEDGER MISS] refund line failed for ${r.id}: ${res.error} — charge ${charge.id}, amount ${r.amount}, feeBack ${feeBack}`)
+        /* T-106, SECOND INSTANCE — found by the final invariant review, on the REFUND side of the same
+           defect class. A ledger line that failed to write was a logged shrug and the handler still answered
+           200, so Stripe never redelivered: the customer's money was refunded and the books held nothing.
+           Exactly what the founder's rule forbids — « une trace ledger cohérente AVANT qu'on considère
+           l'événement comme correctement traité ». The miss is counted and the answer becomes 503; the
+           redelivery re-attempts the line, which is idempotent on its `re_` (sourceEventId). */
+        ledgerMissed++
       } else if (!res.duplicate) {
         recorded++
       }
@@ -927,6 +962,26 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
       console.error('[TIP CLAWBACK MISS] failed (refund unaffected):', e instanceof Error ? e.message : e)
     }
 
+    /* T-106 (second instance) — NO MISLEADING 200 ON THE REFUND SIDE EITHER. The loyalty reconciliation and
+       the tip clawback above are deliberately best-effort (money is already done and they are points, not
+       cash), so they do NOT make the event retryable. A missing LEDGER line does: it is the record of real
+       money, and a 200 would end Stripe's redeliveries with the books incomplete. */
+    if (ledgerMissed > 0) {
+      console.error(`[stripe webhook] charge.refunded ${charge.id}: ${ledgerMissed} refund ledger line(s) NOT written — answering 503 so Stripe redelivers`)
+      try {
+        await sendAdminMoneyReviewAlert({
+          kind:      'refund_reconciliation_incomplete',
+          dedupeKey: `refund_ledger_missed:${charge.id}`,
+          title:     'Ligne de ledger de remboursement NON écrite — l’argent est parti, les livres ne le portent pas',
+          facts: {
+            chargeId: charge.id, restaurantId, missed: ledgerMissed, recorded,
+            refunds: refunds.length,
+            action: 'AUCUNE action Stripe : la redélivrance réécrit la ligne (idempotente sur le re_). Si le 503 persiste, la cause est côté base.',
+          },
+        })
+      } catch { /* the console.error above is the primary channel */ }
+      return NextResponse.json({ received: false, refunds: refunds.length, recorded, ledgerMissed }, { status: 503 })
+    }
     return NextResponse.json({ received: true, refunds: refunds.length, recorded })
   } catch (err) {
     console.error('[stripe webhook] charge.refunded handler error:', err instanceof Error ? err.message : err)

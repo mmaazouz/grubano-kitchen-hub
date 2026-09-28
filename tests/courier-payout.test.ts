@@ -8,7 +8,7 @@ import { Prisma } from '@prisma/client'
 // LOGISTICS_PAYOUT_ENABLED gates it OFF (inert); and the creator + affiliate rails are
 // UNAFFECTED by the logistics flag. Balance + Stripe + Prisma mocked — no real money.
 
-const { stripeMock } = vi.hoisted(() => ({ stripeMock: { transfers: { create: vi.fn() } } }))
+const { stripeMock } = vi.hoisted(() => ({ stripeMock: { transfers: { create: vi.fn(), list: vi.fn() } } }))
 vi.mock('@/lib/stripe', () => ({ getStripe: () => stripeMock }))
 
 const { db } = vi.hoisted(() => ({
@@ -28,6 +28,13 @@ vi.mock('@/lib/partner-balance', () => ({ computePartnerBalance: balMock }))
 import { payPartner } from '@/lib/creator-payout'
 
 beforeEach(() => {
+  // T-112: a RESUME now asks Stripe whether the transfer already exists (adopt-or-refuse), because the
+  // Stripe idempotency key is pruned after ~24 h. Default: Stripe holds nothing → the resume creates.
+  stripeMock.transfers.list.mockResolvedValue({ has_more: false, data: [] })
+  // T-90-ter: the creator rail now reads its OWN gate (CREATOR_PAYOUT_ENABLED), fail-closed, instead of
+  // `enabled: () => true`. Production checks the same flag at app/api/admin/creator-payouts/run, so the
+  // suite says here what production says. Its ABSENCE is exercised by a test of its own below.
+  process.env.CREATOR_PAYOUT_ENABLED = 'true'
   vi.clearAllMocks()
   delete process.env.CREATOR_PAYOUT_MIN_CENTS
   process.env.LOGISTICS_PAYOUT_ENABLED = 'true' // ON for the happy-path tests; the flag-OFF test overrides
@@ -41,7 +48,7 @@ beforeEach(() => {
   stripeMock.transfers.create.mockResolvedValue({ id: 'tr_l1' })
   balMock.mockResolvedValue({ role: 'logistics', refId: 'lp1', earnedCents: 5000, paidCents: 0, availableCents: 5000, currency: 'eur' })
 })
-afterEach(() => { delete process.env.LOGISTICS_PAYOUT_ENABLED; delete process.env.CREATOR_PAYOUT_MIN_CENTS })
+afterEach(() => { delete process.env.CREATOR_PAYOUT_ENABLED; delete process.env.LOGISTICS_PAYOUT_ENABLED; delete process.env.CREATOR_PAYOUT_MIN_CENTS })
 
 describe('(a) logistics happy path — right entity / balance / Payout', () => {
   it('pays the courier LogisticsProfile Connect, Payout{role:logistics, logisticsProfileId}', async () => {
@@ -127,8 +134,10 @@ describe('(d) flag gate — LOGISTICS_PAYOUT_ENABLED', () => {
     expect(stripeMock.transfers.create).not.toHaveBeenCalled()
   })
 
-  it('the CREATOR rail is UNAFFECTED by the logistics flag (no internal gate)', async () => {
+  it('the CREATOR rail is UNAFFECTED by the logistics flag (each rail reads only its OWN gate)', async () => {
     delete process.env.LOGISTICS_PAYOUT_ENABLED // logistics OFF
+    // T-90-ter: the creator rail's own gate stays OPEN here — the property under test is INDEPENDENCE
+    // between rails, not the absence of a gate. Since T-90-ter it HAS one, and it is not this flag.
     balMock.mockResolvedValue({ role: 'creator', refId: 'c1', earnedCents: 5000, paidCents: 0, availableCents: 5000, currency: 'eur' })
     const out = await payPartner('creator', 'c1')
     expect(out).toEqual({ status: 'paid', role: 'creator', refId: 'c1', amountCents: 5000, stripeTransferId: 'tr_l1', resumed: false })

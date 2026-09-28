@@ -119,6 +119,27 @@ describe('PRE-L11 — the money flags and the provenance watch list cannot drift
     }
   })
 
+  it('T-119 — the two money-OUT rail flags are required FALSE, not merely printed', () => {
+    /* Found by the final invariant review. These two are the sole gates on the only writes in the repository
+       that PAY a third party rather than recover from one — a franchisor settlement and a partner payout —
+       and both sat in MONEY_ADJACENT_KEYS, i.e. reported as a line of text. A value injected through the
+       cPanel Node.js selector (the channel the spec forbids, and one this repository has already measured
+       live for three keys) would therefore have been printed while the rail it opens stayed open. */
+    for (const k of ['FRANCHISE_SETTLEMENT_ENABLED', 'CREATOR_PAYOUT_ENABLED']) {
+      expect(prov.MONEY_FLAGS_MUST_BE_FALSE, k).toContain(k)
+      expect(prov.WATCHED_SECRET_KEYS, k).toContain(k)
+      // never in both lists: a key required false that is also merely 'adjacent' invites a future demotion
+      expect(prov.MONEY_ADJACENT_KEYS, k).not.toContain(k)
+    }
+    // and each really is the sole in-module gate on a `transfers.create` — measured, not assumed
+    const settlement = readFileSync('lib/franchise-settlement.ts', 'utf8')
+    expect(settlement).toContain("process.env.FRANCHISE_SETTLEMENT_ENABLED === 'true'")
+    expect(settlement).toContain('transfers.create(')
+    const payout = readFileSync('lib/creator-payout.ts', 'utf8')
+    expect(payout).toContain("process.env.CREATOR_PAYOUT_ENABLED === 'true'")
+    expect(payout).toContain('transfers.create(')
+  })
+
   it('T-100 — CHARGEBACKS_ENABLED is required false, because it is the ONLY gate on two transfer reversals', () => {
     // lib/dispute.ts:242 debits the RESTAURANT's connected account and :264 the FRANCHISOR's, and the
     // only thing holding them back is this flag — read in ONE place, from a PUBLIC signed webhook, with

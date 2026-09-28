@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto'
 import { Prisma } from '@prisma/client'
 import { getStripe } from '@/lib/stripe'
 // T-90: the declaration every financial Stripe write in this file must make. LEAF module, no cycle.
-import { assertMoneyWriteAllowed } from '@/lib/stripe-money-guard'
+import { assertMoneyWriteAllowed, escalateIfPolicyRefusal, isMoneyPolicyRefusal } from '@/lib/stripe-money-guard'
 import { prisma } from '@/lib/prisma'
 import { recordPartnerTransferLedgerEntry } from '@/lib/ledger'
 import { sendAdminMoneyReviewAlert } from '@/lib/admin-alerts'
@@ -79,6 +79,10 @@ type BatchPayout    = { id: string; amountCents: number; currency: string; statu
 
 const PAYOUT_SELECT = { id: true, amountCents: true, currency: true, status: true, stripeTransferId: true } as const
 const LINE_SELECT   = { id: true, royaltyCents: true, refundedCents: true, settlementId: true } as const
+
+/** T-115 — a plausibility bound on the hold list. Above it the run refuses rather than sending a huge
+ *  `notIn`: a chargeback rate that high is a fault to investigate, not a filter to apply. */
+const MAX_HELD_ORDER_IDS = 5000
 
 /** Royalty STILL owed to the franchisor for one line = held-back minus what was
  *  refunded to the customer (P4.5-A). `refundedCents` is null/absent on legacy rows
@@ -307,6 +311,20 @@ async function detectOverTransfer(operatorId: string, settlementId: string, tran
  * on a schedule — never settles the same line twice.
  */
 export async function settleFranchisor(operatorId: string): Promise<SettlementOutcome> {
+  /* T-116 — REFUSE BEFORE THE CLAIM, NOT ONLY BEFORE THE TRANSFER.
+     Found by the final invariant review. The declaration inside `finalizeBatch` is the right guard on the
+     MOVEMENT, but it is read ~120 lines and one atomic UPDATE too late to protect the STATE: the claim below
+     flips N royalty lines out of 'pending' into 'settling' before any gate is consulted, and there is no
+     revert path. A caller that reaches this function with the rail closed — a future cron, a script, a direct
+     import that skips the route's 403 — therefore moved no money (the guard refuses correctly) but left the
+     franchisor's royalties permanently parked: 'settling' is not re-claimable, and the only exit is the
+     resume branch, which re-enters `finalizeBatch` and refuses again. An absorbing state reached by a SAFETY
+     refusal is the exact failure this chantier has already paid for once (the 'pending' Refund ghost row).
+     Refused here, nothing is claimed, and every line stays 'pending' for the day the rail is authorized.
+     A `skipped` outcome rather than a throw, because this function's contract is a SettlementOutcome. */
+  if (!isFranchiseSettlementEnabled()) {
+    return { status: 'skipped', operatorId, reason: 'rail_closed' }
+  }
   const op = await prisma.operator.findUnique({
     where:  { id: operatorId },
     select: { id: true, franchiseStripeAccountId: true, franchisePayoutStatus: true },
@@ -344,7 +362,11 @@ export async function settleFranchisor(operatorId: string): Promise<SettlementOu
     }
     try {
       return await finalizeBatch(ref, settlementId, batch, true)
-    } catch {
+    } catch (err) {
+      // T-104 — the RESUME branch had the SAME bare catch as the fresh one, and the final review caught that
+      // only the fresh path had been wired. A refusal here is escalated and re-thrown, exactly as there.
+      await escalateIfPolicyRefusal(err, { verb: 'transfers.create', where: 'lib/franchise-settlement.settleFranchisor:resume', amountCents: null }, sendAdminMoneyReviewAlert)
+      if (isMoneyPolicyRefusal(err)) throw err
       return { status: 'failed', operatorId, reason: 'transfer_failed_resume' }
     }
   }
@@ -363,10 +385,43 @@ export async function settleFranchisor(operatorId: string): Promise<SettlementOu
     return { status: 'skipped', operatorId, reason: 'below_threshold' }
   }
 
+  /* T-115 — DO NOT PAY A ROYALTY ON A SALE STRIPE ALREADY TOOK BACK.
+     Found by the final invariant review, on the dispute side: while `CHARGEBACKS_ENABLED` is closed a LOST
+     chargeback is now RECORDED (T-107) but no unwind runs, so `FranchiseRoyalty.refundedCents` is never
+     reduced — and `netOwedCents` therefore still reports the FULL royalty as owed. The settlement would pay
+     the franchisor for revenue the platform no longer has.
+     The tempting fix — write the royalty slice down at observation time — was REJECTED, because computing
+     that slice needs the charge total and the application fee, which only Stripe knows, and
+     `recordDisputeObservation` is defined by making no Stripe call at all. A number I cannot derive is a
+     number I must not write; the whole chantier has already paid for one invented-but-plausible fact.
+     So the refusal happens where the money would actually leave, using a fact we DO hold: an order carrying
+     a dispute that is `lost` and NOT yet `splitReversed` is held back from the batch. Its lines stay
+     'pending' — the re-claimable state, not an absorbing one — and become settleable the moment the unwind
+     runs and writes the real, Stripe-derived slice.
+     Only the FRESH claim is filtered. A resume re-drives a batch that was already claimed and may already
+     have an executed transfer; dropping a line from it would fight the amount-drift detector and could strand
+     a franchisor's whole batch. That case is bounded by the same drift check that already guards it. */
+  const unwound = await prisma.dispute.findMany({
+    where:  { status: 'lost', splitReversed: false, NOT: { orderId: null } },
+    select: { orderId: true },
+  })
+  const heldOrderIds = Array.from(new Set(unwound.map((d) => d.orderId).filter((id): id is string => !!id)))
+  if (heldOrderIds.length > MAX_HELD_ORDER_IDS) {
+    /* A list this long is not a normal chargeback rate — it is a data or query fault, and a `notIn` of that
+       size is a query I would rather not send than send blind. Skip: settling later costs nothing, settling
+       wrongly costs money. */
+    console.error(`[franchise settlement] [MONEY REVIEW] ${heldOrderIds.length} un-unwound lost disputes — refusing to build the claim`)
+    return { status: 'skipped', operatorId, reason: 'too_many_held_disputes' }
+  }
+
   // ATOMIC CLAIM — one UPDATE; concurrent runs get disjoint sets (the loser claims 0).
   const settlementId = randomUUID()
   const claim = await prisma.franchiseRoyalty.updateMany({
-    where: { franchisorOperatorId: operatorId, status: 'pending' },
+    where: {
+      franchisorOperatorId: operatorId,
+      status: 'pending',
+      ...(heldOrderIds.length ? { orderId: { notIn: heldOrderIds } } : {}),
+    },
     data:  { status: 'settling', settlementId },
   })
   if (claim.count === 0) return { status: 'skipped', operatorId, reason: 'nothing_pending' }
@@ -389,7 +444,13 @@ export async function settleFranchisor(operatorId: string): Promise<SettlementOu
 
   try {
     return await finalizeBatch(ref, settlementId, lines, false)
-  } catch {
+  } catch (err) {
+    /* T-104 — THIS CATCH USED TO DISCARD THE ERROR ENTIRELY (`catch {}`), so a guard refusal became
+       `'transfer_failed'`, i.e. « retry me ». A refusal is a code defect on a money path: it is escalated to
+       MONEY REVIEW and re-thrown. A genuine transfer or DB failure still falls through to the recoverable
+       outcome below — that part was right and is unchanged. */
+    await escalateIfPolicyRefusal(err, { verb: 'transfers.create', where: 'lib/franchise-settlement.settleFranchisor', amountCents: null }, sendAdminMoneyReviewAlert)
+    if (isMoneyPolicyRefusal(err)) throw err
     // Transfer or DB finalize failed → batch stays 'settling' / Payout 'pending'
     // (recoverable on re-run via RESUME). Layers 3+4 prevent a double on retry.
     return { status: 'failed', operatorId, reason: 'transfer_failed' }

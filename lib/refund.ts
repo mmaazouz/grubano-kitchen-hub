@@ -57,7 +57,7 @@ import { Prisma } from '@prisma/client'
 import { getStripe } from '@/lib/stripe'
 import { prisma } from '@/lib/prisma'
 // T-90: the declaration every financial Stripe write in this file must make. LEAF module, no cycle.
-import { assertMoneyWriteAllowed, logMoneyWrite } from '@/lib/stripe-money-guard'
+import { assertMoneyWriteAllowed, logMoneyWrite, escalateIfPolicyRefusal, isMoneyPolicyRefusal } from '@/lib/stripe-money-guard'
 import { recordRefundLedgerEntry } from '@/lib/ledger'
 import { recomputeRoyaltyRefundedCents } from '@/lib/royalty-refunded'
 import { recoveredRoyaltyClawbackCents, capClawback } from '@/lib/royalty-recovered'
@@ -592,6 +592,14 @@ async function finalizeRefund(
             royaltyClawbackCents = amount
           }
         } catch (err) {
+          /* T-104, THE HOLE THE FINAL REVIEW FOUND IN T-104 ITSELF. Two independent surfaces reported that
+             lib/refund.ts — the LARGEST declaring module — was the only one that never classified a guard
+             refusal: this catch turned a `MoneyWriteRefused` into a 502 « réessayez », i.e. the exact
+             degradation the ticket exists to forbid. Worse, the T-104 test LISTED this file among the
+             declaring ones and then iterated only the other four, so the gap was invisible to the very
+             oracle written to prevent it. Classified first now: a refusal is escalated and re-thrown. */
+          await escalateIfPolicyRefusal(err, { verb: 'transfers.createReversal', where: 'lib/refund.finalizeRefund:clawback', orderId: order.id, amountCents: amount }, sendAdminMoneyReviewAlert)
+          if (isMoneyPolicyRefusal(err)) throw err
           if (err instanceof ResumeListUnavailable || err instanceof ResumeIdempotencyExpired) return fatal(err)
           // Refund succeeded for the customer, but recovering the royalty from the
           // franchisor failed → leave the row 'pending' so the next call resumes the
@@ -767,6 +775,10 @@ export async function finalizeRefundRowFromStripe(rowId: string, source: RefundF
   try {
     stripeRefund = await driveRefund(row, pi, routed, false, /* adoptOnly */ true)
   } catch (err) {
+    // T-104: `driveRefund` DECLARES `refunds.create`, so this catch can receive a refusal. A refusal
+    // is a code defect on a money path, never the 502 « réessayez » that `fatal` would produce.
+    await escalateIfPolicyRefusal(err, { verb: 'refunds.create', where: 'lib/refund.finalizeRefundRowFromStripe' }, sendAdminMoneyReviewAlert)
+    if (isMoneyPolicyRefusal(err)) throw err
     return fatal(err)
   }
   return finalizeRefund(row, orderRef, royalty, pi, charge, stripeRefund, routed, true)
@@ -854,6 +866,10 @@ export async function executeRefund(input: {
     try {
       stripeRefund = await driveRefund(pending, pi, routed, false)
     } catch (err) {
+      // T-104: `driveRefund` DECLARES `refunds.create`, so this catch can receive a refusal. A refusal
+      // is a code defect on a money path, never the 502 « réessayez » that `fatal` would produce.
+      await escalateIfPolicyRefusal(err, { verb: 'refunds.create', where: 'lib/refund.executeRefund:resume' }, sendAdminMoneyReviewAlert)
+      if (isMoneyPolicyRefusal(err)) throw err
       return fatal(err)
     }
     const ignored = input.amountCents !== undefined && input.amountCents !== pending.amountCents
@@ -916,6 +932,10 @@ export async function executeRefund(input: {
   try {
     stripeRefund = await driveRefund(row, pi, routed, true)
   } catch (err) {
+    // T-104: `driveRefund` DECLARES `refunds.create`, so this catch can receive a refusal. A refusal
+    // is a code defect on a money path, never the 502 « réessayez » that `fatal` would produce.
+    await escalateIfPolicyRefusal(err, { verb: 'refunds.create', where: 'lib/refund.executeRefund:fresh' }, sendAdminMoneyReviewAlert)
+    if (isMoneyPolicyRefusal(err)) throw err
     return fatal(err)
   }
   return finalizeRefund(row, orderRef, royalty, pi, charge, stripeRefund, routed, false)

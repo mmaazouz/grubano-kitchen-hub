@@ -1,7 +1,8 @@
 import { Prisma } from '@prisma/client'
 import { getStripe } from '@/lib/stripe'
 // T-90: the declaration every financial Stripe write in this file must make. LEAF module, no cycle.
-import { assertMoneyWriteAllowed, type PartnerPayoutFlag } from '@/lib/stripe-money-guard'
+import { assertMoneyWriteAllowed, escalateIfPolicyRefusal, isMoneyPolicyRefusal, type PartnerPayoutFlag } from '@/lib/stripe-money-guard'
+import { sendAdminMoneyReviewAlert } from '@/lib/admin-alerts'
 import { prisma } from '@/lib/prisma'
 import { computePartnerBalance, type PartnerBalanceRole } from '@/lib/partner-balance'
 import { payoutMinCents } from '@/lib/payout-threshold'
@@ -50,13 +51,30 @@ import { recordPartnerTransferLedgerEntry } from '@/lib/ledger'
 // minimum threshold → skip (no transfer). The partner must have an ACTIVE Connect
 // account (P4.1) → else skip with a reason. Cent-exact.
 
+/** T-112 — Stripe prunes idempotency keys after ~24 h; 20 h is the same conservative margin the refund rail
+ *  uses (lib/refund.ts RESUME_CREATE_WINDOW_MS). Past it, a re-sent key is a NEW transfer. */
+export const PAYOUT_RESUME_WINDOW_MS = 20 * 60 * 60 * 1000
+
+/** T-112 — a resume that cannot PROVE whether the transfer already exists. Fails closed; never creates. */
+export class PayoutResumeUnprovable extends Error {
+  constructor(payoutId: string, why: string) { super(`payout ${payoutId}: ${why}`); this.name = 'PayoutResumeUnprovable' }
+}
+/** T-112 — a resume past the idempotency window with nothing to adopt. Refuses; a human completes it. */
+export class PayoutResumeExpired extends Error {
+  constructor(payoutId: string, ageMs: number) {
+    super(`payout ${payoutId}: ${Math.round(ageMs / 3600000)} h old, past the ${PAYOUT_RESUME_WINDOW_MS / 3600000} h idempotency window and no transfer to adopt — a re-sent key would be a SECOND transfer`)
+    this.name = 'PayoutResumeExpired'
+  }
+}
+
 export function isCreatorPayoutEnabled(): boolean {
   return process.env.CREATOR_PAYOUT_ENABLED === 'true'
 }
 
 /** Affiliate payout/Connect kill-switch (Brique D1) — default OFF. Same env var the
  *  connect-onboarding 'affiliate' beneficiary reads, so the affiliate payout rail and
- *  its onboarding open together. The CREATOR rail is unaffected (no internal gate). */
+ *  its onboarding open together. The CREATOR rail is unaffected — it reads its OWN gate
+ *  (CREATOR_PAYOUT_ENABLED) since T-90-ter; before that it had none. */
 export function isAffiliateConnectEnabled(): boolean {
   return process.env.AFFILIATE_CONNECT_ENABLED === 'true'
 }
@@ -94,7 +112,8 @@ export type PartnerPayoutOutcome =
   | { status: 'skipped'; role: PayoutPartnerRole; refId: string; reason: string }
   | { status: 'failed';  role: PayoutPartnerRole; refId: string; reason: string }
 
-type PendingPayout = { id: string; amountCents: number; currency: string; idempotencyKey: string | null }
+// T-112: `createdAt` is load-bearing — it is what bounds the Stripe idempotency window on a resume.
+type PendingPayout = { id: string; amountCents: number; currency: string; idempotencyKey: string | null; createdAt?: Date | string | null }
 type PartnerRef    = { id: string; stripeAccountId: string }
 // The beneficiary reference column for this role (exactly one set per Payout row).
 type RefData = { creatorId: string } | { operatorId: string } | { logisticsProfileId: string }
@@ -125,7 +144,19 @@ const ADAPTERS: Record<PayoutPartnerRole, RoleAdapter> = {
   creator: {
     balanceRole:    'creator',
     notFoundReason: 'creator_not_found',
-    enabled:        () => true,
+    /* T-90-ter — FOUNDER ARBITRATION (2026-09-28): « le rail créateur doit avoir une vraie autorisation
+       interne explicite. Je ne veux pas d'un enabled() => true sur un chemin capable de déclencher une
+       écriture financière. »
+       It was `() => true`, with the flag checked only at app/api/admin/creator-payouts/run. That made the
+       creator rail the ONE payout rail with no lock on the inside: any future caller — an admin replay route,
+       a reconciliation cron, a sweeper — reached `transfers.create` with nothing to object.
+       The flag is CREATOR_PAYOUT_ENABLED, not a borrowed one: it is this rail's own kill-switch, the same one
+       the route reads and the same one scripts/check-flags.mjs already couples to CREATOR_CONNECT_ENABLED and
+       CREATOR_ENABLED. Taking CREATOR_ENABLED instead would have been the « arbitrary reuse » the arbitration
+       forbids — that flag governs whether the creator ROLE is visible, not whether money may leave.
+       FAIL-CLOSED: absent ⇒ false ⇒ payPartner('creator') is inert (`rail_disabled`, no entity, no DB, no
+       Stripe), exactly like the affiliate and logistics rails. With the flag ON the behaviour is unchanged. */
+    enabled:        () => isCreatorPayoutEnabled(),
     loadAccount:    (refId) => prisma.creator.findUnique({
       where:  { id: refId },
       select: { stripeAccountId: true, payoutStatus: true },
@@ -176,26 +207,68 @@ async function settlePending(
      list of six files rather than the filesystem. This is a Transfer that PAYS a partner — a creator, an
      affiliate or a courier — from a rail a scheduled job can poke, and it declared nothing at all.
      The flag differs by role, so the declaration names it. `adapter.enabled()` is the gate `payPartner`
-     already applies; for `creator` that gate is literally `() => true` (the flag lives at the admin
-     route), which is a residual recorded as a ticket rather than tightened here: refusing a payout the
-     product may be making today, on a guess about a production env var, is worse than the exposure. */
-  assertMoneyWriteAllowed({
-    verb: 'transfers.create',
-    authorization: 'partner_payout_rail_open',
-    flag: PAYOUT_FLAG_BY_ROLE[role],
-    railOpen: ADAPTERS[role].enabled(),
-    why: `paying a ${role} partner a settled payout (${resumed ? 'resume of a pending row' : 'fresh'})`,
-    amountCents: payout.amountCents,
-  })
-  const transfer = await getStripe().transfers.create(
-    {
-      amount:      payout.amountCents,
-      currency:    payout.currency,
-      destination: ref.stripeAccountId,
-      metadata:    { ...refData, payoutId: payout.id },
-    },
-    { idempotencyKey },
-  )
+     already applies — and since T-90-ter (founder arbitration) EVERY adapter reads its own flag, the creator
+     one included: no rail is open by construction any more. */
+  /* The DECLARATION lives immediately before the CREATE, further down — not here. T-112 inserted the
+     adopt-or-refuse logic between the two, and the enumeration oracle rightly reported the write as naked:
+     a guard fifty lines above a movement, with branching in between, is not a guard on that movement. An
+     ADOPTED transfer moves nothing and needs no declaration; only the create does. */
+  /* T-112 — ADOPT-OR-REFUSE ON A RESUME, THE F8 DISCIPLINE THE REFUND RAIL ALREADY HAS.
+     Found by the final invariant review. The only protection against paying a partner twice was the Stripe
+     idempotency key, and Stripe prunes those « after they are at least 24 hours old » (the same fact
+     lib/refund.ts:RESUME_CREATE_WINDOW_MS exists for). A `pending` Payout row re-driven MORE than a day later
+     — by the nightly cron, by an admin re-run, by a retry after a long outage — re-sent the SAME key past its
+     life, which Stripe treats as a NEW request: the partner is paid a second time, and `Payout.status` was
+     still 'pending' so nothing objected.
+     A resume therefore asks Stripe first. `transfers.list` for this destination is filtered on OUR metadata
+     (`payoutId`), exactly as the refund rail matches its reversals on `refundId`. A list that cannot prove
+     absence is ambiguous, so it FAILS CLOSED rather than creating; and past the idempotency window with no
+     transfer to adopt, it REFUSES instead of re-creating — a human completes it. Nothing is guessed. */
+  let adoptedTransfer: { id: string } | null = null
+  if (resumed) {
+    let list: { has_more?: boolean; data?: Array<{ id: string; metadata?: Record<string, string> }> }
+    try {
+      list = await getStripe().transfers.list({ destination: ref.stripeAccountId, limit: 100 })
+    } catch (err) {
+      console.error(`[payout] cannot prove whether ${payout.id} was already transferred:`, err instanceof Error ? err.message : err)
+      throw new PayoutResumeUnprovable(payout.id, 'transfer list unavailable')
+    }
+    if (list.has_more) throw new PayoutResumeUnprovable(payout.id, 'transfer list truncated — absence not provable')
+    adoptedTransfer = (list.data ?? []).find((t) => t.metadata?.payoutId === payout.id) ?? null
+    if (adoptedTransfer) {
+      console.warn(`[payout] transfer ${adoptedTransfer.id} already exists for payout ${payout.id} — ADOPTED, no second movement`)
+    } else {
+      const ageMs = Date.now() - new Date(payout.createdAt ?? Date.now()).getTime()
+      if (!(ageMs >= 0 && ageMs < PAYOUT_RESUME_WINDOW_MS)) {
+        // Past the window a re-sent key is a NEW transfer. Refuse, and let a human decide.
+        throw new PayoutResumeExpired(payout.id, ageMs)
+      }
+    }
+  }
+  let transfer: { id: string }
+  if (adoptedTransfer) {
+    transfer = adoptedTransfer
+  } else {
+    // T-90 / T-109 — DECLARE IMMEDIATELY BEFORE THE MOVEMENT. One guard, the rail's OWN flag named, and the
+    // caller's own gate passed in. Nothing branches between this line and the create.
+    assertMoneyWriteAllowed({
+      verb: 'transfers.create',
+      authorization: 'partner_payout_rail_open',
+      flag: PAYOUT_FLAG_BY_ROLE[role],
+      railOpen: ADAPTERS[role].enabled(),
+      why: `paying a ${role} partner a settled payout (${resumed ? 'resume of a pending row' : 'fresh'})`,
+      amountCents: payout.amountCents,
+    })
+    transfer = await getStripe().transfers.create(
+      {
+        amount:      payout.amountCents,
+        currency:    payout.currency,
+        destination: ref.stripeAccountId,
+        metadata:    { ...refData, payoutId: payout.id },
+      },
+      { idempotencyKey },
+    )
+  }
   await prisma.payout.update({
     where: { id: payout.id },
     data:  { status: 'paid', paidAt: new Date(), stripeTransferId: transfer.id },
@@ -253,12 +326,31 @@ export async function payPartner(role: PayoutPartnerRole, refId: string): Promis
   const pending = await prisma.payout.findFirst({
     where:   { role, ...refData, status: 'pending' },
     orderBy: { createdAt: 'asc' },
-    select:  { id: true, amountCents: true, currency: true, idempotencyKey: true },
+    select:  { id: true, amountCents: true, currency: true, idempotencyKey: true, createdAt: true },
   })
   if (pending) {
     try {
       return await settlePending(pending, ref, role, refData, true)
-    } catch {
+    } catch (err) {
+      // T-104 — same rule on the RESUME path: a refusal is escalated and re-thrown, never retried.
+      await escalateIfPolicyRefusal(err, { verb: 'transfers.create', where: 'lib/creator-payout.payPartner:resume', amountCents: pending.amountCents }, sendAdminMoneyReviewAlert)
+      if (isMoneyPolicyRefusal(err)) throw err
+      /* T-112 — an UNPROVABLE or EXPIRED resume is not « the transfer failed, try again »: it is « we refuse
+         to risk paying twice ». Reported under its own reason and escalated, because a re-run would make the
+         same refusal forever and the row needs a human. */
+      if (err instanceof PayoutResumeUnprovable || err instanceof PayoutResumeExpired) {
+        console.error(`[MONEY REVIEW] [payout_resume_refused] ${err.name}: ${err.message}`)
+        try {
+          await sendAdminMoneyReviewAlert({
+            kind: 'money_write_refused',
+            dedupeKey: `payout_resume_refused:${pending.id}`,
+            title: 'Reprise de versement REFUSÉE — un rejeu risquerait de payer deux fois',
+            facts: { payoutId: pending.id, role, refId, amountCents: pending.amountCents, detail: err.message,
+              action: 'NE PAS relancer : la clé d’idempotence Stripe ne protège plus. Vérifier chez Stripe si le transfert existe, puis clore la ligne à la main.' },
+          })
+        } catch { /* the log line is the primary channel */ }
+        return { status: 'failed', role, refId, reason: err instanceof PayoutResumeExpired ? 'resume_expired' : 'resume_unprovable' }
+      }
       return { status: 'failed', role, refId, reason: 'transfer_failed_resume' }
     }
   }
@@ -293,7 +385,11 @@ export async function payPartner(role: PayoutPartnerRole, refId: string): Promis
 
   try {
     return await settlePending(payout, ref, role, refData, false)
-  } catch {
+  } catch (err) {
+    /* T-104 — a BARE catch turned a guard refusal into `'transfer_failed'`, i.e. « retry me ». Classified
+       first: a refusal is escalated and re-thrown; a genuine failure still leaves the row recoverable. */
+    await escalateIfPolicyRefusal(err, { verb: 'transfers.create', where: 'lib/creator-payout.payPartner:fresh', amountCents: payout.amountCents }, sendAdminMoneyReviewAlert)
+    if (isMoneyPolicyRefusal(err)) throw err
     // Transfer or mark-paid failed → row stays 'pending' (recoverable on re-run).
     // The deterministic Stripe idempotency key guarantees no double transfer.
     return { status: 'failed', role, refId, reason: 'transfer_failed' }

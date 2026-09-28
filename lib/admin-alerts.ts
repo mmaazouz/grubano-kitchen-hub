@@ -212,6 +212,17 @@ export type MoneyReviewKind =
   // did not — reverted, failed, or not readable as succeeded. NO customer notice is sent on that reading, so
   // the fact would otherwise be silent: a row we believe paid a customer, that Stripe says did not.
   | 'support_row_reverted'
+  // T-104 (founder arbitration, PRE-L11): the money guard REFUSED a financial Stripe write. That is never a
+  // provider outage and must never be retried as one — it means a caller reached a money write without the
+  // authorization it declared, i.e. a CODE DEFECT on a money path. It is escalated so a human sees it the
+  // first time rather than after the hundredth silent retry.
+  | 'money_write_refused'
+  // T-106: a LOST chargeback whose internal state is not finalized — money moved (or may have), no coherent
+  // ledger line, `splitReversed` still false. Stripe will redeliver; a human is told before it self-heals.
+  | 'dispute_unfinalized'
+  // T-107: a LOST chargeback RECORDED while CHARGEBACKS_ENABLED is closed. Stripe has debited the platform
+  // and no unwind ran — the fact the closed flag used to erase entirely.
+  | 'dispute_recorded_rail_closed'
 
 export async function sendAdminMoneyReviewAlert(p: {
   kind:      MoneyReviewKind

@@ -5,7 +5,7 @@ import { Prisma } from '@prisma/client'
 // Real Stripe Transfer (mocked) of the server-computed available balance, with a
 // three-layer anti-double-payment guard. Prisma + Stripe + partner-balance mocked.
 
-const { stripeMock } = vi.hoisted(() => ({ stripeMock: { transfers: { create: vi.fn() } } }))
+const { stripeMock } = vi.hoisted(() => ({ stripeMock: { transfers: { create: vi.fn(), list: vi.fn() } } }))
 vi.mock('@/lib/stripe', () => ({ getStripe: () => stripeMock }))
 
 const { db } = vi.hoisted(() => ({
@@ -21,6 +21,13 @@ import { payCreator } from '@/lib/creator-payout'
 const ACTIVE = { id: 'c1', stripeAccountId: 'acct_c1', payoutStatus: 'active' }
 
 beforeEach(() => {
+  // T-112: a RESUME now asks Stripe whether the transfer already exists (adopt-or-refuse), because the
+  // Stripe idempotency key is pruned after ~24 h. Default: Stripe holds nothing → the resume creates.
+  stripeMock.transfers.list.mockResolvedValue({ has_more: false, data: [] })
+  // T-90-ter: the creator rail now reads its OWN gate (CREATOR_PAYOUT_ENABLED), fail-closed, instead of
+  // `enabled: () => true`. Production checks the same flag at app/api/admin/creator-payouts/run, so the
+  // suite says here what production says. Its ABSENCE is exercised by a test of its own below.
+  process.env.CREATOR_PAYOUT_ENABLED = 'true'
   vi.clearAllMocks()
   delete process.env.CREATOR_PAYOUT_MIN_CENTS
   db.creator.findUnique.mockResolvedValue(ACTIVE)
@@ -31,7 +38,7 @@ beforeEach(() => {
   stripeMock.transfers.create.mockResolvedValue({ id: 'tr_1' })
   balMock.mockResolvedValue({ role: 'creator', refId: 'c1', earnedCents: 5000, paidCents: 0, availableCents: 5000, currency: 'eur' })
 })
-afterEach(() => { delete process.env.CREATOR_PAYOUT_MIN_CENTS })
+afterEach(() => { delete process.env.CREATOR_PAYOUT_ENABLED; delete process.env.CREATOR_PAYOUT_MIN_CENTS })
 
 describe('payCreator — happy path', () => {
   it('(a)/(h) ≥ threshold + active → ONE transfer of the SERVER amount + Payout pending→paid', async () => {
@@ -109,5 +116,88 @@ describe('payCreator — atomicity / reconciliation', () => {
     process.env.CREATOR_PAYOUT_MIN_CENTS = '6000'
     balMock.mockResolvedValue({ role: 'creator', refId: 'c1', earnedCents: 5000, paidCents: 0, availableCents: 5000, currency: 'eur' })
     expect((await payCreator('c1')).status).toBe('skipped') // 5000 < 6000
+  })
+})
+
+// ══ T-112 — ADOPT-OR-REFUSE ON A RESUME (found by the final invariant review) ═══════════════════════
+//
+// The only protection against paying a partner twice was the Stripe idempotency key, and Stripe prunes
+// those « after they are at least 24 hours old ». A `pending` Payout re-driven more than a day later — by
+// the nightly cron, by an admin re-run, by a retry after an outage — re-sent the SAME key past its life,
+// which Stripe treats as a NEW request. The partner was paid a second time, and `status` was still
+// 'pending' so nothing objected. The refund rail has had the F8 answer to this for months; this rail did not.
+describe('T-112 — a resume never risks a second transfer', () => {
+  const pendingRow = (ageHours: number) => ({
+    id: 'po_stuck', amountCents: 5000, currency: 'eur', idempotencyKey: 'creator:c1:paid:0',
+    createdAt: new Date(Date.now() - ageHours * 3600_000),
+  })
+
+  it('a FRESH resume with nothing at Stripe creates exactly one transfer', async () => {
+    db.payout.findFirst.mockResolvedValue(pendingRow(2))
+    stripeMock.transfers.list.mockResolvedValue({ has_more: false, data: [] })
+    const out = await payCreator('c1')
+    expect(out).toMatchObject({ status: 'paid', resumed: true })
+    expect(stripeMock.transfers.create).toHaveBeenCalledTimes(1)
+  })
+
+  it('a resume whose transfer ALREADY EXISTS at Stripe adopts it — nothing is created', async () => {
+    db.payout.findFirst.mockResolvedValue(pendingRow(2))
+    stripeMock.transfers.list.mockResolvedValue({ has_more: false, data: [{ id: 'tr_already', metadata: { payoutId: 'po_stuck' } }] })
+    const out = await payCreator('c1')
+    expect(stripeMock.transfers.create, 'THE defect: this must be zero').toHaveBeenCalledTimes(0)
+    expect(out).toMatchObject({ status: 'paid', resumed: true, stripeTransferId: 'tr_already' })
+    // the row is closed on the ADOPTED transfer, so the next run takes no path at all
+    expect(db.payout.update.mock.calls[0][0].data).toMatchObject({ status: 'paid', stripeTransferId: 'tr_already' })
+  })
+
+  it("ANOTHER payout's transfer is NOT adopted — the match is on our own metadata", async () => {
+    db.payout.findFirst.mockResolvedValue(pendingRow(2))
+    stripeMock.transfers.list.mockResolvedValue({ has_more: false, data: [{ id: 'tr_other', metadata: { payoutId: 'po_SOMEONE_ELSE' } }] })
+    await payCreator('c1')
+    expect(stripeMock.transfers.create, 'a foreign transfer must not close our row').toHaveBeenCalledTimes(1)
+  })
+
+  it('PAST the idempotency window with nothing to adopt → REFUSED, not re-created', async () => {
+    db.payout.findFirst.mockResolvedValue(pendingRow(30))   // 30 h old: the key is pruned
+    stripeMock.transfers.list.mockResolvedValue({ has_more: false, data: [] })
+    const out = await payCreator('c1')
+    expect(stripeMock.transfers.create, 'a re-sent key past its life is a SECOND transfer').toHaveBeenCalledTimes(0)
+    expect(out).toMatchObject({ status: 'failed', reason: 'resume_expired' })
+    // …and it is reported as a refusal a human must close, not as « try again ». `reason` lives on the
+    // skipped/failed arms of the union, so the assertion goes through toMatchObject above rather than a
+    // property read the narrowed type does not carry.
+    expect(out).not.toMatchObject({ reason: 'transfer_failed_resume' })
+  })
+
+  it('past the window but the transfer EXISTS → adopted, because proof beats the clock', async () => {
+    db.payout.findFirst.mockResolvedValue(pendingRow(30))
+    stripeMock.transfers.list.mockResolvedValue({ has_more: false, data: [{ id: 'tr_old', metadata: { payoutId: 'po_stuck' } }] })
+    const out = await payCreator('c1')
+    expect(stripeMock.transfers.create).toHaveBeenCalledTimes(0)
+    expect(out).toMatchObject({ status: 'paid', stripeTransferId: 'tr_old' })
+  })
+
+  it('a TRUNCATED list cannot prove absence → fail CLOSED, nothing created', async () => {
+    db.payout.findFirst.mockResolvedValue(pendingRow(2))
+    stripeMock.transfers.list.mockResolvedValue({ has_more: true, data: [] })
+    const out = await payCreator('c1')
+    expect(stripeMock.transfers.create).toHaveBeenCalledTimes(0)
+    expect(out).toMatchObject({ status: 'failed', reason: 'resume_unprovable' })
+  })
+
+  it('an UNREADABLE list is the same refusal — absence is never inferred from an error', async () => {
+    db.payout.findFirst.mockResolvedValue(pendingRow(2))
+    stripeMock.transfers.list.mockRejectedValue(new Error('Stripe 500 (simulated)'))
+    const out = await payCreator('c1')
+    expect(stripeMock.transfers.create).toHaveBeenCalledTimes(0)
+    expect(out).toMatchObject({ status: 'failed', reason: 'resume_unprovable' })
+  })
+
+  it('a FRESH payout (not a resume) never pays for the list — the read is resume-only', async () => {
+    db.payout.findFirst.mockResolvedValue(null)   // nothing stuck → the fresh path
+    const out = await payCreator('c1')
+    expect(out).toMatchObject({ status: 'paid', resumed: false })
+    expect(stripeMock.transfers.list, 'a fresh payout has nothing to adopt by construction').not.toHaveBeenCalled()
+    expect(stripeMock.transfers.create).toHaveBeenCalledTimes(1)
   })
 })

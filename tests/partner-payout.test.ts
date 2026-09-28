@@ -9,7 +9,7 @@ import { Prisma } from '@prisma/client'
 // (The byte-identical creator behaviour is proven separately by the UNCHANGED
 // tests/creator-payout.test.ts, which exercises payCreator → payPartner('creator').)
 
-const { stripeMock } = vi.hoisted(() => ({ stripeMock: { transfers: { create: vi.fn() } } }))
+const { stripeMock } = vi.hoisted(() => ({ stripeMock: { transfers: { create: vi.fn(), list: vi.fn() } } }))
 vi.mock('@/lib/stripe', () => ({ getStripe: () => stripeMock }))
 
 const { db } = vi.hoisted(() => ({
@@ -27,6 +27,13 @@ vi.mock('@/lib/partner-balance', () => ({ computePartnerBalance: balMock }))
 import { payPartner } from '@/lib/creator-payout'
 
 beforeEach(() => {
+  // T-112: a RESUME now asks Stripe whether the transfer already exists (adopt-or-refuse), because the
+  // Stripe idempotency key is pruned after ~24 h. Default: Stripe holds nothing → the resume creates.
+  stripeMock.transfers.list.mockResolvedValue({ has_more: false, data: [] })
+  // T-90-ter: the creator rail now reads its OWN gate (CREATOR_PAYOUT_ENABLED), fail-closed, instead of
+  // `enabled: () => true`. Production checks the same flag at app/api/admin/creator-payouts/run, so the
+  // suite says here what production says. Its ABSENCE is exercised by a test of its own below.
+  process.env.CREATOR_PAYOUT_ENABLED = 'true'
   vi.clearAllMocks()
   delete process.env.CREATOR_PAYOUT_MIN_CENTS
   process.env.AFFILIATE_CONNECT_ENABLED = 'true' // ON for the affiliate-path tests; flag-OFF test overrides
@@ -39,7 +46,7 @@ beforeEach(() => {
   stripeMock.transfers.create.mockResolvedValue({ id: 'tr_a1' })
   balMock.mockResolvedValue({ role: 'affiliate', refId: 'op1', earnedCents: 5000, paidCents: 0, availableCents: 5000, currency: 'eur' })
 })
-afterEach(() => { delete process.env.AFFILIATE_CONNECT_ENABLED; delete process.env.CREATOR_PAYOUT_MIN_CENTS })
+afterEach(() => { delete process.env.CREATOR_PAYOUT_ENABLED; delete process.env.AFFILIATE_CONNECT_ENABLED; delete process.env.CREATOR_PAYOUT_MIN_CENTS })
 
 describe('(b) affiliate happy path — right entity / balance / Payout', () => {
   it('pays the affiliate OPERATOR via its affiliate Connect, Payout{role:affiliate, operatorId}', async () => {
@@ -116,8 +123,10 @@ describe('(e) flag gate — AFFILIATE_CONNECT_ENABLED', () => {
     expect(stripeMock.transfers.create).not.toHaveBeenCalled()
   })
 
-  it('the creator rail is UNAFFECTED by the affiliate flag (no internal gate)', async () => {
+  it('the creator rail is UNAFFECTED by the affiliate flag (each rail reads only its OWN gate)', async () => {
     delete process.env.AFFILIATE_CONNECT_ENABLED // affiliate OFF
+    // T-90-ter: the creator rail's own gate stays OPEN here — what is proven is INDEPENDENCE between
+    // rails. Since T-90-ter the creator rail HAS a gate, and it is not this one.
     balMock.mockResolvedValue({ role: 'creator', refId: 'c1', earnedCents: 5000, paidCents: 0, availableCents: 5000, currency: 'eur' })
     const out = await payPartner('creator', 'c1')
     // generic shape, role=creator, paid — proves creator path runs regardless of the affiliate flag

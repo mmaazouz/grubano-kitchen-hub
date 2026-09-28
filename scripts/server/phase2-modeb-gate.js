@@ -449,6 +449,8 @@ async function main() {
   // NEXTAUTH_URL=… ; un garde-fou de PRODUCTION qui lit ce que l'humain a tapé ne garde rien.
   // Les deux opérateurs de référence lisent la vue FUSIONNÉE des fichiers .env : on fait pareil.
   const prov = require(path.join(__dirname, 'env-provenance.js'))
+// T-108: UNE implémentation de « neutraliser la sauvegarde restaurable que je viens de créer ».
+const REFUND_GATE = require(path.join(__dirname, 'phase2-refund-gate.js'))
   let merged = {}
   // ⚠️ SIGNATURE : readNextEnvFiles(fs, path, dir). Appelé avec le seul APP_ROOT, l'helper avale sa
   // propre TypeError fichier par fichier et renvoie {} : NEXTAUTH_URL « ABSENT », refus à chaque
@@ -777,6 +779,15 @@ async function main() {
       F('FERMETURE D\'URGENCE', armedClose === null
         ? 'DÉSARMÉE (gates prouvées fermées, drapeaux écrits, redémarrage demandé)'
         : 'ENCORE ARMÉE — la fermeture n\'est pas entièrement prouvée ; tout signal réécrit les clés et re-touche restart.txt')
+      /* T-108 — LA SAUVEGARDE QUE CET OPÉRATEUR LAISSE LUI-MÊME. `writeFlag` copie .env.local vers
+         `.env.local.bak-modeb-gate-<stamp>` avant sa première écriture : après une fenêtre, la racine porte
+         une copie restaurable à CLAIMS_ENABLED=true ET REFUNDS_ENABLED=true — un `cp` et un respawn
+         rouvrent les DEUX gates. Cet opérateur ne retirait pas cette copie et ne NOMMAIT pas le contrôle qui
+         le fait. Invoqué ici (implémentation partagée de phase2-refund-gate.js, rapportée dans les faits et
+         anomalies de CET opérateur), après la fermeture. */
+      try {
+        await REFUND_GATE.neutralizeOwnBackups({ F, A, appRoot: APP_ROOT })
+      } catch (e2) { A('10 neutralize: le neutraliseur de sauvegardes n\'a pas pu être lancé — ' + scrub(e2) + ' · à lancer à la main : node ' + path.join(__dirname, 'phase2-backup-neutralize.js')) }
     } catch (e) {
       A('10 refreeze: ' + scrub(e))
       // Les quatre écritures partageaient UN try : si l'une a levé, les suivantes n'ont pas eu lieu.

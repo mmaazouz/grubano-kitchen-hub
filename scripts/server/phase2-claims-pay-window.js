@@ -87,7 +87,11 @@ const CERTIFIED_SHAS = []
  * operator that kept announcing a window the application had already closed would be lying. */
 const REFUND_LEASE_MAX_MS = 30 * 60 * 1000
 const LEASE_SLACK_MS = 2 * 60 * 1000
-const WINDOW_MS = Number(process.env.PHASE2_CLAIMS_PAY_WINDOW_MS || 15 * 60 * 1000)
+/* T-108 / T-93(c) — THE WINDOW LENGTH IS VALIDATED BY NAME, using the sibling operator's pure validator so
+   there is ONE definition of « is this a legal window ». A value `Number()` turns into NaN defeats every `>`
+   comparison, which is how the refund gate's own 30-minute ceiling was once walked past. */
+const WINDOW_MS_RAW = process.env.PHASE2_CLAIMS_PAY_WINDOW_MS
+const WINDOW_MS = Number(WINDOW_MS_RAW || 15 * 60 * 1000)
 const POLL_MS = Number(process.env.PHASE2_CLAIMS_PAY_POLL_MS || 15000)
 const RELOAD_DEADLINE_MS = Number(process.env.PHASE2_RELOAD_DEADLINE_MS || 240000)
 const RELOAD_INTERVAL_MS = Number(process.env.PHASE2_RELOAD_INTERVAL_MS || 10000)
@@ -714,11 +718,32 @@ async function main() {
   } finally {
     // ── UNCONDITIONAL CLOSE — the LEASE first, then the flag ────────────────────────────────────
     try {
+      /* T-108 — EACH WRITE IN ITS OWN try, AND THE RESTART REGARDLESS. These two shared one `try`, so a throw
+         on the FIRST (the lease — the least important of the two) suppressed the `REFUNDS_ENABLED=false`
+         write, which is the one that closes the gate, and the restart with it. The armed emergency re-freeze
+         did retry key by key, but a compensating retry is a second chance, not a reason to fail the first. */
       const past = new Date(Date.now() - 1000).toISOString()
-      writeRefundFlag(envFile, 'REFUNDS_WINDOW_UNTIL', past, stamp + '-close')
-      const closed = writeRefundFlag(envFile, 'REFUNDS_ENABLED', 'false', stamp + '-close')
-      F('CLOSE WRITE', 'REFUNDS_ENABLED=' + (closed.changed ? 'false (backup ' + closed.backup + ')' : 'false (already false)') + ' · lease expired at ' + past)
-      touchRestart()
+      const closeFailed = []
+      let closed = null
+      for (const [k, v] of [['REFUNDS_WINDOW_UNTIL', past], ['REFUNDS_ENABLED', 'false']]) {
+        try {
+          const r = writeRefundFlag(envFile, k, v, stamp + '-close')
+          if (k === 'REFUNDS_ENABLED') closed = r
+        } catch (e) { closeFailed.push(k); A('10 refreeze: write ' + k + ' FAILED — ' + scrub(e)) }
+      }
+      F('CLOSE WRITE', closeFailed.length
+        ? 'FAILED for ' + closeFailed.join(', ') + ' — HUMAN ACTION REQUIRED in ' + envFile
+        : 'REFUNDS_ENABLED=' + (closed && closed.changed ? 'false (backup ' + closed.backup + ')' : 'false (already false)') + ' · lease expired at ' + past)
+      let restartRequested = false
+      try { touchRestart(); restartRequested = true } catch (e) {
+        A('10 refreeze: tmp/restart.txt NOT written — the LIVE process keeps the flag it booted with until the lease expires: ' + scrub(e))
+      }
+      F('RESTART REQUESTED', restartRequested ? 'YES (tmp/restart.txt touched)' : 'NO — the file says closed, the process does not')
+      // A key that resisted deserves its second chance NOW, not at the next signal.
+      if (closeFailed.length && GATE.isRefreezeArmed()) {
+        A('10 refreeze: immediate retry of the resisting key(s) by the emergency re-freeze — ' + closeFailed.join(', '))
+        GATE.emergencyRefreeze('close write failed')
+      }
       const w2 = await waitRefundGate(base, 'CLOSED', RELOAD_DEADLINE_MS, RELOAD_INTERVAL_MS)
       F('REFUND GATE AFTER CLOSE', w2.last + ' after ' + Math.round(w2.elapsedMs / 1000) + ' s (' + w2.probes + ' probes)')
       if (!w2.ok) A('10 refreeze: the refund gate is NOT PROVEN closed (' + w2.last + ') — HUMAN ATTENTION REQUIRED NOW')
@@ -766,8 +791,18 @@ async function main() {
 
     // ── the backup the close itself produced carries REFUNDS_ENABLED=true and is restorable ─────
     try {
+      /* T-108 — A BOUNDED CHILD WITH A TIGHT ENV. It had neither. `env: process.env` hands the child whatever
+         the parent happened to carry — anything that injects a loader (NODE_OPTIONS above all) runs inside a
+         process whose job is to disarm a money footgun, and a child that hangs is a control that silently did
+         not run. Measured on the sibling operator: an inherited NODE_OPTIONS hung it until the timeout. And
+         with no `timeout` at all, a hung child hung the operator itself. */
+      const childEnv = {}
+      for (const k of ['PATH', 'Path', 'SystemRoot', 'windir', 'TEMP', 'TMP', 'HOME', 'USERPROFILE', 'LANG', 'LC_ALL',
+        'PHASE2_APP_ROOT', 'PHASE2_EVIDENCE_DIR', 'PHASE2_BASE_URL', 'PHASE2_BACKUP_DRY_RUN']) {
+        if (process.env[k] !== undefined) childEnv[k] = process.env[k]
+      }
       const out = execFileSync(process.execPath, [path.join(__dirname, 'phase2-backup-neutralize.js')], {
-        encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 16 * 1024 * 1024, env: process.env,
+        encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 16 * 1024 * 1024, env: childEnv, timeout: 120000,
       })
       for (const line of String(out).split('\n')) if (/^RESULT:|RESTORABLE TRUE-FLAG BACKUP|BACKUP SAFETY|STALE TRUE-FLAG BACKUP REMEDIATED/.test(line)) F('BACKUP NEUTRALIZE', line.trim())
     } catch (e) {

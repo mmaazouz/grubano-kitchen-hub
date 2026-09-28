@@ -374,10 +374,17 @@ describe('D′ L5 — what the operator can never do, whatever any caller asks',
     const openFlag = src.indexOf("writeRefundFlag(envFile, 'REFUNDS_ENABLED', 'true'")
     expect(open).toBeGreaterThan(0)
     expect(openFlag).toBeGreaterThan(open)
-    const closeLease = src.indexOf("writeRefundFlag(envFile, 'REFUNDS_WINDOW_UNTIL', past")
-    const closeFlag = src.indexOf("writeRefundFlag(envFile, 'REFUNDS_ENABLED', 'false'")
-    expect(closeLease).toBeGreaterThan(openFlag)
-    expect(closeFlag).toBeGreaterThan(closeLease)
+    /* T-108: the two close writes became a per-key LOOP, so a throw on the lease can no longer suppress the
+       flag. The RULE is unchanged and still asserted — the lease is expired FIRST — but it now lives in the
+       ORDER OF THE LOOP'S ENTRIES. Pinning the old two-statement shape would pin the shared `try` that was
+       the defect. */
+    const closeLoop = src.indexOf("for (const [k, v] of [['REFUNDS_WINDOW_UNTIL', past], ['REFUNDS_ENABLED', 'false']])")
+    expect(closeLoop, 'the per-key close loop').toBeGreaterThan(openFlag)
+    const entries = src.slice(closeLoop, closeLoop + 120)
+    expect(entries.indexOf('REFUNDS_WINDOW_UNTIL')).toBeLessThan(entries.indexOf("'REFUNDS_ENABLED', 'false'"))
+    // …and the restart is attempted whatever the writes did, then a resisting key is retried at once
+    expect(src).toContain('try { touchRestart(); restartRequested = true } catch (e) {')
+    expect(src).toContain('immediate retry of the resisting key(s)')
     // The re-freeze is armed BEFORE the first write, or a signal in between would escape it.
     expect(src.indexOf('GATE.armRefreeze(envFile, stamp)')).toBeLessThan(open)
   })

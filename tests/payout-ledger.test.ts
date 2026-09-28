@@ -9,7 +9,7 @@ import { Prisma } from '@prisma/client'
 // @/lib/ledger is mocked here to spy the call; the field mapping is proven in
 // tests/ledger-partner-transfer.test.ts. ⚠️ REAL money (TEST), flags gate the rail.
 
-const { stripeMock } = vi.hoisted(() => ({ stripeMock: { transfers: { create: vi.fn() } } }))
+const { stripeMock } = vi.hoisted(() => ({ stripeMock: { transfers: { create: vi.fn(), list: vi.fn() } } }))
 vi.mock('@/lib/stripe', () => ({ getStripe: () => stripeMock }))
 
 const { db } = vi.hoisted(() => ({
@@ -30,6 +30,13 @@ vi.mock('@/lib/ledger', () => ({ recordPartnerTransferLedgerEntry: ledgerMock })
 import { payPartner, payCreator } from '@/lib/creator-payout'
 
 beforeEach(() => {
+  // T-112: a RESUME now asks Stripe whether the transfer already exists (adopt-or-refuse), because the
+  // Stripe idempotency key is pruned after ~24 h. Default: Stripe holds nothing → the resume creates.
+  stripeMock.transfers.list.mockResolvedValue({ has_more: false, data: [] })
+  // T-90-ter: the creator rail now reads its OWN gate (CREATOR_PAYOUT_ENABLED), fail-closed, instead of
+  // `enabled: () => true`. Production checks the same flag at app/api/admin/creator-payouts/run, so the
+  // suite says here what production says. Its ABSENCE is exercised by a test of its own below.
+  process.env.CREATOR_PAYOUT_ENABLED = 'true'
   vi.clearAllMocks()
   delete process.env.CREATOR_PAYOUT_MIN_CENTS
   process.env.AFFILIATE_CONNECT_ENABLED = 'true'
@@ -43,7 +50,7 @@ beforeEach(() => {
   balMock.mockResolvedValue({ role: 'creator', refId: 'c1', earnedCents: 5000, paidCents: 0, availableCents: 5000, currency: 'eur' })
   ledgerMock.mockResolvedValue({ ok: true, id: 'led1', duplicate: false })
 })
-afterEach(() => { delete process.env.AFFILIATE_CONNECT_ENABLED; delete process.env.CREATOR_PAYOUT_MIN_CENTS })
+afterEach(() => { delete process.env.CREATOR_PAYOUT_ENABLED; delete process.env.AFFILIATE_CONNECT_ENABLED; delete process.env.CREATOR_PAYOUT_MIN_CENTS })
 
 describe('(a) CREATOR payout → exactly one ledger trace', () => {
   it('records the disbursement: amount, beneficiary creatorId, transfer ref, destination, payout-id key', async () => {

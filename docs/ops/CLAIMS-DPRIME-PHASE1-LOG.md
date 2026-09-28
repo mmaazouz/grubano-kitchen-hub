@@ -1167,5 +1167,97 @@ Le garde est **exactement aussi strict** que les quatre appelants de production 
 
 **Ce que ce déploiement ne prouve pas, et qu'il faut dire :** les sondes établissent que les gates refusent, et le recensement que le parc est vide. Ni l'un ni l'autre n'exerce le garde `[MONEY WRITE]` en production — il ne peut l'être que lorsqu'une écriture financière est réellement tentée, c'est-à-dire pendant L11. Sa preuve aujourd'hui est la suite (493 fichiers, 7203 tests) et l'énumération qui interdit une écriture non déclarée, pas une observation runtime sur staging.
 
+## FERMETURE FINALE PRÉ-L11 — trois arbitrages appliqués, trois bloqueurs fermés (aucun argent déplacé)
+
+Aucune répétition. Aucun drapeau ouvert. `CERTIFIED_SHAS` inchangé. Aucune écriture Stripe. Aucune commande cPanel. `main` et la production intactes. `prisma/schema.prisma` byte-identique — aucune migration.
+
+### T-104 — trois sortes d'échec, et un refus n'en est pas deux
+
+Le constat mesuré était simple et gênant : quatre sites transformaient un refus du garde en « réessaie-moi ». `lib/refunds.ts` en 502 « Erreur paiement, réessayez. » ; `lib/franchise-settlement.ts` et `lib/creator-payout.ts` en `'transfer_failed'` par un **`catch {}` nu qui jetait l'erreur** avant que quiconque puisse la regarder ; `lib/deposit.ts` en erreur de paiement. **Un refus réessayé est un défaut de code répété ; un refus répondu 200 est un défaut de code effacé.**
+
+Les trois classes vivent dans le LEAF, donc les sept modules déclarants partagent **une** définition :
+
+- **POLICY_REFUSAL** — le garde a dit non. Un appelant a atteint une écriture financière sans l'autorisation qu'il a déclarée. Ni transitoire, ni la faute du fournisseur : **notre bug**, et la seule réponse correcte est de le rendre visible et de s'arrêter.
+- **TRANSIENT** — le fournisseur ou le réseau a échoué. Réessayer est exactement juste, la clé d'idempotence le rend sûr.
+- **EXTERNAL_ALREADY_DONE** — Stripe dit que le mouvement **existe déjà**. Rien de plus ne doit être initié ; il ne reste qu'une finalisation interne. Le rapporter comme un échec invite une seconde tentative de ce qui est déjà fait, c'est-à-dire le seul résultat qu'un code d'argent ne doit jamais produire.
+
+La classe est reconnue **par TYPE** (`instanceof MoneyWriteRefused`), jamais par le message. Un test sur une chaîne casserait le jour d'une reformulation — et casserait **en silence**, ce qu'une taxonomie d'argent ne peut pas se permettre. Le classifieur est conservateur dans **une seule direction** : ce qu'il ne reconnaît pas devient `transient`, parce qu'un rejeu sous clé d'idempotence est sûr alors qu'avaler un refus ne l'est pas.
+
+Le chemin de dégradation de chaque site est **conservé** — il était juste — mais devenu inatteignable pour un refus, ce qui est assert **sur l'ordre dans la source**. Et un test exige que **chaque** escalade soit appariée à une re-levée : escalader puis dégrader serait pire que le silence, parce que l'alerte dirait « ne réessayez pas » pendant que le code réessaie.
+
+### T-106 — ce qui bouge est persisté à l'instant où ça bouge
+
+Deux défauts, et le premier est le plus instructif. **L'inversion du NET réussissait, la reprise de royalty échouait, la fonction retournait, et le webhook répondait 200** — donc Stripe ne redélivrait jamais. `stripeReversalId` et `reverseTransferCents` étaient des variables **locales**, jetées ; les étapes 3, 4 et 5 sautées. L'argent avait quitté le restaurant sans ligne de ledger, sans écriture `refundedCents`, et `splitReversed` encore false — or les deux agrégats de royalty filtrent sur `splitReversed: true`, si bien que le chargeback leur était **invisible** et que le règlement pouvait payer une royalty rétrofacturée.
+
+Le second : **au-delà de ~24 h**, la seule protection était la clé d'idempotence Stripe, que Stripe purge. Une redélivrance plus tardive trouvait `splitReversed` false, recalculait le montant, et **débitait le restaurant une seconde fois**.
+
+La correction est la discipline que `lib/refund.ts` appliquait déjà (F8), portée ici : **adopter ou créer, jamais créer en espérant**. Avant de créer quoi que ce soit on demande si ça existe déjà — d'abord notre propre ligne, puis la liste des inversions Stripe filtrée sur **nos** métadonnées (`disputeId` + `kind`) ; une liste tronquée ne peut pas prouver l'absence et **échoue fermée**. Ce qui bouge est écrit sur la ligne **avant que l'étape suivante puisse échouer**, délibérément **hors transaction** : un rollback effacerait la trace d'un argent déjà parti de Stripe, ce qui est la seule chose qui ne doit jamais être annulée.
+
+Et la règle du fondateur — « une trace ledger cohérente AVANT qu'on considère l'événement comme correctement traité » — fait qu'un échec d'écriture de ledger n'est plus un haussement d'épaules journalisé : `splitReversed` n'est pas posé, la réponse est `retryable`, le webhook répond **503**, et la redélivrance **adopte** ce qui existe puis termine. **Aucune ligne PARTIELLE n'est jamais écrite** : un ledger incohérent est pire qu'un ledger manquant, parce que le manquant reste visible comme manquant.
+
+Les huit scénarios exigés sont dans `tests/prel11-dispute-ledger-t106.test.ts`, et le septième — « aucun double mouvement » — est assert **dans chacun des autres** plutôt qu'une fois isolément : c'est une propriété de chaque chemin, pas un cas de test.
+
+### T-107 — le drapeau arrête le déroulé, pas l'enregistrement
+
+Arbitrage fondateur, et il énonce un principe qui vaut au-delà des chargebacks : **les drapeaux doivent empêcher d'INITIER une opération financière, pas empêcher d'enregistrer une réalité externe qui a déjà eu lieu.** Avant, `CHARGEBACKS_ENABLED=false` répondait `{gated:true}` et ne faisait **rien** : aucune ligne `Dispute`, aucune alerte. Stripe avait déjà retiré les fonds du solde plateforme, le restaurant était toujours facturé, et nos livres l'ignoraient. Le drapeau protégeait le déroulé — c'est juste — mais il effaçait aussi le fait.
+
+`recordDisputeObservation` a trois propriétés, chacune assertée : **aucun appel Stripe, pas même une lecture** (tout vient de l'événement signé et de notre propre base — ce qui rend ce chemin incapable de déplacer de l'argent même en principe) ; **idempotent** (un `upsert` sur `stripeDisputeId @unique`, une alerte par dispute) ; **il n'affirme jamais que le déroulé a eu lieu** (`splitReversed` reste false, aucun montant d'inversion écrit), si bien que le jour où le rail est autorisé le déroulé s'exécute exactement une fois. Un chargeback **perdu** rail fermé est escaladé : c'est le cas qui coûte de l'argent et que personne ne verrait.
+
+Un test existant affirmait exactement le contraire — « flag OFF → acknowledged, NOT processed (byte-identical behaviour) ». C'ÉTAIT le contrat ; le fondateur l'a renversé. L'assertion est inversée, et la moitié qui importait est **conservée et placée en premier** : le déroulé ne tourne toujours pas.
+
+### T-90-ter — un rail d'argent ouvert par construction
+
+L'adaptateur créateur lisait `enabled: () => true`. C'était le seul des trois rails de versement **sans serrure à l'intérieur**, son drapeau ne vivant qu'à la route admin. Le lot précédent avait refusé de le resserrer, et l'avait dit plutôt que d'agir : resserrer un rail qui paie peut-être des créateurs aujourd'hui, sur une supposition à propos d'une variable de production, était la seule direction d'échec pire que l'exposition. Le fondateur a tranché.
+
+Le drapeau retenu est `CREATOR_PAYOUT_ENABLED` — **celui de ce rail**, pas un emprunt : le même que lit la route, et que `scripts/check-flags.mjs` couple déjà à `CREATOR_CONNECT_ENABLED` et `CREATOR_ENABLED`. Prendre `CREATOR_ENABLED` aurait été la « réutilisation arbitraire » que l'arbitrage interdit : ce drapeau gouverne la **visibilité du rôle**, pas le départ de l'argent. Fail-closed, et drapeau ON ⇒ comportement inchangé.
+
+### T-109 — un garde, trois autorisations, et une preuve qui n'est pas une chaîne
+
+Un garde au point d'écriture partagé ; trois autorisations fonctionnelles distinctes ; et le garde **refuse** un drapeau hors de `PARTNER_PAYOUT_FLAGS`, donc un quatrième rail ne peut pas s'introduire en douce. Tous les adaptateurs lisent un drapeau : **plus aucun rail n'est ouvert par construction.**
+
+La partie qui compte est la preuve demandée : « tout nouveau site Stripe financier ajouté ultérieurement devra lui aussi déclarer explicitement son autorisation ». Tous les contrôles précédents raisonnaient sur des **chaînes**. Celui-ci **écrit un vrai fichier dans `lib/`**, relance le parcours **livré** sur le vrai système de fichiers, exige que le site revienne **NU**, puis le supprime. C'est la seule version qui prouve le **mécanisme** et non l'algorithme : un parcours mal enraciné, un filtre d'extension incomplet, un `readdir` avalé — chacun passerait tous les contrôles sur chaînes et échouerait celui-là.
+
+### T-108 — la même classe, partout, et en un seul exemplaire
+
+`phase2-claims-pay-window.js` : les deux écritures de fermeture partageaient un `try` (une levée sur le bail supprimait `REFUNDS_ENABLED=false` **et** le redémarrage) ; son enfant neutraliseur n'avait **ni délai ni environnement restreint**. `phase2-claims-gate.js` et `phase2-modeb-gate.js` : aucun des deux n'invoquait — ni même ne **nommait** — le neutraliseur, alors que chacun laisse une sauvegarde restaurable, et dans modeb à `CLAIMS_ENABLED=true` **et** `REFUNDS_ENABLED=true` : un `cp` rouvre les **deux** gates.
+
+Et pas en trois copies. `neutralizeOwnBackups` accepte désormais un **rapporteur injecté**, si bien que chaque opérateur passe ses propres `F`/`A` — les faits et anomalies atterrissent dans **son** rapport — et la logique existe une seule fois, déjà exercée bout-en-bout contre une gate loopback dans son propre processus. Trois copies d'un contrôle de sûreté argent, c'est précisément ce que ce chantier a déjà payé plus d'une fois.
+
+### T-115 / T-116 — deux fois la même leçon : un refus de sûreté ne doit pas garer l'argent
+
+Les deux constats viennent du même endroit, et c'est celui que ce chantier a déjà payé une fois.
+
+**T-116.** La déclaration du garde vit dans `finalizeBatch`, juste au-dessus du `transfers.create`. C'est le bon endroit pour protéger le **mouvement**. Ce n'est pas le bon endroit pour protéger l'**état** : la réclamation atomique fait basculer N lignes de royalty de `pending` vers `settling` **cent vingt lignes plus haut**, avant qu'aucune autorisation ne soit consultée, et il n'existe aucun chemin de retour. Un appelant qui atteint `settleFranchisor` à rail fermé — un futur cron, un script, un import direct qui contourne le 403 de la route — ne déplaçait donc **aucun argent**, le garde faisant correctement son travail, mais laissait les royalties du franchiseur **garées définitivement** : `settling` n'est pas re-réclamable, et la seule sortie est la branche de reprise, qui re-rentre dans `finalizeBatch` et refuse de nouveau. **Un état absorbant atteint par un refus de SÛRETÉ** — littéralement la ligne `Refund` `pending` fantôme de T-49, dans un autre module. Le refus est remonté à l'entrée : rien n'est réclamé, et chaque ligne reste `pending` pour le jour de l'autorisation.
+
+**T-115** est le même souci vu depuis l'autre rail, et son intérêt est dans le correctif **refusé**. Depuis que l'observation enregistre un chargeback perdu à rail fermé (T-107), aucun déroulé ne tourne, donc `refundedCents` n'est jamais réduit et le règlement paierait le franchiseur pour un chiffre d'affaires que la plateforme n'a plus. La revue proposait d'écrire la part de royalty au moment de l'observation. **Refusé :** calculer cette part exige le total de la charge et la commission d'application, que **seul Stripe connaît**, et `recordDisputeObservation` est *défini* par le fait de ne passer aucun appel Stripe. **Un nombre que je ne peux pas dériver est un nombre que je ne dois pas écrire** — et un nombre inventé mais plausible dans du calcul d'argent est précisément ce que ce chantier a déjà payé.
+
+Donc le refus vit là où l'argent partirait vraiment, et n'utilise qu'un fait que nous détenons : une commande portant un litige `lost` non encore `splitReversed` est **retenue hors du lot**. Ses lignes restent `pending` — l'état re-réclamable, pas un état absorbant — et redeviennent réglables dès que le déroulé écrit la vraie part, dérivée de Stripe. Seule la réclamation **fraîche** est filtrée : une reprise re-pilote un lot déjà réclamé dont le transfert peut déjà être exécuté, et en retirer une ligne combattrait le détecteur de dérive et pourrait échouer le lot entier d'un franchiseur. Cette exemption est **assertée**, pour qu'elle reste une décision et ne devienne pas un oubli.
+
+### T-117 / T-118 — les deux contrôles qui ne prouvaient rien
+
+`FRANCHISE_SETTLEMENT_ENABLED` garde la seule écriture du dépôt qui **paie** un tiers. Les trois suites de règlement l'ouvrent dans leur `beforeEach` — pour une bonne raison, elles existent pour prouver l'arithmétique — avec pour conséquence que la serrure interne du seul rail money-OUT était prouvée par lecture de la source et par le test générique du garde, et **jamais une seule fois en exécutant la fonction drapeau fermé**. Le nouveau fichier ne l'ouvre jamais : il est le contrôle négatif des trois autres, contrôle positif inclus — sans lui, « rien n'a été transféré » ne distingue pas un drapeau qui ferme d'une fixture cassée.
+
+**T-118 est le plus inconfortable du lot, parce qu'il porte sur l'oracle lui-même.** Il ne voyait un verbe financier qu'écrit en littéral sur **une** ligne. `getStripe().transfers` + saut de ligne + `.create({…})` — valide, produit par n'importe quel formateur, la forme que prettier finira par imposer à tout appel long — ne renvoyait **aucun site**. Pas « non gardé » : **absent**. Et c'est la pire défaillance possible pour ce genre d'outil, parce que **le tableau vide se lit comme une preuve**.
+
+Corrigé en deux temps, et les deux disent la même chose sur ce qu'un contrôle doit être. D'abord le fichier est aplati une fois avec une carte index→ligne, puis l'espace adjacent à `.` et avant `(` est supprimé **en gardant la carte alignée** : `a.b(`, `a\n  .b(` et `a . b (` deviennent le même texte, et le site reste rapporté à la ligne du receveur, là où un humain regarderait. Ensuite la seconde forme — `const t = getStripe().transfers` puis `t.create(…)` — ne contient **aucun verbe financier en tant que texte** ; aucune normalisation ne peut l'atteindre. Apprendre à l'oracle à suivre les affectations en aurait fait un vérificateur de types, silencieusement faux à la première forme non modélisée. La propriété assertée à la place est **plus forte et vérifiable** : le dépôt ne lie jamais un espace de noms Stripe à un identifiant local. Si personne ne peut écrire `t.create(`, l'angle mort n'a plus rien à cacher.
+
+**Quatre contrôles positifs écrivent de vrais fichiers dans `lib/` et relancent la fonction LIVRÉE** — et ils ont tout de suite payé : les trois premiers ont d'abord échoué, parce que `SOURCES` est construit au chargement du module et ne peut pas voir un fichier créé pendant le test. Le correctif a rendu la fonction **paramétrable** au lieu de re-implémenter sa règle dans le test, ce qui est strictement mieux : une re-implémentation prouve l'algorithme, jamais le code qui tourne en CI.
+
+**Et l'épingle de l'oracle sur lui-même s'est révélée cassée au passage.** Ancrée sur la signature `writeSites = () => {`, elle découpait une chaîne **vide** dès que le paramètre a été ajouté — donc tous ses `toContain` passaient à vide, exactement le défaut qu'elle existe pour interdire. Ré-ancrée sur le nom, longueur de tranche assertée. **Une épingle qui peut ne rien matcher n'est pas une épingle**, et c'est la troisième fois que cette phrase s'écrit dans ce journal.
+
+### T-119 — surveillé n'est pas fermé
+
+`FRANCHISE_SETTLEMENT_ENABLED` et `CREATOR_PAYOUT_ENABLED` gardent les deux seules écritures qui **paient** un tiers plutôt que de récupérer chez lui. Tous deux vivaient dans `MONEY_ADJACENT_KEYS` : **imprimés** dans le rapport de provenance, et rien de plus. Une valeur injectée par le sélecteur Node.js de cPanel — le canal exact que la spec interdit, et que ce dépôt a déjà **mesuré en vrai pour trois clés** — aurait donc été rapportée comme une ligne de texte pendant que le rail qu'elle ouvre restait ouvert.
+
+Déplacés dans `MONEY_FLAGS_MUST_BE_FALSE`, jamais dans les deux listes à la fois : une clé exigée false qui serait aussi « adjacente » invite une rétrogradation future. Cela ne peut **rien ouvrir** — cette liste ne fait jamais que faire refuser l'opérateur, et le préflight est un outil d'assertion en lecture seule. Ce qui reste au fondateur est d'une autre nature et est resté intact : `scripts/check-flags.mjs` fait échouer un **build**, et l'y ajouter changerait le contrat de compilation pendant une bêta.
+
+### Diagnostic production (lecture seule, hors périmètre de ce lot)
+
+Le `500` de `grubano.com` a été diagnostiqué **sans toucher à `main` ni à la production**, comme demandé, et il n'est pas mélangé au durcissement.
+
+Trois faits mesurés. **Aucun run CI n'a jamais eu lieu sur `main`** — l'unique tentative, le 26 mai, n'a rien fait : erreur d'analyse YAML, donc le workflow n'a jamais démarré. **`main` porte un arbre Lovable/Vite**, pas l'application Next.js de `develop` : il n'y a pas de `server.js` Passenger à lancer, et les workflows de déploiement n'y existent pas. Le `500` est donc un **échec de spawn Passenger**, conséquence de ces deux faits et non d'un bug applicatif.
+
+Ce que cela implique, et qui est une décision fondateur, pas une tâche : la production ne peut pas être réparée par un correctif de code sur `develop`. Il faut d'abord décider ce que `main` doit contenir, puis un premier déploiement production réel (travail côté hôte inclus). **Rien n'a été modifié.**
+
 ## Lots suivants
 (complété lot par lot : SHA, preuves, CI, SHA déployé)

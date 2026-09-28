@@ -32,6 +32,8 @@
 const fs = require('fs')
 const path = require('path')
 const prov = require(path.join(__dirname, 'env-provenance.js'))
+// T-108: ONE implementation of « neutralize the restorable backup I just created », owned by the refund gate.
+const REFUND_GATE = require(path.join(__dirname, 'phase2-refund-gate.js'))
 const H = require(path.join(__dirname, 'reconcile-helpers.js'))
 
 const MODE = process.argv[2] === 'window' ? 'window' : 'precheck'
@@ -592,6 +594,15 @@ async function main() {
         ? 'DISARMED (gate proven CLOSED, flag written, restart requested)'
         : 'STILL ARMED — the close was not fully proven; any signal from here re-writes the keys and re-touches restart.txt')
     } catch (e) { A('3 close: ' + scrub(e)) }
+    /* T-108 — THE BACKUP THIS OPERATOR ITSELF LEAVES BEHIND. `writeFlag` copies .env.local to
+       `.env.local.bak-claims-gate-<stamp>` before its first change, so a window always leaves a restorable
+       copy carrying CLAIMS_ENABLED=true in the app root: one `cp` and a Passenger respawn re-open the claims
+       surface. This operator neither removed that copy nor NAMED the control that does. It is invoked here —
+       the shared implementation from phase2-refund-gate.js, reported into THIS operator's own facts and
+       anomalies — after the close, because the neutralizer refuses to run while a live flag is still true. */
+    try {
+      await REFUND_GATE.neutralizeOwnBackups({ F, A, appRoot: APP_ROOT })
+    } catch (e) { A('3 neutralize: the backup neutralizer could not be run — ' + scrub(e) + ' · run by hand: node ' + path.join(__dirname, 'phase2-backup-neutralize.js')) }
   }
   // AUDIT FIX (T-49 audit): the residue report sat on the happy path only, so aborting the
   // rehearsal (a precheck anomaly, Ctrl-C, an uncaught throw) skipped it entirely — exactly
