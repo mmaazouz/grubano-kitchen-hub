@@ -1259,5 +1259,52 @@ Trois faits mesurés. **Aucun run CI n'a jamais eu lieu sur `main`** — l'uniqu
 
 Ce que cela implique, et qui est une décision fondateur, pas une tâche : la production ne peut pas être réparée par un correctif de code sur `develop`. Il faut d'abord décider ce que `main` doit contenir, puis un premier déploiement production réel (travail côté hôte inclus). **Rien n'a été modifié.**
 
+### Déploiement staging vérifié — `33b7ad70` servi, et le recensement toujours IDENTIQUE
+
+Deux commits sont partis sur `develop` : `a279410d` (le lot) puis `33b7ad70` (la correction d'ordonnancement de T-115, trouvée en relisant mon propre changement). Les deux CI sont vertes, les deux déploiements ont réussi, et `/version.json` sert `33b7ad70aa224e3455b0f8d2c7ad5ee0a4a22480` (CI run 36433674654, build 2026-09-28T14:28:16Z).
+
+**Sondes en lecture seule — aucune écriture, aucun appel authentifié contre staging.**
+
+| Sonde | Résultat | Lecture |
+|---|---|---|
+| `GET /fr/eat` | 200 | l'application sert |
+| `GET /api/restaurants` | 200 | la base répond — le client Prisma livré n'est pas périmé |
+| `POST /api/admin/refunds/run` | **403** | `REFUNDS_ENABLED` fermé |
+| `POST /api/admin/claims/pay-approved` | **403** | surface réclamations fermée |
+| `POST /api/admin/franchise-settlements/run` | **404** | **plus strict qu'un 403** |
+| `POST /api/admin/creator-payouts/run` | **404** | **plus strict qu'un 403** |
+| `GET /api/claims` | 200 `{"enabled":false}` | la surface conso s'annonce fermée |
+| `GET /{fr,en,es,it,ar}/legal/cgv` | 200 ×5, `noindex, nofollow` ×5 | l'épingle L10 tient |
+
+**Les deux 404 méritent une phrase, parce qu'ils m'ont d'abord ressemblé à une régression.** Ce ne sont pas des routes manquantes : dans les deux fichiers, la doctrine Q8 (« rôle masqué ⇒ indisponible côté serveur ») est évaluée **AVANT** le drapeau argent — `if (!isFranchiseEnabled()) return 404` précède `if (!isFranchiseSettlementEnabled()) return 403`. `FRANCHISE_ENABLED` et `CREATOR_ENABLED` étant fermés sur staging, la route n'existe pas du point de vue de l'appelant, et le drapeau argent n'est même pas atteint. Les deux rails money-OUT sont donc fermés à **deux** couches, dont la plus externe nie jusqu'à l'existence de la surface. C'est plus fort que ce que je cherchais à vérifier, et ça ne dispense de rien : T-119 exige maintenant les deux drapeaux argent false au préflight, précisément parce qu'une couche de visibilité n'est pas une serrure sur l'argent.
+
+**Recensement read-only** `claims-census.yml` run 36438368799, mesuré 2026-09-28T14:45:33Z **sur le build déployé**, contre la base staging réelle :
+
+- **`pendingRowsUnder20hWithSettledRoyalty = 0`.** La borne T-90 reste une affirmation sur le PARC et pas un raisonnement sur des chemins : il n'existe, à cet instant, aucune ligne capable de déclencher l'unique écriture Stripe financière atteignable les quatre drapeaux fermés. `pendingRowsOver20hWithSettledRoyalty = 0` également.
+- **Population IDENTIQUE, champ par champ, à celle de `d28d2eff`** (run 36415209389) : `total 9`, `active 0`, `nonTerminal 3`, `byStatus {refunded 4, refused 3, refused_final 2}`, **tous** les compteurs `legacy` à 0, `closure {missing 0, terminalWithoutRecord 4}`. **Aucun écart, pas même l'apparition d'un compteur** — contrairement au déploiement précédent, ce lot n'ajoute aucun compteur.
+- `schema` = `{ready:true, clientReady:true, dbReady:true, missingClient:[], missingDb:[], why:null}` — aucune migration, aucun regen, et il n'en fallait aucun : `prisma/schema.prisma` est byte-identique.
+- `gates` = `{claimsEnabled:false, claimsGate:"CLOSED (flag_off)", claimsSurfaceEnabled:false, claimsIntakeEnabled:false, claimsSurfaceOpen:false, claimsIntakeOpen:false, refundsEnabled:false}`.
+
+**Recensement des écritures financières, dérivé du système de fichiers** (894 fichiers parcourus sous `lib/`, `app/`, `scripts/` ; 9 verbes lus depuis la déclaration du garde) : **8 sites, 0 non déclaré.**
+
+| Site | Verbe | Autorisation |
+|---|---|---|
+| `lib/refund.ts:370` | `refunds.create` | `rail_open` |
+| `lib/refunds.ts:100` | `refunds.create` | `rail_open` |
+| `lib/refund.ts:587` | `transfers.createReversal` | **`completing_settled_movement`** (sans drapeau, par conception) |
+| `lib/dispute.ts:456` | `transfers.createReversal` | `dispute_rail_open` |
+| `lib/dispute.ts:515` | `transfers.createReversal` | `dispute_rail_open` |
+| `lib/franchise-settlement.ts:279` | `transfers.create` | `settlement_rail_open` |
+| `lib/creator-payout.ts:262` | `transfers.create` | `partner_payout_rail_open` |
+| `lib/stripe.ts:87` | `paymentIntents.capture` | `capture_rail_open` |
+
+**Un seul site porte l'autorisation sans drapeau**, et c'est l'exception nommée : la reprise de royalty qui termine un remboursement que Stripe a déjà payé, laquelle exige un identifiant Stripe de mouvement `settled` comme preuve. Tous les autres nomment un drapeau produit.
+
+**Et une erreur à consigner, parce qu'elle illustre le reste du lot.** La première version de ce recensement a affiché **7** sites et **9 verbes dont `'MoneyWriteRefused'`** : mon script ad hoc extrayait la liste de verbes par une expression régulière sur tout le fichier et attrapait un AUTRE tableau, omettant `paymentIntents.capture` — donc masquant un site d'écriture réel. Le test livré, lui, **importe** la constante et n'a jamais eu tort. C'est la même leçon que T-118 sous un autre déguisement : **ce qui re-dérive une vérité au lieu de la lire finit par en dériver une autre**, et son silence ressemble à un succès. Le script asserte désormais la forme de ce qu'il a lu.
+
+**AUCUN EFFET ARGENT, et voici par quoi.** (1) Un déploiement n'exécute par lui-même ni migration ni script serveur, et le recensement confirme `schema.ready` sans qu'aucune colonne n'ait été ajoutée. (2) Les quatre sondes de gate se sont arrêtées au refus AVANT toute logique — deux au 404 de visibilité, deux au 403 de drapeau. (3) **Aucun appel authentifié contre staging** : aucune commande, aucune réclamation, aucun e-mail, aucun remboursement, aucun versement. Le recensement est une lecture de COMPTEURS derrière le jeton interne, déclenchée depuis GitHub Actions, sur une cible FIXÉE à staging. (4) Chaque nouveau littéral argent de ce lot a été vérifié **présent dans les chunks serveur compilés** du build à froid et **absent de tous les chunks client** — il est donc réellement livré, pas seulement écrit. (5) `CERTIFIED_SHAS` reste VIDE. (6) Aucune commande cPanel, aucune fenêtre ouverte, `main` et la production intactes.
+
+**Ce que ce déploiement ne prouve pas, et qu'il faut dire.** Les sondes établissent que les gates refusent ; le recensement, que le parc est vide. Ni l'un ni l'autre n'exerce le garde `[MONEY WRITE]` **en exécution** sur staging — il ne peut l'être que lorsqu'une écriture financière est réellement tentée, c'est-à-dire pendant L11. Sa preuve aujourd'hui est la suite (497 fichiers, 7276 tests) et l'énumération qui interdit une écriture non déclarée, pas une observation runtime. De même, T-115 et T-116 sont prouvés par des tests et par lecture : à drapeaux fermés, staging ne peut pas les exécuter.
+
 ## Lots suivants
 (complété lot par lot : SHA, preuves, CI, SHA déployé)
