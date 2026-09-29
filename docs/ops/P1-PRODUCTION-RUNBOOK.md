@@ -1924,11 +1924,21 @@ déjà 404 quand elles sont arrivées. Une rotation #2 (`7ca88ec8`) est en vol a
 **404** donc ni l'ancien ni le nouveau jeu n'est lisible ; l'application fonctionne ; les portes financières
 sont fermées.
 
-**Ce que je ne peux PAS prouver d'ici, et c'est un trou réel de staging** : que le **processus vivant** a
-chargé le nouveau manifeste. La porte `Health check (staging @ expected SHA)` lit `"commit"` dans
-**`/version.json`**, un fichier **statique** : elle prouve le téléversement, **jamais** que le processus a
-redémarré. C'est exactement la limite que PROD-2 a fermée côté production en ajoutant la porte
-« base joignable par le client Prisma déployé » — **staging ne l'a toujours pas.**
+**Et le redémarrage est prouvé aussi, mais il a fallu lire un journal pour ça.** La porte
+`Health check (staging @ expected SHA)` lit `"commit"` dans **`/version.json`**, un fichier **statique** :
+elle prouve le téléversement, **jamais** que le processus a redémarré. Ce qui le prouve se trouve dans le
+journal du run 36587877019, étape `Trigger Passenger restart via FTPS` :
+**`✅ SUCCESS — FTPS upload returned exit 0`** sur `~/app.grubano.com/tmp/restart.txt`. Passenger relit au
+prochain appel, et une centaine d'appels ont eu lieu depuis (ma sonde). Avec `/api/restaurants` = 200 — le
+processus répond **et** atteint la base — la chaîne est complète : le processus vivant sert le build
+`adfb4981`, donc son manifeste, donc ses clés neuves.
+
+**Mais cette preuve n'est pas une porte, et c'est le trou.** Les trois étapes de redémarrage
+(`Post-deploy server tasks`, `Fix permissions and restart`, `Trigger Passenger restart via FTPS`) sont
+toutes en `continue-on-error: true` : leur `conclusion` remonte `success` **quoi qu'il arrive**. Il a donc
+fallu ouvrir le journal pour savoir. Un prochain run pourrait échouer ce redémarrage en silence, et
+l'ensemble des portes ne le verrait pas. C'est exactement la limite que PROD-2 a fermée côté production en
+ajoutant la porte « base joignable par le client Prisma déployé » — **staging ne l'a toujours pas.**
 
 ⇒ **PROD-15 proposé** (non exécuté) : porter les neuf lignes de cette porte dans `deploy-staging.yml`. Aucune
 cadence, aucun job, aucun secret nouveau ; le vert de staging voudrait alors dire « le processus sert ce
@@ -1952,7 +1962,7 @@ ls -l --time-style=full-iso ~/.grubano/env-provenance.json
 
 | | Attendu |
 |---|---|
-| **A** | un horodatage **postérieur à 15:21:57 UTC** ⇒ le processus a redémarré avec le nouveau build. Antérieur ⇒ `touch ~/app.grubano.com/tmp/restart.txt`, puis relire. |
+| **A** | un horodatage **postérieur à 15:21:57 UTC** ⇒ confirmation directe du redémarrage (déjà établi par le journal FTPS + `/api/restaurants` 200, mais ici c'est le processus lui-même qui l'écrit). Antérieur ⇒ `touch ~/app.grubano.com/tmp/restart.txt`, puis relire. |
 | **B** | une empreinte **différente de `0318ee0738513837`** (celle qui était publiquement servie), et `keys=previewModeId,previewModeSigningKey,previewModeEncryptionKey`. |
 | **C** | `PASS`, et en particulier aucun drapeau de `MONEY_FLAGS_MUST_BE_FALSE` effectif à `true` — `TIPS_ENABLED` et `CLAIM_AUTO_RESOLVE_ENABLED` arrivent par les `SetEnv`, donc par le canal qui **gagne** sur `.env.local`. |
 
