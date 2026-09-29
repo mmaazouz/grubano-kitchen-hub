@@ -75,7 +75,48 @@ const DENY = [
   '/public/version.json',
   '/public/manifest.webmanifest',
   '/prisma/migrations/0_init/migration.sql',
+  /* ── FOUND BY AN ADVERSARIAL REVIEW, and this one is not information disclosure, it is a
+     CREDENTIAL LEAK. `.next/prerender-manifest.json` carries `previewModeId`,
+     `previewModeSigningKey` and `previewModeEncryptionKey` — verified by reading the local build's
+     own copy, key NAMES only — and it was measured at 200 / 99 500 B on staging on 2026-09-29.
+     Those three values let anyone forge Next draft-mode cookies. The first version of this list
+     asked for `/.next/BUILD_ID`, twenty-one bytes, and would have reported the `.next` line of the
+     rule as verified by the least valuable file in the directory. */
+  '/.next/prerender-manifest.json',
+  '/.next/app-build-manifest.json',
+  '/.next/build-manifest.json',
+  '/.next/server/middleware-manifest.json',
+  /* The Passenger restart marker: 98 B holding the deployed SHA and the Actions run id. Nothing
+     requests it over HTTP — Passenger reads it from disk. */
+  '/tmp/restart.txt',
+  /* A QUERY STRING must not be a bypass. RedirectMatch matches the URL-path, which excludes the
+     query, so `^/…$` anchors still bite — but that is a claim, and a claim in a comment is not a
+     control. Measured at 200 before the rule. */
+  '/prisma/schema.prisma?x=1',
 ]
+
+/* Directory URLs — the OTHER half of `(/|$)` in the rule, and the half nothing was verifying.
+   These are asserted differently from the list above: today they answer 308 (no file, so the
+   request falls through to Next's locale redirect), and 308 is NOT 200, so a "must not return 200"
+   test passes on them BEFORE the rule exists and proves nothing. After the rule they must answer
+   404 — that is the only outcome that shows the directory branch actually fired. An Apache index
+   listing of /scripts/server/ would also be caught here and nowhere else. */
+const DENY_DIRS = ['/prisma/', '/scripts/', '/scripts/server/', '/lib/', '/messages/', '/node_modules/', '/public/', '/.next/', '/tmp/']
+
+/* The subset of DENY that was MEASURED at 200 on app.grubano.com on 2026-09-29. After the rule each
+   of these MUST have flipped to 403/404. It matters because a DENY entry for a file the host does
+   not have can never turn EXPOSED: without this list, "EXPOSED 0" cannot tell "the rule fired" from
+   "the file was never there", and a mistyped token in the rule would survive a green board. */
+const MEASURED_EXPOSED_2026_09_29 = new Set([
+  '/prisma/schema.prisma', '/prisma/schema.prisma?x=1', '/package.json', '/server.js',
+  '/scripts/server/staging-backup.js', '/scripts/server/phase2-refund-gate.js',
+  '/scripts/cron/monthly-invoices.js', '/scripts/cron/cron-target-guard.js',
+  '/lib/ledger-check-core.js', '/lib/claims-payable-core.js',
+  '/.next/BUILD_ID', '/.next/required-server-files.json', '/.next/routes-manifest.json',
+  '/.next/prerender-manifest.json', '/.next/app-build-manifest.json', '/.next/build-manifest.json',
+  '/.next/server/middleware-manifest.json', '/tmp/restart.txt',
+  '/public/version.json', '/public/manifest.webmanifest',
+])
 
 /* MUST keep working — the founder's own checklist, item by item. `/version.json` is the deploy's
    health check; the two auth pages are what the client-bundle-integrity gate reads;
@@ -93,6 +134,7 @@ const ALLOW_PAGES = [
   '/sw.js',
   '/offline.html',
   '/icons/icon-192.png',
+  '/apple-touch-icon.png',
   '/fonts/OFL-cairo.txt',
 ]
 
@@ -149,13 +191,28 @@ function body(url) {
   console.log('========================================')
 
   const exposed = []
+  let mustFlipChecked = 0
+  let absentAnyway = 0
   console.log('')
-  console.log('DENY — must not return content')
+  console.log('DENY — must not return content   (* = measured 200 on 2026-09-29, so it MUST have flipped)')
   for (const p of DENY) {
     const r = await head(BASE + p)
     const served = r.code === 200
+    const tracked = MEASURED_EXPOSED_2026_09_29.has(p)
     if (served) exposed.push(`${p} → 200 (${r.len} B, ${r.type.split(';')[0]})`)
-    console.log(`  ${served ? 'EXPOSED' : 'ok     '} ${String(r.code).padEnd(4)} ${String(r.len).padStart(7)} B  ${p}`)
+    else if (tracked) mustFlipChecked++
+    else absentAnyway++
+    console.log(`  ${served ? 'EXPOSED' : 'ok     '} ${tracked ? '*' : ' '} ${String(r.code).padEnd(4)} ${String(r.len).padStart(7)} B  ${p}`)
+  }
+
+  console.log('')
+  console.log('DENY — directory URLs, which must answer 404 (308 = the rule did NOT fire)')
+  for (const p of DENY_DIRS) {
+    const r = await head(BASE + p)
+    /* 404 or 403 = the rule fired. 308/200/2xx = it did not, and a 200 would be an index listing. */
+    const ok = r.code === 404 || r.code === 403
+    if (!ok) exposed.push(`${p} → ${r.code} (the directory branch of the rule did not fire; 200 would be an index listing)`)
+    console.log(`  ${ok ? 'ok     ' : 'EXPOSED'} ${String(r.code).padEnd(4)} ${p}`)
   }
 
   const broken = []
@@ -197,13 +254,20 @@ function body(url) {
 
   console.log('')
   console.log('========================================')
+  /* BUNDLES CHECKED = 0 IS A FAILURE, NOT A NOTE. The previous version printed a warning beside a
+     PASS — a clause documented in the header and not implemented in the code, which is the exact
+     shape of defect this repository keeps paying for. If no page could be enumerated, the positive
+     control did not run, so the verdict says nothing about the client and must not be green. */
+  if (checked === 0) broken.push('BUNDLES CHECKED = 0 — the positive control did not run, so a PASS would prove nothing about the client')
   const pass = exposed.length === 0 && broken.length === 0
   console.log('RESULT: ' + (pass ? 'PASS' : 'FAIL'))
   console.log('EXPOSED (should be 0): ' + exposed.length)
   for (const e of exposed) console.log('   ! ' + e)
   console.log('BROKEN  (should be 0): ' + broken.length)
   for (const b of broken) console.log('   ! ' + b)
-  console.log('BUNDLES CHECKED: ' + checked + (checked === 0 ? '  ← no positive control ran: a PASS here proves nothing about the client' : ''))
+  console.log('BUNDLES CHECKED: ' + checked)
+  console.log('DENY ENTRIES THAT FLIPPED FROM A MEASURED 200: ' + mustFlipChecked + ' / ' + MEASURED_EXPOSED_2026_09_29.size)
+  console.log('DENY ENTRIES THE HOST NEVER HAD (no signal): ' + absentAnyway)
   console.log('DATABASE CHANGED: NO · STRIPE CALLED: NO')
   console.log('========================================')
   process.exit(pass ? 0 : 1)

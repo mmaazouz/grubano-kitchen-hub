@@ -140,8 +140,15 @@ const fail = (step, action) => out(['FAILED STEP: ' + step, 'ACTION: ' + (action
     }
     lines.push('UNEXPECTED APPLICATION TABLES: 0 — the database is VIRGIN, as PROD-6b requires')
     lines.push('')
-    lines.push('NEXT: nothing here creates a schema. PROD-6b (deploy the code FIRST, then one')
-    lines.push('      `npx prisma@5.22.0 db push` with NO --accept-data-loss) is a separate, later step.')
+    /* PROD-1 — THIS MESSAGE MUST NOT SPELL THE DESTRUCTIVE FLAG. The repository bans that token on
+       every EXECUTABLE line under scripts/, and a string literal is executable. The ban caught this
+       very file (prod-db-verify.js:144) on the full suite — the fifth time this session a lexical
+       rule has been tripped by text about itself, except that here THE RULE WAS RIGHT and the new
+       file was wrong. The flags and the STOP conditions live in the runbook, which is where an
+       operator reads them anyway. */
+    lines.push('NEXT: nothing here creates a schema. PROD-6b is a separate, later step: deploy the')
+    lines.push('      code FIRST, then ONE deliberate `npx prisma@5.22.0 db push` on a virgin database.')
+    lines.push('      Exact flags and STOP conditions: docs/ops/P1-PRODUCTION-RUNBOOK.md section 4.3.')
 
     await prisma.$disconnect().catch(() => {})
     return out(lines, true)

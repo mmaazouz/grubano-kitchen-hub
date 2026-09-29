@@ -1104,22 +1104,16 @@ est la matière première d'un ciblage de vulnérabilités. C'est vrai **depuis 
 déploiement #1 la production servira le `schema.prisma` **courant** (77 modèles au lieu de 27) — donc le
 déploiement **aggrave** l'exposition si rien n'est fait.
 
-**Correctif** : une règle Apache dans `~/grubano.com/.htaccess`, à poser par cPanel (le fichier répond 553 en
-FTP et le pipeline ne l'écrit plus, cf. PROD-2) :
-
-```apache
-<FilesMatch "\.(prisma|json|js|ts|map|lock)$">
-  Require all denied
-</FilesMatch>
-<Files "version.json">
-  Require all granted
-</Files>
-```
-
-| | |
-|---|---|
-| **Test de succès** | `/prisma/schema.prisma` → **403** · `/package.json` → **403** · `/version.json` → **200** · `/fr/eat` inchangé · `/_next/static/**` **toujours 200** |
-| **Condition STOP** | si `/_next/static/...` passe à 403, les bundles client sont morts (le P0 du 06/09) : **retirez la règle immédiatement**. Vérifiez ce point **avant** tout le reste — `.js` est dans la liste, donc la portée de la règle doit exclure `/_next/`. |
+> 🚫 **LA RECETTE QUI SE TROUVAIT ICI A ÉTÉ RETIRÉE, ET C'EST LE CORRECTIF LE PLUS IMPORTANT DE CE
+> PARAGRAPHE.** Elle proposait un `<FilesMatch "\.(prisma|json|js|ts|map|lock)$">` + `Require all denied`.
+> **`.js` y était, et chaque bundle client sous `/_next/static/` est un `.js`** : appliquée telle quelle, elle
+> rendait le site inerte — le P0 du 2026-09-06. Le paragraphe l'accompagnait bien d'une condition STOP, mais
+> **le mécanisme de livraison de ce runbook est un copier-coller humain** : laisser deux recettes
+> contradictoires dans un document qu'on colle à la main, c'est livrer la mauvaise une fois sur deux. Une
+> revue adversariale l'a classée bloquante, à juste titre.
+>
+> **La seule recette est désormais le fichier versionné** [`docs/ops/htaccess/PROD-14-deny-sources.htaccess`](htaccess/PROD-14-deny-sources.htaccess),
+> détaillé au §16.3 : une portée **par CHEMIN**, jamais par extension.
 | **Rollback** | retirer le bloc du `.htaccess` par cPanel ; effet immédiat, aucun redémarrage |
 | **Réversible** | **OUI** |
 

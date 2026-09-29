@@ -38,7 +38,25 @@
 #   lib           /lib/ledger-check-core.js .....................   8 156 o
 #                 /lib/claims-payable-core.js ...................   6 337 o
 #   public        /public/version.json, /public/manifest.webmanifest
+#   tmp           /tmp/restart.txt ..............................      98 o
 #   racine        /package.json 2 961 o · /server.js 5 512 o
+#
+# ET LE PIRE DU LOT, trouvé par une revue adversariale et non par moi :
+#   /.next/prerender-manifest.json ......................... 99 500 o
+# Ce n'est PAS de la divulgation d'information, c'est une FUITE DE SECRETS. Le
+# fichier contient previewModeId, previewModeSigningKey et
+# previewModeEncryptionKey (noms vérifiés sur la copie locale du build, jamais
+# les valeurs) — trois clés qui permettent de forger un cookie de draft-mode
+# Next. La première version de cette liste demandait /.next/BUILD_ID, 21 octets,
+# et aurait déclaré la ligne `.next` vérifiée par le fichier le moins précieux du
+# répertoire.
+#
+# ⚠️ LE RISQUE N'EST PAS « LA RÈGLE NE MARCHE PAS », C'EST « LE SITE MEURT ».
+# `RedirectMatch` exige AllowOverride FileInfo. Si l'hébergeur ne l'accorde pas,
+# Apache renvoie **500 sur tout le vhost**, webhook Stripe compris. DONC : le
+# PREMIER contrôle après avoir collé le bloc n'est pas la sonde, c'est
+#     curl -s -o /dev/null -w '%{http_code}\n' https://app.grubano.com/fr/eat
+# et il doit répondre 200. S'il répond 500, RETIREZ LE BLOC IMMÉDIATEMENT.
 #
 # ET CE QUI A ÉTÉ RETIRÉ DE LA PREMIÈRE VERSION : tests, docs, components, app,
 # tsconfig.json, next.config.js, i18n.ts, navigation.ts, middleware.ts,
@@ -62,7 +80,7 @@
 # le health-check du déploiement exige.
 # ═══════════════════════════════════════════════════════════════════════════════
 
-RedirectMatch 404 ^/(prisma|scripts|lib|messages|public|node_modules)(/|$)
+RedirectMatch 404 ^/(prisma|scripts|lib|messages|public|node_modules|tmp)(/|$)
 RedirectMatch 404 ^/\.next(/|$)
 RedirectMatch 404 ^/(package(-lock)?\.json|server\.js)$
 
