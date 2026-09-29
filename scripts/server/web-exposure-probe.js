@@ -138,6 +138,37 @@ const ALLOW_PAGES = [
   '/fonts/OFL-cairo.txt',
 ]
 
+/* RUNTIME GATES that an .htaccess edit must not move — and this is NOT belt-and-braces.
+   `docs/ops/WEB-ROOT-HARDENING-HANDOFF.md:19` records why: on this host `.htaccess` carries the
+   Passenger configuration AND potentially INJECTED ENVIRONMENT VARIABLES — the provenance report
+   measured `INTERNAL_CRON_TOKEN`, `TIPS_ENABLED` and `ALERT_EMAIL` present in `process.env` BEFORE
+   any `.env*` file was loaded. A misplaced rule in that file can therefore change which flags the
+   process sees. So a hardening edit is a money-adjacent edit, and the rollback trigger set the
+   handoff specifies (`:29`) includes a money gate moving, not only a page breaking.
+   Each entry is a POST with an empty body, unauthenticated: it opens nothing and changes nothing. */
+const RUNTIME_GATES = [
+  { path: '/api/admin/refunds/run', expect: 403, needle: 'gated', why: 'the refund rail must stay CLOSED (401 would mean OPEN)' },
+  { path: '/api/claims', expect: 403, needle: null, why: 'the claims surface must stay closed' },
+  { path: '/api/admin/claims/pay-approved', expect: 403, needle: null, why: 'the claims payment rail must stay closed' },
+]
+
+function post(url) {
+  return new Promise((resolve) => {
+    const u = new URL(url)
+    const lib = u.protocol === 'https:' ? https : http
+    const req = lib.request({ hostname: u.hostname, port: u.port || 443, path: u.pathname, method: 'POST', timeout: 25000, headers: { 'content-type': 'application/json', 'content-length': 2, 'user-agent': 'grubano-web-exposure-probe' } }, (res) => {
+      let s = ''
+      res.setEncoding('utf8')
+      res.on('data', (c) => { s += c; if (s.length > 4096) res.destroy() })
+      res.on('end', () => resolve({ code: res.statusCode, body: s }))
+      res.on('close', () => resolve({ code: res.statusCode, body: s }))
+    })
+    req.on('timeout', () => { req.destroy(); resolve({ code: 0, body: '' }) })
+    req.on('error', (e) => resolve({ code: 0, body: 'error:' + e.code }))
+    req.end('{}')
+  })
+}
+
 function head(url, method) {
   return new Promise((resolve) => {
     const u = new URL(url)
@@ -224,6 +255,18 @@ function body(url) {
     const ok = r.code >= 200 && r.code < 400
     if (!ok) broken.push(`${p} → ${r.code}`)
     console.log(`  ${ok ? 'ok     ' : 'BROKEN '} ${String(r.code).padEnd(4)} ${p}`)
+  }
+
+  console.log('')
+  console.log('RUNTIME GATES — an .htaccess edit can change env injection on this host, so a money gate')
+  console.log('               that MOVED is a rollback trigger (WEB-ROOT-HARDENING-HANDOFF.md:19,:29)')
+  for (const g of RUNTIME_GATES) {
+    const r = await post(BASE + g.path)
+    const codeOk = r.code === g.expect
+    const needleOk = !g.needle || new RegExp(g.needle, 'i').test(r.body)
+    const ok = codeOk && needleOk
+    if (!ok) broken.push(`${g.path} → ${r.code}${g.needle && !needleOk ? ' (body lacks "' + g.needle + '")' : ''} — expected ${g.expect}: ${g.why}`)
+    console.log(`  ${ok ? 'ok     ' : 'MOVED  '} ${String(r.code).padEnd(4)} ${g.path}  ${g.why}`)
   }
 
   console.log('')

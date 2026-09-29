@@ -51,12 +51,38 @@
 # et aurait déclaré la ligne `.next` vérifiée par le fichier le moins précieux du
 # répertoire.
 #
+# ── CE DÉPÔT AVAIT DÉJÀ LA RÉPONSE, ET JE NE L'AVAIS PAS CHERCHÉE ──────────────
+# `docs/ops/WEB-ROOT-HARDENING-HANDOFF.md` existait déjà et spécifiait, à sa
+# ligne 27, exactement ce jeu de règles :
+#     ^/(tmp|lib|scripts|prisma|node_modules|\.next)(/|$)
+#     + server.js, package.json, package-lock.json, VERSION
+# Sa ligne 11 documentait déjà l'exposition (`/tmp/restart.txt` compris) et la
+# classait « P1 PRÉ-PRODUCTION ». Les deux dérivations ont convergé — et c'est le
+# handoff qui avait `tmp` en premier ; je ne l'ai ajouté qu'après la revue.
+# J'aurais dû lire docs/ops avant de concevoir. Deux divergences, assumées :
+#   · J'AJOUTE `messages` et `public`, sur mesure (470 616 o de copie applicative ;
+#     /public/version.json et /public/manifest.webmanifest servis en double).
+#   · JE N'AJOUTE PAS `VERSION` : 68 octets qui publient le même SHA que
+#     /version.json, exigé par le health-check du déploiement. Refuser l'un et pas
+#     l'autre serait une asymétrie sans bénéfice.
+#
 # ⚠️ LE RISQUE N'EST PAS « LA RÈGLE NE MARCHE PAS », C'EST « LE SITE MEURT ».
 # `RedirectMatch` exige AllowOverride FileInfo. Si l'hébergeur ne l'accorde pas,
 # Apache renvoie **500 sur tout le vhost**, webhook Stripe compris. DONC : le
 # PREMIER contrôle après avoir collé le bloc n'est pas la sonde, c'est
 #     curl -s -o /dev/null -w '%{http_code}\n' https://app.grubano.com/fr/eat
 # et il doit répondre 200. S'il répond 500, RETIREZ LE BLOC IMMÉDIATEMENT.
+#
+# ⚠️ ET UN RISQUE QUE LE HANDOFF NOMMAIT ET QUE JE N'AVAIS PAS VU : sur cet hôte,
+# `.htaccess` porte la configuration Passenger ET, potentiellement, des VARIABLES
+# D'ENVIRONNEMENT INJECTÉES — le rapport de provenance a mesuré
+# INTERNAL_CRON_TOKEN, TIPS_ENABLED et ALERT_EMAIL présents dans `process.env`
+# AVANT tout chargement de fichier `.env*`. Une règle mal placée peut donc changer
+# les drapeaux que voit le processus. **Éditer ce fichier est une édition
+# money-adjacent.** C'est pourquoi la sonde vérifie aussi, désormais, que les trois
+# portes financières répondent toujours 403 : une porte qui BOUGE est un motif de
+# rollback, pas seulement une page qui casse (handoff ligne 29).
+# NE TOUCHEZ AUCUNE directive `Passenger*` ni `SetEnv` en collant ce bloc.
 #
 # ET CE QUI A ÉTÉ RETIRÉ DE LA PREMIÈRE VERSION : tests, docs, components, app,
 # tsconfig.json, next.config.js, i18n.ts, navigation.ts, middleware.ts,
