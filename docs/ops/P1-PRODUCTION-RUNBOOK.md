@@ -2117,3 +2117,213 @@ PÉRIMÉ », panne invisible à tout contrôle fondé sur un 200.
 
 Le workflow compte désormais **quatre portes bloquantes** : `Restart proven` · `Health check (staging @
 expected SHA)` · `Database reachable…` · `Client bundle integrity`.
+
+---
+
+## 19 · PROD-14 ROTATION CLOSED · GR-9CYOJJ résolu · la feuille du jeton cron
+
+### 19.1 PROD-14 ROTATION CLOSED = **YES** (2026-09-29)
+
+Empreinte de l'objet `preview` du manifeste déployé, lue sur le serveur par le fondateur, **valeurs jamais
+affichées** :
+
+| | sha256 (16 premiers) |
+|---|---|
+| publiquement exposée avant la règle | `0318ee0738513837` |
+| déployée maintenant | **`cb893f171593d278`** |
+
+Différentes ⇒ **les trois clés `previewMode*` ont tourné.** Avec `/.next/prerender-manifest.json` = 404,
+PROD-14 = PASS, EXPOSED 0, BROKEN 0, 44 bundles, portes financières 403/403/403, et **plusieurs builds
+intervenus après la fermeture** (`adfb4981`, `7ca88ec8`, `87020d29`), le sujet est **clos**. Ne pas réouvrir
+sauf régression de la sonde.
+
+### 19.2 GR-9CYOJJ — **sortie A : provenance retrouvée**, et pas par un document écrit après coup
+
+Le refus a tenu une journée de travail, et c'est ainsi qu'il devait être résolu : **en récupérant la
+provenance en lecture seule**, pas en rédigeant un runbook rétroactif — ce que vous avez interdit et qui
+n'aurait rien prouvé.
+
+**La chaîne, bout à bout, mesurée le 2026-09-29 :**
+
+```
+order cmterr88p00212t8pyi9cyojj  (GR-9CYOJJ)
+  → PI    pi_3U9rrGKuol4dGnN119veDCFC   créé 2026-08-29T19:24:06Z · 1450 c · pickup · commission 0.08
+                                        on_behalf_of + transfer_data → acct_1U9rm1KmHndip0cU
+  → charge ch_3U9rrGKuol4dGnN1197tw2Wx  19:24:06Z · captured · app_fee 116 · bt fee 71 (stripe_fee)
+                                        statement descriptor « ZERO TRATTORIA »
+  → refund re_3U9rrGKuol4dGnN11KEHWf7p  19:24:09Z · 1450 c · succeeded · reason null
+           metadata { grubano_refund_row: "cmterrb1e00252t8pd691qxe4",
+                      orderId: "cmterr88p00212t8pyi9cyojj" }
+  → ligne DB Refund  cmterrb1e00252t8pd691qxe4   (nommée PAR le refund : elle existait AVANT l'appel Stripe)
+  → compte connecté  payment_refund −1450 @19:24:10Z  puis  adjustment +116 @19:24:11Z
+                     (reverse_transfer ET refund_application_fee appliqués)
+  → événement initiateur : POST /api/admin/refunds/run → lib/refund.executeRefund
+```
+
+**Les six preuves, et pourquoi chacune est indépendante :**
+
+1. **`metadata.grubano_refund_row`.** Cette forme est écrite par **exactement une ligne** du dépôt —
+   `lib/refund.ts` : `metadata: { grubano_refund_row: row.id, orderId: row.orderId }`. Donc **le moteur de
+   remboursement de l'application l'a créé**, jamais un humain dans le Dashboard Stripe. C'est la preuve
+   décisive, et elle est dans l'objet Stripe, pas dans un document.
+2. **Elle nomme sa ligne DB** : `cmterrb1e00252t8pd691qxe4`. Le lien base ⇄ Stripe que vous demandiez,
+   récupéré **depuis Stripe** parce que je ne lis pas la base. La ligne existait **avant** l'appel.
+3. **Le code est daté.** Au commit `025a35e7` (2026-08-29 **21:16:06 +0200**, soit **huit minutes avant** le
+   remboursement), `lib/refund.ts:246` contenait déjà cette ligne exacte.
+4. **Il a fallu ouvrir un drapeau argent ET présenter une créance.** Au même commit,
+   `app/api/admin/refunds/run/route.ts` vérifiait le kill-switch **en premier** — **403 `gated`** sauf si
+   `REFUNDS_ENABLED === 'true'`, **défaut OFF** — puis exigeait, verbatim, « cron secret **OR** admin
+   session » : soit une comparaison à temps constant sur `INTERNAL_CRON_TOKEN`, soit une session dont
+   `operator.role === 'admin'`. Ce remboursement n'a donc pas pu arriver par accident : quelqu'un a
+   **délibérément ouvert** le rail **et** présenté l'une des deux créances.
+
+   > ⚠️ **Et cela recadre le §19.3.** `INTERNAL_CRON_TOKEN` n'est pas seulement une créance de cron :
+   > **c'est une créance de route d'argent.** Avec le rail ouvert, quiconque le détient peut déclencher un
+   > remboursement sans session admin. En avoir **deux copies divergentes** n'était donc pas seulement
+   > désordonné — cela doublait la surface d'un secret qui ouvre une route financière. La source unique
+   > n'est pas une question de propreté.
+5. **La séquence est un test, pas une opération manuelle** : PI et charge à 19:24:06, refund à **19:24:09** —
+   trois secondes, montant **total**, `reverse_transfer` et `refund_application_fee` appliqués. Et le compte
+   connecté porte **cinq paiements identiques de 1450 c entre 19:22:10 et 19:24:07** : une rafale scriptée.
+6. **Le marchand s'appelle « ZERO TRATTORIA »**, compte créé le même soir — et le lot fusionné huit minutes
+   plus tôt est celui du **SECURITY GATE / ZERO-TO-ORDER**.
+
+**Ce que cela prouve** : un **remboursement opérateur délibéré**, par le moteur, via le rail admin, drapeau
+ouvert et session authentifiée, sur une commande de test que le même run venait de créer.
+
+**Ce que cela ne prouve pas, et je l'inscris comme tel** : **à quelle répétition nommée il appartenait.**
+Aucun runbook n'enregistre ce run. C'est un trou de **tenue de registre**, pas un mouvement d'argent
+inexpliqué — et l'entrée du registre dit exactement cela, avec son `WHAT IT DOES NOT PROVE`.
+
+⇒ **Ajouté à `KNOWN_REHEARSAL_REFUNDS`** avec cette provenance comme évidence, et **les trois contraintes
+conservées** : même `orderId`, même montant, statut `succeeded`. Un id documenté sur un autre order, avec un
+autre montant, en `pending` ou en `failed` **s'arrête toujours** — vérifié par test sur cette entrée-là.
+
+> **Le registre compte désormais quatre entrées, et leurs preuves ne sont pas de même force.** GR-N5TSM0 et
+> GR-GBZE1X : runbook **et** id épinglé dans un test. GR-9IA5R6 : trois tests, aucun `docs/ops`. GR-9CYOJJ :
+> chaîne de provenance mesurée, aucun document. L'entrée de chacun dit laquelle, parce qu'une liste blanche
+> qui présente quatre preuves inégales comme équivalentes ment sur sa propre solidité.
+
+### 19.3 `INTERNAL_CRON_TOKEN` — feuille d'exécution
+
+**Source canonique : `~/app.grubano.com/.env.local`.** À supprimer : la variable du panneau cPanel. À
+aligner : le secret GitHub. **Aucune valeur ne doit apparaître dans ce chat, dans un journal, ni dans un
+historique shell** — chaque commande ci-dessous respecte cela.
+
+#### Étape 0 — avant de toucher quoi que ce soit : l'état de départ
+
+```bash
+# le jeton EST-il dans .env.local ? (un COMPTE, jamais la valeur ; et sa longueur, pour exclure une ligne vide)
+grep -c '^INTERNAL_CRON_TOKEN=' ~/app.grubano.com/.env.local
+awk -F= '/^INTERNAL_CRON_TOKEN=/{print "length=" length($2)}' ~/app.grubano.com/.env.local
+
+# d'où le RUNTIME le prend-il aujourd'hui ? (noms et booléens uniquement)
+grep -A5 '"INTERNAL_CRON_TOKEN"' ~/.grubano/env-provenance.json
+
+# PROD-14 est-il intact AVANT l'édition ? (référence pour l'étape 6)
+grep -c '^RedirectMatch' ~/app.grubano.com/.htaccess
+head -1 ~/app.grubano.com/.htaccess
+```
+
+Attendu : `1` · `length=` un nombre > 20 · `"presentBeforeEnvLoad": true` et
+`"effectiveSource": "process"` · **`3`** · la première ligne est le commentaire `# PROD-14 …`.
+
+**STOP si** `grep -c` renvoie `0` : le jeton n'est **pas** dans `.env.local`, et supprimer la variable cPanel
+le ferait disparaître partout. Ajoutez-le d'abord au fichier.
+
+#### Étape 1 — supprimer la variable d'hébergement
+
+cPanel → **Setup Node.js App** → l'application `app.grubano.com` → **Environment variables** →
+supprimer **`INTERNAL_CRON_TOKEN`** → *Save*.
+
+**Par l'interface, jamais à la main** : cette variable vit entre les marqueurs
+`# DO NOT REMOVE OR MODIFY. CLOUDLINUX ENV VARS CONFIGURATION BEGIN/END` du `.htaccess`, région que cPanel
+réécrit intégralement. Ne touchez à **aucune** autre variable.
+
+#### Étape 2 — redémarrer Passenger (**requis**)
+
+```bash
+touch ~/app.grubano.com/tmp/restart.txt
+```
+Le processus avait mis l'ancienne valeur en cache à son démarrage ; sans redémarrage, rien ne change.
+
+#### Étape 3 — vérifier que le runtime lit désormais le FICHIER
+
+```bash
+ls -l --time-style=full-iso ~/.grubano/env-provenance.json     # horodatage > l'instant du touch
+grep -A5 '"INTERNAL_CRON_TOKEN"' ~/.grubano/env-provenance.json
+```
+Attendu : **`"presentBeforeEnvLoad": false`** et **`"effectiveSource": ".env.local"`**. Ce fichier ne contient
+que des noms, des booléens et des noms de fichiers — jamais une valeur.
+
+#### Étape 4 — aligner le secret GitHub, sans le faire passer par un historique
+
+Depuis **votre poste**, dans le dépôt :
+
+```bash
+gh secret set INTERNAL_CRON_TOKEN --repo mmaazouz/grubano-kitchen-hub
+```
+`gh` **demande la valeur et la lit sur l'entrée standard** : elle ne devient jamais un argument de commande,
+donc jamais une ligne d'historique. Collez-la depuis l'éditeur de fichiers cPanel (presse-papiers), puis videz
+le presse-papiers. **N'utilisez ni `--body`, ni `echo`, ni une variable d'environnement.**
+
+#### Étape 5 — les trois tests, dans cet ordre
+
+```bash
+# a) le probe GitHub (lecture seule, statut seul) — c'est le test du chemin cron GitHub
+gh workflow run internal-token-probe.yml --ref develop
+#    attendu dans le journal : HTTP STATUS = 200 · GITHUB SECRET == STAGING RUNTIME TOKEN = YES
+
+# b) le preflight complet, sur le serveur
+~/nodevenv/app.grubano.com/24/bin/node ~/app.grubano.com/scripts/server/phase2-preflight.js
+#    attendu : HTTP LEDGER CHECK = 200  ·  et le bloc refunds désormais « UNEXPECTED … NO »
+```
+
+#### Étape 6 — vérifier que cPanel n'a pas touché PROD-14
+
+C'est le contrôle qui compte, parce que l'éditeur de variables réécrit une région de ce fichier :
+
+```bash
+grep -c '^RedirectMatch' ~/app.grubano.com/.htaccess      # doit toujours valoir 3
+head -1 ~/app.grubano.com/.htaccess                       # doit toujours être le commentaire # PROD-14
+node scripts/server/web-exposure-probe.js https://app.grubano.com
+#    attendu : PASS · EXPOSED 0 · BROKEN 0 · BUNDLES 44 · 20/20 bascules
+```
+
+Le bloc PROD-14 est **au-dessus** du marqueur BEGIN, donc il devrait survivre — mais c'est précisément la
+chose à vérifier plutôt qu'à supposer, et la sonde le tranche en dix secondes. **Si `grep -c` ne renvoie plus
+3, recollez le bloc depuis le fichier versionné** (le `.htaccess` a une sauvegarde, §17.1 ③).
+
+#### La fenêtre où GitHub peut répondre 401
+
+Entre l'**étape 2** (redémarrage : le runtime passe à la valeur du fichier) et l'**étape 4** (le secret est
+aligné), les jobs de `cron.yml` qui se déclenchent reçoivent **401**. C'est sans conséquence : la route
+**refuse**, elle n'agit pas, et chaque job est idempotent — le tick suivant réussit. La seule cadence
+susceptible de tomber dans cette fenêtre est le sweep de 20 minutes. **Enchaînez 1 → 4 dans la même séance**
+et la fenêtre reste de quelques minutes.
+
+#### Rollback
+
+```bash
+# 1. cPanel → Setup Node.js App → Environment variables → ré-ajouter INTERNAL_CRON_TOKEN
+#    avec sa valeur PRÉCÉDENTE, qui se trouve dans :
+#       ~/htaccess-staging-backup-20260929-1713.txt     (hors racine web, mode 600)
+# 2. redémarrer
+touch ~/app.grubano.com/tmp/restart.txt
+# 3. vérifier
+grep -A5 '"INTERNAL_CRON_TOKEN"' ~/.grubano/env-provenance.json   # "effectiveSource": "process"
+```
+Si l'étape 4 avait déjà été faite, le secret GitHub pointera sur la valeur du fichier : le probe repassera à
+**401** et il faudra le remettre à l'ancienne valeur. **Notez-la hors dépôt avant l'étape 4 si vous voulez un
+rollback complet** — GitHub ne conserve pas l'ancienne valeur d'un secret.
+
+#### Attendu avant / après
+
+| Chemin | Avant | Après |
+|---|---|---|
+| `env-provenance.json` → `effectiveSource` | `process` (hébergement) | **`.env.local`** |
+| crontab cPanel (3 jobs, lisent `.env.local`) | **401** | **200** |
+| `cron.yml` GitHub (envoie le secret) | 200 | **200** (401 dans la fenêtre) |
+| sonde ledger du preflight | **401** | **200** |
+| `web-exposure-probe` | PASS | **PASS** (inchangé) |
+| portes financières | 403/403/403 | **403/403/403** (inchangé) |

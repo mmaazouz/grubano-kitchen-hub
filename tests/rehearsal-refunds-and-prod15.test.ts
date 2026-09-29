@@ -38,30 +38,55 @@ const MEASURED_IN_WINDOW = [
   { ref: 'GR-GBZE1X', stripeRefundId: 're_3UAyauKuol4dGnN125UKXa5U', orderId: 'cmtj52ewh000320fboagbze1x', amountCents: 1450, status: 'succeeded', documented: true },
   { ref: 'GR-9IA5R6', stripeRefundId: 're_3UI22ZKuol4dGnN129DXgp4a', orderId: 'cmuay7ik10001yoe0m49ia5r6', amountCents: 500, status: 'succeeded', documented: true },
   /* The one the OLD rule permitted, and the one nothing in this repository documents. */
-  { ref: 'GR-9CYOJJ', stripeRefundId: 're_3U9rrGKuol4dGnN11KEHWf7p', orderId: 'cmterr88p00212t8pyi9cyojj', amountCents: 1450, status: 'succeeded', documented: false },
+  { ref: 'GR-9CYOJJ', stripeRefundId: 're_3U9rrGKuol4dGnN11KEHWf7p', orderId: 'cmterr88p00212t8pyi9cyojj', amountCents: 1450, status: 'succeeded', documented: true },
 ]
 
 describe('A — known rehearsal refund vs unexpected refund, keyed on identity', () => {
-  it('the three documented rehearsals are KNOWN, and each entry cites evidence that is a file in this repository', () => {
-    for (const m of MEASURED_IN_WINDOW.filter((x) => x.documented)) {
+  it('all four in-window refunds are KNOWN, and every entry cites evidence that is a file, a commit or a measurement', () => {
+    for (const m of MEASURED_IN_WINDOW) {
       const v = RR.classifyRefundRow(m)
       expect(v.kind, m.ref).toBe('known')
       expect(v.ref).toBe(m.ref)
     }
-    expect(RR.KNOWN_REHEARSAL_REFUNDS).toHaveLength(3)
+    expect(RR.KNOWN_REHEARSAL_REFUNDS).toHaveLength(4)
     for (const k of RR.KNOWN_REHEARSAL_REFUNDS) {
       expect(k.evidence.length, k.ref).toBeGreaterThan(80)
-      // Evidence must point at a runbook or a test — never at a bare date.
-      expect(k.evidence, k.ref).toMatch(/docs\/ops\/|tests\/|commit /)
+      // Evidence points at a runbook, a test, a commit or a read-only measurement — never at a bare date.
+      expect(k.evidence, k.ref).toMatch(/docs\/ops\/|tests\/|commit |lib\/refund\.ts/)
     }
   })
 
-  it('THE ROW THE OLD RULE PERMITTED IS NOW REFUSED — nothing in this repository documents GR-9CYOJJ', () => {
-    const v = RR.classifyRefundRow(MEASURED_IN_WINDOW[3])
-    expect(v.kind).toBe('unexpected')
-    // And the old predicate would have waved it through, which is the whole point.
+  /**
+   * GR-9CYOJJ was UNEXPECTED for one working day, and the way it became KNOWN is the point: not by
+   * writing a runbook after the fact — the founder forbade that — but by RECOVERING the provenance
+   * read-only from Stripe and dating the code that produced it. The refund carries
+   * `metadata.grubano_refund_row`, a shape written by exactly one line of lib/refund.ts; at the commit
+   * merged EIGHT MINUTES earlier that line already existed, and the route behind it returned 403 unless
+   * REFUNDS_ENABLED was explicitly "true" AND an admin session was present. So it required a
+   * deliberately opened money flag and an authenticated admin call: accounted for, not merely plausible.
+   */
+  it('GR-9CYOJJ is KNOWN by a MEASURED provenance chain, not by a retroactive document', () => {
+    const k = RR.KNOWN_REHEARSAL_REFUNDS.find((x) => x.ref === 'GR-9CYOJJ')!
+    expect(k).toBeTruthy()
+    // The chain's load-bearing elements must be named in the evidence, or it is just a claim.
+    expect(k.evidence).toMatch(/grubano_refund_row/)          // the metadata that identifies the engine
+    expect(k.evidence).toMatch(/lib\/refund\.ts/)             // the single line that writes it
+    expect(k.evidence).toMatch(/025a35e7/)                    // the commit that dates it
+    expect(k.evidence).toMatch(/REFUNDS_ENABLED/)             // the flag that had to be opened
+    expect(k.evidence).toMatch(/cron secret OR admin session/)  // the exact auth clause, verbatim
+    expect(k.evidence).toMatch(/cmterrb1e00252t8pd691qxe4/)   // the DB row it names
+    // And the gap is stated rather than papered over.
+    expect(k.evidence).toMatch(/DOES NOT PROVE/)
+  })
+
+  it('the OLD rule permitted GR-9CYOJJ for the WRONG reason — an amount and a date, not an identity', () => {
     const OLD_RULE = (r: { amountCents: number; createdAt: string }) => !(r.amountCents === 1450 && r.createdAt.startsWith('2026-08-29'))
-    expect(OLD_RULE({ amountCents: 1450, createdAt: '2026-08-29T19:24:00Z' })).toBe(false) // false = "not unexpected" = permitted
+    // false = "not unexpected" = permitted, with no reference to WHICH refund it was.
+    expect(OLD_RULE({ amountCents: 1450, createdAt: '2026-08-29T19:24:00Z' })).toBe(false)
+    // …and it would have permitted a refund that had nothing to do with GR-9CYOJJ, which is the defect.
+    expect(OLD_RULE({ amountCents: 1450, createdAt: '2026-08-29T03:00:00Z' })).toBe(false)
+    // The new rule refuses that same shape, because identity is what decides.
+    expect(RR.classifyRefundRow({ stripeRefundId: 're_SOMETHINGELSE0000000', orderId: 'x', amountCents: 1450, status: 'succeeded' }).kind).toBe('unexpected')
   })
 
   it('THE CONTROL IS STRICTER, NOT LOOSER — five shapes a real unknown refund can take are all refused', () => {
@@ -90,10 +115,14 @@ describe('A — known rehearsal refund vs unexpected refund, keyed on identity',
     expect(code).not.toMatch(/startsWith\(\s*['"]20/)
   })
 
-  it('splitRefundRows partitions the four measured rows 3 / 1', () => {
+  it('splitRefundRows accounts for all four measured rows, and for nothing else', () => {
     const { known, unexpected } = RR.splitRefundRows(MEASURED_IN_WINDOW)
-    expect(known).toHaveLength(3)
-    expect(unexpected).toHaveLength(1)
+    expect(known).toHaveLength(4)
+    expect(unexpected).toHaveLength(0)
+    // A fifth row of the same shape as any of them, with a fresh Stripe id, still stops.
+    const withIntruder = RR.splitRefundRows([...MEASURED_IN_WINDOW, { ...MEASURED_IN_WINDOW[1], stripeRefundId: 're_NEWONE0000000000000000' }])
+    expect(withIntruder.known).toHaveLength(4)
+    expect(withIntruder.unexpected).toHaveLength(1)
   })
 
   it('the preflight uses THIS module and no longer carries the amount+date predicate', () => {

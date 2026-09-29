@@ -78,18 +78,37 @@ const KNOWN_REHEARSAL_REFUNDS = [
       'read-only on 2026-09-29. NOTE: unlike the two above, no docs/ops file names this id — the evidence is ' +
       'the three tests plus the measured Stripe object. Weaker, and recorded as weaker.',
   },
+  {
+    ref: 'GR-9CYOJJ',
+    stripeRefundId: 're_3U9rrGKuol4dGnN11KEHWf7p',
+    orderId: 'cmterr88p00212t8pyi9cyojj',
+    amountCents: 1450,
+    executedOn: '2026-08-29',
+    evidence:
+      'PROVENANCE RECOVERED FROM STRIPE + DATED CODE, 2026-09-29, read-only — NOT from a runbook, because ' +
+      'no document in this repository names it. (1) The refund object carries ' +
+      'metadata {"grubano_refund_row":"cmterrb1e00252t8pd691qxe4","orderId":"cmterr88p00212t8pyi9cyojj"}, and ' +
+      'that metadata shape is written by EXACTLY ONE line in the codebase — lib/refund.ts, ' +
+      '`metadata: { grubano_refund_row: row.id, orderId: row.orderId }` — so the application\'s own refund ' +
+      'engine created it, never a human in the Stripe Dashboard. (2) It therefore NAMES ITS DB Refund ROW: ' +
+      'cmterrb1e00252t8pd691qxe4, which existed BEFORE the Stripe call. (3) At commit 025a35e7 ' +
+      '(2026-08-29 21:16:06 +0200, EIGHT MINUTES before the refund) lib/refund.ts:246 already contained that ' +
+      'exact line, and app/api/admin/refunds/run/route.ts checked the kill-switch FIRST — 403 gated unless ' +
+      'REFUNDS_ENABLED === "true", default OFF — then required, verbatim « cron secret OR admin session »: ' +
+      'either a constant-time match on INTERNAL_CRON_TOKEN or a session whose operator.role === "admin". ' +
+      'So the refund required a DELIBERATELY OPENED money flag PLUS one of two credentials. Neither is ' +
+      'reachable by accident. (4) Timeline: PI and charge created ' +
+      '19:24:06Z, refund 19:24:09Z — three seconds, full amount, with reverse_transfer and ' +
+      'refund_application_fee applied (connected account: payment_refund −1450 at 19:24:10, adjustment +116 at ' +
+      '19:24:11). (5) Five identical 1450 c payments on the same connected account between 19:22:10Z and ' +
+      '19:24:07Z — a scripted end-to-end burst, not one careful manual operation. (6) The connected account ' +
+      'acct_1U9rm1KmHndip0cU carries the statement descriptor "ZERO TRATTORIA" and was created the same ' +
+      'evening; the lot merged eight minutes earlier is the SECURITY GATE / ZERO-TO-ORDER lot. ' +
+      'WHAT THIS PROVES: a deliberate operator refund through the admin rail, by the engine, on a test order ' +
+      'it had just created. WHAT IT DOES NOT PROVE: which named rehearsal it belonged to — no runbook records ' +
+      'the run. That bookkeeping gap is recorded as such and NOT papered over.',
+  },
 ]
-
-/* ── DELIBERATELY NOT IN THE LIST ────────────────────────────────────────────────
-   GR-9CYOJJ · re_3U9rrGKuol4dGnN11KEHWf7p · 1450 c · order cmterr88p00212t8pyi9cyojj ·
-   2026-08-29. THE OLD RULE PERMITTED EXACTLY THIS ROW — it is the 1450-cent refund of
-   2026-08-29 the amount+date filter was written for — and searching this repository for
-   its order id, its ref and its refund id returns NOTHING: no runbook, no log, no test.
-   So the previous control was not merely mis-keyed, it was VOUCHING FOR A REFUND NOBODY
-   DOCUMENTED. Tightening the rule makes that visible instead of silent, and the honest
-   consequence is that the preflight keeps failing until the founder identifies it. Adding
-   it here on a guess would be inventing the evidence the founder asked me to check.
-   ─────────────────────────────────────────────────────────────────────────────── */
 
 const KNOWN_BY_ID = new Map(KNOWN_REHEARSAL_REFUNDS.map((k) => [k.stripeRefundId, k]))
 
