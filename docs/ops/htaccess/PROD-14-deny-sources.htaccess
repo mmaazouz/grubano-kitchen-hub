@@ -66,6 +66,45 @@
 #     /version.json, exigé par le health-check du déploiement. Refuser l'un et pas
 #     l'autre serait une asymétrie sans bénéfice.
 #
+# ── LE FICHIER RÉEL (relevé fondateur 2026-09-29) N'EST PAS CELUI QUE J'ATTENDAIS ─
+# J'annonçais « huit directives Passenger, écrites par l'ancien workflow ». Le
+# relevé montre **cinq** directives Passenger et, en plus, un bloc CloudLinux :
+#     1-5   PassengerEnabled / AppRoot / AppType / StartupFile / Nodejs
+#     6     # DO NOT REMOVE OR MODIFY. CLOUDLINUX ENV VARS CONFIGURATION BEGIN
+#     7     <IfModule Litespeed>
+#     8-14  SetEnv × 7  (ALERT_EMAIL, CLAIM_AUTO_APPROVE_MAX_CENTS,
+#                        CLAIM_AUTO_RESOLVE_ENABLED, INTERNAL_CRON_TOKEN,
+#                        LLM_DISABLED, TIPS_ENABLED, DINEIN_SERVICE_ENABLED)
+#     15    </IfModule>
+#     16    # … CLOUDLINUX ENV VARS CONFIGURATION END
+# Conclusion : ce fichier n'a JAMAIS été écrit par le printf du workflow — il est
+# géré par cPanel. Mon attente venait d'un code retiré en PROD-2, pas d'une mesure.
+#
+# ⇒ RÈGLE DE PLACEMENT, et c'est la contrainte dure : **JAMAIS ENTRE LES LIGNES 6
+#   ET 16.** L'éditeur « Variables d'environnement » de cPanel RÉÉCRIT tout ce qui
+#   se trouve entre ses marqueurs BEGIN/END. Un bloc posé là serait détruit
+#   silencieusement à la prochaine édition d'une variable — et la protection
+#   disparaîtrait sans que personne ne le voie. Tout en haut, avant la ligne 1,
+#   satisfait cette contrainte.
+#
+# ⇒ ET CE FICHIER EST DE LA CONFIGURATION D'ARGENT, désormais démontré et non plus
+#   supposé : `TIPS_ENABLED` et `CLAIM_AUTO_RESOLVE_ENABLED` figurent tous deux
+#   dans MONEY_FLAGS_MUST_BE_FALSE (scripts/server/env-provenance.js). Le handoff
+#   avertissait que ce fichier pouvait porter de l'env injecté ; le relevé le
+#   prouve. Ne toucher AUCUN SetEnv, ne rien déplacer entre les marqueurs.
+#
+# ── LE SERVEUR EST LITESPEED, PAS APACHE httpd ─────────────────────────────────
+# `<IfModule Litespeed>` n'est pas décoratif : le rapport de provenance a mesuré
+# INTERNAL_CRON_TOKEN, TIPS_ENABLED et ALERT_EMAIL présents dans process.env AVANT
+# tout chargement `.env*` — trois des sept noms de ce bloc. Sous Apache httpd le
+# bloc ne matcherait pas et ces variables seraient absentes. L'en-tête HTTP est
+# rebaptisé (`Server: o2switch-PowerBoost-v3`) et ne tranche pas ; la provenance,
+# elle, tranche. LiteSpeed lit le `.htaccess` en compatibilité Apache et, pour une
+# directive qu'il ne gère pas, il l'IGNORE au lieu d'échouer — d'où les deux modes
+# de panne, tous deux couverts par la séquence de test :
+#   · 500 sur le vhost   → AllowOverride/parse : rollback immédiat ;
+#   · aucun effet        → directive ignorée : passer au PLAN B ci-dessous.
+#
 # ⚠️ LE RISQUE N'EST PAS « LA RÈGLE NE MARCHE PAS », C'EST « LE SITE MEURT ».
 # `RedirectMatch` exige AllowOverride FileInfo. Si l'hébergeur ne l'accorde pas,
 # Apache renvoie **500 sur tout le vhost**, webhook Stripe compris. DONC : le
@@ -111,3 +150,28 @@ RedirectMatch 404 ^/\.next(/|$)
 RedirectMatch 404 ^/(package(-lock)?\.json|server\.js)$
 
 # ── fin PROD-14 ────────────────────────────────────────────────────────────────
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# PLAN B — À N'UTILISER QUE SI LA SONDE MONTRE QUE LE BLOC CI-DESSUS N'A AUCUN
+# EFFET (les fichiers restent en 200 et `/fr/eat` répond toujours 200, c'est-à-dire
+# que LiteSpeed a ignoré `RedirectMatch` au lieu d'échouer).
+#
+# mod_rewrite est la zone de compatibilité la plus éprouvée de LiteSpeed. Deux
+# différences qu'il ne faut PAS improviser :
+#   · en contexte `.htaccess`, le motif d'un `RewriteRule` est comparé au chemin
+#     SANS LE SLASH INITIAL. Recopier les regex `^/…` du bloc principal dans un
+#     RewriteRule donnerait une règle qui ne matche JAMAIS — une protection qui a
+#     l'air posée et qui n'existe pas ;
+#   · `[F]` renvoie 403 (et non 404). Les deux sont acceptés ici, et 403 est le
+#     drapeau le plus universellement implémenté qui existe.
+#
+# RewriteEngine On
+# RewriteRule ^(prisma|scripts|lib|messages|public|node_modules|tmp)(/|$) - [F,L]
+# RewriteRule ^\.next(/|$) - [F,L]
+# RewriteRule ^(package(-lock)?\.json|server\.js)$ - [F,L]
+#
+# (Décommenter ces quatre lignes ET retirer les trois `RedirectMatch` — jamais les
+#  deux mécanismes en même temps.) Les deux formes sont épinglées par
+# tests/prod14-htaccess-single-source.test.ts, qui COMPILE les deux jeux de regex et
+# les exécute contre les mêmes 27 URL à refuser et 26 à servir.
+# ═══════════════════════════════════════════════════════════════════════════════

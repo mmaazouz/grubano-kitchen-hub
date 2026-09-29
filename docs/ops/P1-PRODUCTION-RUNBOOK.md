@@ -1664,11 +1664,12 @@ téléversement FTP (`deploy-staging.yml:204`) et le répertoire de toutes les �
 ne bouge : **aucune** directive `Passenger*`, **aucun** `SetEnv`, aucune ligne existante déplacée,
 commentée ou réindentée.
 
-Le fichier attendu commence par les huit directives Passenger (`PassengerEnabled`, `PassengerAppRoot`,
-`PassengerAppType`, `PassengerStartupFile`, `PassengerNodejs`, `PassengerMaxPoolSize`,
-`PassengerMaxRequests`, `PassengerStartTimeout`) — récupérées de `6dd99d1f^`. **S'il contient autre chose
-que ça, ne collez pas encore : envoyez-moi le fichier d'abord.** Une `RewriteRule` préexistante changerait
-l'ordre d'évaluation, et c'est le seul scénario où la portée de la règle devient incertaine.
+> ⚠️ **CE PARAGRAPHE A ÉTÉ CORRIGÉ PAR LE RELEVÉ RÉEL — voir §17.3.** J'annonçais « huit directives
+> Passenger » ; le fichier staging en porte **cinq**, plus un bloc CloudLinux `<IfModule Litespeed>` de
+> sept `SetEnv` encadré de marqueurs « DO NOT REMOVE OR MODIFY ». **La contrainte de placement n'est donc
+> pas « tout en haut » mais « JAMAIS ENTRE LES MARQUEURS »** : l'éditeur de variables de cPanel réécrit
+> cette région et détruirait le bloc en silence. Tout en haut satisfait la contrainte. Et le STOP que ce
+> paragraphe demandait a fonctionné : le fondateur a relevé le fichier avant de coller.
 
 **③ Sauvegarder le `.htaccess` actuel — la méthode la plus simple**
 
@@ -1817,3 +1818,74 @@ lisibles entre-temps.
 ⚠️ **Une nuance d'ordre, à ne pas inverser** : posez PROD-14 **avant** le déploiement de rotation. Dans
 l'autre sens, la fenêtre entre le nouveau build et la pose de la règle exposerait publiquement les
 **nouvelles** clés — vous auriez fait tourner des clés pour republier les suivantes.
+
+### 17.3 Le `.htaccess` réel (relevé fondateur 2026-09-29) — quatre corrections
+
+Le STOP a fonctionné : le fichier a été relevé **avant** tout collage, et il diffère matériellement de ce
+que j'annonçais. Sauvegarde fondateur : `~/htaccess-staging-backup-20260929-1713.txt`, hors racine web,
+mode 600.
+
+```
+1-5    PassengerEnabled / PassengerAppRoot / PassengerAppType / PassengerStartupFile / PassengerNodejs
+6      # DO NOT REMOVE OR MODIFY. CLOUDLINUX ENV VARS CONFIGURATION BEGIN
+7      <IfModule Litespeed>
+8-14   SetEnv × 7  (ALERT_EMAIL · CLAIM_AUTO_APPROVE_MAX_CENTS · CLAIM_AUTO_RESOLVE_ENABLED ·
+                    INTERNAL_CRON_TOKEN · LLM_DISABLED · TIPS_ENABLED · DINEIN_SERVICE_ENABLED)
+15     </IfModule>
+16     # DO NOT REMOVE OR MODIFY. CLOUDLINUX ENV VARS CONFIGURATION END
+```
+
+**Correction 1 — mon attente venait d'un code retiré, pas d'une mesure.** Je décrivais les huit directives
+du `printf` de l'ancien workflow (`6dd99d1f^`). Ce `printf` n'a **jamais** écrit ce fichier : il est géré
+par cPanel. J'ai présenté une déduction comme un relevé. C'est la même erreur que le `schema.prisma` de
+mai, dans l'autre sens : j'avais mesuré la production et supposé staging.
+
+**Correction 2 — la contrainte de placement n'est pas « tout en haut », c'est « JAMAIS entre les lignes 6
+et 16 ».** L'éditeur « Variables d'environnement » de cPanel **réécrit intégralement** la région entre ses
+marqueurs BEGIN/END. Un bloc posé là serait **détruit silencieusement** à la prochaine édition d'une
+variable, et la protection disparaîtrait sans que personne ne s'en aperçoive — le pire mode de panne
+possible pour un contrôle de sécurité. Tout en haut, avant la ligne 1, satisfait la contrainte ; en dessous
+de la ligne 16 aussi. Entre les deux, jamais.
+
+**Correction 3 — « ce fichier peut porter de l'env injecté » n'est plus une hypothèse, et c'est de la
+configuration d'ARGENT.** `TIPS_ENABLED` et `CLAIM_AUTO_RESOLVE_ENABLED` figurent **tous les deux** dans
+`MONEY_FLAGS_MUST_BE_FALSE` (`scripts/server/env-provenance.js`). Le handoff avertissait que ce fichier
+pouvait porter des variables injectées ; le relevé le démontre, et deux d'entre elles sont des drapeaux
+argent. Conséquences : ne toucher **aucun** `SetEnv`, ne rien déplacer entre les marqueurs — et la
+vérification des trois portes financières après collage n'est pas une précaution de style, c'est le
+contrôle qui correspond exactement à ce que ce fichier peut casser.
+
+> Point de suivi, hors périmètre de PROD-14 : sept clés arrivent par le canal « sélecteur Node / CloudLinux »,
+> celui qui **gagne** sur `.env.local` (`@next/env` n'écrase jamais `process.env`). Deux sont des drapeaux
+> argent. Rien ne prouve d'ici leur valeur — les valeurs sont masquées, et c'est bien. L'outil existant qui
+> tranche est `scripts/server/phase2-preflight.js`, qui exige `MONEY_FLAGS_MUST_BE_FALSE` et lit
+> `~/.grubano/env-provenance.json` (noms et booléens, jamais de valeur). À lancer une fois après PROD-14.
+
+**Correction 4 — le serveur est LiteSpeed, et cela change le mode de panne attendu.**
+`<IfModule Litespeed>` n'est pas décoratif : le rapport de provenance a mesuré `INTERNAL_CRON_TOKEN`,
+`TIPS_ENABLED` et `ALERT_EMAIL` présents dans `process.env` **avant** tout chargement `.env*` — trois des
+sept noms de ce bloc. Sous Apache httpd le bloc ne matcherait pas et ces variables seraient absentes.
+L'en-tête HTTP est rebaptisé (`Server: o2switch-PowerBoost-v3`) et ne tranche rien ; la provenance tranche.
+
+LiteSpeed lit le `.htaccess` en compatibilité Apache et, face à une directive qu'il n'implémente pas, il
+l'**ignore** plutôt que d'échouer. Deux modes de panne, tous deux déjà couverts :
+
+| Panne | Signe | Action |
+|---|---|---|
+| `AllowOverride`/parse refusé | **500 sur le vhost**, `/fr/eat` ≠ 200 | **rollback immédiat** |
+| `RedirectMatch` ignoré | `/fr/eat` = 200 **et** les fichiers restent en 200 | **PLAN B** (mod_rewrite), aucun rollback nécessaire |
+
+**PLAN B est versionné dans l'artefact, commenté, et testé.** Deux différences qu'il ne faut pas improviser :
+en contexte `.htaccess` le motif d'un `RewriteRule` est comparé au chemin **sans le slash initial** — recopier
+les regex `^/…` donnerait des règles qui ne matchent **jamais**, c'est-à-dire une protection qui a l'air posée
+et qui n'existe pas ; et `[F]` renvoie **403** au lieu de 404, ce qui est accepté ici.
+`tests/prod14-htaccess-single-source.test.ts` **compile et exécute les deux jeux de regex** contre les mêmes
+27 URL à refuser et 26 à servir, et refuse un motif de plan B qui garderait l'ancre `^/` — mutation vérifiée :
+« plan B must DENY: /prisma/schema.prisma: expected false to be true ».
+
+**Ce que les trois directives Passenger absentes changent : rien.** `PassengerMaxPoolSize`,
+`PassengerMaxRequests` et `PassengerStartTimeout` sont du réglage de pool et de délai ; leur absence laisse
+les valeurs par défaut de Passenger. Aucune n'interagit avec un `RedirectMatch` ou un `RewriteRule`, et aucune
+n'a de rapport avec la racine web. La seule conséquence de leur absence est **informationnelle** : elle
+confirme que ce fichier n'est pas celui du `printf`, donc qu'il est géré par cPanel — ce qui est précisément
+ce qui rend la correction 2 nécessaire.

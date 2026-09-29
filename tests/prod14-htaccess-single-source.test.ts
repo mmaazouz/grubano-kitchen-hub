@@ -102,6 +102,57 @@ describe('PROD-14 — one source for the deny rule, and the document holds none 
     ]) expect(denied(url), `must still be SERVED: ${url}`).toBe(false)
   })
 
+  /**
+   * PLAN B IS TESTED TOO, because the host turned out to be LiteSpeed and not Apache httpd
+   * (the CloudLinux `<IfModule Litespeed>` SetEnv block is EFFECTIVE — the provenance report
+   * measured three of its seven names in process.env before any .env* load). LiteSpeed ignores a
+   * directive it does not implement rather than failing, so `RedirectMatch` may silently do nothing
+   * and the fallback is mod_rewrite.
+   *
+   * THE TRAP THIS TEST EXISTS FOR: in `.htaccess` context a RewriteRule pattern is matched against
+   * the path WITHOUT its leading slash. Copying the `^/…` regexes across would produce rules that
+   * NEVER match — a protection that looks installed and is not. So the fallback patterns are
+   * compiled and run against the same URL sets, with the slash stripped exactly as the server does.
+   */
+  it('EXECUTED: the mod_rewrite fallback covers the same URLs, with the leading slash stripped as .htaccess does', () => {
+    const src = read(ARTEFACT)
+    const patterns = src
+      .split('\n')
+      .map((l) => l.replace(/^#\s?/, ''))                       // plan B ships commented out
+      .filter((l) => /^RewriteRule\s+/.test(l))
+      .map((l) => new RegExp(l.replace(/^RewriteRule\s+/, '').split(/\s+/)[0]))
+    expect(patterns, 'plan B must ship three RewriteRule patterns').toHaveLength(3)
+    // Not one of them may keep the leading-slash anchor: `^/…` can never match in .htaccess context.
+    for (const re of patterns) expect(re.source.startsWith('^/'), re.source).toBe(false)
+
+    const deniedRel = (url: string) => patterns.some((re) => re.test(url.replace(/^\//, '')))
+    for (const url of [
+      '/prisma/schema.prisma', '/prisma/', '/scripts/server/phase2-refund-gate.js', '/scripts/',
+      '/lib/claims-payable-core.js', '/messages/fr.json', '/public/version.json',
+      '/node_modules/.prisma/client/schema.prisma', '/tmp/restart.txt',
+      '/.next/prerender-manifest.json', '/.next/routes-manifest.json',
+      '/package.json', '/package-lock.json', '/server.js',
+    ]) expect(deniedRel(url), `plan B must DENY: ${url}`).toBe(true)
+
+    for (const url of [
+      '/_next/static/chunks/main-app-1a2b3c.js', '/_next/static/css/3b56bcf148aaf239.css',
+      '/version.json', '/VERSION', '/fr/eat', '/api/restaurants', '/api/webhooks/stripe',
+      '/favicon.ico', '/apple-touch-icon.png', '/manifest.webmanifest', '/sw.js', '/offline.html',
+      '/icons/icon-192.png', '/fonts/OFL-cairo.txt', '/',
+    ]) expect(deniedRel(url), `plan B must still SERVE: ${url}`).toBe(false)
+  })
+
+  it('the artefact records that this file is MONEY configuration and must not be edited between the CloudLinux markers', () => {
+    const src = read(ARTEFACT)
+    // Two of the seven injected SetEnv are in MONEY_FLAGS_MUST_BE_FALSE.
+    expect(src).toMatch(/TIPS_ENABLED/)
+    expect(src).toMatch(/CLAIM_AUTO_RESOLVE_ENABLED/)
+    expect(src).toMatch(/MONEY_FLAGS_MUST_BE_FALSE/)
+    // The placement constraint that actually protects the rule from being deleted by cPanel.
+    expect(src).toMatch(/CLOUDLINUX/)
+    expect(src).toMatch(/Litespeed/i)
+  })
+
   it('and no directive is scoped by file extension or by <FilesMatch> — the shape that caused the 2026-09-06 P0', () => {
     const directives = read(ARTEFACT).split('\n').filter((l) => PASTEABLE_DIRECTIVE.test(l))
     for (const d of directives) expect(d, d).not.toMatch(/FilesMatch|<Files\b/)
