@@ -1641,3 +1641,179 @@ Il n'existe qu'un seul `new Stripe(...)` dans toute l'application (`lib/stripe.t
 qui **jette** sans clé, et les huit sites d'écriture financière passent tous par lui. **Sans clé, même un
 drapeau argent ouvert par accident ne peut déplacer aucun argent.** C'est la serrure la plus forte de P1, et
 elle consiste à ne rien faire.
+
+---
+
+## 17 · PROD-14 STAGING — feuille d'exécution (incident de sécurité, pas seulement durcissement)
+
+### 17.1 Les six réponses, dans l'ordre où vous en avez besoin
+
+**① Chemin exact du `.htaccess` staging**
+
+```
+~/app.grubano.com/.htaccess
+```
+
+`~/app.grubano.com` est bien la racine applicative staging : c'est le `server-dir: /app.grubano.com/` du
+téléversement FTP (`deploy-staging.yml:204`) et le répertoire de toutes les étapes post-deploy
+(`:299-323`). En chemin absolu : `/home/deyi0010/app.grubano.com/.htaccess`.
+
+**② Où placer le bloc**
+
+**Tout en haut du fichier, avant la première directive existante**, suivi d'une ligne vide. Rien d'autre
+ne bouge : **aucune** directive `Passenger*`, **aucun** `SetEnv`, aucune ligne existante déplacée,
+commentée ou réindentée.
+
+Le fichier attendu commence par les huit directives Passenger (`PassengerEnabled`, `PassengerAppRoot`,
+`PassengerAppType`, `PassengerStartupFile`, `PassengerNodejs`, `PassengerMaxPoolSize`,
+`PassengerMaxRequests`, `PassengerStartTimeout`) — récupérées de `6dd99d1f^`. **S'il contient autre chose
+que ça, ne collez pas encore : envoyez-moi le fichier d'abord.** Une `RewriteRule` préexistante changerait
+l'ordre d'évaluation, et c'est le seul scénario où la portée de la règle devient incertaine.
+
+**③ Sauvegarder le `.htaccess` actuel — la méthode la plus simple**
+
+Dans **cPanel → Terminal**, deux commandes :
+
+```bash
+cp -p ~/app.grubano.com/.htaccess ~/htaccess-staging-backup-$(date +%Y%m%d-%H%M).txt
+ls -l ~/htaccess-staging-backup-*.txt
+```
+
+⚠️ **La sauvegarde va dans `~/`, jamais dans `~/app.grubano.com/`.** `~/app.grubano.com/` **est** la
+racine web : un fichier nommé `htaccess-backup.txt` déposé là serait **publiquement téléchargeable** — et
+il contiendrait votre configuration Passenger. Le refus des dotfiles ne le protégerait pas, parce que son
+nom ne commence pas par un point. `~/` est au-dessus de la racine web et n'est pas servi.
+
+**④ Le bloc exact à copier**
+
+**Le bloc n'est pas reproduit ici, et le refus est mécanique.** J'avais commencé par le recopier dans ce
+paragraphe ; `tests/prod14-htaccess-single-source.test.ts` a refusé le commit dans la minute, avec trois
+lignes en offenders. **L'épingle a raison** : ce document en a déjà porté trois versions divergentes en une
+heure, dont une qui rendait le site inerte. Une quatrième copie, même juste aujourd'hui, est une copie qui
+dérivera.
+
+**Le bloc EST le fichier** — [`docs/ops/htaccess/PROD-14-deny-sources.htaccess`](htaccess/PROD-14-deny-sources.htaccess).
+Pour l'obtenir sans risque de version périmée, depuis un clone à jour :
+
+```bash
+git -C /chemin/vers/grubano show origin/develop:docs/ops/htaccess/PROD-14-deny-sources.htaccess
+```
+
+Les commentaires du fichier peuvent être collés ou non — ils ne changent rien au comportement. **Ce sont les
+trois lignes `RedirectMatch` qui constituent la règle**, et elles sont épinglées par le test ci-dessus, qui
+**compile ces trois expressions et les exécute** contre 27 URL à refuser et 26 à servir — dont
+`/_next/static/chunks/app/global-error-*.js` et les `.css`, précisément pour que le P0 du 2026-09-06 soit
+attrapé dans un test unitaire plutôt que sur un hôte vivant.
+
+**⑤ Le test immédiat après collage — dans cet ordre, et il s'arrête au premier échec**
+
+```bash
+# 1. LE SITE VIT-IL ENCORE ? (si AllowOverride FileInfo n'est pas accorde : 500 sur TOUT le vhost)
+curl -s -o /dev/null -w 'fr/eat            = %{http_code}\n' https://app.grubano.com/fr/eat
+curl -s -o /dev/null -w 'api/restaurants   = %{http_code}\n' https://app.grubano.com/api/restaurants
+curl -s -o /dev/null -w 'version.json      = %{http_code}\n' https://app.grubano.com/version.json
+
+# 2. LES PORTES FINANCIERES ONT-ELLES BOUGE ? (.htaccess peut porter de l'env injecte)
+for p in api/admin/refunds/run api/admin/claims/pay-approved api/claims; do
+  curl -s -o /dev/null -w "$p = %{http_code}\n" -X POST "https://app.grubano.com/$p" \
+    -H 'content-type: application/json' -d '{}'
+done
+
+# 3. LES FICHIERS SENSIBLES SONT-ILS FERMES ?
+for p in .next/prerender-manifest.json prisma/schema.prisma package.json server.js \
+         node_modules/.prisma/client/schema.prisma messages/fr.json tmp/restart.txt; do
+  curl -s -o /dev/null -w "$p = %{http_code}\n" "https://app.grubano.com/$p"
+done
+```
+
+| Étape | Attendu | Sinon |
+|---|---|---|
+| 1 | `200 · 200 · 200` | **ROLLBACK IMMÉDIAT** (⑥). Un 500 signifie que l'hébergeur n'accorde pas `AllowOverride FileInfo` : la règle ne « ne marche pas », elle **tue le vhost**. |
+| 2 | `403 · 403 · 403` | **ROLLBACK IMMÉDIAT.** Un **401** sur `refunds/run` signifierait le rail de remboursement **OUVERT**. |
+| 3 | `404` **partout** | pas de rollback : la règle est trop étroite, pas dangereuse. Envoyez-moi la liste. |
+
+**Puis, et seulement si les trois étapes sont conformes**, la sonde complète :
+
+```bash
+node scripts/server/web-exposure-probe.js https://app.grubano.com
+```
+
+Attendu : `RESULT: PASS` · `EXPOSED (should be 0): 0` · `BROKEN (should be 0): 0` ·
+`BUNDLES CHECKED: 44` (> 0) · **`DENY ENTRIES THAT FLIPPED FROM A MEASURED 200: 20 / 20`**.
+
+Cette dernière ligne est celle qui compte : elle dit que les vingt chemins **mesurés à 200** le
+2026-09-29 ont réellement basculé. Sans elle, `EXPOSED 0` ne distinguerait pas « la règle a mordu » de
+« le fichier n'était pas là ». Elle doit passer de `0 / 20` à `20 / 20`.
+
+**⑥ Le rollback exact**
+
+```bash
+cp -p ~/htaccess-staging-backup-<horodatage>.txt ~/app.grubano.com/.htaccess
+curl -s -o /dev/null -w 'fr/eat = %{http_code}\n' https://app.grubano.com/fr/eat
+```
+
+**Aucun redémarrage n'est nécessaire** : Apache relit `.htaccess` à chaque requête. L'effet est immédiat,
+aucune donnée n'est en jeu, aucun fichier applicatif n'a été touché. Si vous préférez ne pas recopier le
+fichier entier, supprimer les trois lignes `RedirectMatch` suffit — mais restaurer la sauvegarde est plus
+sûr, parce que ça annule aussi une faute de frappe involontaire ailleurs dans le fichier.
+
+### 17.2 Les clés de preview sont compromises — et leur rotation est un déploiement normal
+
+**Ce que j'ai établi, et par deux voies indépendantes.**
+
+`node_modules/next/dist/build/index.js:490-494` (Next 14.2.35) :
+
+```
+previewModeId:            crypto.randomBytes(16).toString('hex')
+previewModeSigningKey:    crypto.randomBytes(32).toString('hex')
+previewModeEncryptionKey: crypto.randomBytes(32).toString('hex')
+```
+
+**Tirées au hasard à chaque `next build`, et il n'existe AUCUNE surcharge par variable
+d'environnement dans ce chemin de code** (recherche `__NEXT_PREVIEW_MODE_*` : zéro occurrence).
+
+Et la preuve **empirique**, obtenue sans qu'aucune valeur n'entre nulle part — le corps servi a été
+canalisé directement dans une fonction de hachage, jamais affiché ni lu :
+
+| Source | sha256 de l'objet `preview` (16 premiers) | longueurs |
+|---|---|---|
+| staging servi aujourd'hui | `0318ee0738513837` | id 32 · signing 64 · encryption 64 |
+| build local (autre build) | `882a62ab9a23abb0` | — |
+
+**Deux builds, deux jeux de clés. La rotation est donc un déploiement staging normal** — aucun secret à
+manipuler, aucun drapeau à ouvrir, rien à changer côté production.
+
+**Et un fait qui calibre l'urgence sans l'annuler** : l'application **n'utilise pas** le draft/preview
+mode. Zéro occurrence de `draftMode`, `previewData`, `setPreviewData`, `__prerender_bypass` ou
+`__next_preview_data` dans `app/`, `lib/`, `components/`, `middleware.ts`. Les clés exposées gouvernent une
+fonctionnalité Next que ce produit ne consulte jamais : un cookie forgé activerait un mode que rien ne
+lit. **C'est une exposition réelle de credentials, qu'il faut fermer et faire tourner — ce n'est pas une
+porte ouverte sur les données.** Je le dis parce que l'inverse serait de vous alarmer plus que les faits
+ne le permettent.
+
+**Aucune copie ancienne ne traîne** : mesuré 404 sur
+`/.next/standalone/.next/prerender-manifest.json`, `/prerender-manifest.json`,
+`/.next/prerender-manifest.json.bak` et `/.next/prerender-manifest.js`. Le nom de fichier est **constant**,
+donc chaque déploiement **écrase** le précédent — contrairement à `.next/static/`, dont les noms sont
+hachés, ce qui est précisément la raison d'exister de `prune-next.js` (qui ne touche **que**
+`.next/static/`, jamais `.next/*.json`).
+
+**La séquence de rotation, après PROD-14 vert :**
+
+| # | Action | Vérification |
+|---|---|---|
+| 1 | un déploiement staging normal (un push sur `develop` suffit ; le prochain lot fera l'affaire) | le run CI atteint `Post-deploy` avec FTP exit 0 |
+| 2 | `/version.json` sert le **nouveau** SHA | le SHA poussé, différent du précédent |
+| 3 | l'ancien **et** le nouveau manifeste sont inaccessibles | `/.next/prerender-manifest.json` → **404** (la règle PROD-14 le couvre déjà : elle ne distingue pas les versions) |
+| 4 | staging fonctionne | `/fr/eat` 200 · `/api/restaurants` 200 · bundles JS et CSS 200 |
+| 5 | les portes financières sont inchangées | `403 · 403 · 403` |
+| 6 | aucune copie web-accessible | les quatre chemins alternatifs → 404 |
+
+Les étapes 3 à 6 sont **exactement** ce que la sonde vérifie : une seule exécution après le déploiement
+couvre les six lignes. **La rotation ne demande donc aucune action nouvelle de votre part** — elle arrive
+avec le prochain déploiement, et la règle PROD-14 fait que ni l'ancien ni le nouveau manifeste ne sont
+lisibles entre-temps.
+
+⚠️ **Une nuance d'ordre, à ne pas inverser** : posez PROD-14 **avant** le déploiement de rotation. Dans
+l'autre sens, la fenêtre entre le nouveau build et la pose de la règle exposerait publiquement les
+**nouvelles** clés — vous auriez fait tourner des clés pour republier les suivantes.
