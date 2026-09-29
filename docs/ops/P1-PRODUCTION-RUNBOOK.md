@@ -1889,3 +1889,74 @@ les valeurs par défaut de Passenger. Aucune n'interagit avec un `RedirectMatch`
 n'a de rapport avec la racine web. La seule conséquence de leur absence est **informationnelle** : elle
 confirme que ce fichier n'est pas celui du `printf`, donc qu'il est géré par cPanel — ce qui est précisément
 ce qui rend la correction 2 nécessaire.
+
+### 17.4 PROD-14 STAGING VERIFIED (2026-09-29) — et ce que la rotation prouve déjà
+
+**Appliqué par le fondateur** au sommet de `~/app.grubano.com/.htaccess`, sans toucher les 5 directives
+Passenger ni les 7 `SetEnv`. Sauvegarde `~/htaccess-staging-backup-20260929-1713.txt`, hors racine web, 600.
+
+| | avant (2026-09-29, avant la règle) | après |
+|---|---|---|
+| Expositions | **29** (20 fichiers + 9 URL de répertoire) | **0** |
+| `RESULT` | FAIL | **PASS** |
+| `BROKEN` | 0 | **0** |
+| `BUNDLES CHECKED` | 44 (JS 35 · CSS 9) | **44** (JS 35 · CSS 9) |
+| Bascules depuis un 200 mesuré | 0 / 20 | **20 / 20** |
+| `/fr/eat` · `/api/restaurants` · `/version.json` | 200 · 200 · 200 | **200 · 200 · 200** |
+| Portes financières | 403 · 403 · 403 | **403 · 403 · 403** |
+
+**Vérification indépendante, et elle apporte un fait que le fondateur ne pouvait pas mesurer** : j'ai relancé
+la sonde **après** que le déploiement `adfb4981` (build 15:21:57 UTC) ait atterri, soit **après** l'édition du
+`.htaccess` (15:13 UTC). Résultat identique, `20 / 20`. **La règle survit donc à un déploiement complet** —
+l'exclusion `.htaccess` de l'étape FTP tient en pratique, pas seulement sur le papier. La protection n'est pas
+profonde d'un seul déploiement.
+
+### 17.5 Rotation des clés — ce qui est déjà fait, et les deux lignes qui manquent
+
+**La rotation #1 a déjà eu lieu, et dans le bon ordre.** Le build `adfb4981` a été produit à **15:21:57 UTC**,
+soit **huit minutes après** la pose de la règle. Ses trois clés `previewMode*` sont donc neuves — tirées par
+`crypto.randomBytes` (`node_modules/next/dist/build/index.js:490-494`, Next 14.2.35, **aucune** surcharge
+`__NEXT_PREVIEW_MODE_*`) — et **n'ont jamais été accessibles depuis le web**, puisque `/.next/**` répondait
+déjà 404 quand elles sont arrivées. Une rotation #2 (`7ca88ec8`) est en vol au moment où ceci est écrit.
+
+**Ce que je peux prouver d'ici** : un nouveau `next build` a tourné (`version.json` : `buildDate`
+15:21:57 UTC, `ciRunId` 36587877019, run vert) ; il a été téléversé ; `/.next/prerender-manifest.json` répond
+**404** donc ni l'ancien ni le nouveau jeu n'est lisible ; l'application fonctionne ; les portes financières
+sont fermées.
+
+**Ce que je ne peux PAS prouver d'ici, et c'est un trou réel de staging** : que le **processus vivant** a
+chargé le nouveau manifeste. La porte `Health check (staging @ expected SHA)` lit `"commit"` dans
+**`/version.json`**, un fichier **statique** : elle prouve le téléversement, **jamais** que le processus a
+redémarré. C'est exactement la limite que PROD-2 a fermée côté production en ajoutant la porte
+« base joignable par le client Prisma déployé » — **staging ne l'a toujours pas.**
+
+⇒ **PROD-15 proposé** (non exécuté) : porter les neuf lignes de cette porte dans `deploy-staging.yml`. Aucune
+cadence, aucun job, aucun secret nouveau ; le vert de staging voudrait alors dire « le processus sert ce
+build » au lieu de « les fichiers sont arrivés ».
+
+**Les deux commandes qui closent la rotation, et que seul le fondateur peut lancer** — aucune n'imprime de
+valeur :
+
+```bash
+# A — LE PROCESSUS A-T-IL REDÉMARRÉ ? Ce fichier est réécrit à CHAQUE démarrage
+#     (préambule injecté par scripts/fix-server.js). Son horodatage est l'oracle
+#     de redémarrage du dépôt ; son contenu n'est que des NOMS et des BOOLÉENS.
+ls -l --time-style=full-iso ~/.grubano/env-provenance.json
+
+# B — EMPREINTE DES CLÉS DÉPLOYÉES. sha256 seulement, jamais une valeur.
+~/nodevenv/app.grubano.com/24/bin/node -e "const c=require('crypto');const p=require('/home/deyi0010/app.grubano.com/.next/prerender-manifest.json').preview;console.log('preview sha256 = '+c.createHash('sha256').update(JSON.stringify(p)).digest('hex').slice(0,16)+'  keys='+Object.keys(p).join(','))"
+
+# C — LA QUESTION DES SetEnv, lecture seule (exige MONEY_FLAGS_MUST_BE_FALSE)
+~/nodevenv/app.grubano.com/24/bin/node ~/app.grubano.com/scripts/server/phase2-preflight.js
+```
+
+| | Attendu |
+|---|---|
+| **A** | un horodatage **postérieur à 15:21:57 UTC** ⇒ le processus a redémarré avec le nouveau build. Antérieur ⇒ `touch ~/app.grubano.com/tmp/restart.txt`, puis relire. |
+| **B** | une empreinte **différente de `0318ee0738513837`** (celle qui était publiquement servie), et `keys=previewModeId,previewModeSigningKey,previewModeEncryptionKey`. |
+| **C** | `PASS`, et en particulier aucun drapeau de `MONEY_FLAGS_MUST_BE_FALSE` effectif à `true` — `TIPS_ENABLED` et `CLAIM_AUTO_RESOLVE_ENABLED` arrivent par les `SetEnv`, donc par le canal qui **gagne** sur `.env.local`. |
+
+**Pourquoi je ne déclare pas `PROD-14 ROTATION CLOSED` moi-même** : cinq des sept points demandés sont
+vérifiés et mesurés ; les deux derniers — l'empreinte des clés et l'état effectif des drapeaux injectés —
+exigent une lecture serveur. Déclarer la clôture sur cinq sur sept, ce serait exactement le « PASS avec
+BUNDLES CHECKED: 0 » que ce lot vient de supprimer de la sonde.
