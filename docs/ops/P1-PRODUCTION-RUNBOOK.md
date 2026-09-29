@@ -1835,6 +1835,13 @@ mode 600.
 16     # DO NOT REMOVE OR MODIFY. CLOUDLINUX ENV VARS CONFIGURATION END
 ```
 
+> ℹ️ **Ce relevé est daté du 2026-09-29 17:13 et a déjà changé depuis** : le fondateur a retiré
+> `CLAIM_AUTO_RESOLVE_ENABLED` et `TIPS_ENABLED` du panneau cPanel après ce relevé, et le preflight
+> rapporte désormais **`MONEY FLAGS INJECTED BY THE HOSTING LAYER = NO`** (`TIPS_ENABLED` vient de
+> `.env.local` à `false`). Les valeurs retirées restent dans la sauvegarde
+> `~/htaccess-staging-backup-20260929-1713.txt` — c'est le rollback. La correction 3 ci-dessous décrit
+> donc l'état **au moment du relevé**, et c'est pour cela qu'elle importait.
+
 **Correction 1 — mon attente venait d'un code retiré, pas d'une mesure.** Je décrivais les huit directives
 du `printf` de l'ancien workflow (`6dd99d1f^`). Ce `printf` n'a **jamais** écrit ce fichier : il est géré
 par cPanel. J'ai présenté une déduction comme un relevé. C'est la même erreur que le `schema.prisma` de
@@ -1970,3 +1977,143 @@ ls -l --time-style=full-iso ~/.grubano/env-provenance.json
 vérifiés et mesurés ; les deux derniers — l'empreinte des clés et l'état effectif des drapeaux injectés —
 exigent une lecture serveur. Déclarer la clôture sur cinq sur sept, ce serait exactement le « PASS avec
 BUNDLES CHECKED: 0 » que ce lot vient de supprimer de la sonde.
+
+---
+
+## 18 · Les deux sujets du preflight, et PROD-15
+
+### 18.1 Les remboursements — trois sont documentés, et il y en a un **quatrième** que l'ancienne règle laissait passer
+
+**Mesuré en lecture seule sur le compte Stripe TEST le 2026-09-29** (17 objets `refund` au total, aucun en
+`livemode`). Quatre tombent dans la fenêtre du preflight (`WINDOW_START` = 2026-08-29) :
+
+| Réf | Stripe refund id | Montant | orderId | Date | Preuve documentaire |
+|---|---|---|---|---|---|
+| **GR-N5TSM0** | `re_3UB9bPKuol4dGnN10IdP5bzp` | 500 c | `cmtju919h0001h7t6bkn5tsm0` | 2026-09-09 | `REFUND-REHEARSAL-RUNBOOK.md` (titre : « LES DEUX RÉPÉTITIONS EXÉCUTÉES le 2026-09-09 — GR-N5TSM0 partiel 500 c ») · id épinglé dans `tests/phase2-email-timeline-correlate.test.ts` (`ROWS_PARTIAL`, row DB `cmttxsfzr0000mev23go2yqio`) · même `orderId` que la cible codée en dur de `phase2-refund-gate.js` |
+| **GR-GBZE1X** | `re_3UAyauKuol4dGnN125UKXa5U` | 1450 c | `cmtj52ewh000320fboagbze1x` | 2026-09-09 | `REFUND-REHEARSAL-RUNBOOK.md` **§11** « SECONDE RÉPÉTITION EXÉCUTÉE — 2026-09-09 (UN refund FULL 1450 c GR-GBZE1X) », qui nomme le même `orderId` · id épinglé (`ROWS_FULL`, row DB `cmtue1xh50000hxyor29m1sak`) |
+| **GR-9IA5R6** | `re_3UI22ZKuol4dGnN129DXgp4a` | 500 c | `cmuay7ik10001yoe0m49ia5r6` | 2026-09-22 | MODE B exécuté et réconcilié le 2026-09-22 (commit `dab754d`) : 500 c remboursés **par réclamation arbitrée**, égalité ledger prouvée deux fois, fidélité −5 → 13, un e-mail, gates fermées. Réf épinglée dans trois tests. **Plus faible que les deux autres : aucun fichier `docs/ops` ne nomme cet id.** Consigné comme plus faible. |
+| **GR-9CYOJJ** | `re_3U9rrGKuol4dGnN11KEHWf7p` | 1450 c | `cmterr88p00212t8pyi9cyojj` | **2026-08-29** | **AUCUNE.** Ni runbook, ni journal, ni test : la recherche de son `orderId`, de sa réf et de son id dans tout le dépôt ne renvoie rien. |
+
+**Et c'est la quatrième ligne qui est le vrai constat.** L'ancienne règle était :
+
+```js
+!(r.amountCents === 1450 && r.createdAt.toISOString().startsWith('2026-08-29'))
+```
+
+Un **montant** plus une **date**. Elle autorisait **exactement** cette ligne — c'est le remboursement de
+1450 c du 2026-08-29 pour lequel elle avait été écrite — et refusait les trois répétitions réellement
+documentées, parce qu'elles sont postérieures. **L'ancien contrôle n'était donc pas seulement mal clé : il
+cautionnait un remboursement que personne n'a documenté**, tout en criant sur ceux qui l'étaient.
+
+**Ce que la colonne « ledger » et la troisième row DB ne disent pas ici** : je ne peux pas lire la base de
+staging depuis ma position (le `DATABASE_URL` local pointe `localhost`). Le preflight, lui, les imprime :
+`DB Refund rows`, `DB ledger refund lines since window` et désormais `KNOWN REHEARSAL REFUNDS (DB, id-matched)`.
+La correspondance ci-dessus est donc complète côté **Stripe** et côté **documentation**, et à compléter côté
+**ledger** par la sortie du preflight — je ne remplis pas une case que je n'ai pas mesurée.
+
+**Le correctif.** Une table `KNOWN_REHEARSAL_REFUNDS` dans `scripts/server/rehearsal-refunds.js` — module
+**pur**, une seule définition, requis par le preflight **et** exécuté par un test — clé sur le **Stripe refund
+id** : frappé par Stripe, impossible à choisir, écrit verbatim dans les records. **Le contrôle est PLUS
+strict, pas plus laxe** :
+
+| Forme | Verdict |
+|---|---|
+| id documenté + même `orderId` + même montant + `succeeded` | **known rehearsal refund** |
+| id inconnu | **HARD STOP** |
+| **pas de `stripeRefundId`** | **HARD STOP** — « la liste ne peut rien dire d'une ligne qui n'a pas d'id » n'est pas « cette ligne va bien ». C'est le cas qu'une liste blanche par id laisserait filer. |
+| id documenté sur un **autre order** | **HARD STOP** (forme d'une ligne falsifiée ou mal réconciliée) |
+| id documenté avec un **autre montant** | **HARD STOP** |
+| id documenté en `pending` / `failed` | **HARD STOP** — toutes les répétitions documentées sont `succeeded` |
+
+Les sept formes sont **exécutées** par `tests/rehearsal-refunds-and-prod15.test.ts`, et un test rejoue
+l'ancien prédicat pour montrer qu'il aurait laissé passer GR-9CYOJJ. Un autre interdit toute comparaison de
+`createdAt` dans le code exécutable du module : **la règle ne peut plus être satisfaite par une date.**
+
+⚠️ **Conséquence assumée : le preflight continuera de FAIL tant que GR-9CYOJJ n'est pas identifié.** Je ne
+l'ajoute pas à la table sur une hypothèse — ce serait inventer la preuve que vous m'avez demandé de vérifier.
+Dès que vous savez ce qu'est cette ligne, elle s'ajoute en une entrée avec son évidence.
+
+### 18.2 `INTERNAL_CRON_TOKEN` — il y a **trois** sources, pas deux
+
+**Mesuré.** J'ai déclenché `internal-token-probe.yml` (lecture seule, statut seul, staging, existant depuis
+longtemps pour exactement cette question) : **`HTTP STATUS = 200`**, donc
+**`GITHUB SECRET == STAGING RUNTIME TOKEN = YES`**.
+
+| Source | Visible par | Valeur |
+|---|---|---|
+| Hébergement — `SetEnv` du bloc CloudLinux (édité par cPanel) | **le runtime web uniquement** | **A** (gagne : `@next/env` n'écrase jamais `process.env`) |
+| `~/app.grubano.com/.env.local` | le runtime web *si A est absent*, **et tout shell / cron** | **B**, ≠ A |
+| Secret GitHub Actions | les jobs de `cron.yml` | **= A** (mesuré) |
+
+Donc aujourd'hui : les crons **GitHub** envoient A → le runtime attend A → **200** ✅ ; et le crontab
+**cPanel** comme la sonde ledger du preflight envoient B → **401** ❌. C'est exactement le 401 que le
+preflight rapporte — et cela signifie que **les trois jobs du crontab cPanel se heurtent au même 401 depuis
+qu'il y a deux valeurs.**
+
+**Source canonique retenue : `.env.local`.** Pas par préférence, par structure : **le canal d'hébergement est
+invisible aux shells et aux crons.** Un jeton que des crons lancés en shell doivent présenter ne peut pas
+avoir sa source unique dans un canal qu'ils ne savent pas lire. Garder A comme canonique obligerait
+`.env.local` à le **dupliquer** — ce n'est pas une source unique, c'est deux sources qui s'accordent jusqu'à
+ce que quelqu'un en édite une. Et c'est le canal dont `env-provenance` existe pour vous avertir, celui dont
+vous venez de retirer deux drapeaux argent.
+
+**Procédure exacte** (aucune valeur n'apparaît nulle part) :
+
+| | |
+|---|---|
+| **Source conservée** | `~/app.grubano.com/.env.local` |
+| **Source supprimée** | la variable `INTERNAL_CRON_TOKEN` du **panneau cPanel « Variables d'environnement »** — **par l'interface**, jamais à la main : elle vit entre les marqueurs CloudLinux du `.htaccess`, région que cPanel réécrit |
+| **Troisième source à aligner** | le secret GitHub `INTERNAL_CRON_TOKEN` → la valeur de `.env.local` (Settings → Secrets and variables → Actions) |
+| **Redémarrage** | **OUI, requis** — le processus a mis A en cache à son démarrage : `touch ~/app.grubano.com/tmp/restart.txt` |
+| **Ordre** | retirer la variable → restart → aligner le secret GitHub, **dans la même séance** : entre le restart et l'alignement, les crons GitHub renverront 401 |
+
+**Impact sur les crons**
+
+| Cron | Avant | Après |
+|---|---|---|
+| crontab cPanel (3 jobs, lisent `.env.local`) | **401** | **200** — ils recommencent à fonctionner |
+| `cron.yml` GitHub (envoie le secret) | 200 | **401 jusqu'à l'alignement du secret** |
+| sonde ledger du preflight (lit `.env.local`) | **401** | **200** |
+
+**Tests attendus**
+
+```bash
+# 1. la provenance doit désormais désigner le FICHIER (noms et booléens, jamais de valeur)
+cat ~/.grubano/env-provenance.json | grep -A4 INTERNAL_CRON_TOKEN
+#    attendu : "presentBeforeEnvLoad": false   ·   "effectiveSource": ".env.local"
+
+# 2. le preflight
+~/nodevenv/app.grubano.com/24/bin/node ~/app.grubano.com/scripts/server/phase2-preflight.js
+#    attendu : HTTP LEDGER CHECK = 200
+```
+Et côté GitHub, après l'alignement du secret : `gh workflow run internal-token-probe.yml --ref develop`
+→ `HTTP STATUS = 200` · `GITHUB SECRET == STAGING RUNTIME TOKEN = YES`.
+
+**Rollback** : ré-ajouter la variable dans le panneau cPanel avec sa valeur précédente, puis
+`touch tmp/restart.txt`. **La valeur précédente existe déjà** : elle est dans
+`~/htaccess-staging-backup-20260929-1713.txt`, la sauvegarde que vous avez faite pour PROD-14 — hors racine
+web, en 600. L'étape ③ de la feuille PROD-14 fournit donc le rollback de celle-ci.
+
+### 18.3 PROD-15 — fermé
+
+Deux étapes **bloquantes** ajoutées à `deploy-staging.yml`, aucun secret nouveau (le jeu est épinglé à
+**sept**), aucune cadence, production intacte.
+
+**1 · `Restart proven (at least one method succeeded) — BLOCKING`.** Les trois étapes de redémarrage restent
+`continue-on-error: true` — délibérément : chacune peut échouer pour une raison qui n'importe pas (SSH vers cet
+hôte a expiré 3/3 historiquement). Mais `continue-on-error` fait aussi remonter leur **`conclusion` à
+`success` quoi qu'il arrive** : c'est pourquoi le run qui a déployé `adfb4981` affichait trois étapes de
+redémarrage **vertes** et ne m'apprenait rien, et pourquoi il a fallu ouvrir le journal brut à la main.
+**Une porte qu'on doit lire dans un journal n'est pas une porte.** Le nouvel agrégat lit
+**`steps.<id>.outcome`**, qui n'est **pas** masqué, et échoue quand les trois ont échoué — donc « si toutes
+les méthodes de restart échouent, le workflow est rouge ».
+
+**2 · `Database reachable through the deployed Prisma client (BLOCKING)`**, portée depuis la production avec
+l'hôte staging. C'est elle qui satisfait « au moins une requête traverse l'application / Prisma vivant » :
+`version.json` est **statique** (téléversement seulement), et l'intégrité des bundles lit des pages qui
+s'affichent sans toucher la base. Seule une route qui **interroge** prouve que le processus vivant atteint
+MySQL **par le client réellement déployé** — et staging a déjà servi « nouveau schéma + nouveau code + client
+PÉRIMÉ », panne invisible à tout contrôle fondé sur un 200.
+
+Le workflow compte désormais **quatre portes bloquantes** : `Restart proven` · `Health check (staging @
+expected SHA)` · `Database reachable…` · `Client bundle integrity`.

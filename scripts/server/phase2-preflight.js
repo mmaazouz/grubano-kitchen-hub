@@ -569,9 +569,28 @@ async function main() {
       ])
       F('DB Refund rows (all time) / since window', refundCount + ' / ' + refundsInWindow.length + (refundsInWindow.length ? ' [' + refundsInWindow.map((r) => r.createdAt.toISOString().slice(0, 10) + ':' + r.status + ':' + r.amountCents + ':order…' + r.orderId.slice(-6)).join(' | ') + ']' : ''))
       F('DB ledger refund lines since window', ledgerRefunds.length ? ledgerRefunds.map((l) => l.createdAt.toISOString().slice(0, 10) + ':' + mask(l.sourceEventId) + ':' + l.grossAmount).join(' | ') : 'none')
-      const unexpected = refundsInWindow.filter((r) => !(r.amountCents === 1450 && r.createdAt.toISOString().startsWith('2026-08-29')))
-      F('UNEXPECTED REFUND SINCE 2026-08-29 (DB)', unexpected.length === 0 ? 'NO' : 'YES — ' + unexpected.length)
-      if (unexpected.length) A('7 refunds: unexpected Refund row(s) — HARD STOP')
+      /* FOUNDER ARBITRATION (2026-09-29). The rule here used to be
+             !(r.amountCents === 1450 && r.createdAt.startsWith('2026-08-29'))
+         — an AMOUNT plus a DATE. It permitted ANY 1450-cent refund created on that day while
+         refusing the three rehearsals that were actually documented, because they happened
+         later. Identity now decides, and identity is the Stripe refund id: minted by Stripe,
+         impossible to choose, and written verbatim in the rehearsal records. The table and the
+         classifier live in ONE place (scripts/server/rehearsal-refunds.js) so a test can execute
+         the same decision this operator makes. The control is STRICTER, not looser: a known id
+         still HARD STOPS when its order, amount or status disagrees with the record, and a row
+         with no Stripe id is refused outright because the allowlist has nothing to compare. */
+      const RR = require(path.join(__dirname, 'rehearsal-refunds.js'))
+      const split = RR.splitRefundRows(refundsInWindow)
+      F('KNOWN REHEARSAL REFUNDS (DB, id-matched)', split.known.length === 0 ? 'none'
+        : split.known.map((v) => v.ref + ':' + v.row.amountCents + 'c:' + v.row.createdAt.toISOString().slice(0, 10)).join(' | '))
+      F('UNEXPECTED REFUND SINCE ' + WINDOW_START.toISOString().slice(0, 10) + ' (DB)', split.unexpected.length === 0 ? 'NO'
+        : 'YES — ' + split.unexpected.length + ' [' + split.unexpected.map((v) =>
+            'order…' + String(v.row.orderId).slice(-6) + ':' + v.row.amountCents + 'c:' + v.row.createdAt.toISOString().slice(0, 10) + ':' + v.why).join(' | ') + ']')
+      if (split.unexpected.length) {
+        A('7 refunds: ' + split.unexpected.length + ' unexpected Refund row(s) — HARD STOP. Identify each one, then add it to '
+          + 'KNOWN_REHEARSAL_REFUNDS in scripts/server/rehearsal-refunds.js WITH its evidence (a runbook or a test in this '
+          + 'repository). Do NOT widen the rule by date or amount: that is the defect this replaced.')
+      }
 
       console.log('[8/12] order GR-' + ORDER_ID.slice(-6).toUpperCase())
       const order = await prisma.order.findUnique({ where: { id: ORDER_ID }, select: { id: true, status: true, paymentStatus: true, total: true, pointsRedeemed: true, loyaltyCreditCents: true, pointsEarned: true, stripePaymentIntentId: true, pointOfSaleId: true } })

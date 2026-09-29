@@ -288,6 +288,7 @@ jobs:
       # job fails the run whenever the served HTML references an asset the server
       # cannot serve — the exact signature of this incident.
       - name: Post-deploy server tasks
+        id: ssh_post
         uses: appleboy/ssh-action@v1.0.0
         continue-on-error: true
         with:
@@ -306,6 +307,7 @@ jobs:
       # ── SSH: chmod + Passenger restart ────────────────────────────────────────
       # node_modules is bundled in the standalone output — no npm ci needed.
       - name: Fix permissions and restart
+        id: ssh_restart
         uses: appleboy/ssh-action@v1.0.0
         continue-on-error: true
         with:
@@ -358,6 +360,7 @@ jobs:
       # only until two consecutive deploys confirm the FTPS step finishes with
       # exit 0 (no more exit 60) AND CSS lands without manual cPanel `touch`.
       - name: Trigger Passenger restart via FTPS (independent of SSH)
+        id: ftps_restart
         if: ${{ success() }}
         continue-on-error: true
         run: |
@@ -393,6 +396,38 @@ jobs:
           fi
           rm -f "$MARKER" "$ERRLOG"
           exit $RC
+
+      # ── PROD-15 (2026-09-29) — A GREEN STAGING DEPLOY MUST NOT MEAN "THE FILES ARRIVED" ──
+      # Founder arbitration: « staging ne doit jamais considérer un déploiement vert uniquement
+      # parce que version.json a été téléversé », and « si toutes les méthodes de restart
+      # échouent, le workflow doit être rouge ».
+      #
+      # WHY THIS STEP HAS TO EXIST. The three steps above are each `continue-on-error: true`,
+      # deliberately: any one of them may fail for a reason that does not matter (SSH to this host
+      # has timed out 3/3 historically). But `continue-on-error` also makes GitHub report each
+      # step's `conclusion` as SUCCESS whatever happened — which is why the run that deployed
+      # adfb4981 showed three green restart steps and told us nothing. Proving the restart required
+      # opening the raw log by hand. A gate you have to read a log to evaluate is not a gate.
+      #
+      # `outcome` is the RAW result and is NOT masked by continue-on-error, so the aggregate below
+      # can do what the conclusions cannot: fail when EVERY restart path failed, while staying
+      # green when at least one worked. No new secret, no new schedule, production untouched.
+      - name: Restart proven (at least one method succeeded) — BLOCKING
+        if: ${{ !cancelled() }}
+        run: |
+          echo "ssh_post      outcome = ${{ steps.ssh_post.outcome }}"
+          echo "ssh_restart   outcome = ${{ steps.ssh_restart.outcome }}"
+          echo "ftps_restart  outcome = ${{ steps.ftps_restart.outcome }}"
+          if [ "${{ steps.ssh_post.outcome }}" = "success" ] \
+          || [ "${{ steps.ssh_restart.outcome }}" = "success" ] \
+          || [ "${{ steps.ftps_restart.outcome }}" = "success" ]; then
+            echo "OK at least one restart method reported success — tmp/restart.txt was written"
+            exit 0
+          fi
+          echo "::error::EVERY restart method failed. The files are uploaded but the OLD process is"
+          echo "still serving them: a deploy that is green here would be green AND inert."
+          echo "Recover in cPanel Terminal:  touch ~/app.grubano.com/tmp/restart.txt"
+          exit 1
 
       # S0-3 — verify the deployed build matches this run's commit. Non-blocking:
       # Passenger may still be swapping processes when this runs. Manual check
@@ -457,6 +492,40 @@ jobs:
           exit 1
 
       # ── P0 AUTH HYDRATION (2026-09-06) — CLIENT BUNDLE INTEGRITY, BLOQUANT ────────
+      # ── PROD-15 — THE DATABASE MUST BE REACHABLE THROUGH THE DEPLOYED PRISMA CLIENT ──
+      # Ported from deploy-production.yml, where PROD-2 added it, with the staging host. It is the
+      # step that answers the founder's « au moins une requête traverse l'application / Prisma
+      # vivant »: version.json is STATIC (upload only), and the bundle-integrity step below reads
+      # pages that render without touching the database. Only a route that QUERIES proves the live
+      # process can reach MySQL through the client that was actually deployed — and staging has
+      # already served « new schema + new code + STALE Prisma client » once, a failure invisible to
+      # every 200-based check. /api/restaurants is public, read-only and hits the database.
+      - name: Database reachable through the deployed Prisma client (BLOCKING)
+        run: |
+          URL="https://app.grubano.com/api/restaurants"
+          ATTEMPTS=6
+          DELAY=15
+          i=1
+          while [ "$i" -le "$ATTEMPTS" ]; do
+            CODE=$(curl -sS -L -o /dev/null --max-time 30 -w '%{http_code}' "$URL") || CODE="000"
+            echo "attempt $i/$ATTEMPTS - $URL -> HTTP $CODE"
+            if [ "$CODE" = "200" ]; then
+              echo "OK the deployed Prisma client reaches the staging database"
+              exit 0
+            fi
+            i=$((i + 1))
+            if [ "$i" -le "$ATTEMPTS" ]; then sleep "$DELAY"; fi
+          done
+          echo "ERR the database is NOT reachable through the deployed build (last HTTP $CODE)"
+          echo "  Most likely, in order:"
+          echo "    1. the Prisma client on the server is STALE - the SSH generate step timed out."
+          echo "       In cPanel Terminal:  source ~/nodevenv/app.grubano.com/24/bin/activate"
+          echo "                            cd ~/app.grubano.com && npx prisma@5.22.0 generate"
+          echo "                            touch tmp/restart.txt"
+          echo "    2. the process never restarted (see the restart-proven step above);"
+          echo "    3. DATABASE_URL is missing or wrong in ~/app.grubano.com/.env.local."
+          exit 1
+
       # version.json is a static file: it proves the UPLOAD, never that the RUNNING
       # process can serve the bundles its own HTML references. This step fetches the
       # two authentication pages, extracts every /_next/static asset they reference

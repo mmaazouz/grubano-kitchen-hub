@@ -56,7 +56,15 @@ const CRON_CONFIG_40DA45E: Record<string, string> = {
   // D′ L5 — moved from 03912758…7813 (40da45e): the staging workflow now also copies lib/claims-payable-core.js into
   // deploy-temp/lib, because the pay-window operator must recompute the rail's selection with the SAME query the rail
   // uses (spec v2 §8.8). One `cp` line: no schedule, no new job, no new workflow file.
-  '.github/workflows/deploy-staging.yml':       'ed4b9012516c52ec8cfc877958e65893340c7567ae717aed4c4a8c9f6605df84',
+  /* PROD-15 (2026-09-29) — deploy-staging.yml MOVED on an explicit founder arbitration: « staging ne doit jamais
+     considérer un déploiement vert uniquement parce que version.json a été téléversé », et « si toutes les méthodes de
+     restart échouent, le workflow doit être rouge ». The three restart steps gained ids (their `conclusion` is masked by
+     continue-on-error, their `outcome` is not), plus TWO blocking steps: an aggregate that fails when every restart path
+     failed, and the database-reachability gate ported from production so at least one request traverses the LIVE Prisma
+     client. Measured cause: the run that deployed adfb4981 showed three GREEN restart steps and proving the restart
+     required opening the raw log by hand. NO new secret (the set is pinned at seven by
+     tests/rehearsal-refunds-and-prod15.test.ts), no new schedule, no job, production untouched. */
+  '.github/workflows/deploy-staging.yml':       'ec7540d9ca4a887d6a2da6c438b12b590fe822a394f7e76d61d783b0a6fd6c1f',
   '.github/workflows/internal-token-probe.yml': 'd171c534104f46fb3ac60b910bb12fcea98f3aebe61fbca556a5762e4d19db65',
   '.github/workflows/refund-rehearsal.yml':     '5d825384520defb44f6977324e92a2555b667204f1e4db35da9724ca1ca235a4',
   '.github/workflows/tests.yml':                '593120f3009bca35eac5be8556710036d2aec9644e88538333b5a44e0be26287',
