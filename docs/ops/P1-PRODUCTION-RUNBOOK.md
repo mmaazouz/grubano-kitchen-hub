@@ -42,13 +42,32 @@ D'où la séquence, et elle ne se réordonne pas :
 | 7 | **Vérification #2** — vert attendu | la porte DB passe : le client Prisma **déployé** atteint la base |
 | 8 | **PROD-8** sauvegarde `--production` + **restauration répétée** | on ne sait sauvegarder que ce qu'on a su restaurer |
 
-**Le déploiement #1 sera ROUGE et c'est correct.** Les fichiers arrivent (`Deploy via FTP` exit 0), puis
-`Verify deployed build (version.json)`, `Health check`, `Database reachable…` et `Client bundle integrity`
-échouent tous les quatre : à ce stade le serveur n'a ni modules, ni client Prisma, ni schéma, donc Passenger
-ne démarre pas — et sur cet hôte **`/version.json` passe aussi par Passenger** (c'est pourquoi la production
-répond 500 sur ce fichier statique aujourd'hui). La porte DB imprime elle-même ses trois causes probables,
-la première étant « the production schema was never created ». **Un rouge au déploiement #1 n'est pas un
+**Le déploiement #1 sera ROUGE et c'est correct** — mais **pas uniformément**, et la nuance compte pour le
+diagnostic. Mesuré sur la production le 2026-09-29 : `/server.js` → **200** (878 o), `/package.json` → **200**
+(2 089 o), `/prisma/schema.prisma` → **200** (18 550 o), tandis que `/fr/eat` et `/version.json` → **500**.
+Autrement dit : **Apache sert directement les fichiers qui EXISTENT et ne passe à Passenger que les chemins
+absents.** `/version.json` répond 500 aujourd'hui **parce que le fichier n'existe pas** (le demi-déploiement de
+mai ne l'a jamais estampillé), pas parce que Passenger l'intercepterait.
+
+Conséquence exacte au déploiement #1, à connaître **avant** de lire le run :
+
+| Étape | Attendu | Pourquoi |
+|---|---|---|
+| `Deploy via FTP` | ✅ exit 0 | le téléversement ne dépend pas du runtime |
+| `Verify deployed build (version.json)` | ✅ **VERT** | le fichier existe désormais et **Apache le sert lui-même** — il prouve le téléversement, **rien** sur le processus |
+| `Health check (production @ expected SHA)` | ❌ rouge | il lit une **page**, donc Passenger |
+| `Database reachable … (BLOCKING)` | ❌ rouge | `/api/restaurants` passe par Passenger, et le schéma n'existe pas |
+| `Client bundle integrity` | ❌ rouge | il lit des pages servies |
+
+**Un `version.json` vert pendant que le reste est rouge n'est donc pas une contradiction : c'est la preuve
+mesurée que ce contrôle ne dit rien du runtime.** La porte DB imprime elle-même ses trois causes probables, la
+première étant « the production schema was never created ». **Un rouge sur les trois dernières n'est pas un
 incident ; un vert le serait** — il voudrait dire que l'ancien processus de mai sert encore.
+
+⚠️ **Le déploiement #1 ne part pas tout seul.** Le job `deploy` de `deploy-production.yml` (ligne 71) déclare
+`environment: production`, et cet environnement GitHub porte une règle `required_reviewers: [mmaazouz]`. Le job
+`test` tourne d'abord, puis **le déploiement ATTEND votre approbation** dans l'onglet Actions. La promotion et
+le premier téléversement sont donc deux décisions séparées, et c'est vous qui tenez la seconde.
 
 ---
 
@@ -414,7 +433,7 @@ git push -u origin promote/prod-2026-09-XX
 | **Sortie attendue** | le check `test` du workflow « CI — tests » tourne sur la PR et passe ; le bouton de fusion est disponible (0 approbation requise) |
 | **Méthode de fusion** | **« Create a merge commit »** — et **rien d'autre** |
 | **Condition STOP** | **« Squash and merge » détruirait le second parent** : `develop` ne deviendrait pas un ancêtre de `main`, et **chaque promotion future reposerait le problème des histoires non apparentées**. « Rebase and merge » réécrirait 400 commits. Si seul « Squash » est proposé, **arrêtez** et changez le réglage du dépôt (Settings → General → Pull Requests → *Allow merge commits*). |
-| **Effet immédiat** | la fusion pousse sur `main` ⇒ `on: push: branches: [main]` déclenche **`deploy-production.yml`** = le déploiement #1. Il sera **rouge** (§0). |
+| **Effet immédiat** | la fusion pousse sur `main` ⇒ `on: push: branches: [main]` déclenche **`deploy-production.yml`**. Le job `test` tourne, puis le job `deploy` **s'arrête et attend votre approbation** (`environment: production`, `required_reviewers: [mmaazouz]`, vérifié le 2026-09-29). **Rien n'est téléversé avant que vous cliquiez.** C'est le déploiement #1, et il sera partiellement rouge (§0). |
 | **Rollback immédiat** | `main` est protégée contre le force-push : on ne « défait » pas la promotion, **on en pousse une autre**. Si l'arbre promu est mauvais : ouvrir une seconde PR qui remet l'arbre voulu (même recette, `read-tree --reset -u <bon-sha>`). La production, elle, se rollback par redéploiement (§5.6). |
 | **Réversible** | la **branche** ne redevient pas ce qu'elle était (pas de force-push) ; le **contenu** est toujours re-poussable ; l'histoire Lovable reste intacte (branche + tag). |
 
@@ -1041,3 +1060,139 @@ worktree Git jetable, sur `origin/main` + `171437d8`, pour vérifier que les com
 produisent bien l'arbre annoncé. Le worktree a été supprimé, aucune branche n'a été créée, rien n'a été
 poussé, et `git status` est resté vide. Je préfère vous remettre une recette **mesurée** plutôt qu'une recette
 plausible.
+
+---
+
+## 14 · Ce que le PRÉFLIGHT P1 a ajouté (2026-09-29, mesuré après la première version de ce runbook)
+
+### 14.1 PROD-14 — les sources de l'application sont publiquement téléchargeables depuis la production
+
+Mesuré sur `https://grubano.com`, requêtes HEAD, aucun corps lu :
+
+| Chemin | Code | Taille |
+|---|---|---|
+| `/server.js` | **200** | 878 o |
+| `/package.json` | **200** | 2 089 o |
+| `/prisma/schema.prisma` | **200** | 18 550 o |
+| `/.env.local` · `/.env` · `/.htaccess` | **403** | — |
+| `/version.json` · `/VERSION` · `/fr/eat` | 500 | page Passenger |
+
+Les fichiers cachés sont bien bloqués — **mais pas les sources**. `prisma/schema.prisma` est le **modèle de
+données complet** (tables d'argent incluses) et `package.json` la **liste de dépendances avec versions**, qui
+est la matière première d'un ciblage de vulnérabilités. C'est vrai **depuis mai**, sur la production actuelle.
+
+⚠️ **Passer le dépôt en privé (D1) ne ferme PAS ce trou** : la fuite vient du serveur, pas de GitHub. Après le
+déploiement #1 la production servira le `schema.prisma` **courant** (77 modèles au lieu de 27) — donc le
+déploiement **aggrave** l'exposition si rien n'est fait.
+
+**Correctif** : une règle Apache dans `~/grubano.com/.htaccess`, à poser par cPanel (le fichier répond 553 en
+FTP et le pipeline ne l'écrit plus, cf. PROD-2) :
+
+```apache
+<FilesMatch "\.(prisma|json|js|ts|map|lock)$">
+  Require all denied
+</FilesMatch>
+<Files "version.json">
+  Require all granted
+</Files>
+```
+
+| | |
+|---|---|
+| **Test de succès** | `/prisma/schema.prisma` → **403** · `/package.json` → **403** · `/version.json` → **200** · `/fr/eat` inchangé · `/_next/static/**` **toujours 200** |
+| **Condition STOP** | si `/_next/static/...` passe à 403, les bundles client sont morts (le P0 du 06/09) : **retirez la règle immédiatement**. Vérifiez ce point **avant** tout le reste — `.js` est dans la liste, donc la portée de la règle doit exclure `/_next/`. |
+| **Rollback** | retirer le bloc du `.htaccess` par cPanel ; effet immédiat, aucun redémarrage |
+| **Réversible** | **OUI** |
+
+Classé 🟠 : **pas** bloquant pour créer une production fermée (aucun identifiant n'est exposé), **bloquant
+avant le premier client réel**. À faire de préférence **juste après** le déploiement #1, quand le
+`schema.prisma` courant vient d'atterrir.
+
+### 14.2 Qui paie réellement les frais Stripe — une contradiction à trancher par la mesure
+
+`lib/commission.ts` affirme en en-tête : « Stripe fees INCLUDED in the commission (the platform absorbs
+them) ». Mais `lib/stripe.ts:114` pose **`on_behalf_of: connect.destination`** sur chaque charge routée — et
+`on_behalf_of` désigne le **marchand de règlement**. C'est ce paramètre, pas un commentaire, qui détermine sur
+quel solde Stripe prélève ses frais.
+
+**Les deux ne peuvent pas être vrais à la fois, et je ne vais pas deviner lequel l'est** : c'est le chiffre
+central du contrat restaurant.
+
+**Le dépôt contient déjà la mesure.** `retrieveChargeFacts()` (`lib/stripe.ts:153`) lit
+`latest_charge.balance_transaction` **avec la clé plateforme et sans en-tête `stripeAccount`** — donc la
+balance transaction **de la plateforme** — et le webhook écrit sa valeur dans
+`LedgerEntry.stripeFeeAmount` (« REAL Stripe processing fee ») pour **chaque** paiement. Une requête lecture
+seule sur staging tranche :
+
+```sql
+SELECT createdAt, grossAmount, applicationFeeAmount, stripeFeeAmount, netToRestaurant, routed
+FROM `LedgerEntry`
+WHERE type = 'payment' AND routed = 1
+ORDER BY createdAt DESC
+LIMIT 5;
+```
+
+| Résultat | Interprétation |
+|---|---|
+| `stripeFeeAmount` **> 0** | la balance transaction **de la plateforme** porte les frais ⇒ **Grubano les absorbe**, le commentaire a raison, `on_behalf_of` ne déplace pas les frais |
+| `stripeFeeAmount` **= 0 ou NULL** | les frais sont prélevés sur le **compte connecté** ⇒ **le restaurant les paie sur son net**, le commentaire est faux, et le tableau D10 doit être réécrit |
+
+**Ne rien écrire au contrat avant d'avoir lu ces cinq lignes.** Aucune écriture, aucun appel Stripe : une
+lecture de la base de staging.
+
+### 14.3 PROD-5 — la première ligne : prouver qu'aucune clé Stripe n'est présente
+
+Je ne peux pas prouver d'ici le contenu d'un fichier serveur. Ce que j'ai prouvé : **aucun chemin automatisé
+ne peut en installer une** — 0 secret GitHub `STRIPE_*` (21 secrets listés), 0 clé Stripe sur l'historique Git
+complet, et le pipeline n'écrit jamais de fichier d'environnement (il exclut `.env*`). Reste le seul canal
+possible : une main humaine. La vérification tient en une commande **lecture seule**, à exécuter en **premier**
+dans PROD-5 :
+
+```bash
+grep -c '^\s*STRIPE' ~/grubano.com/.env.local 2>/dev/null; echo "exit=$?"
+ls -l ~/grubano.com/.env.local 2>&1
+```
+
+| | |
+|---|---|
+| **Attendu** | `No such file or directory` et `exit=2` — **le fichier n'existe pas encore**, c'est l'état voulu avant PROD-5 |
+| **Acceptable** | le fichier existe et `grep -c` renvoie **`0`** |
+| **Condition STOP** | `grep -c` renvoie **≥ 1** ⇒ une clé Stripe est déjà posée en production : **arrêt**, retirez-la et redémarrez avant toute autre étape |
+
+**Et le fait qui compte plus que tout le reste** : il n'existe **qu'un seul** `new Stripe(...)` dans toute
+l'application (`lib/stripe.ts:19`), derrière `getStripe()`, qui **jette** `stripe_not_configured` sans clé.
+Les huit sites d'écriture financière passent **tous** par lui. Donc **sans clé Stripe, même un drapeau argent
+ouvert par accident ne peut déplacer aucun argent** — l'appel échoue avant d'atteindre Stripe. C'est la
+serrure la plus forte de toute la production fermée, et elle est gratuite.
+
+### 14.4 Les crons — configuration vérifiée, capacité non contrainte
+
+Vérifié : **chaque** job de `cron.yml` cible `${{ needs.guard.outputs.base }}` = la variable de dépôt
+`CRON_TARGET_BASE_URL`, **mesurée = `https://app.grubano.com`**. Le job `guard` **échoue** si la variable est
+vide, et « ce workflow ne prend jamais la production par défaut ». Aucun job ne code une URL en dur. Les trois
+scripts Node (`ledger-check-probe`, `creator-earnings-mature`, `monthly-invoices`) lisent `SITE_URL`, que le
+workflow renseigne depuis la même sortie de garde — **mais leur défaut interne est
+`https://www.grubano.com`**, donc la production : la seule chose qui les en empêche est que le workflow
+positionne toujours la variable, et que le garde refuse une variable vide.
+
+Ce que le garde ne fait **pas** : refuser une variable qui **désigne la production**. La protection est donc
+une **configuration**, pas une contrainte. Une seule édition de variable suffirait à envoyer, au tick suivant
+(20 min), le rattrapage d'e-mails, les relances d'onboarding et — le 1er du mois — le lot de factures et le
+règlement franchiseur contre la production.
+
+**Correctif proposé (une ligne dans le garde)** : refuser explicitement une base de production tant qu'une
+seconde variable ne l'autorise pas nommément. Même doctrine que T-123 : la protection doit **refuser**, pas
+**surveiller**.
+
+Inventaire de ce que chaque planification ferait si elle atteignait la production, pour mémoire :
+
+| Planification | Jobs | Effet externe possible |
+|---|---|---|
+| `*/20 * * * *` | `positions/sweep` · `orders/confirm-sweep` | ⚠️ **envoie des e-mails** de confirmation de commande (idempotent, `sendOnce`). Sur une base vide : rien à envoyer. |
+| `20 3 * * *` | sonde ledger · maturation créateur · `creator-payouts/run` · relances onboarding · réconciliation ghost-orders · alertes claims dormantes · réconciliation refunds | ⚠️ plusieurs **e-mails** ; `creator-payouts/run` → **404** (rôle fermé) ; aucune écriture d'argent |
+| `0 7 1 * *` | factures mensuelles · `franchise-settlements/run` | ✅ factures **refusées 409** par PROD-4 ; règlement → **404** (rôle fermé) |
+
+Contrôle live exécuté sur staging (POST non authentifié) : `refunds/run` **403 `gated:true`** ·
+`claims/pay-approved` **403** · `claims` **403 `gated:true`** · `franchise-settlements/run` **404** ·
+`creator-payouts/run` **404**. Les deux derniers refusent par **404 avant 403** — le rôle se masque avant que
+le drapeau argent ne parle : deux couches, la plus stricte d'abord.
