@@ -262,3 +262,50 @@ Changement de phase décidé par le fondateur : « sécurité suffisante pour la
 | PROD-12 | 🟠 **À DÉCIDER** | Le dépôt est **PUBLIC** (`private: false`). | Décision fondateur : le passer privé avant d'y mettre des traces de production. | — |
 
 🟢 **Peut attendre les retours clients** : tout le reste, dont l'alerte e-mail sur 500 (mécanisme `admin-alerts` déjà présent, à brancher), le retrait de `npm run prisma:migrate` (c'est `prisma migrate dev`, qui propose de RÉINITIALISER la base), et le branchement de `cgvProductionReadiness()` sur un vrai garde.
+
+## P1 — PRODUCTION FERMÉE : le runbook est rendu, rien n'est exécuté (2026-09-29)
+
+Runbook complet : **`docs/ops/P1-PRODUCTION-RUNBOOK.md`** — PROD-5/5b/5c/6/7/8 avec, pour chaque action, commande exacte · répertoire · utilisateur · fichiers touchés · préconditions · sortie attendue · test de succès · condition STOP · rollback immédiat · réversibilité. Aucune action serveur, aucun changement `main`, aucun déploiement, aucune écriture Stripe, aucun changement de visibilité Git.
+
+### Ce que la revue P1 a mesuré et que le tableau P0 ne disait pas
+
+| Fait mesuré | Conséquence sur le runbook |
+|---|---|
+| **`main` est PROTÉGÉE** : `enforce_admins: true`, `allow_force_pushes: false`, revue de PR requise (0 approbation), `strict: true` avec 0 check obligatoire | La promotion **doit** passer par une pull request — le mécanisme auditable demandé est imposé par GitHub, pas par notre discipline. Et « Squash and merge » **détruirait le second parent** : chaque promotion future reposerait le problème des histoires non apparentées. Méthode obligatoire : **Create a merge commit**. |
+| **Le pipeline exclut `node_modules` EN TOTALITÉ** (lien symbolique nodevenv ⇒ 550 ⇒ synchro avortée) et exclut aussi `node_modules/.prisma` | Deux étapes manquaient au tableau P0 : **PROD-5b** (le nodevenv de production doit avoir reçu un `npm install`, sinon `Cannot find module 'next'`) et la régénération du client Prisma **sur le serveur**. |
+| **`secrets.DATABASE_URL_PROD` existe déjà** et alimente `Generate Prisma client` + `Build` (lignes 92/97) | **PROD-5c** : le secret date du demi-déploiement de mai. À aligner sur le DSN de la nouvelle base, sinon le build de production se fait contre une base absente ou fausse. |
+| **Le premier déploiement de production sera ROUGE, par conception** | À ce stade le serveur n'a ni modules, ni client Prisma, ni schéma ⇒ Passenger ne démarre pas, et sur cet hôte **`/version.json` passe aussi par Passenger**. Les quatre portes post-FTP échouent. **Un vert au déploiement #1 serait le signal d'alarme** : il voudrait dire que l'ancien processus de mai sert encore. |
+| **La promotion ACTIVE `cron.yml`** — GitHub ne déclenche `schedule` que depuis la branche par défaut | Trois planifications dormantes s'allument (`*/20 * * * *`, `20 3 * * *`, `0 7 1 * *`). Elles visent la variable de dépôt `CRON_TARGET_BASE_URL`, **vérifiée = `https://app.grubano.com`** (staging). Cette variable est le seul garde-fou entre trois planifications et la production : à vérifier **avant** de fusionner. |
+| **Aucun garde applicatif ne vérifie le mode de la clé Stripe** — `getStripe()` accepte n'importe quelle valeur ; les seuls contrôles `sk_test_` vivent dans les opérateurs `phase2-*` | **PROD-13** proposé (§7.4 du runbook) : refuser `sk_live_` sans acquittement explicite. En attendant, la protection la plus forte est **ne poser aucune clé Stripe** en production fermée. |
+| **`app/api/webhooks/stripe/route.ts:83` appelle `getStripe()` pour vérifier la signature** | Sans `STRIPE_SECRET_KEY`, le webhook répond **400 « Invalid signature »** (l'exception est avalée dans la boucle d'essai des secrets) — trompeur. PROD-11 exige donc **deux** variables TEST, pas une. |
+| **5 noms de `.env.example` ne sont lus par aucun code** : `GRUBANO_LEGAL_NAME`, `GRUBANO_SIREN`, `GRUBANO_VAT_NUMBER`, `GRUBANO_LEGAL_ADDRESS`, `BREVO_API_KEY` | **L'identité légale ne se remplit pas par variable d'environnement.** La seule source est `lib/legal-info.ts`, compilé dans le build ⇒ PROD-10 demande **un commit et un redéploiement**, pas une édition serveur. |
+| **`~/.grubano/env-provenance.json` ne nomme pas l'application qui l'a écrit** | Staging et production partagent le compte cPanel `deyi0010`, donc le même fichier. Cette preuve est **ambiguë** en production ⇒ décision D7. |
+| **`prisma migrate diff --exit-code`** compare une base restaurée au `schema.prisma` de l'application | C'est le contrôle qui distingue « le fichier s'est rechargé » de « la restauration est exploitable ». Il devient l'étape 4 de PROD-8. |
+
+### PROD-10 — RECLASSÉ
+
+🔴 **BLOQUANT AVANT LE PREMIER RESTAURANT / LA PREMIÈRE COMMANDE RÉELLE** — et **pas** avant le premier déploiement technique fermé (décision fondateur 2026-09-29 : Grubano n'exploite plus ses propres restaurants/marques ; le lancement se fait avec des **restaurants tiers**). Le runbook §9 sépare les faits attendus en trois destinataires : **clients** (19 valeurs requises, 2 remplies, 17 placeholders), **restaurants partenaires** (contrat P2B — dont 2 faits **déjà décidés et implémentés** : la grille de commission 5/8/12/0 % frais Stripe absorbés, et le fait que **Grubano ne règle pas le restaurant** puisque Stripe le verse directement en *destination charge*), et **factures** (les 4 champs que lit `issuerIdentity()`). Aucune valeur inventée.
+
+### PROD-12 — REVUE READ-ONLY EXÉCUTÉE (verdict rendu, visibilité INCHANGÉE)
+
+Périmètre : **l'historique complet**, toutes références (1 283 commits, 111 branches), pas seulement `HEAD`.
+
+**Aucun matériel d'identification dans le dépôt** : 0 fichier `.env` jamais ajouté (seul `.env.example`), 0 `deploy_key`/`.pem`/`id_rsa`, **0 commit** sur `sk_live_` · `sk_test_…` · `whsec_…` · `rk_live_` · `sk-ant-api03-…` · `ntn_…` · `xkeysib-…` · `AKIA…` · `AIza…` · `BEGIN … PRIVATE KEY`. Les 9 commits correspondant à un DSN avec identifiants ont **tous** été inspectés : 100 % de gabarits et de fixtures (`USER:PASSWORD@`, `guard:…@127.0.0.1:1/guard_never_connected`) — **aucun DSN réel**. PII de tiers : **aucune** (2 adresses, toutes deux dans des tests).
+
+**Ce qui EST exposé** : (a) la **carte opérationnelle** — `deyi0010` 81 fois / 33 fichiers ; `/home/deyi0010`, `muscadier.o2switch.net`, les deux noms de base, les horaires de cron : 88 occurrences / 47 fichiers ; (b) le **playbook financier** — tout `scripts/server/` et `docs/ops/` nomment quelle route porte de l'argent, quel drapeau la ferme et comment il se pose ; (c) **les journaux GitHub Actions sont publics** et `deploy-production.yml` téléverse en `log-level: verbose` ⇒ l'arborescence complète du serveur ; (d) **une fuite déjà survenue** : les mots de passe de **7 comptes staging** ont été versionnés (tous `@grubano.com`, dont un admin), neutralisés en base le 2026-08-29 — et **ils restent dans l'historique à jamais**. Règle qui en découle : ces 7 adresses ne doivent jamais exister avec un mot de passe en production.
+
+**Recommandation : PRIVÉ avant toute trace de production.** Coût mesuré ≈ nul (0 fork, 0 étoile, 0 observateur, 1 collaborateur, pas de Pages) — **rien ne dépend de la visibilité publique**. Le seul vrai coût : un dépôt privé consomme le quota Actions du compte (2 000 min/mois Free, 3 000 Pro) là où un dépôt public est illimité ; les déploiements staging durent **23 à 41 min** (10 derniers runs, moyenne ~27 min) ⇒ **≈ 70 à 110 runs/mois** avant dépassement. Décision fondateur ; rien n'a été changé.
+
+### PROD-13 — NOUVEAU (proposé, non exécuté)
+
+| # | État | Problème | Correctif proposé | Test de sortie |
+|---|---|---|---|---|
+| PROD-13 | 🟠 **À DÉCIDER — code** | **Rien dans l'application ne vérifie le mode de la clé Stripe.** `lib/stripe.ts:getStripe()` accepte n'importe quelle valeur ; les seuls contrôles `sk_test_` du dépôt vivent dans les opérateurs `phase2-*`, hors de l'application. Une clé LIVE collée par erreur dans `~/grubano.com/.env.local` rend l'application capable d'un débit réel. | Refuser `sk_live_` sans variable d'acquittement explicite (`STRIPE_LIVE_ACKNOWLEDGED`). Un fichier, un test, aucun changement de comportement en TEST. | Clé `sk_live_` sans acquittement ⇒ refus ; contrôle POSITIF : avec acquittement ⇒ la porte s'ouvre. |
+
+### Les 11 décisions ouvertes
+
+Détail et recommandation pour chacune : §12 du runbook. **D1** public/privé · **D2** migration de référence + `migrate deploy` (le seul correctif **mécanique** au risque `--accept-data-loss`) · **D3** garde `sk_live_` (PROD-13) · **D4** retirer `prisma:migrate` de `package.json` (`prisma migrate dev` propose de RÉINITIALISER la base) · **D5** opérateur de candidats L11 · **D6** nettoyer les 5 noms morts de `.env.example` · **D7** discriminant d'application dans le rapport de provenance · **D8** vérifier « Allow merge commits » AVANT la PR de promotion · **D9** les 17 faits légaux + les 8 faits contractuels · **D10** le taux de commission du pilote · **D11** responsabilité de la commande (vendeur au client final).
+
+### L11 — la recherche de cible, aussi loin qu'elle va sans shell serveur
+
+`phase2-refund-gate.js` **n'est pas un chercheur, c'est un oracle** : il évalue la cible qu'on lui nomme (par défaut la commande historique, codée en dur ligne 38) et n'a **aucun** mode « liste les commandes éligibles ». Il n'existe aucun opérateur de recherche. À défaut de pouvoir exécuter le precheck d'ici, le runbook §11.3 **dérive du code le prédicat d'éligibilité exact** et le rend comme une requête `SELECT` lecture seule, clause par clause, chacune mise en regard du refus du precheck qu'elle anticipe. `refund-rehearsal.yml` **non déclenché** — il attend la phrase exacte `WINDOW LIVE — DISPATCH L11`.
