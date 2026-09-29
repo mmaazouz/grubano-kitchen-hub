@@ -1379,5 +1379,48 @@ Mais il abandonne à son pas 2 si le bail n'est pas déjà ouvert — et **rien 
 
 **Aucune écriture, aucun argent.** Aucune opération financière n'a été tentée. Aucun drapeau n'a été ouvert. Aucune commande cPanel. `CERTIFIED_SHAS` inchangé. `main` et la production intactes. Tout ce qui précède est du grep, de la lecture de fichiers, des GET/POST non authentifiés observés par code HTTP, et deux workflows en lecture seule (recensement, déploiement).
 
+## P0 GO-TO-PRODUCTION — rendre un premier déploiement production possible ET survivable (`6dd99d1f`)
+
+Changement de phase. L'objectif n'est plus de prouver que le logiciel peut être audité : c'est de le mettre entre les mains de vrais utilisateurs sans risque financier ou opérationnel déraisonnable. Aucun drapeau ouvert, `main` et la production intactes, aucun argent déplacé.
+
+**Le fait qui recadre tout : aucun des 84 tickets ouverts n'est un bloqueur production.** T-110→T-114, T-121, T-122 et l'intégralité du durcissement claims vivent derrière des drapeaux fermés — inatteignables au lancement. Les vrais bloqueurs n'étaient **pas** des tickets ; ils sont nés d'une question que personne n'avait posée au dépôt : « comment on lance ? ». Le backlog n'a pas grossi, il s'est rangé.
+
+### PROD-1 — le script qui pouvait détruire la base de production
+
+`scripts/server/deploy-production.sh:69` lançait `npx prisma db push --accept-data-loss` **sur la production**, sans sauvegarde de base — il sauvegardait `.next/server`, c'est-à-dire des fichiers de build. Et son propre en-tête invitait l'opérateur à s'en servir « pour les hot-fixes d'urgence quand il faut déployer sans CI » : autrement dit **le soir où quelque chose va déjà mal**, contre de vraies commandes et de vrais paiements. `--accept-data-loss` autorise Prisma à SUPPRIMER colonnes et tables sur n'importe quelle divergence entre le `schema.prisma` déployé et la base vivante. Le garde-fou était un mot dans une commande que personne ne lit à 2 h du matin.
+
+Retiré des deux scripts. À la place, la séquence délibérée est écrite dans le fichier : sauvegarde vérifiée → opérateur additif → régénération → restart ; et pour une base **vierge** seulement, un `db push` nu, une fois, par un humain qui vient de vérifier qu'elle est vide — il n'y a rien à perdre sur un schéma vide.
+
+### PROD-2 — le pipeline production n'était pas le pipeline éprouvé
+
+`deploy-production.yml` n'a **qu'un seul run depuis toujours** : 26/05/2026, sur `develop`, échec, 0 s. Staging a reçu deux correctifs et trois étapes de vérification que la production n'a jamais eus, et **chacun corrige un échec mesuré** :
+
+- `node_modules` était synchronisé par FTP alors que le chemin serveur est un **lien symbolique** de nodevenv : Pure-FTPd répond `550` et **avorte toute la synchro** — post-deploy, restart et tous les health-checks sautés. Corrigé sur staging en `07627b98`. La conséquence — le nodevenv production doit avoir reçu un `npm install` — est désormais **écrite dans le workflow**, pas laissée implicite.
+- il **écrivait** un `.htaccess` qu'il n'excluait pas. Deux issues, toutes deux disqualifiantes : `553 Permission denied` qui avorte la synchro, ou bien il réussit et **remplace la configuration Apache/Passenger vivante** par un printf de sept directives, détruisant la redirection apex→www. Passenger est démontrablement déjà configuré sur l'hôte : `grubano.com` sert sa page d'erreur Passenger, ce qui n'arrive que quand Passenger tourne et lit un `.htaccess`. Il n'y a rien à livrer.
+- **la seule porte bloquante ne pouvait pas échouer pour la raison de son existence** : `curl -sL www.grubano.com/dashboard == 200`. `/dashboard` est auth-gatée, le middleware redirige vers la connexion, `-L` suit, et 200 revient — **depuis n'importe quel build**, y compris un processus qui n'a jamais redémarré. Remplacée par le health-check ancré sur le SHA de ce run, extraction **byte-identique** à celle de staging.
+- aucune intégrité de bundle client : un HTML servi dont tous les chunks répondent 404 passait au vert. C'est exactement le P0 du 06/09 (zéro JavaScript client, formulaires d'authentification inertes). Porté, matcheur byte-identique.
+- aucun restart indépendant de SSH, alors que SSH depuis les runners GitHub vers cet hôte a **expiré 3 fois sur 3**. Quand ça arrive, les fichiers atterrissent et l'**ancien** processus continue de servir : un déploiement vert et inerte. Le repli FTPS était staging-seulement « jusqu'à deux déploiements consécutifs à exit 0 » ; mesuré **trois** consécutifs (runs 36433674654, 36459283998, 36463525963) — la barre que le workflow s'était lui-même fixée est franchie.
+- il ne livrait pas `lib/ledger-check-core.js` ni `lib/claims-payable-core.js`, que les opérateurs serveur `require()` : ils auraient levé MODULE_NOT_FOUND sur l'hôte production.
+
+**Et une porte que staging n'a pas** : la base doit être joignable **par le client Prisma déployé**. `version.json` est un fichier **statique** — il prouve le téléversement, jamais que le processus peut interroger la base. Le `prisma generate` post-deploy vit dans une étape SSH `continue-on-error` qui a expiré 3/3, et staging a **déjà** servi « nouveau schéma + nouveau code + client PÉRIMÉ ». Cette panne est invisible à tout contrôle fondé sur un 200 et se révèle au premier vrai client. `/api/restaurants` est publique, en lecture seule, et touche la base.
+
+### PROD-3 — la production ne pouvait pas être sauvegardée
+
+Le seul routine de sauvegarde **vérifiée** du dépôt refusait la production par nom, comme tous les opérateurs de migration. « On a des sauvegardes » était faux de la seule base qui contiendra de vraies commandes.
+
+Le correctif n'est **pas** un jumeau copié. Le bloc de vérification — taille, marqueur `-- Dump completed`, nombre d'INSERT, aller-retour gzip, sha256, manifeste par table contre un `COUNT(*)` vivant — **est** toute la valeur du fichier ; le copier pour ajouter un `if` inversé, c'est garantir que le prochain correctif atterrira dans une copie et pas dans l'autre. C'est la leçon T-108, déjà payée. L'opérateur reçoit donc une **cible explicite** : staging reste le défaut (toute invocation et toute référence de doc existantes gardent leur comportement exact), et `--production` exige en plus une attestation littérale.
+
+Les deux gardes sont symétriques et **les deux ont été exécutées** : un DSN production est refusé sur le chemin staging ; une attestation manquante est refusée **avant** toute comparaison d'environnement ; et `--production` pointé sur STAGING est refusé — **c'est le cas dangereux**, parce qu'une fausse sauvegarde est pire que pas de sauvegarde : c'est celle qu'on restaurera. Deux contrôles positifs prouvent que l'opérateur ne refuse pas simplement tout. La cible est dans le nom de fichier, pour que deux dumps ne puissent pas être confondus par celui qui choisit quoi restaurer.
+
+### PROD-4 — des factures numérotées au nom de personne
+
+`lib/invoice.issuerIdentity()` lit `LEGAL_INFO.editor` verbatim — raison sociale, siège, SIREN, TVA — et `scripts/cron/monthly-invoices.js` appelle `/api/admin/invoices/generate` **sans surveillance**, sur un cron cPanel (`0 7 1 * *`). Le premier du mois suivant le go-live aurait émis une série **séquentiellement numérotée** nommant « [[À COMPLÉTER — …]] » comme émetteur. Une facture numérotée ne se dé-émet pas.
+
+C'est la seule conséquence des faits légaux non remplis qui soit **irréversible** — d'où un refus (409) plutôt qu'un signalement. Aucun drapeau, aucun contournement : la seule façon de passer est de remplir `lib/legal-info.ts`.
+
+### Ce que mes propres tests m'ont appris, encore
+
+Trois des vingt-et-un tests ont d'abord échoué, et les trois échecs sont la même famille : un bannissement de **jeton** qui refusait sa propre documentation (le commentaire qui explique le retrait cite la commande) ; un scanner de source qui **se lisait lui-même** ; et une assertion d'ordre comparée à un **import** au lieu d'un appel. Quatrième, cinquième et sixième fois cette session. La règle se précise à chaque fois : **une interdiction lexicale doit viser la construction exécutable, jamais le mot** — et un contrôle qui lit du code doit d'abord se retirer du champ.
+
 ## Lots suivants
 (complété lot par lot : SHA, preuves, CI, SHA déployé)
