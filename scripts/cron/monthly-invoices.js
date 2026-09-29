@@ -12,7 +12,7 @@
 //
 // REQUIRED ENV (loaded from ../../.env.local when run from cron):
 //   INTERNAL_CRON_TOKEN    same token /api/admin/invoices/generate accepts
-//   SITE_URL               base URL (default: https://www.grubano.com)
+//   SITE_URL               base URL — REQUIRED, staging only (see cron-target-guard.js). No default.
 //   ALERT_EMAIL            destination of the recap mail
 //   SMTP_HOST/USER/PASS    existing app transport
 //
@@ -53,7 +53,20 @@ function loadDotenv() {
 loadDotenv()
 
 const TOKEN       = (process.env.INTERNAL_CRON_TOKEN ?? '').trim()
-const SITE_URL    = (process.env.SITE_URL || 'https://www.grubano.com').replace(/\/$/, '')
+/* B2 (founder arbitration 2026-09-29) — SITE_URL ABSENT USED TO MEAN PRODUCTION.
+   `process.env.SITE_URL || 'https://www.grubano.com'` picked the most dangerous target in
+   silence, and the cPanel crontab (docs/ops/crons.md) sets no SITE_URL on its command lines:
+   the target therefore depended on whether the server's .env.local happened to define it.
+   The same guard the GitHub `cron.yml` guard job uses now decides, and it REFUSES rather than
+   defaults — staging only, https only, production only by the exact attestation sentence in
+   CRON_ALLOW_PRODUCTION. A refusal exits 1 with a message; it never picks a target for you. */
+const { assertCronTargetAllowed } = require(path.join(__dirname, 'cron-target-guard.js'))
+const TARGET = assertCronTargetAllowed(process.env.SITE_URL, process.env)
+if (!TARGET.ok) {
+  console.error('[CRON TARGET] FATAL:', TARGET.error)
+  process.exit(1)
+}
+const SITE_URL    = TARGET.base
 const ALERT_EMAIL = (process.env.ALERT_EMAIL || '').trim()
 
 if (!TOKEN) {

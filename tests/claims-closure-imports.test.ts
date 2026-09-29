@@ -32,7 +32,25 @@ const CRON_CONFIG_40DA45E: Record<string, string> = {
      protects — « no infra change » — is intact in substance: nothing was added that RUNS anything new
      against staging or production. */
   '.github/workflows/claims-census.yml':        'f55626c91a4dc332a60284d9f3aee36f064ed44def7c71b4cbb89470a674c2b9',
-  '.github/workflows/cron.yml':                 'fb2e484d1eb21cfbf308bdc86c35ce650384d4ea39c2a5be0257bbc317a1bd2a',
+  /* B2 — cron.yml MOVED and scripts/cron GAINED A FILE, on an explicit founder arbitration (2026-09-29):
+     « livre immédiatement le garde cron B2 pour que les trois jobs soient techniquement incapables de cibler la
+     production pendant cette phase, même si CRON_TARGET_BASE_URL est modifiée par erreur. Je veux la même doctrine
+     que T-123 : refus explicite, pas simple surveillance. » The guard job used to check ONE thing — that the repo
+     variable was not EMPTY — so the protection was a CONFIGURATION, not a CONSTRAINT: one mistaken edit would have
+     sent the e-mail catch-up and the onboarding nudges at production on the next 20-minute tick, and the invoice
+     batch on the 1st. Separately the three Node scripts fell back to https://www.grubano.com when SITE_URL was
+     absent — a SILENT DEFAULT TO THE MOST DANGEROUS TARGET, and the cPanel crontab sets no SITE_URL on its command
+     lines. The decision now lives once, in scripts/cron/cron-target-guard.js, which REFUSES anything that is not
+     positively staging and reaches production only through an exact attestation sentence.
+     WHAT THIS PIN PROTECTS IS INTACT: no schedule was added or changed (the three cadences are pinned by
+     tests/cron-target-guard.test.ts), no job, no workflow file, no secret — and nothing new RUNS anywhere. The
+     guard job gained a checkout and one `node` call; every other job is untouched and still derives its target
+     from `needs.guard.outputs.base`. cron-target-guard.js is a LIBRARY in scripts/cron/ because that is the only
+     bucket of `scripts/` the deploy ships besides scripts/server/, and the three cPanel cron jobs need it.
+     THE WORKFLOW HALF OF THIS PIN IS DUPLICATED IN tests/claims-r13-absent-surfaces.test.ts. I moved this copy
+     first and the full suite caught the other one — the T-108 shape, paid again: a control in two places is a
+     control that gets half-updated. Whoever moves one must move the other. */
+  '.github/workflows/cron.yml':                 '08d6de07c4add9d3f81dc13e64757d3f7f17919094c2c821b9293360bd7f9a87',
   /* PROD-2 (2026-09-29) — deploy-production.yml MOVED, deliberately and on the founder's GO-TO-PRODUCTION decision. Production had never run and was NOT the proven staging pipeline: it lacked the three FTP exclusions that each fix a measured sync-aborting failure, it WROTE an .htaccess it did not exclude, its only blocking gate was a curl of an auth-gated page that returns 200 from any build, and it had no SSH-independent restart. Ported from deploy-staging.yml, plus one gate staging does not have (the database must be reachable through the DEPLOYED Prisma client). deploy-staging.yml is UNCHANGED in this lot — its hash above is the same. What this pin protects is intact: nothing new RUNS against staging, and no schedule, job, workflow or secret was added. */
   '.github/workflows/deploy-production.yml':    'c37f9c7b6b164e1bb84405871e591ce2192841400111a30078c152a9a4356870',
   // D′ L5 — moved from 03912758…7813 (40da45e): the staging workflow now also copies lib/claims-payable-core.js into
@@ -42,9 +60,10 @@ const CRON_CONFIG_40DA45E: Record<string, string> = {
   '.github/workflows/internal-token-probe.yml': 'd171c534104f46fb3ac60b910bb12fcea98f3aebe61fbca556a5762e4d19db65',
   '.github/workflows/refund-rehearsal.yml':     '5d825384520defb44f6977324e92a2555b667204f1e4db35da9724ca1ca235a4',
   '.github/workflows/tests.yml':                '593120f3009bca35eac5be8556710036d2aec9644e88538333b5a44e0be26287',
-  'scripts/cron/creator-earnings-mature.js':    '19fd7b07b104c2d36762dd33f7cfe257a6b9776f34c9860452ba5eda7ab2b465',
-  'scripts/cron/ledger-check-probe.js':         'afe6bf017f34b2af9c1de660a972819bf96b235ab7030167f03848ca9c45bfeb',
-  'scripts/cron/monthly-invoices.js':           '6ddcf2f2fca50c7f840def1a1264e13090090156002d417756e9aa4c2664ce4f',
+  'scripts/cron/cron-target-guard.js':          '0f6a3f69020caff6ae47920a617b5d8021ec36242406fd6fefd9cddb8011f6ae',
+  'scripts/cron/creator-earnings-mature.js':    '9ad9d4796d5d3b94dd90f6eef511142ff6d93dfc059eb671d7d9bb61427f801a',
+  'scripts/cron/ledger-check-probe.js':         '533f7f62f929fcada48ff14ed4e4f9d3c88b059c15c6944e4dad178faaebfd2a',
+  'scripts/cron/monthly-invoices.js':           'fdbd8af2c8907f7457c1e7dd8d24c31f8d723e2b767bd553fca91f70addddbc7',
 }
 
 const CLOSURE_REFERENCES = /\b(listMissingClaimClosureNotices|sendClaimClosureEmail|markClaimsForRevertedRefundRow)\b|claim_closure_record/

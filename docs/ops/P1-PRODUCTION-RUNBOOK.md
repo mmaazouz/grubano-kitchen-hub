@@ -27,20 +27,39 @@ nodevenv, qui doivent avoir reçu un `npm install`. Et `node_modules/.prisma` es
 Prisma se génère sur le serveur**, jamais par FTP.
 
 Troisième fait : le pipeline **n'écrit jamais `.env.local`** et exclut `.env*`. Le fichier serveur est la
-source de vérité — donc il doit exister **avant** le premier démarrage utile.
+source de vérité — donc il doit exister avant le premier démarrage **utile**.
 
-D'où la séquence, et elle ne se réordonne pas :
+> **CORRECTION D'ORDRE (2026-09-29, second préflight).** La première version de ce runbook plaçait PROD-5
+> en étape 2. C'était une erreur, et elle est apparue en répondant à une question précise du fondateur :
+> « PROD-5 peut-il être exécuté sans déclencher aucune production publique ? ». **Non, pas à cette place.**
+> Aujourd'hui `grubano.com` répond 500 sur toutes les pages ; si la cause est l'absence de `.env.local`,
+> alors **créer ce fichier peut RÉVEILLER le demi-build de mai** et mettre en ligne, sur le domaine public,
+> une application de mai 2026 branchée sur une base vide. Rien ne l'exige : le déploiement n'a pas besoin de
+> `.env.local` pour déposer des fichiers (l'étape SSH ne fait qu'un `chmod … || true`), et le premier
+> démarrage **utile** n'arrive qu'après PROD-6b. **PROD-5 descend donc après le déploiement #1**, ce qui
+> supprime entièrement la fenêtre. Un runbook dont l'ordre n'a pas été interrogé par « qu'est-ce que ça
+> rend public ? » est un runbook à moitié écrit.
 
-| # | Étape | Pourquoi ici |
-|---|---|---|
-| 1 | **PROD-6a** créer la base + son utilisateur, **vide** | `DATABASE_URL` doit pointer quelque part de réel |
-| 2 | **PROD-5** `.env.local` (600) | sans `DATABASE_URL` + `NEXTAUTH_SECRET` : 500 partout |
-| 3 | **PROD-7** promotion `develop` → `main` | `deploy-production.yml` ne se déclenche que depuis la branche par défaut |
-| 4 | **Déploiement #1** — **rouge attendu** | il livre le **schéma courant**, le code et le `package.json` ; toutes les portes post-FTP échouent, par conception |
-| 5 | **PROD-5b** nodevenv + `npm install` | le pipeline ne livre aucun `node_modules` ; le `package.json` vient d'arriver |
-| 6 | **PROD-6b** `db push` + `prisma generate` + restart | **maintenant seulement** le schéma poussé est le bon |
-| 7 | **Vérification #2** — vert attendu | la porte DB passe : le client Prisma **déployé** atteint la base |
-| 8 | **PROD-8** sauvegarde `--production` + **restauration répétée** | on ne sait sauvegarder que ce qu'on a su restaurer |
+D'où la séquence :
+
+| # | Étape | Pourquoi ici | Effet public |
+|---|---|---|---|
+| 1 | **PROD-6a** créer la base + son utilisateur, **vide** | `DATABASE_URL` doit pointer quelque part de réel | **aucun** |
+| 2 | **PROD-5c** aligner le secret `DATABASE_URL_PROD` | il alimente `Generate Prisma client` + `Build` et date de mai | **aucun** |
+| 3 | **PROD-14** le bloc `.htaccess` — **répété sur staging d'abord** | le déploiement #1 rendra le **schéma courant** (77 modèles) publiquement lisible ; poser le bloc avant, c'est ne jamais l'exposer | ferme une exposition |
+| 4 | **PROD-7** promotion `develop` → `main` | `deploy-production.yml` ne se déclenche que depuis la branche par défaut | **aucun** — le job `deploy` **attend votre approbation** |
+| 5 | **Déploiement #1** — **partiellement rouge attendu** | il livre le schéma courant, le code et le `package.json` ; Passenger ne peut pas encore démarrer | le site reste en 500 |
+| 6 | **PROD-5b** nodevenv + `npm install` | le pipeline ne livre aucun `node_modules` ; le `package.json` vient d'arriver | **aucun** |
+| 7 | **PROD-5** `.env.local` (600) | **ici, et pas plus tôt** : le code courant est déjà sur le disque, donc aucun réveil du build de mai | **aucun** (toujours pas de schéma) |
+| 8 | **PROD-6b** `db push` + `prisma generate` + restart | **maintenant seulement** le schéma poussé est le bon | **le site se met à servir** — catalogue vide, `/pay` refuse |
+| 9 | **Vérification #2** — vert attendu | la porte DB passe : le client Prisma **déployé** atteint la base | — |
+| 10 | **PROD-8** sauvegarde `--production` + **restauration répétée** | on ne sait sauvegarder que ce qu'on a su restaurer | **aucun** |
+
+**Ce qui rend cette production « fermée » à l'étape 8 n'est pas un mur, c'est l'absence de matière** : base
+vide ⇒ aucun restaurant publié et aucun restaurant `active` ⇒ `/pay` refuse par 409 ; aucune clé Stripe ⇒
+aucun appel Stripe possible ; aucun drapeau argent ⇒ les rails refusent. Un visiteur voit un catalogue vide.
+Une restriction par IP serait tentante mais **casserait les quatre portes du déploiement**, qui sondent depuis
+les runners GitHub.
 
 **Le déploiement #1 sera ROUGE et c'est correct** — mais **pas uniformément**, et la nuance compte pour le
 diagnostic. Mesuré sur la production le 2026-09-29 : `/server.js` → **200** (878 o), `/package.json` → **200**
@@ -154,7 +173,7 @@ la liste des variables d'environnement est VIDE**, ou au minimum qu'elle ne cont
 |---|---|
 | **Répertoire** | `~/grubano.com` |
 | **Utilisateur** | `deyi0010` (cPanel Terminal ou éditeur de fichiers cPanel) |
-| **Préconditions** | le répertoire `~/grubano.com` existe (il existe : la production sert aujourd'hui une page d'erreur Passenger) ; la base de PROD-6a est créée et son DSN est connu ; le panneau de variables du sélecteur Node.js est vérifié vide (§1.7) |
+| **Préconditions** | **le déploiement #1 a eu lieu** (sinon créer ce fichier peut réveiller le build de mai sur le domaine public — voir la correction d'ordre au §0) ; PROD-5b fait ; la base de PROD-6a est créée et son DSN est connu ; le panneau de variables du sélecteur Node.js est vérifié vide (§1.7) ; **première commande : prouver qu'aucune clé Stripe n'est déjà posée** (§14.3) |
 | **Fichiers touchés** | `~/grubano.com/.env.local` — **créé** |
 | **Commande exacte** | Par l'**éditeur de fichiers cPanel** (recommandé : aucune valeur ne transite par un historique de shell), puis dans le Terminal : |
 
@@ -1196,3 +1215,268 @@ Contrôle live exécuté sur staging (POST non authentifié) : `refunds/run` **4
 `claims/pay-approved` **403** · `claims` **403 `gated:true`** · `franchise-settlements/run` **404** ·
 `creator-payouts/run` **404**. Les deux derniers refusent par **404 avant 403** — le rôle se masque avant que
 le drapeau argent ne parle : deux couches, la plus stricte d'abord.
+
+---
+
+## 15 · B2 livré · PROD-14 préparé · D10 mesuré · D2 dérive analysée (2026-09-29)
+
+### 15.1 B2 — le garde cron est LIVRÉ, et il refuse
+
+Doctrine T-123 : refus explicite, pas surveillance. La décision vit désormais **une seule fois**, dans
+`scripts/cron/cron-target-guard.js`, et **deux** appelants l'utilisent.
+
+**Ce qui était faux.** Le job `guard` vérifiait **une** chose : que `CRON_TARGET_BASE_URL` n'était pas
+**vide**. Il transmettait ensuite son contenu à tous les jobs. La protection était donc une
+**configuration**, pas une contrainte. Et, séparément, les trois scripts Node retombaient sur
+`https://www.grubano.com` quand `SITE_URL` était absente — **un défaut silencieux vers la cible la plus
+dangereuse**, alors que le crontab cPanel (`docs/ops/crons.md`) ne pose **aucune** `SITE_URL` sur ses lignes
+de commande : la cible dépendait donc de la présence de `SITE_URL` dans le `.env.local` du serveur.
+
+**La règle est une LISTE BLANCHE, pas une liste noire.** Une liste noire de noms d'hôtes de production
+laisserait passer un domaine **mal tapé**, et « je me suis trompé de domaine » est au moins aussi probable que
+« j'ai tapé production ». La cible doit donc s'identifier **positivement** comme staging.
+
+| Entrée | Verdict |
+|---|---|
+| `https://app.grubano.com` · `https://business.grubano.com` (± `/`, ± espaces, ± casse) | **ALLOWED** staging |
+| `https://grubano.com` · `https://www.grubano.com` | **REFUSÉ** — production |
+| … les mêmes **avec** `CRON_ALLOW_PRODUCTION="I AUTHORIZE GRUBANO PRODUCTION CRONS"` | ALLOWED production |
+| `http://app.grubano.com` | **REFUSÉ** — le jeton cron voyage dans un en-tête |
+| `https://app.grubano.com/api` · `?x=1` · `#f` | **REFUSÉ** — une base est une origine |
+| `app.grubano.com` · `ftp://…` · `https://u:p@…` | **REFUSÉ** — malformée |
+| vide / absente / non-chaîne | **REFUSÉ** — « ce workflow ne prend jamais la production par défaut » |
+| `https://app.grubano.com.attacker.test` · `grubano.com.attacker.test` · `appgrubano.com` · `app.grubano.co` | **REFUSÉ** — inconnue |
+| une inconnue **avec** l'attestation | **REFUSÉ QUAND MÊME** |
+
+Ce dernier point est délibéré : **« nous avons autorisé la production » ne doit jamais devenir « nous avons
+autorisé ce que quelqu'un a tapé ».** L'attestation ne déverrouille que des hôtes de production **reconnus**.
+
+**Preuve que staging reste la seule cible admise, mesurée :**
+
+- `vars.CRON_TARGET_BASE_URL` = `https://app.grubano.com` (lu par API) ;
+- `vars.CRON_ALLOW_PRODUCTION` **n'existe pas** — la seule variable du dépôt est `CRON_TARGET_BASE_URL` ;
+- le job `guard` délègue au module et **échoue** sinon ⇒ les quatre autres jobs (`needs: guard`) ne
+  démarrent pas ;
+- **chaque** job tire sa cible de `needs.guard.outputs.base` ; **aucun** ne code un hôte (assertion sur le
+  YAML **parsé**, pas sur le texte, pour que les commentaires ne puissent pas satisfaire le contrôle) ;
+- les **trois** cadences sont épinglées et inchangées (`*/20 * * * *`, `20 3 * * *`, `0 7 1 * *`).
+
+**Tests adversariaux — 28, et quatre mutations prouvent qu'ils mordent :**
+
+| Mutation | Tests devenus rouges |
+|---|---|
+| un hôte inconnu devient ALLOWED | **4** |
+| l'attestation devient un simple test de vérité (`if (e[VAR])`) | **1** (les 8 quasi-correspondances) |
+| l'ancien défaut silencieux remis dans un script | **1** (le scanner de source) |
+| le garde **retiré** d'un script (version pré-B2) | **5**, dont les trois refus **exécutés** |
+
+Les refus sont **exécutés**, pas relus : chaque script est lancé dans un arbre jetable **dont la racine n'a
+pas de `.env.local`** — parce que le chargeur résout `__dirname/../../.env.local`, si bien qu'une exécution
+depuis le dépôt hériterait de l'environnement du développeur et rendrait toutes les assertions vides. Et les
+**contrôles positifs ne touchent pas le réseau** : une cible staging valide **sans** `INTERNAL_CRON_TOKEN`
+échoue sur le contrôle *suivant* — la preuve que le garde a laissé passer, sans qu'aucune requête ne parte.
+
+**Deux épingles déplacées, et la seconde a été trouvée par la suite, pas par moi.**
+`tests/claims-closure-imports.test.ts` et `tests/claims-r13-absent-surfaces.test.ts` épinglent **tous les
+deux** le hash de `cron.yml`. J'ai déplacé le premier et manqué le second parce que j'avais cherché
+`scripts/cron` au lieu du hash. **C'est la forme T-108, payée une fois de plus** : un contrôle qui existe en
+deux endroits est un contrôle qui se met à jour à moitié. Les deux notes se renvoient maintenant l'une à
+l'autre.
+
+**Ce que B2 n'a PAS fait** : aucune cadence ajoutée ou modifiée, aucun job, aucun workflow, aucun secret,
+`main` intacte, aucun déploiement de production. Le job `guard` a gagné un `checkout` et un appel `node`.
+
+⚠️ **UNE CONSÉQUENCE OPÉRATIONNELLE À ANTICIPER, sur staging, au prochain déploiement.** Les trois scripts
+sont livrés par le pipeline (`scripts/cron/*.js`). Dès qu'ils atterrissent, le **crontab cPanel** — dont les
+lignes ne posent **aucune** `SITE_URL` — dépend entièrement de ce que contient le `.env.local` du serveur :
+
+| `SITE_URL` dans `~/app.grubano.com/.env.local` | Avant B2 | Après B2 |
+|---|---|---|
+| `https://app.grubano.com` | visait staging | visait staging — **inchangé** |
+| absente | **visait la PRODUCTION en silence** | **REFUS bruyant**, exit 1, rien n'est appelé |
+| `https://www.grubano.com` | visait la production | **REFUS bruyant** |
+
+Les deux derniers cas exigent **une ligne** : ajouter `SITE_URL=https://app.grubano.com` à
+`~/app.grubano.com/.env.local`. Les trois lignes du crontab se remettront à viser staging, cette fois
+**explicitement**. Et si vous préférez le voir plutôt que le supposer, les journaux `~/logs/` diront lequel
+des trois cas était vrai : une ligne `[CRON TARGET] FATAL` est la réponse.
+
+> Note de sûreté sur la livraison : si une synchro FTP partielle livrait les trois scripts **sans**
+> `cron-target-guard.js`, ils planteraient sur `MODULE_NOT_FOUND`. C'est un échec **fermé** — aucun appel
+> n'est émis — donc le bon sens de la panne.
+
+### 15.2 PROD-14 — préparé, MESURÉ sur les deux hôtes, **non appliqué**
+
+Nouvel opérateur **lecture seule** : `scripts/server/web-exposure-probe.js`. HTTP uniquement, aucune base,
+aucun Stripe, aucune écriture. `node scripts/server/web-exposure-probe.js https://<hôte>` → PASS/FAIL.
+
+**Pourquoi une sonde et pas un test unitaire** : le défaut n'est pas dans le dépôt, il est dans ce qu'Apache
+sert. Seule une requête HTTP contre l'hôte réel peut l'observer — et seule la même requête peut prouver le
+correctif.
+
+**Pourquoi les contrôles POSITIFS sont le cœur du dispositif** : la règle évidente interdit `.js`, et **chaque
+bundle client sous `/_next/static/` est un `.js`**. Une règle mal portée transforme le site en squelette
+permanent aux formulaires inertes — exactement le P0 du 2026-09-06, que tous les contrôles fondés sur un 200
+laissaient passer. Une sonde qui ne vérifierait que les refus **déclarerait un succès sur un site mort**.
+Chaque exécution vérifie donc les deux sens, et énumère les bundles **réellement référencés** par les pages
+servies.
+
+**BASELINE MESURÉE — `https://app.grubano.com` (staging), 2026-09-29 : FAIL, 8 exposés, 0 cassés, 44 bundles vérifiés**
+
+| Chemin exposé | Taille | Ce que c'est |
+|---|---|---|
+| `/prisma/schema.prisma` | **175 899 o** | le **modèle de données complet et COURANT**, tables d'argent incluses |
+| `/scripts/server/phase2-refund-gate.js` | **74 066 o** | **l'opérateur de la fenêtre de remboursement** |
+| `/scripts/server/staging-backup.js` | 14 366 o | l'opérateur de sauvegarde |
+| `/scripts/cron/monthly-invoices.js` | 7 254 o | le cron de facturation |
+| `/lib/ledger-check-core.js` | 8 156 o | le cœur du contrôle de ledger |
+| `/server.js` | 5 512 o | l'entrée Passenger |
+| `/package.json` | 2 961 o | dépendances **et versions** |
+| `/.next/BUILD_ID` | 21 o | l'identifiant de build |
+
+**Staging est donc PIRE que la production**, et c'est vrai maintenant : les scripts opérateur que vous nommez
+sont publiquement téléchargeables. La production, elle, n'expose que ses trois fichiers de mai
+(`schema.prisma` 18 550 o, `package.json` 2 089 o, `server.js` 878 o) — **et le déploiement #1 la mettra au
+niveau de staging.**
+
+Les fichiers cachés sont correctement bloqués sur les deux hôtes : `/.env.local`, `/.env`,
+`/.env.production`, `/.htaccess` → **404**.
+
+**LE CORRECTIF PROPOSÉ — par CHEMIN, jamais par extension**
+
+`<FilesMatch "\.js$">` tuerait les bundles. `RedirectMatch 404` agit sur le **chemin**, laisse
+`/_next/static/` intact, et répond **404 plutôt que 403** — plus strict, parce qu'un 404 ne confirme pas
+l'existence (doctrine « 404 avant 403 »).
+
+```apache
+# PROD-14 — ne jamais servir les sources, manifestes, scripts opérateur ni configuration.
+# Portée par CHEMIN : /_next/static/ (tous les bundles .js et .css) n'est pas touché.
+RedirectMatch 404 ^/(prisma|scripts|lib|tests|messages|docs|components|app)(/|$)
+RedirectMatch 404 ^/\.next(/|$)
+RedirectMatch 404 ^/(package(-lock)?\.json|tsconfig\.json|next\.config\.js|server\.js|test-server\.js|vitest\.config\.ts|postcss\.config\.js|tailwind\.config\.ts|i18n\.ts|navigation\.ts|middleware\.ts)$
+```
+
+| | |
+|---|---|
+| **Interface** | cPanel → Gestionnaire de fichiers → `~/app.grubano.com/.htaccess` (**répétition d'abord**), puis `~/grubano.com/.htaccess` |
+| **Utilisateur** | `deyi0010` |
+| **Préconditions** | **copier le `.htaccess` actuel dans un fichier daté AVANT toute édition** (il n'est pas récupérable depuis le dépôt : le pipeline ne l'écrit plus et il répond 553 en FTP) ; **ajouter en tête**, ne rien remplacer |
+| **Fichiers touchés** | `.htaccess` uniquement. Aucun fichier applicatif, aucune base, aucun redémarrage. |
+| **Test de succès** | `node scripts/server/web-exposure-probe.js https://app.grubano.com` → **`RESULT: PASS`**, `EXPOSED 0`, `BROKEN 0`, et **`BUNDLES CHECKED` > 0** |
+| **Condition STOP** | `BROKEN` > 0 ⇒ **retirez le bloc immédiatement** : une route légitime ou un bundle est cassé. · `BUNDLES CHECKED: 0` ⇒ **le PASS ne prouve rien** (la sonde le dit elle-même) : les pages ne se servent pas, corrigez cela d'abord. · `/version.json` ≠ 2xx ⇒ le health-check du déploiement est cassé. |
+| **Rollback immédiat** | retirer le bloc du `.htaccess` par cPanel. Effet immédiat, aucun redémarrage, aucune donnée en jeu. |
+| **Réversible** | **OUI**, totalement |
+| **Ordre recommandé** | **répéter sur staging d'abord.** Le risque réel n'est pas le refus, c'est la portée : selon l'ordre des modules Apache, un `RedirectMatch` peut voir l'URI avant ou après une réécriture. Staging le dira gratuitement. |
+
+⚠️ **Le déploiement #1 aggrave l'exposition de la production** (schéma de mai → schéma courant, 27 → 77
+modèles). Soit le bloc est posé **avant** le déploiement #1, soit immédiatement après, mais pas « plus tard ».
+
+### 15.3 D10 — MESURÉ. Grubano absorbe les frais Stripe. Le commentaire avait raison.
+
+Mesure **lecture seule**, faite là où se trouve la vérité : **l'objet Stripe**, jamais la ligne DB (règle du
+dépôt). Clé `sk_test_` vérifiée, `livemode` faux sur les 100 charges lues, **aucune écriture**.
+
+**Côté PLATEFORME** — 100 charges lues, **69 routées** (*destination charge*), **46** avec leur balance
+transaction étendue :
+
+```
+46 / 46  →  bt.fee > 0, fee_details = [stripe_fee: N]
+ 0 / 46  →  bt.fee = 0
+```
+
+**Côté COMPTE CONNECTÉ** — les balance transactions du compte du restaurant, pour la même charge :
+
+```
+charge 14,50 € · app_fee 116 c · on_behalf_of = le compte connecté
+  plateforme : amount 1450 · fee  71 · net 1379 · details[stripe_fee:71]
+  restaurant : amount 1450 · fee 116 · net 1334 · details[application_fee:116]
+```
+
+**Les deux côtés disent la même chose, et c'est sans ambiguïté :** le compte du restaurant n'est débité que de
+**la commission** (`application_fee`) — **il n'y a aucune ligne `stripe_fee` chez lui**. Les frais Stripe
+apparaissent **uniquement** sur le solde plateforme. Arithmétique vérifiée : plateforme
+`1450 − 71 − 1334 = 45` = commission − frais Stripe.
+
+⇒ **`on_behalf_of` ne déplace PAS la charge des frais.** Il fixe la tarification et le libellé du marchand de
+règlement ; la plateforme reste débitée. Le commentaire de `lib/commission.ts` est **exact**, et il est
+maintenant **mesuré** au lieu d'être affirmé.
+
+**Le taux réel des frais.** Quatre charges ajustent exactement **3,15 % + 0,25 €** :
+1450→71 · 1410→69 · 1900→85 · 3050→121. **C'est un taux de carte de TEST, pas le tarif LIVE.** En LIVE, une
+carte de consommateur EEE est facturée **1,5 % + 0,25 €** ; une carte hors EEE ou commerciale, davantage. Le
+tableau ci-dessous prend donc le tarif **LIVE EEE**, et donne la colonne TEST en contrôle.
+
+**Commande exemple : 30 € de sous-total produits.** Aucun frais de livraison, aucune promo, aucun pourboire,
+aucune franchise. Frais Stripe LIVE EEE = 30 × 1,5 % + 0,25 = **0,70 €**.
+
+| Taux | Commission Grubano | Frais Stripe · payés par | Brut restaurant | **Reçu restaurant** | Marge brute Grubano | **Marge après Stripe** |
+|---|---|---|---|---|---|---|
+| **5 %** sur place | 1,50 € | 0,70 € · **Grubano** | 28,50 € | **28,50 €** | 1,50 € | **0,80 €** |
+| **8 %** click & collect | 2,40 € | 0,70 € · **Grubano** | 27,60 € | **27,60 €** | 2,40 € | **1,70 €** |
+| **12 %** livraison | 3,60 € | 0,70 € · **Grubano** | 26,40 € | **26,40 €** | 3,60 € | **2,90 €** |
+| **0 %** réservation / offre fondateur | 0,00 € | 0,70 € · **Grubano** | 30,00 € | **30,00 €** | 0,00 € | **−0,70 €** |
+
+Au taux TEST mesuré (1,20 € de frais) les marges après frais deviennent **0,30 / 1,20 / 2,40 / −1,20 €**.
+
+**La distinction que vous demandiez s'effondre, et c'est la réponse** : « brut restaurant » et « reçu
+restaurant » sont **égaux**. Le net du restaurant est `montant − commission`, et **les frais Stripe ne le
+touchent pas**. Le restaurant n'a aucun frais de transaction à supporter.
+
+**Trois conséquences chiffrées :**
+
+1. **L'offre fondateur à 0 % n'est pas « gratuite » : elle coûte 0,70 € par commande de 30 €** — et le coût
+   croît avec le panier (0,015 × montant + 0,25).
+2. **Seuil de rentabilité** (`taux × S = 1,5 % × S + 0,25 €`) : **5 % ⇒ 7,14 €** · **8 % ⇒ 3,85 €** ·
+   **12 % ⇒ 2,38 €** · **0 % ⇒ jamais**. Au taux TEST mesuré : 13,51 € · 5,15 € · 2,82 €.
+3. **Le petit panier est déjà couvert** : `SMALL_ORDER_FEE_CENTS` (défaut **1,00 €** sous un seuil de
+   **12,00 €**) est **retenu dans l'application fee en plus de la commission** — Grubano le garde. Sous 12 €,
+   même une commande à 0 % rapporte ≈ +0,30 €. **La seule zone de perte est donc 0 % au-dessus de 12 €.**
+
+Asymétrie structurelle à connaître : la commission porte sur le **sous-total produits**, les frais Stripe sur
+le **montant total encaissé**. Un frais de livraison de 3 € — reversé à 100 % au restaurant — coûte donc
+≈ 4,5 c de frais Stripe à Grubano **sans aucune commission dessus**.
+
+Je ne choisis pas de taux. La grille est mesurée ; l'arbitrage est le vôtre.
+
+### 15.4 D2 — la dérive staging : ce qui est mesurable d'ici l'est, et il est NUL
+
+Vous avez demandé de comprendre la dérive **avant** tout baseline. Le `migrate diff` exige la base de
+staging, donc un shell serveur — mais la partie **statique** se vérifie ici, et je l'ai faite : les deux
+opérateurs additifs ajoutent **7 objets**, et chacun correspond à sa déclaration Prisma, **nom pour nom**.
+
+| DDL de l'opérateur | Déclaration `schema.prisma` | Correspond ? |
+|---|---|---|
+| `LoyaltyTransaction.sourceEventId VARCHAR(191) NULL` | `sourceEventId String?` | ✅ (`String` → `VARCHAR(191)`) |
+| `LoyaltyTransaction.actorId VARCHAR(191) NULL` | `actorId String?` | ✅ |
+| `LoyaltyCustomer.recoveryOffsetPoints INTEGER NOT NULL DEFAULT 0` | `recoveryOffsetPoints Int @default(0)` | ✅ |
+| `CREATE UNIQUE INDEX LoyaltyTransaction_sourceEventId_type_key (sourceEventId, type)` | `@@unique([sourceEventId, type])` | ✅ **nom ET ordre des colonnes** — l'opérateur a délibérément suivi la convention de nommage Prisma |
+| `Claim.approvedAmountCents INTEGER NULL` | `approvedAmountCents Int?` | ✅ |
+| `Claim.selection JSON NULL` | `selection Json?` | ✅ |
+| `Order.deliveredAt DATETIME(3) NULL` | `deliveredAt DateTime?` | ✅ (`DateTime` → `DATETIME(3)`) |
+
+Le nom d'index était le seul vrai piège : un index créé sous un autre nom aurait produit une dérive
+permanente et invisible. Il est correct.
+
+**Donc les deux opérateurs connus n'introduisent AUCUNE dérive par construction.** Toute dérive résiduelle
+viendrait de changements de schéma effectués **après** le dernier `db push` sur staging — ce que seul le
+serveur peut dire, en une commande :
+
+```bash
+source ~/nodevenv/app.grubano.com/24/bin/activate
+cd ~/app.grubano.com
+npx prisma@5.22.0 migrate diff \
+  --from-url "$DATABASE_URL" \
+  --to-schema-datamodel prisma/schema.prisma \
+  --exit-code
+echo "exit=$?"
+```
+
+| Sortie | Ce qu'on en fait |
+|---|---|
+| `No difference detected.` / `exit=0` | staging est aligné ⇒ le baseline `0_init` peut être déclaré `--applied` sur staging **et** production |
+| `exit=2` + un diff | **NE PAS baseliner.** Le diff imprimé nomme chaque écart. Il faut décider, écart par écart, s'il s'agit d'un manque sur staging (à appliquer par un opérateur additif) ou d'une déclaration en avance dans `schema.prisma` |
+| `exit=1` | erreur de DSN ou de privilèges, aucune conclusion |
+
+⚠️ **Et un piège d'ordre** : `migrate resolve --applied 0_init` doit être exécuté sur **chaque**
+environnement. Si production est baselinée et staging non, le prochain `migrate deploy` sur staging tentera
+d'appliquer `0_init` **à une base non vide** et échouera.

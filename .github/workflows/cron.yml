@@ -2,8 +2,11 @@ name: Grubano — Cron scheduler (staging)
 
 # WP-OPS-01 — wires the periodic go-live jobs. TARGET = the repo VARIABLE
 # vars.CRON_TARGET_BASE_URL (set it to the STAGING base, e.g. https://app.grubano.com).
-# Flipping it to the prod base is a deliberate go-live decision — this workflow never
-# defaults to prod (the guard job fails if the variable is unset).
+# B2 — the guard job does not merely require the variable to be NON-EMPTY any more: it
+# requires it to be POSITIVELY STAGING (scripts/cron/cron-target-guard.js). Production is
+# reachable only by setting vars.CRON_ALLOW_PRODUCTION to its exact attestation sentence —
+# a named decision, not a typo. Everything else, production and unknown hosts alike, is
+# REFUSED and the whole workflow stops at `guard`.
 #
 # Every job is IDEMPOTENT and NO-OP when its feature flag is OFF (the flag-gated routes
 # return 403 { gated: true } and do no work), so extra runs are harmless. Secrets
@@ -47,16 +50,28 @@ jobs:
     outputs:
       base: ${{ steps.check.outputs.base }}
     steps:
+      # B2 (founder arbitration 2026-09-29) — the guard used to check ONE thing: that the
+      # variable was not EMPTY. It then handed whatever it contained to every job, so the
+      # protection was a CONFIGURATION (« we set it to staging »), not a CONSTRAINT: one
+      # mistaken edit would have sent the e-mail catch-up and the onboarding nudges at
+      # production on the next 20-minute tick, and the invoice batch on the 1st.
+      # The decision now lives in ONE testable place — scripts/cron/cron-target-guard.js —
+      # which REFUSES anything that is not positively staging (a whitelist, because a
+      # blocklist of production hostnames would let a mistyped domain through), requires
+      # https (the cron token travels in a header), refuses a base carrying a path, and
+      # reaches production only through the exact attestation sentence in
+      # CRON_ALLOW_PRODUCTION — same doctrine as T-123 and staging-backup.js: refuse, do
+      # not merely watch. The checkout is what this step gained; no schedule, no job, no
+      # secret, and nothing new RUNS against staging or production.
+      - uses: actions/checkout@v4
       - id: check
         env:
           BASE: ${{ vars.CRON_TARGET_BASE_URL }}
+          CRON_ALLOW_PRODUCTION: ${{ vars.CRON_ALLOW_PRODUCTION }}
         run: |
-          if [ -z "$BASE" ]; then
-            echo "::error::Repo variable CRON_TARGET_BASE_URL is not set. Set it in GitHub → Settings → Secrets and variables → Actions → Variables (e.g. https://app.grubano.com). Refusing to run — this workflow never defaults to prod."
-            exit 1
-          fi
-          echo "Target host: $(printf '%s' "$BASE" | sed -E 's#(https?://[^/]+).*#\1#')"
-          echo "base=$BASE" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          BASE_OK="$(node scripts/cron/cron-target-guard.js "$BASE")"
+          echo "base=$BASE_OK" >> "$GITHUB_OUTPUT"
 
   # P0-07 — job `frequent` (hourly `POST /api/email-agent`) REMOVED.
   # The route itself is untouched and still reachable with CRON_SECRET; only

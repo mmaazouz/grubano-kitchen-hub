@@ -24,7 +24,17 @@ const walk = (dir: string): string[] => readdirSync(dir).flatMap((n) => {
  */
 const WORKFLOWS_40DA45E: Record<string, string> = {
   '.github/workflows/claims-census.yml':        'f55626c91a4dc332a60284d9f3aee36f064ed44def7c71b4cbb89470a674c2b9',
-  '.github/workflows/cron.yml':                 'fb2e484d1eb21cfbf308bdc86c35ce650384d4ea39c2a5be0257bbc317a1bd2a',
+  /* B2 — cron.yml MOVED on an explicit founder arbitration (2026-09-29): « je veux la même doctrine que T-123 :
+     refus explicite, pas simple surveillance ». The guard job used to require only that vars.CRON_TARGET_BASE_URL be
+     NON-EMPTY, so the protection was a CONFIGURATION rather than a CONSTRAINT — one mistaken edit would have aimed
+     the e-mail catch-up and the onboarding nudges at production on the next 20-minute tick. The decision now lives
+     once, in scripts/cron/cron-target-guard.js, which refuses anything not positively staging and reaches production
+     only through an exact attestation sentence. The guard job gained a checkout and one `node` call; no schedule
+     (the three cadences are pinned by tests/cron-target-guard.test.ts), no job, no workflow file, no secret, and
+     nothing new RUNS anywhere — so what this pin protects is intact.
+     THE SAME PIN EXISTS IN tests/claims-closure-imports.test.ts (which also covers scripts/cron). Two copies of one
+     control is the T-108 shape: whoever moves one must move the other, and this sentence is here so they find it. */
+  '.github/workflows/cron.yml':                 '08d6de07c4add9d3f81dc13e64757d3f7f17919094c2c821b9293360bd7f9a87',
   /* PROD-2 (2026-09-29) — deploy-production.yml MOVED, deliberately and on the founder's GO-TO-PRODUCTION decision. Production had never run and was NOT the proven staging pipeline: it lacked the three FTP exclusions that each fix a measured sync-aborting failure, it WROTE an .htaccess it did not exclude, its only blocking gate was a curl of an auth-gated page that returns 200 from any build, and it had no SSH-independent restart. Ported from deploy-staging.yml, plus one gate staging does not have (the database must be reachable through the DEPLOYED Prisma client). deploy-staging.yml is UNCHANGED in this lot — its hash above is the same. What this pin protects is intact: nothing new RUNS against staging, and no schedule, job, workflow or secret was added. */
   '.github/workflows/deploy-production.yml':    'c37f9c7b6b164e1bb84405871e591ce2192841400111a30078c152a9a4356870',
   // D′ L5 — moved from 03912758…7813 (40da45e): the staging workflow now also copies lib/claims-payable-core.js into
