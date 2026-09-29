@@ -1342,13 +1342,21 @@ Les fichiers cachés sont correctement bloqués sur les deux hôtes : `/.env.loc
 `/_next/static/` intact, et répond **404 plutôt que 403** — plus strict, parce qu'un 404 ne confirme pas
 l'existence (doctrine « 404 avant 403 »).
 
-```apache
-# PROD-14 — ne jamais servir les sources, manifestes, scripts opérateur ni configuration.
-# Portée par CHEMIN : /_next/static/ (tous les bundles .js et .css) n'est pas touché.
-RedirectMatch 404 ^/(prisma|scripts|lib|tests|messages|docs|components|app)(/|$)
-RedirectMatch 404 ^/\.next(/|$)
-RedirectMatch 404 ^/(package(-lock)?\.json|tsconfig\.json|next\.config\.js|server\.js|test-server\.js|vitest\.config\.ts|postcss\.config\.js|tailwind\.config\.ts|i18n\.ts|navigation\.ts|middleware\.ts)$
-```
+> 🚫 **LE BLOC DE PREMIÈRE VERSION A ÉTÉ RETIRÉ D'ICI AUSSI — et c'est la seconde moitié du même
+> défaut.** J'avais supprimé la recette `FilesMatch` du §14.1 en écrivant qu'il ne devait rester
+> **qu'une** recette dans le document, et j'ai laissé celle-ci en place, sous le titre « LE CORRECTIF
+> PROPOSÉ ». Elle nommait `tests|docs|components|app` — absents du serveur — et **oubliait `public`,
+> `node_modules` et `tmp`, qui y sont**. Collée telle quelle elle est correcte pour tout ce qu'elle
+> nomme et **échoue quand même la sonde** (`/public/version.json`, `/tmp/restart.txt`,
+> `/node_modules/.prisma/client/schema.prisma` restent servis) : l'opérateur se retrouve à élargir
+> une règle Apache à la main, sur un hôte vivant, contre un voyant rouge. Un vérificateur de la revue
+> adversariale l'a trouvée après mon premier correctif, et il avait raison : **retirer une recette sur
+> deux, c'est encore livrer la mauvaise une fois sur deux.**
+>
+> **La seule recette est le fichier versionné**
+> [`docs/ops/htaccess/PROD-14-deny-sources.htaccess`](htaccess/PROD-14-deny-sources.htaccess) — §16.3.
+> Chaque jeton y correspond à un 200 mesuré, et il porte les deux avertissements qui comptent :
+> ne toucher aucune directive `Passenger*`/`SetEnv`, et vérifier `/fr/eat` **avant** la sonde.
 
 | | |
 |---|---|
@@ -1525,15 +1533,17 @@ serveur.
 
 ### 16.3 La règle, resserrée par la mesure
 
-Fichier prêt à coller, versionné : **`docs/ops/htaccess/PROD-14-deny-sources.htaccess`**.
+**Le texte à coller ne figure PAS dans ce document. Il n'existe qu'ici :**
+[`docs/ops/htaccess/PROD-14-deny-sources.htaccess`](htaccess/PROD-14-deny-sources.htaccess).
 
-```apache
-RedirectMatch 404 ^/(prisma|scripts|lib|messages|public|node_modules)(/|$)
-RedirectMatch 404 ^/\.next(/|$)
-RedirectMatch 404 ^/(package(-lock)?\.json|server\.js)$
-```
+> **Pourquoi ce paragraphe ne montre plus la règle.** Il l'a montrée, et cette troisième copie
+> **divergeait déjà** de l'artefact : il lui manquait `tmp`, ajouté au fichier après la revue. Trois
+> copies, trois contenus. C'est la forme T-108, dans le paragraphe même où je venais d'écrire qu'il ne
+> devait rester qu'une recette — et la troisième copie s'est mise à dériver en moins d'une heure. Un
+> document dont on colle le contenu ne peut pas contenir deux fois la vérité : il n'en contient
+> désormais **zéro**, et un test l'épingle (`tests/prod14-htaccess-single-source.test.ts`).
 
-**Chaque jeton correspond à un 200 mesuré.** Et j'ai **retiré** de ma première version `tests`, `docs`,
+**Chaque jeton de ce fichier correspond à un 200 mesuré.** Et j'ai **retiré** de ma première version `tests`, `docs`,
 `components`, `app`, `tsconfig.json`, `next.config.js`, `i18n.ts`, `navigation.ts`, `middleware.ts`,
 `vitest/postcss/tailwind.config` : tous mesurés à **404**, donc absents du serveur. **Une règle qui ne nomme
 que ce qui existe ne peut pas casser ce qui n'existe pas** ; chaque jeton spéculatif n'était qu'un risque de
