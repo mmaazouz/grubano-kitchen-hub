@@ -1480,3 +1480,160 @@ echo "exit=$?"
 ⚠️ **Et un piège d'ordre** : `migrate resolve --applied 0_init` doit être exécuté sur **chaque**
 environnement. Si production est baselinée et staging non, le prochain `migrate deploy` sur staging tentera
 d'appliquer `0_init` **à une base non vide** et échouera.
+
+---
+
+## 16 · PROD-14 staging, PROD-6a, PROD-5c — tout est prêt, et rien ne peut être exécuté d'ici
+
+### 16.1 Le fait qui gouverne les trois : je n'ai pas accès au serveur
+
+Les trois actions autorisées sont des **actions fondateur**, et ce n'est pas une préférence de ma part :
+
+| Action | Ce qu'elle exige | Mon accès |
+|---|---|---|
+| PROD-14 sur staging | éditer `~/app.grubano.com/.htaccess` (cPanel) | **aucun** — pas de session cPanel |
+| … par FTP à la place ? | `O2SWITCH_FTP_USER` / `_PASS` | ce sont des **secrets GitHub** : je ne peux pas lire leur valeur |
+| … par SSH ? | `O2SWITCH_SSH_KEY` | secret GitHub, **et** SSH depuis les runners a expiré **3 fois sur 3** vers cet hôte |
+| … par le pipeline ? | réécrire `.htaccess` depuis le workflow | **non** : PROD-2 a retiré cette écriture précisément parce qu'elle répond **553** ou **écrase la configuration Passenger vivante**. Le rétablir annulerait un correctif P0 pour tenter une écriture qui échoue. |
+| PROD-6a | créer une base dans cPanel → MySQL® Databases | **aucun** — interface cPanel |
+| PROD-5c | modifier le secret GitHub `DATABASE_URL_PROD` | la **valeur** est le DSN avec son mot de passe : je ne l'ai pas et je ne dois pas la manipuler |
+
+C'est la même frontière que pour l'armement de L11, et elle est **voulue**. Ce que je peux faire, et ce que
+j'ai fait : rendre chaque action **un copier-coller**, et sa vérification **mécanique**.
+
+### 16.2 PROD-14 — l'état AVANT, mesuré, et il est pire que ce que j'avais rapporté
+
+`node scripts/server/web-exposure-probe.js https://app.grubano.com` → **`RESULT: FAIL` · 14 exposés ·
+0 cassés · 44 bundles vérifiés (JS 35 · CSS 9)**.
+
+La liste DENY de la sonde a été **élargie par la mesure**, pas par la mémoire — et elle a trouvé six
+chemins que la première version manquait :
+
+| Chemin | Taille | Pourquoi il compte |
+|---|---|---|
+| `/prisma/schema.prisma` | 175 899 o | le modèle de données courant complet |
+| `/node_modules/.prisma/client/schema.prisma` | **175 004 o** | **une SECONDE copie du même modèle**, par un chemin auquel je n'avais pas pensé |
+| `/messages/fr.json` | **470 616 o** | **toute la copie de l'application**, admin et légal inclus |
+| `/.next/routes-manifest.json` | **48 547 o** | **chaque route de l'application**, chemins admin et API internes inclus |
+| `/scripts/server/phase2-refund-gate.js` | 74 066 o | l'opérateur de la fenêtre de remboursement |
+| `/scripts/server/staging-backup.js` | 14 366 o | l'opérateur de sauvegarde |
+| `/scripts/cron/monthly-invoices.js` | 7 254 o | le cron de facturation |
+| `/scripts/cron/cron-target-guard.js` | **9 291 o** | **le garde B2 — livré il y a vingt minutes et déjà publiquement téléchargeable** |
+| `/lib/ledger-check-core.js` · `/lib/claims-payable-core.js` | 8 156 · 6 337 o | le cœur du contrôle de ledger, et son frère |
+| `/node_modules/next/package.json` | 9 992 o | l'arbre de dépendances est web-lisible en entier |
+| `/.next/required-server-files.json` | 4 690 o | la configuration Next résolue |
+| `/.next/BUILD_ID` | 21 o | l'identifiant de build |
+| `/public/version.json` · `/public/manifest.webmanifest` | 212 · 642 o | contenu inoffensif, mais **la mise en page du serveur parle** |
+
+**La dernière ligne du tableau B2 est la leçon du lot** : chaque déploiement élargit l'exposition. Le garde
+cron que vous venez de valider est devenu lisible par tout le monde au moment même où il est arrivé sur le
+serveur.
+
+### 16.3 La règle, resserrée par la mesure
+
+Fichier prêt à coller, versionné : **`docs/ops/htaccess/PROD-14-deny-sources.htaccess`**.
+
+```apache
+RedirectMatch 404 ^/(prisma|scripts|lib|messages|public|node_modules)(/|$)
+RedirectMatch 404 ^/\.next(/|$)
+RedirectMatch 404 ^/(package(-lock)?\.json|server\.js)$
+```
+
+**Chaque jeton correspond à un 200 mesuré.** Et j'ai **retiré** de ma première version `tests`, `docs`,
+`components`, `app`, `tsconfig.json`, `next.config.js`, `i18n.ts`, `navigation.ts`, `middleware.ts`,
+`vitest/postcss/tailwind.config` : tous mesurés à **404**, donc absents du serveur. **Une règle qui ne nomme
+que ce qui existe ne peut pas casser ce qui n'existe pas** ; chaque jeton spéculatif n'était qu'un risque de
+collision pour zéro bénéfice.
+
+Trois refus valent une justification, parce qu'ils paraissent risqués et ne le sont pas :
+
+- **`messages/`** — les traductions sont chargées par un `import()` **serveur** (`i18n.ts:16`) et **jamais**
+  fetchées par le navigateur. Vérifié : zéro référence `"/messages` dans `app`, `lib`, `components`.
+- **`node_modules/`** — le client ne lit ses bundles que sous `/_next/static/`. Passenger lit le disque, pas
+  HTTP.
+- **`public/`** — ces fichiers sont servis **à la racine** par Next (`/favicon.ico`, `/icons/…` mesurés 200).
+  Zéro référence au préfixe `/public/` dans le code, et le service worker ne précache que `/_next/static/`,
+  `/_next/data/`, `/api/`, `/icons/`, `/offline.html`.
+
+**Pourquoi l'ordre des directives ne devrait pas poser problème ici** : le `.htaccess` attendu est celui que
+l'ancien workflow écrivait — **huit directives Passenger, aucune `RewriteRule`, aucune directive mod_alias**
+(récupéré de `6dd99d1f^`). Sans règle de réécriture concurrente, un `RedirectMatch` en tête agit avant que le
+gestionnaire Passenger ne soit consulté. **Mais le `.htaccess` vivant peut avoir été enrichi depuis** — d'où
+la copie datée obligatoire et la répétition sur staging.
+
+**Ce que la sonde vérifie, item par item contre votre liste :**
+
+| Votre exigence | Couvert par |
+|---|---|
+| `/prisma/schema.prisma` → 403/404 | DENY (et la seconde copie sous `node_modules/.prisma`) |
+| `/package.json` → 403/404 | DENY |
+| `/server.js` → 403/404 | DENY |
+| `/scripts/server/**` → 403/404 | DENY × 3 fichiers réels |
+| autres sources/configs → 403/404 | DENY `lib`, `messages`, `.next`, `public`, `node_modules` |
+| `/_next/static/**` accessible | énumération des bundles **réellement référencés** par 2 pages servies |
+| chunks JS 200 | **compté séparément** ; `JS 200 = 0` est un échec nommé |
+| CSS 200 | **compté séparément** ; `CSS 200 = 0` est un échec nommé |
+| assets publics 200 | `/favicon.ico` `/manifest.webmanifest` `/sw.js` `/offline.html` `/icons/icon-192.png` `/fonts/OFL-cairo.txt` |
+| `/version.json` accessible | ALLOW, et c'est la porte du déploiement |
+| routes applicatives non cassées | `/fr/eat` `/fr/auth/magic` `/fr/eat/auth` `/api/restaurants` |
+
+### 16.4 PROD-6a — la preuve read-only est écrite, et ses refus sont exécutés
+
+Nouvel opérateur **lecture seule** : `scripts/server/prod-db-verify.js`. Il répond **exactement** à vos cinq
+points et s'arrête là : base existe · utilisateur existe · connexion possible · nom explicitement production ·
+aucune table inattendue. Plus un sixième, gratuit : **le grant ne doit pas toucher une base `_staging`**.
+
+**Il ne judge que le DSN, et c'est dit dans son en-tête.** Tous les autres opérateurs croisent `DATABASE_URL`
+avec `NEXTAUTH_URL` ; c'est juste pour eux, qui tournent dans l'application qu'ils jugent. Celui-ci ne peut
+pas : à PROD-6a, `~/grubano.com` n'a **pas encore** de `node_modules` (le pipeline n'en livre aucun et
+PROD-5b vient après le déploiement #1), donc le seul client Prisma disponible est celui de **staging**. Croiser
+`NEXTAUTH_URL` là-bas refuserait précisément l'exécution voulue. La règle est donc resserrée sur ce qui est
+réellement jugé — **le DSN** — et un DSN en `_staging` est refusé, un DSN non identifiable comme production
+aussi (liste blanche).
+
+```bash
+cd ~/app.grubano.com
+source ~/nodevenv/app.grubano.com/24/bin/activate
+read -rsp 'production DSN: ' DATABASE_URL && export DATABASE_URL && echo
+node scripts/server/prod-db-verify.js
+unset DATABASE_URL
+```
+
+`read -rs` n'affiche rien et, contrairement à un préfixe `VAR=… commande`, **ne laisse aucune copie dans
+l'historique**. Le DSN est masqué dans chaque ligne imprimée.
+
+**Sortie attendue** : `RESULT: PASS` · `DATABASE EXISTS: YES` · `CONNECTION: OK` · `USER EXISTS: YES` ·
+`NAME IS PRODUCTION: YES` · `GRANTS ON A STAGING DATABASE: NO` · `TABLES PRESENT: 0` ·
+`UNEXPECTED APPLICATION TABLES: 0` · `DATABASE CHANGED: NO`.
+
+**Cinq refus exécutés** (aucun n'atteint la base) : DSN absent · DSN non parseable · DSN sans nom de base ·
+nom en `_staging` · nom non identifiable. **Et un contrôle positif exécuté** : un DSN de forme production
+franchit le garde et échoue à l'étape **4 (connexion)** — la preuve que l'opérateur ne refuse pas tout.
+
+**Conditions STOP** : `TABLES PRESENT` ≠ 0 ⇒ la base n'est pas vierge, **PROD-6b n'est plus la première
+création délibérée**, arrêt. · `GRANTS ON A STAGING DATABASE: YES` ⇒ séparation rompue, corriger dans cPanel
+avant d'aller plus loin. · `GRANTS: NOT MEASURED` ⇒ le serveur a refusé `SHOW GRANTS`, vérifiez l'association
+à la main.
+
+### 16.5 PROD-5c — et pourquoi il ne peut pas venir « ensuite seulement »
+
+PROD-5c aligne le secret GitHub `DATABASE_URL_PROD` sur le DSN de la nouvelle base. Il n'a **aucun** effet
+runtime : ce secret n'alimente que `Generate Prisma client` et `Build` dans le job `deploy` (lignes 92 et 97).
+À l'exécution, c'est le `.env.local` du serveur qui gouverne — et il n'existera qu'à l'étape 7.
+
+Il est donc **strictement compatible** avec votre objectif, et pour une raison structurelle plutôt que par
+prudence : **PROD-5c ne peut pas installer une clé Stripe, ni ouvrir un drapeau, ni réveiller un build.** Il
+change une valeur utilisée au moment de la compilation, sur un runner GitHub.
+
+Deux points de méthode :
+
+1. **Notez l'ancienne valeur hors dépôt avant de la remplacer.** GitHub ne la conserve pas, et sans elle le
+   rollback de PROD-5c n'existe pas.
+2. **Le DSN doit être identique à celui du `.env.local`** (étape 7). Deux DSN divergents donneraient un build
+   compilé contre une base et un runtime branché sur une autre — une panne qui ne se voit qu'au premier client.
+
+Et le rappel qui compte pour la posture « production technique fermée » : **aucune clé Stripe à cette étape.**
+Il n'existe qu'un seul `new Stripe(...)` dans toute l'application (`lib/stripe.ts:19`), derrière `getStripe()`
+qui **jette** sans clé, et les huit sites d'écriture financière passent tous par lui. **Sans clé, même un
+drapeau argent ouvert par accident ne peut déplacer aucun argent.** C'est la serrure la plus forte de P1, et
+elle consiste à ne rien faire.

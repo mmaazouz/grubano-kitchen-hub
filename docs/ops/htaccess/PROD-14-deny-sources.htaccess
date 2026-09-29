@@ -1,0 +1,69 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# PROD-14 — Grubano : ne jamais servir les sources, les manifestes de build, les
+# dépendances ni les scripts opérateur depuis la racine web.
+#
+# À COLLER EN TÊTE de ~/app.grubano.com/.htaccess (répétition), puis, seulement
+# après un PASS, en tête de ~/grubano.com/.htaccess.
+#
+# AVANT TOUTE ÉDITION : copier le .htaccess actuel dans un fichier daté. Il n'est
+# pas récupérable depuis le dépôt — le pipeline ne l'écrit plus (PROD-2) et il
+# répond 553 en FTP. AJOUTER, ne rien remplacer.
+#
+# VÉRIFICATION (elle seule décide) :
+#   node scripts/server/web-exposure-probe.js https://app.grubano.com
+#   attendu : RESULT: PASS · EXPOSED 0 · BROKEN 0 · BUNDLES CHECKED > 0
+#
+# RETRAIT : supprimer ce bloc. Effet immédiat, aucun redémarrage, aucune donnée
+# en jeu.
+#
+# PORTÉE PAR CHEMIN, JAMAIS PAR EXTENSION. Une règle `<FilesMatch "\.js$">`
+# tuerait tous les bundles clients sous /_next/static/ — le P0 du 2026-09-06,
+# site rendu inerte, que tous les contrôles fondés sur un 200 laissaient passer.
+# `RedirectMatch` agit sur le CHEMIN de la requête et répond 404 plutôt que 403 :
+# plus strict, parce qu'un 404 ne confirme pas l'existence du fichier.
+#
+# CHAQUE JETON CI-DESSOUS CORRESPOND À UN 200 MESURÉ sur app.grubano.com le
+# 2026-09-29 — aucun n'est spéculatif :
+#   prisma        /prisma/schema.prisma ........................ 175 899 o
+#   node_modules  /node_modules/.prisma/client/schema.prisma ... 175 004 o
+#                 /node_modules/next/package.json ...............  9 992 o
+#   messages      /messages/fr.json ............................ 470 616 o
+#   .next         /.next/routes-manifest.json ...................  48 547 o
+#                 /.next/required-server-files.json .............  4 690 o
+#                 /.next/BUILD_ID ...............................      21 o
+#   scripts       /scripts/server/phase2-refund-gate.js .........  74 066 o
+#                 /scripts/server/staging-backup.js .............  14 366 o
+#                 /scripts/cron/monthly-invoices.js .............   7 254 o
+#                 /scripts/cron/cron-target-guard.js ............   9 291 o
+#   lib           /lib/ledger-check-core.js .....................   8 156 o
+#                 /lib/claims-payable-core.js ...................   6 337 o
+#   public        /public/version.json, /public/manifest.webmanifest
+#   racine        /package.json 2 961 o · /server.js 5 512 o
+#
+# ET CE QUI A ÉTÉ RETIRÉ DE LA PREMIÈRE VERSION : tests, docs, components, app,
+# tsconfig.json, next.config.js, i18n.ts, navigation.ts, middleware.ts,
+# vitest/postcss/tailwind.config — tous mesurés à 404, donc ABSENTS du serveur.
+# Une règle qui ne nomme que ce qui existe ne peut pas casser ce qui n'existe
+# pas ; chaque jeton spéculatif n'était qu'un risque de collision pour zéro
+# bénéfice. Le garde durable n'est pas cette liste, c'est la sonde : relancée
+# après chaque déploiement, tout fichier nouvellement exposé apparaît en EXPOSED.
+#
+# CE QUI DOIT RESTER SERVI, et que la sonde vérifie explicitement :
+#   /_next/static/**  (chunks JS et CSS)   /version.json  /api/restaurants
+#   /fr/eat  /fr/auth/magic  /fr/eat/auth  /favicon.ico  /manifest.webmanifest
+#   /sw.js  /offline.html  /icons/**  /fonts/**
+# `messages/` et `node_modules/` sont sans danger à refuser : les traductions
+# sont chargées par un `import()` SERVEUR (i18n.ts:16) et jamais fetchées par le
+# navigateur, et le client ne lit ses bundles que sous /_next/static/.
+# `/public/**` est sans danger aussi : ces fichiers sont servis à la RACINE par
+# Next, et aucun code de l'application ne référence le préfixe /public/.
+#
+# /VERSION (68 o) n'est pas refusé : il publie le même SHA que /version.json, que
+# le health-check du déploiement exige.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+RedirectMatch 404 ^/(prisma|scripts|lib|messages|public|node_modules)(/|$)
+RedirectMatch 404 ^/\.next(/|$)
+RedirectMatch 404 ^/(package(-lock)?\.json|server\.js)$
+
+# ── fin PROD-14 ────────────────────────────────────────────────────────────────

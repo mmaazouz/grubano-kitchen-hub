@@ -48,21 +48,53 @@ const DENY = [
   '/tsconfig.json',
   '/scripts/server/staging-backup.js',
   '/scripts/server/phase2-refund-gate.js',
+  '/scripts/server/prod-db-verify.js',
   '/scripts/cron/monthly-invoices.js',
   '/scripts/cron/cron-target-guard.js',
   '/lib/ledger-check-core.js',
+  /* FOUND BY PROBING, not by reading the deploy step — the second `lib/*-core.js` the operators
+     require(). A DENY list assembled from memory misses exactly the sibling of the file you
+     remembered, which is why this list is now derived from what the docroot actually serves. */
+  '/lib/claims-payable-core.js',
   '/.env.local',
   '/.env',
   '/.env.production',
   '/.htaccess',
   '/.next/BUILD_ID',
   '/.next/server/app/page.js',
+  /* The two build manifests, and they are the worst of the set. `routes-manifest.json` is 48 KB of
+     EVERY route the application has — admin and internal API paths included — and
+     `required-server-files.json` carries the resolved Next config. Both measured at 200 on staging
+     on 2026-09-29, and neither was in the first version of this list. */
+  '/.next/required-server-files.json',
+  '/.next/routes-manifest.json',
+  /* `public/` is served at the ROOT by Next, so reaching the same bytes under `/public/…` proves
+     Apache is walking the deploy tree — harmless content, but it is the layout talking. Nothing in
+     the application requests this prefix (verified: zero `"/public/` references in app, lib,
+     components and the service worker). */
+  '/public/version.json',
+  '/public/manifest.webmanifest',
   '/prisma/migrations/0_init/migration.sql',
 ]
 
-/* MUST keep working. `/version.json` is the deploy's own health check; the two pages are the
-   ones the client-bundle-integrity gate reads; `/api/restaurants` is the DB reachability gate. */
-const ALLOW_PAGES = ['/version.json', '/api/restaurants', '/fr/eat', '/fr/auth/magic', '/fr/eat/auth']
+/* MUST keep working — the founder's own checklist, item by item. `/version.json` is the deploy's
+   health check; the two auth pages are what the client-bundle-integrity gate reads;
+   `/api/restaurants` is the DB reachability gate; and the last five are the PUBLIC assets, which a
+   rule written by file extension would have killed along with the bundles. Every one of these was
+   measured at 200 on staging before the rule, so a 4xx after it is the rule's fault and nothing else. */
+const ALLOW_PAGES = [
+  '/version.json',
+  '/api/restaurants',
+  '/fr/eat',
+  '/fr/auth/magic',
+  '/fr/eat/auth',
+  '/favicon.ico',
+  '/manifest.webmanifest',
+  '/sw.js',
+  '/offline.html',
+  '/icons/icon-192.png',
+  '/fonts/OFL-cairo.txt',
+]
 
 function head(url, method) {
   return new Promise((resolve) => {
@@ -145,13 +177,22 @@ function body(url) {
     if (r.code !== 200) { console.log(`  skipped ${page} (HTTP ${r.code}) — cannot enumerate its assets`); continue }
     const assets = assetsOf(r.html)
     if (!assets.length) { broken.push(`${page} references NO /_next/static asset`); console.log(`  BROKEN  ${page} references no bundle at all`); continue }
+    /* JS and CSS are reported SEPARATELY and each must be non-empty. The founder's checklist names
+       « chunks JS 200 » and « CSS 200 » as two items, and they fail differently: a rule that killed
+       only the stylesheets would leave a working but unstyled site, which a combined count could
+       hide behind the JS successes. A page that references zero of either is itself a finding. */
     let bad = 0
-    for (const a of assets.slice(0, 25)) {
+    let js = 0
+    let css = 0
+    for (const a of assets.slice(0, 40)) {
       const h = await head(BASE + a)
       checked++
-      if (h.code !== 200) { bad++; broken.push(`${a} → ${h.code} (referenced by ${page})`) }
+      if (h.code === 200) { if (a.endsWith('.css')) css++; else js++ }
+      else { bad++; broken.push(`${a} → ${h.code} (referenced by ${page})`) }
     }
-    console.log(`  ${bad ? 'BROKEN ' : 'ok     '} ${page}: ${assets.length} assets referenced, ${Math.min(assets.length, 25)} checked, ${bad} not 200`)
+    if (js === 0) broken.push(`${page}: ZERO JavaScript chunk returned 200 — the 2026-09-06 P0 shape`)
+    if (css === 0) broken.push(`${page}: ZERO stylesheet returned 200 — the page would render unstyled`)
+    console.log(`  ${bad || !js || !css ? 'BROKEN ' : 'ok     '} ${page}: ${assets.length} referenced, ${Math.min(assets.length, 40)} checked · JS 200 = ${js} · CSS 200 = ${css} · not 200 = ${bad}`)
   }
 
   console.log('')
