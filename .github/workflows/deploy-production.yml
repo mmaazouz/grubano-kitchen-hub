@@ -127,6 +127,14 @@ jobs:
           mkdir -p deploy-temp/prisma
           cp prisma/schema.prisma deploy-temp/prisma/schema.prisma
 
+          # PROD-2 — the two SHARED cores the server operators `require()` at runtime.
+          # deploy-staging.yml ships them; production did not, so phase2-preflight.js and
+          # phase2-claims-pay-window.js would throw MODULE_NOT_FOUND on the production host.
+          # They are plain .js, read-only, and contain no secret.
+          mkdir -p deploy-temp/lib
+          cp lib/ledger-check-core.js   deploy-temp/lib/ledger-check-core.js
+          cp lib/claims-payable-core.js deploy-temp/lib/claims-payable-core.js
+
           # Server-run OPS scripts (JS only). scripts/server/ is the DESIGNATED
           # server bucket: prune-next.js (post-deploy static prune) + admin/ops
           # scripts like legacy-password-reset-notify.js (C-1). The WHOLE bucket
@@ -146,8 +154,20 @@ jobs:
           # Public assets
           [ -d public ] && cp -r public deploy-temp/public || true
 
-          # .htaccess — Passenger config for production (printf avoids BOM)
-          printf 'PassengerEnabled on\nPassengerAppRoot /home/deyi0010/grubano.com\nPassengerAppType node\nPassengerStartupFile server.js\nPassengerNodejs /home/deyi0010/nodevenv/grubano.com/24/bin/node\nPassengerMaxPoolSize 2\nPassengerMaxRequests 1000\nPassengerStartTimeout 120\n' > deploy-temp/.htaccess
+          # PROD-2 — .htaccess is DELIBERATELY NOT WRITTEN any more, and is excluded below.
+          # It used to be generated here by printf. Two measured reasons, either of which alone
+          # is disqualifying:
+          #   (a) the server's .htaccess is NOT FTP-writable — Pure-FTPd answers 553 Permission
+          #       denied on STOR, and a failed STOR ABORTS THE WHOLE SYNC, skipping the
+          #       post-deploy SSH, the restart and every health check. deploy-staging.yml hit
+          #       exactly this and fixed it in f5177914.
+          #   (b) if it DID write, it would replace the live Apache/Passenger configuration with
+          #       a 7-directive printf — destroying the apex→www redirect and any dotfile
+          #       protection the host has in place. That is the worse outcome of the two.
+          # Passenger is already configured on the production host: grubano.com currently serves
+          # Phusion Passenger's own "Web application could not be started" page, which only
+          # appears when Passenger IS running and reading an .htaccess. There is nothing to ship.
+          # If the production .htaccess ever needs changing, that is a deliberate cPanel edit.
 
           # .env.local is INTENTIONALLY NOT written into deploy-temp/. The
           # ENV_LOCAL_CONTENT secret was unset, so this line was creating an
@@ -189,6 +209,15 @@ jobs:
           local-dir: ./deploy-temp/
           server-dir: /grubano.com/
           exclude: |
+            # PROD-2 — ~/grubano.com/node_modules on the server is a SYMLINK to the nodevenv's
+            # lib/node_modules. Pure-FTPd cannot CWD into it, so ANY write under node_modules/
+            # returns 550 "Can't change directory to node_modules" and ABORTS THE WHOLE SYNC —
+            # post-deploy, restart and health check all skipped. Measured on staging and fixed
+            # there in 07627b98; production never received it. The app runs on the nodevenv's
+            # modules, so node_modules must not be transferred at all.
+            # CONSEQUENCE, stated: the production nodevenv must have had `npm install` run once.
+            node_modules
+            node_modules/**
             **/.git*
             **/.git*/**
             # Server-regenerated artifacts: the Post-deploy SSH step runs
@@ -213,6 +242,14 @@ jobs:
             # FTP sync will skip every .env* file.
             .env.local
             .env*
+            # PROD-2 — @vercel/og + its WASM: thousands of nested binary STORs that Pure-FTPd
+            # drowns in. Subsumed by the node_modules exclusion above; kept explicit because it
+            # is the failure that took staging's deploys down after next/og arrived.
+            node_modules/next/dist/compiled/@vercel/og
+            node_modules/next/dist/compiled/@vercel/og/**
+            # PROD-2 — the server's .htaccess is not FTP-writable (553) and must not be
+            # overwritten; the workflow no longer writes one. Second safety net.
+            .htaccess
 
       # ── SSH: post-deploy server tasks ─────────────────────────────────────────
       # Runs AFTER the FTP upload completes. Each line is best-effort (|| true)
@@ -272,6 +309,52 @@ jobs:
             touch ~/grubano.com/tmp/restart.txt
             echo "✅ Production restarted"
 
+      # ── PROD-2 — RESTART INDEPENDENT OF SSH ───────────────────────────────────
+      # Both SSH steps above are `continue-on-error`, and o2switch has timed out SSH from
+      # GitHub runners 3 times out of 3 (docs/ops/BETA-PRODUCT-FINAL-CLOSEOUT.md §BLOQUANTS
+      # INFRA, "dial tcp …:22 i/o timeout"). When that happens the files land and the OLD
+      # process keeps serving — a deploy that is green and inert. This FTPS upload touches
+      # tmp/restart.txt over the one channel that is proven to work from a runner.
+      # It was staging-only pending proof; the stated bar was "two consecutive deploys with
+      # exit 0". MEASURED: runs 36433674654, 36459283998 and 36463525963 — three consecutive
+      # staging deploys with this step at `success`. The bar is met.
+      # `continue-on-error`: it can only ADD a restart attempt, never remove one.
+      - name: Trigger Passenger restart via FTPS (independent of SSH)
+        if: ${{ success() }}
+        continue-on-error: true
+        run: |
+          STAMP="restart from run ${{ github.run_id }} at $(date -u +%FT%TZ) sha ${{ github.sha }}"
+          MARKER=$(mktemp)
+          ERRLOG=$(mktemp)
+          printf '%s\n' "$STAMP" > "$MARKER"
+          echo "-- FTPS restart trigger --"
+          echo "host:   muscadier.o2switch.net (cert SAN match - strict TLS verify)"
+          echo "target: ~/grubano.com/tmp/restart.txt"
+          echo "marker: $STAMP"
+          if curl --fail --silent --show-error \
+                  --ssl-reqd \
+                  --ftp-create-dirs \
+                  --connect-timeout 30 \
+                  --max-time 60 \
+                  --upload-file "$MARKER" \
+                  --user "${{ secrets.O2SWITCH_FTP_USER }}:${{ secrets.O2SWITCH_FTP_PASS }}" \
+                  "ftp://muscadier.o2switch.net/grubano.com/tmp/restart.txt" \
+                  2> "$ERRLOG"; then
+            RC=0
+            echo "OK FTPS upload returned exit 0 - Passenger should reload within seconds."
+          else
+            RC=$?
+            echo "ERR FTPS upload returned exit $RC"
+            echo "curl stderr:"
+            sed 's/^/  /' "$ERRLOG"
+            echo ""
+            echo 'The two SSH "touch tmp/restart.txt" steps above may still have triggered it.'
+            echo 'If production still serves stale code, run in cPanel Terminal:'
+            echo '    touch ~/grubano.com/tmp/restart.txt'
+          fi
+          rm -f "$MARKER" "$ERRLOG"
+          exit $RC
+
       # S0-3 — verify the deployed build matches this run's commit. Non-blocking
       # (the blocking gate stays the Health check below). Manual check any time:
       #   curl -s https://www.grubano.com/version.json
@@ -287,17 +370,140 @@ jobs:
             echo "WARN production does not (yet) serve ${{ github.sha }} — Passenger may still be restarting; re-check manually."
           fi
 
-      - name: Health check
+      # ── PROD-2 — HEALTH CHECK, ANCHORED ON THIS RUN'S SHA (BLOCKING) ──────────
+      # REPLACES: `curl -sL www.grubano.com/dashboard == 200`. That check could not fail for
+      # the reason it existed. `/dashboard` is auth-gated, middleware redirects to the login
+      # page, `-L` follows it, and 200 comes back — from ANY build, including a process that
+      # never restarted. It would have reported green through the 2026-09-06 incident (a
+      # served HTML whose client bundles all 404, i.e. inert auth forms and zero client JS).
+      # This version requires /version.json to serve THIS run's commit, with retries for the
+      # Passenger swap window.
+      - name: Health check (production @ expected SHA)
         if: ${{ !inputs.skip_health_check }}
         run: |
-          sleep 25
-          STATUS=$(curl -sL -o /dev/null -w "%{http_code}" https://www.grubano.com/dashboard || echo "000")
-          echo "www.grubano.com/dashboard → HTTP $STATUS"
-          if [ "$STATUS" != "200" ]; then
-            echo "ERR Health check failed (HTTP $STATUS) — check Passenger logs"
-            exit 1
-          fi
-          echo "OK Production is live!"
+          EXPECTED="${{ github.sha }}"
+          URL="https://grubano.com/version.json"
+          ATTEMPTS=8
+          DELAY=15
+          BODY_FILE="$(mktemp)"
+          CODE="000"
+          SERVED=""
+          echo "expected sha : $EXPECTED"
+          echo "target       : $URL"
+          sleep 15
+          i=1
+          while [ "$i" -le "$ATTEMPTS" ]; do
+            : > "$BODY_FILE"
+            CODE=$(curl -sS -L --max-time 30 -o "$BODY_FILE" -w '%{http_code}' "$URL") || CODE="000"
+            SERVED=$(sed -n 's/.*"commit"[[:space:]]*:[[:space:]]*"\([0-9a-fA-F]\{7,40\}\)".*/\1/p' "$BODY_FILE" | head -n 1)
+            echo "attempt $i/$ATTEMPTS - HTTP $CODE - served commit: ${SERVED:-<none>}"
+            if [ "$CODE" = "200" ] && [ "$SERVED" = "$EXPECTED" ]; then
+              echo "OK production healthy at expected SHA ($EXPECTED)"
+              rm -f "$BODY_FILE"
+              exit 0
+            fi
+            i=$((i + 1))
+            if [ "$i" -le "$ATTEMPTS" ]; then sleep "$DELAY"; fi
+          done
+          echo "ERR production health check FAILED after $ATTEMPTS attempts"
+          echo "  url             : $URL"
+          echo "  last HTTP status: $CODE"
+          echo "  expected commit : $EXPECTED"
+          echo "  served commit   : ${SERVED:-<none - version.json unreadable or absent>}"
+          echo "  body (400 B max):"
+          head -c 400 "$BODY_FILE" | sed 's/^/    /'
+          echo ""
+          echo "  First deploy? The production .env.local (DATABASE_URL + NEXTAUTH_SECRET) and a"
+          echo "  populated nodevenv are prerequisites this pipeline deliberately cannot create."
+          echo "  Otherwise: Passenger did not pick up the build. In cPanel Terminal:"
+          echo "    touch ~/grubano.com/tmp/restart.txt"
+          rm -f "$BODY_FILE"
+          exit 1
+
+      # ── PROD-2 — THE PRISMA CLIENT IS NOT STALE (BLOCKING) ────────────────────
+      # version.json is a STATIC file: it proves the upload, never that the running process
+      # can reach the database. The post-deploy `npx prisma generate` runs inside an SSH step
+      # that is `continue-on-error` and has TIMED OUT 3/3 against this host, and staging has
+      # already run "new schema + new code + STALE client" for exactly that reason
+      # (docs/ops/BETA-PRODUCT-FINAL-CLOSEOUT.md §BLOQUANTS INFRA #1). A stale client against
+      # a fresh schema is invisible to every 200-based check and surfaces as 500s on the first
+      # real customer. /api/restaurants is public, read-only, and hits the database.
+      - name: Database reachable through the deployed Prisma client (BLOCKING)
+        if: ${{ !inputs.skip_health_check }}
+        run: |
+          URL="https://grubano.com/api/restaurants"
+          ATTEMPTS=6
+          DELAY=15
+          i=1
+          while [ "$i" -le "$ATTEMPTS" ]; do
+            CODE=$(curl -sS -L -o /dev/null --max-time 30 -w '%{http_code}' "$URL") || CODE="000"
+            echo "attempt $i/$ATTEMPTS - $URL -> HTTP $CODE"
+            if [ "$CODE" = "200" ]; then
+              echo "OK the deployed Prisma client reaches the production database"
+              exit 0
+            fi
+            i=$((i + 1))
+            if [ "$i" -le "$ATTEMPTS" ]; then sleep "$DELAY"; fi
+          done
+          echo "ERR the database is NOT reachable through the deployed build (last HTTP $CODE)"
+          echo "  Most likely, in order:"
+          echo "    1. the production schema was never created (no prisma/migrations in this repo -"
+          echo "       a virgin database needs ONE deliberate 'npx prisma@5.22.0 db push', no --accept-data-loss);"
+          echo "    2. the Prisma client on the server is STALE - the SSH generate step timed out."
+          echo "       In cPanel Terminal:  source ~/nodevenv/grubano.com/24/bin/activate"
+          echo "                            cd ~/grubano.com && npx prisma@5.22.0 generate"
+          echo "                            touch tmp/restart.txt"
+          echo "    3. DATABASE_URL is missing or wrong in ~/grubano.com/.env.local."
+          exit 1
+
+      # ── PROD-2 — CLIENT BUNDLE INTEGRITY (BLOCKING) ───────────────────────────
+      # The served HTML must only reference /_next/static assets the server can actually
+      # serve. A mismatch = zero client JavaScript = permanent Suspense skeleton and inert
+      # forms: the P0 of 2026-09-06, which every 200-based check passed straight through.
+      - name: Client bundle integrity (served HTML -> every _next/static asset 200)
+        if: ${{ !inputs.skip_health_check }}
+        run: |
+          BASE="https://grubano.com"
+          PAGES="/fr/auth/magic /fr/eat/auth"
+          ATTEMPTS=6
+          DELAY=15
+          i=1
+          while [ "$i" -le "$ATTEMPTS" ]; do
+            FAIL=0
+            CHECKED=0
+            for P in $PAGES; do
+              HTML=$(curl -sS -L --max-time 30 "$BASE$P") || HTML=""
+              ASSETS=$(printf '%s' "$HTML" | grep -o '/_next/static/[^" <>\\]*\.\(js\|css\)' | sort -u)
+              if [ -z "$ASSETS" ]; then
+                echo "ERR $P references no /_next/static asset (empty or non-HTML response)"
+                FAIL=1
+                continue
+              fi
+              if ! printf '%s\n' "$ASSETS" | grep -q 'chunks/webpack-'; then
+                echo "ERR $P does not reference a webpack runtime chunk"
+                FAIL=1
+              fi
+              for A in $ASSETS; do
+                CODE=$(curl -sS -o /dev/null --max-time 30 -w '%{http_code}' "$BASE$A") || CODE="000"
+                CHECKED=$((CHECKED + 1))
+                if [ "$CODE" != "200" ]; then
+                  echo "ERR $A -> HTTP $CODE (referenced by $P)"
+                  FAIL=1
+                fi
+              done
+            done
+            if [ "$FAIL" = "0" ]; then
+              echo "OK client bundle integrity - $CHECKED referenced assets served 200 for: $PAGES"
+              exit 0
+            fi
+            echo "attempt $i/$ATTEMPTS failed - Passenger may still be swapping; retry in ${DELAY}s"
+            i=$((i + 1))
+            if [ "$i" -le "$ATTEMPTS" ]; then sleep "$DELAY"; fi
+          done
+          echo "ERR CLIENT BUNDLE INTEGRITY FAILED - the served HTML references assets the server cannot serve."
+          echo "  The running process and the files on disk belong to different builds."
+          echo "  Fix: cPanel Terminal ->  touch ~/grubano.com/tmp/restart.txt  then re-run this job."
+          exit 1
 
       # ── Trigger docs rebuild ──────────────────────────────────────────────────
       # Fires a repository_dispatch at grubano-docs after a successful prod deploy

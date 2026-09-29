@@ -1,7 +1,23 @@
 'use strict'
 /* ═══════════════════════════════════════════════════════════════════════════════
-   staging-backup.js — ONE-SHOT, FAIL-CLOSED, READ-ONLY: fresh VERIFIED backup of
-   the STAGING database, as ONE founder command. Clean Room runbook step 1
+   staging-backup.js — ONE-SHOT, FAIL-CLOSED, READ-ONLY: fresh VERIFIED backup of the
+   STAGING database (default) or of PRODUCTION (explicit, attested), as ONE founder command.
+
+   PROD-3 — THE TARGET IS NOW EXPLICIT, and staging remains the default so every existing
+   invocation and every doc reference keeps its exact behaviour. Production is a separate,
+   attested mode because before the first production launch there was NO way to back up
+   production at all: this operator refused it by name, and so did every migration operator.
+   « We have backups » was not true of the only database that will hold real orders.
+   The verification block lives HERE, once, for both targets — a copied twin would mean the
+   next fix lands in one file and not the other (the T-108 lesson, already paid for).
+
+     STAGING (default, unchanged):
+       … staging-backup.js --label pre-cleanroom
+     PRODUCTION (requires the attestation, exactly):
+       GRUBANO_BACKUP_CONFIRM="I AUTHORIZE A PRODUCTION DATABASE BACKUP" \
+         … staging-backup.js --production --label pre-launch
+
+   A backup is READ-ONLY on both targets: the operator never writes to the database. Clean Room runbook step 1
    (docs/ops/CLEAN-ROOM-RUNBOOK.md §4) — the `--i-confirm-local-backup` attestation
    of clean-room.js must rest on THIS output, never on a stale download.
 
@@ -48,6 +64,11 @@ if (!process.env.DATABASE_URL || !process.env.NEXTAUTH_URL) {
 const MYSQLDUMP = process.env.MYSQLDUMP_BIN || 'mysqldump'
 const BACKUP_DIR = process.env.GRUBANO_BACKUP_DIR || path.join(os.homedir(), 'grubano-backups')
 const ARGS = process.argv.slice(2)
+/* PROD-3 — TARGET. `--production` is the ONLY way to reach the production branch, and it additionally
+   requires the attestation sentence below. Absent or misspelt ⇒ STAGING, which is the safe direction:
+   the staging guard refuses a production DSN, so a typo can never dump production by accident. */
+const TARGET = ARGS.includes('--production') ? 'production' : 'staging'
+const PROD_CONFIRM_SENTENCE = 'I AUTHORIZE A PRODUCTION DATABASE BACKUP'
 const labelIdx = ARGS.indexOf('--label')
 const LABEL = (labelIdx >= 0 && ARGS[labelIdx + 1] ? ARGS[labelIdx + 1] : 'manual').replace(/[^a-z0-9-]/gi, '-').slice(0, 40)
 
@@ -86,16 +107,32 @@ function fail(step, action) {
   let url
   try { url = new URL(DSN) } catch { return fail('1 env: DATABASE_URL unparseable') }
   const dbName = decodeURIComponent(url.pathname.replace(/^\//, ''))
-  console.log('[staging-backup] target:', maskDsn(DSN), '| label:', LABEL)
+  console.log(`[db-backup] TARGET=${TARGET.toUpperCase()}`, '|', maskDsn(DSN), '| label:', LABEL)
 
-  // ── 2. PROVE STAGING (same predicates as phase1-staging-migrate.js) ─────
+  /* ── 2. PROVE THE TARGET — the SAME predicates as phase1-staging-migrate.js, applied in
+     whichever direction was asked for. Both branches are refusals: neither can be satisfied by
+     ambiguity, and the environment must positively identify itself. */
   const nextUrl = (process.env.NEXTAUTH_URL || '').toLowerCase()
   const dbLooksStaging = /_staging$/.test(dbName)
   const urlLooksStaging = nextUrl.includes('app.grubano.com') || nextUrl.includes('business.grubano.com') || nextUrl.includes('localhost')
   const dbLooksProd = dbName === 'deyi0010_grubano' || (/grubano$/.test(dbName) && !dbLooksStaging)
   const urlLooksProd = /(^|\/\/)grubano\.com/.test(nextUrl) && !nextUrl.includes('app.grubano.com') && !nextUrl.includes('business.grubano.com')
-  if (dbLooksProd || urlLooksProd) return fail(`2 staging-proof: target looks like PRODUCTION (${urlLooksProd ? 'NEXTAUTH_URL=grubano.com' : 'db=' + dbName})`, 'run on STAGING only')
-  if (!dbLooksStaging && !urlLooksStaging) return fail(`2 staging-proof: cannot confirm STAGING (db=${dbName}, url=${nextUrl || 'unset'})`, 'confirm staging env')
+  if (TARGET === 'staging') {
+    if (dbLooksProd || urlLooksProd) return fail(`2 staging-proof: target looks like PRODUCTION (${urlLooksProd ? 'NEXTAUTH_URL=grubano.com' : 'db=' + dbName})`, 'run on STAGING only, or pass --production with the attestation')
+    if (!dbLooksStaging && !urlLooksStaging) return fail(`2 staging-proof: cannot confirm STAGING (db=${dbName}, url=${nextUrl || 'unset'})`, 'confirm staging env')
+  } else {
+    /* PRODUCTION. The attestation is checked FIRST, before anything about the environment is
+       reported, so `--production` typed on a staging shell says what is missing rather than
+       leaking a comparison. Then the mirror image of the staging guard: production must be
+       POSITIVELY identified, and anything that looks like staging is refused — a `--production`
+       run that would have dumped staging is a false backup, and a false backup is worse than
+       none because it is the one someone restores from. */
+    if (process.env.GRUBANO_BACKUP_CONFIRM !== PROD_CONFIRM_SENTENCE) {
+      return fail('2 production-proof: GRUBANO_BACKUP_CONFIRM is not the exact attestation sentence', 'set GRUBANO_BACKUP_CONFIRM="' + PROD_CONFIRM_SENTENCE + '"')
+    }
+    if (dbLooksStaging || urlLooksStaging) return fail(`2 production-proof: --production was asked for but the target looks like STAGING (db=${dbName}, url=${nextUrl || 'unset'})`, 'drop --production, or point at production')
+    if (!dbLooksProd && !urlLooksProd) return fail(`2 production-proof: cannot confirm PRODUCTION (db=${dbName}, url=${nextUrl || 'unset'})`, 'confirm the production env')
+  }
 
   // ── 3. live manifest (READ ONLY) via the server Prisma client ────────────
   let PrismaClient
@@ -122,7 +159,9 @@ function fail(step, action) {
   // ── 4. mysqldump → .sql (0600 cnf, deleted in finally) ───────────────────
   fs.mkdirSync(BACKUP_DIR, { recursive: true })
   const stamp = new Date().toISOString().replace(/[:T]/g, '-').replace(/\..+/, '')
-  const sqlPath = path.join(BACKUP_DIR, `staging-${LABEL}-${stamp}.sql`)
+  // PROD-3 — the TARGET is in the filename: a production dump must never be mistaken for a
+  // staging one in ~/grubano-backups, least of all by whoever is choosing what to restore.
+  const sqlPath = path.join(BACKUP_DIR, `${TARGET}-${LABEL}-${stamp}.sql`)
   const gzPath = sqlPath + '.gz'
   if (fs.existsSync(gzPath) || fs.existsSync(sqlPath)) return fail('4 backup: target file already exists (never overwritten): ' + gzPath, 'retry in a second')
   const cnfPath = path.join(BACKUP_DIR, `.my-${stamp}.cnf`)

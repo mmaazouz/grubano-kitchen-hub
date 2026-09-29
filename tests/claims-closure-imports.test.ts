@@ -33,7 +33,8 @@ const CRON_CONFIG_40DA45E: Record<string, string> = {
      against staging or production. */
   '.github/workflows/claims-census.yml':        'f55626c91a4dc332a60284d9f3aee36f064ed44def7c71b4cbb89470a674c2b9',
   '.github/workflows/cron.yml':                 'fb2e484d1eb21cfbf308bdc86c35ce650384d4ea39c2a5be0257bbc317a1bd2a',
-  '.github/workflows/deploy-production.yml':    'd51afa4da53d9a3c512c80db06738d4cd406a68aab51d71b2b8cc0ce8bf70769',
+  /* PROD-2 (2026-09-29) — deploy-production.yml MOVED, deliberately and on the founder's GO-TO-PRODUCTION decision. Production had never run and was NOT the proven staging pipeline: it lacked the three FTP exclusions that each fix a measured sync-aborting failure, it WROTE an .htaccess it did not exclude, its only blocking gate was a curl of an auth-gated page that returns 200 from any build, and it had no SSH-independent restart. Ported from deploy-staging.yml, plus one gate staging does not have (the database must be reachable through the DEPLOYED Prisma client). deploy-staging.yml is UNCHANGED in this lot — its hash above is the same. What this pin protects is intact: nothing new RUNS against staging, and no schedule, job, workflow or secret was added. */
+  '.github/workflows/deploy-production.yml':    'c37f9c7b6b164e1bb84405871e591ce2192841400111a30078c152a9a4356870',
   // D′ L5 — moved from 03912758…7813 (40da45e): the staging workflow now also copies lib/claims-payable-core.js into
   // deploy-temp/lib, because the pay-window operator must recompute the rail's selection with the SAME query the rail
   // uses (spec v2 §8.8). One `cp` line: no schedule, no new job, no new workflow file.

@@ -45,11 +45,14 @@ chmod 644    "$DEPLOY_PATH/server.js"
 chmod 600    "$DEPLOY_PATH/.env.local" 2>/dev/null || true
 ok "Permissions set"
 
-info "Running prisma db push (staging)"
-source "$NODE_ENV_BIN/activate"
-cd "$DEPLOY_PATH"
-npx prisma db push --accept-data-loss 2>&1 | tail -10
-ok "Schema synced"
+# ── Prisma schema — DELIBERATELY NOT DONE HERE (PROD-1) ───────────────────────
+# Removed for the same reason as in deploy-production.sh: `--accept-data-loss` lets
+# Prisma DROP columns and tables, and this script had no database backup. Staging data
+# is rehearsal evidence — losing it silently invalidates every measurement this
+# chantier has banked. Use the additive staging operators
+# (phase1-staging-migrate.js / dprime-staging-migrate.js), which take a VERIFIED
+# mysqldump first and refuse anything non-additive.
+info "Prisma schema: NOT touched by this script (see PROD-1)"
 
 info "Restarting Passenger"
 mkdir -p "$DEPLOY_PATH/tmp"

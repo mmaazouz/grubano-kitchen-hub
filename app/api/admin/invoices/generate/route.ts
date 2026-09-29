@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
 import { monthBounds, issueInvoice } from '@/lib/invoice'
+import { isLegalInfoComplete } from '@/lib/legal-info'
 import { rateLimit } from '@/lib/rate-limit'
 import { recordAdminAudit, CRON_ACTOR_ID } from '@/lib/admin-audit'
 import { safeEqual } from '@/lib/safe-compare'
@@ -26,6 +27,26 @@ export async function POST(req: Request) {
   if (limited) return limited
 
   try {
+    /* PROD-4 — A NUMBERED INVOICE CANNOT BE UNISSUED, so refuse before issuing one that
+       names nobody. `lib/invoice.issuerIdentity()` reads LEGAL_INFO.editor verbatim:
+       raisonSociale, siegeAdresse, siren, tvaIntra. While those are placeholders, every
+       invoice this route issues carries « [[À COMPLÉTER — …]] » as the issuer's legal
+       identity — on a sequentially numbered document, generated unattended by
+       scripts/cron/monthly-invoices.js on a cPanel schedule (0 7 1 * *). The first of the
+       month after go-live would mint a legally defective, non-rescindable series.
+       This is the one launch consequence of the unfilled legal facts that is IRREVERSIBLE,
+       which is why it refuses here rather than being reported somewhere.
+       It is NOT a feature flag and has no bypass: the only way through is to fill
+       lib/legal-info.ts with the real company facts. 409, because the request is
+       well-formed and the SERVER is not in a state to honour it. */
+    if (!isLegalInfoComplete()) {
+      return NextResponse.json({
+        error: 'Facturation indisponible : l’identité légale de l’éditeur n’est pas renseignée.',
+        code:  'legal_identity_incomplete',
+        detail: 'Une facture numérotée est irréversible. Renseignez lib/legal-info.ts (raison sociale, siège, SIREN, TVA) avant toute émission.',
+      }, { status: 409 })
+    }
+
     // ── Auth (A6, ADDITIVE machine access — same shape as /ledger/check) ──────
     // The monthly invoice cron (scripts/cron/monthly-invoices.js) calls this
     // endpoint with a fixed-string X-Internal-Token header. Same security model

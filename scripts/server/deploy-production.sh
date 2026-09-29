@@ -62,12 +62,26 @@ chmod 644    "$DEPLOY_PATH/server.js"
 chmod 600    "$DEPLOY_PATH/.env.local" 2>/dev/null || true
 ok "Permissions set"
 
-# ── 5. Push Prisma schema changes ─────────────────────────────────────────────
-info "Running prisma db push"
-source "$NODE_ENV_BIN/activate"
-cd "$DEPLOY_PATH"
-npx prisma db push --accept-data-loss 2>&1 | tail -10
-ok "Schema synced"
+# ── 5. Prisma schema — DELIBERATELY NOT DONE HERE (PROD-1) ────────────────────
+# This step used to run:
+#     npx prisma db push --accept-data-loss
+# on the PRODUCTION database, with no database backup (step 3 above backs up
+# `.next/server` only). `--accept-data-loss` authorises Prisma to DROP columns and
+# tables on any drift between the deployed schema.prisma and the live database, and
+# this file's own header invites the operator to reach for it "for emergency hot-fixes
+# when you need to deploy without CI" — i.e. exactly on the night something is already
+# going wrong, against real orders and real payments. The blast radius is irreversible
+# and the guard was a single word in a command nobody reads at 2 a.m.
+#
+# A schema change on production is now a DELIBERATE, SEPARATE act, in this order:
+#   1. a VERIFIED backup   (scripts/server/production-backup.js)
+#   2. the additive change (an ALTER TABLE … ADD COLUMN IF NOT EXISTS operator, as
+#      CLAUDE.md §7 requires — never a global push, never --accept-data-loss)
+#   3. regenerate the Prisma client, then restart
+# On a VIRGIN production database only, the bootstrap is a plain
+# `npx prisma@5.22.0 db push` (no --accept-data-loss) run once by a human who has just
+# checked the database is empty — there is nothing to lose on an empty schema.
+info "Prisma schema: NOT touched by this script (see PROD-1 above)"
 
 # ── 6. Restart Passenger ──────────────────────────────────────────────────────
 info "Restarting Passenger"
