@@ -1,0 +1,68 @@
+/* ── AF4 · Retraits 🔒 (content classes, scoped under AffiliateShell .gb-op) ─────
+ * Verbatim CD AF4 (teal --op-af). MONEY 🔒 — visual re-skin ONLY. Payout rail gated
+ * OFF (AFFILIATE_CONNECT_ENABLED → onboarding/withdraw 404): the solde is REAL (server
+ * cents/100), the threshold is the REAL server value (payout-threshold, passed as a prop),
+ * « Total versé » is the REAL paid cumul (0 while gated), the payout history is an HONEST
+ * EMPTY (no fictive AFP refs / PDF), the « Demander un retrait » + « Activer » CTAs are
+ * INERT « bientôt ». Consumes --op-* / --op-af from affiliate-shell.css. */
+
+/* read-only banner (KEEP) */
+.gb-op .ro-banner{display:flex;align-items:flex-start;gap:12px;background:var(--op-af-bg);border:1px solid var(--op-af-bd);border-radius:var(--op-r-lg);padding:14px 18px;margin-bottom:18px}
+.gb-op .ro-banner .ms{font-size:21px;color:var(--op-af);flex-shrink:0}
+[data-theme="dark"] .gb-op .ro-banner .ms{color:var(--op-af-2)}
+.gb-op .ro-banner .m b{display:block;font-family:var(--op-font-display);font-weight:800;font-size:14px;color:var(--op-af-text)}
+[data-theme="dark"] .gb-op .ro-banner .m b{color:var(--op-af-2)}
+.gb-op .ro-banner .m p{margin:3px 0 0;font-size:12px;line-height:1.5;color:var(--op-muted)}
+
+/* withdraw hero */
+.gb-op .wd{padding:24px;margin-bottom:16px;background:linear-gradient(135deg,var(--op-af-bg),transparent);display:flex;align-items:center;gap:24px;flex-wrap:wrap}
+.gb-op .wd__main{flex:1;min-width:200px}
+.gb-op .wd__label{font-size:12px;font-weight:700;color:var(--op-muted);display:flex;align-items:center;gap:6px}
+.gb-op .wd__label .ms{font-size:15px}
+.gb-op .wd__v{font-family:var(--op-font-mono);font-weight:800;font-size:44px;letter-spacing:-.02em;margin:8px 0 2px;direction:ltr;unicode-bidi:isolate}
+.gb-op .wd__meta{font-size:12px;color:var(--op-muted)}
+.gb-op .wd__meta b{font-family:var(--op-font-mono);direction:ltr;unicode-bidi:isolate}
+.gb-op .wd__act{display:flex;flex-direction:column;gap:9px;min-width:230px}
+.gb-op .wd-soon{display:flex;align-items:center;gap:8px;border:1px solid var(--op-border);background:var(--op-surface);border-radius:var(--op-r-md);padding:13px 16px;font-size:13px;font-weight:700;color:var(--op-muted-2);cursor:not-allowed;justify-content:center}
+.gb-op .wd-soon .ms{font-size:18px}
+.gb-op .wd-soon .soon{font-family:var(--op-font-ui);font-size:8.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;background:var(--op-warning-bg);color:var(--op-warning);border:1px solid var(--op-warning-bd);border-radius:999px;padding:1px 6px}
+.gb-op .wd__auto{font-size:11px;color:var(--op-muted-2);text-align:center;display:flex;align-items:center;gap:5px;justify-content:center}
+.gb-op .wd__auto .ms{font-size:14px;color:var(--op-af)}
+[data-theme="dark"] .gb-op .wd__auto .ms{color:var(--op-af-2)}
+
+/* schedule strip */
+.gb-op .sched{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0;overflow:hidden;margin-bottom:16px}
+.gb-op .sched .cell{padding:16px 18px;border-inline-end:1px solid var(--op-border)}
+.gb-op .sched .cell:last-child{border-inline-end:none}
+.gb-op .sched .l{font-size:11.5px;font-weight:700;color:var(--op-muted);display:flex;align-items:center;gap:6px}
+.gb-op .sched .l .ms{font-size:15px;color:var(--op-muted-2)}
+.gb-op .sched .v{font-family:var(--op-font-mono);font-weight:800;font-size:20px;margin-top:6px;direction:ltr;unicode-bidi:isolate}
+.gb-op .sched .s{font-size:10.5px;color:var(--op-muted-2);margin-top:3px}
+
+.gb-op .card-pad{padding:18px;margin-bottom:16px}
+.gb-op .card-pad__hd{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:4px}
+.gb-op .card-pad__hd h3{margin:0;font-family:var(--op-font-display);font-weight:800;font-size:15px}
+.gb-op .card-pad .hint{font-size:11.5px;color:var(--op-muted);margin-bottom:16px}
+
+/* payout method (Connect onboarding — INERT « Activer » while gated) */
+.gb-op .pm-row{display:flex;align-items:center;gap:13px;padding:14px 16px;border:1px solid var(--op-border);background:var(--op-surface-2);border-radius:var(--op-r-md)}
+.gb-op .pm-row .ms{font-size:20px;color:var(--op-muted-2);flex-shrink:0}
+.gb-op .pm-row .m{flex:1;min-width:0}
+.gb-op .pm-row .m b{display:block;font-size:12.5px;font-weight:800;color:var(--op-text)}
+.gb-op .pm-row .m span{font-size:11px;color:var(--op-muted)}
+.gb-op .pm-soon{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--op-border-strong);background:var(--op-surface);border-radius:var(--op-r-md);padding:9px 14px;font-size:12px;font-weight:700;color:var(--op-muted-2);cursor:not-allowed;flex-shrink:0}
+.gb-op .pm-soon .ms{font-size:16px}
+.gb-op .pm-soon .soon{font-size:8.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;background:var(--op-warning-bg);color:var(--op-warning);border:1px solid var(--op-warning-bd);border-radius:999px;padding:1px 6px}
+.gb-op .pm-note{display:flex;align-items:flex-start;gap:8px;font-size:11px;color:var(--op-muted-2);margin-top:12px;line-height:1.5}
+.gb-op .pm-note .ms{font-size:14px;flex-shrink:0}
+
+/* payout history — HONEST EMPTY (no fictive AFP rows / PDF) */
+.gb-op .po-empty{padding:30px 14px;text-align:center;color:var(--op-muted)}
+.gb-op .po-empty .ms{font-size:32px;color:var(--op-muted-2);display:block;margin-bottom:8px}
+.gb-op .po-empty p{margin:0;font-size:12px;line-height:1.5;max-width:280px;margin-inline:auto}
+
+.gb-op .info-note{display:flex;align-items:flex-start;gap:8px;font-size:11px;color:var(--op-muted-2);margin-top:14px;line-height:1.5}
+.gb-op .info-note .ms{font-size:14px;flex-shrink:0}
+
+@container gbop (max-width: 980px){ .gb-op .sched{grid-template-columns:1fr} .gb-op .sched .cell{border-inline-end:none;border-bottom:1px solid var(--op-border)} }
+@container gbop (max-width: 880px){ .gb-op .wd__act{min-width:0;width:100%} }

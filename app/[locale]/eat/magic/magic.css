@@ -1,0 +1,50 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+ * /eat/magic — CONSUMER magic-link screens (Check email + Signing you in…).
+ * LAYOUT only — the visual primitives come from the gb-* FOUNDATION (.gb .hero,
+ * .gb-brand, .btn--primary/.btn--white, .tip, .spin, .dots, .hero-ico). This file
+ * adds just the page shells: the 2-panel DESKTOP grid (navy .gb-brand left + centered
+ * card right, like /eat/auth) and the single-column MOBILE screen, plus the pure-CSS
+ * responsive switch (<768 → mobile / ≥768 → desktop). Reproduction of the FROZEN CD
+ * refs (Notion 38dfd2c9-…-81be-9556 desktop + 38cfd2c9-…-81c5-998b mobile). Every
+ * selector is under `.eat-magic` / `.eat-magic-mobile` (no leak; the roots also carry
+ * `.gb` so the foundation applies). The /auth/magic business page is untouched.
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+/* ══ DESKTOP — 2-panel (brand left 46% + centered card right) ════════════════ */
+.eat-magic{min-height:100vh;min-height:100dvh;width:100%;display:grid;grid-template-columns:46% 1fr;background:var(--gb-bg)}
+/* the foundation .gb-brand is a rounded card; here it is the full-bleed auth panel */
+.eat-magic .gb-brand{border-radius:0;min-height:100%;justify-content:space-between}
+.eat-magic__panel{position:relative;display:flex;align-items:center;justify-content:center;padding:clamp(24px,4vw,40px)}
+.eat-magic__card{width:100%;max-width:400px;text-align:center;display:flex;flex-direction:column;align-items:center}
+.eat-magic__card .title{margin:0;font-family:var(--gb-font-display);font-weight:800;font-size:28px;letter-spacing:-.02em;color:var(--gb-text)}
+.eat-magic__card .sub{margin:11px 0 26px;font-size:15px;line-height:1.6;color:var(--gb-muted);max-width:38ch}
+.eat-magic__card .sub b{color:var(--gb-text)}
+.eat-magic__card .btn{padding:14px 22px}
+.eat-magic__card .linkback{margin-top:16px;font-size:13.5px;color:var(--gb-muted)}
+.eat-magic__card .linkback a{color:var(--gb-zest-600);font-weight:700;text-decoration:none;cursor:pointer}
+/* landing (verifying) — bigger logo + spinner, exact CD sizes */
+.eat-magic__card .landing-logo{height:54px;width:auto;margin-bottom:26px;display:block}
+.eat-magic__card .spin{width:54px;height:54px;border-width:5px;margin-bottom:24px}
+.eat-magic__card .hero{margin-bottom:24px}
+/* AI-soon tip pinned to the bottom of the centered zone */
+.eat-magic .tip{position:absolute;left:50%;bottom:34px;transform:translateX(-50%);max-width:340px;width:calc(100% - 48px)}
+@media (max-width:767.98px){ .eat-magic{display:none} }
+
+/* ══ MOBILE — single centered column (full screen) ══════════════════════════ */
+.eat-magic-mobile{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;background:var(--gb-bg)}
+.eat-magic-mobile .screen__bar{display:flex;align-items:center;gap:12px;padding:16px 20px;flex-shrink:0;min-height:56px}
+.eat-magic-mobile .screen__bar .ms{font-size:24px;cursor:pointer;color:var(--gb-text)}
+.eat-magic-mobile .screen__body{flex:1;display:flex;flex-direction:column;padding:8px 24px 24px;max-width:420px;width:100%;margin:0 auto}
+.eat-magic-mobile .screen__body.center{justify-content:center;text-align:center;align-items:center}
+.eat-magic-mobile .spacer{flex:1}
+.eat-magic-mobile .title{font-family:var(--gb-font-display);font-weight:800;font-size:23px;letter-spacing:-.02em;margin:0;color:var(--gb-text)}
+.eat-magic-mobile .sub{margin:9px 0 22px;font-size:13.5px;line-height:1.55;color:var(--gb-muted)}
+.eat-magic-mobile .sub b{color:var(--gb-text)}
+.eat-magic-mobile .resend{font-size:12.5px;color:var(--gb-muted);text-align:center}
+.eat-magic-mobile .resend b{color:var(--gb-zest-600);font-weight:700}
+.eat-magic-mobile .landing-logo{height:50px;width:auto;margin-bottom:22px;display:block}
+/* AI-soon tip card (mobile, inline at the bottom) */
+.eat-magic-mobile .tipbar{display:flex;align-items:center;gap:9px;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:12px;padding:11px 13px;width:100%}
+.eat-magic-mobile .tipbar .ms{font-size:18px;color:var(--gb-zest)}
+.eat-magic-mobile .tipbar span{flex:1;font-size:11.5px;color:var(--gb-muted);text-align:left}
+@media (min-width:768px){ .eat-magic-mobile{display:none} }

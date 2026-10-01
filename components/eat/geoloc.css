@@ -1,0 +1,136 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+ * « Géoloc + choix d'adresse » (« Livrer à ») — VERBATIM reproduction of the FROZEN
+ * CD ref (Notion 38efd2c9-…-21ebc0, file eat/geolocation.html). Overlay = modal
+ * (desktop ≥720px) / bottom-sheet (mobile <720px). 3 steps (perm / search / map)
+ * driven by `data-step`; geo on/off driven by `data-geo`.
+ *
+ * Scoped under `.gb-geoloc` (every selector prefixed). The CD's generic class names
+ * COLLIDE with the gb-foundation (.gb .btn / .gb .search / etc.), so they are renamed
+ * here AND in the markup: .btn→.geo-btn, .search→.geo-search, .saved→.geo-saved,
+ * .switch→.geo-switch, .map→.geo-map, .perm→.geo-perm, .geo-status kept (no collision),
+ * .ac/.ac-*→.geo-ac/.geo-ac-* (defensive), .loc-btn→.geo-loc-btn, .recenter kept under
+ * .geo-map, .pin kept under .geo-map, .addr-confirm→.geo-addr-confirm, .section-label
+ * →.geo-section-label, .backdrop→.geo-backdrop, .sheet*→.geo-sheet*. Tokens come from
+ * the gb-foundation (gb-tokens.css) — the CD's :root/[data-theme] token blocks are NOT
+ * redeclared here (all of them already exist in the foundation). Every other CD rule
+ * (geometry, colour refs) is kept verbatim. The CD demo bar / inline-script toggles are
+ * dropped — React state drives `data-step` / `data-geo`.
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+/* ===================== OVERLAY — modal (desktop) / bottom-sheet (mobile) ===================== */
+.gb-geoloc .geo-backdrop{position:fixed;inset:0;background:rgba(15,39,66,.5);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;padding:24px;z-index:70}
+.gb-geoloc .geo-sheet{width:100%;max-width:460px;max-height:90vh;display:flex;flex-direction:column;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-xl);box-shadow:var(--gb-shadow-pop);overflow:hidden}
+.gb-geoloc .geo-sheet__head{display:flex;align-items:center;gap:10px;padding:18px 20px;border-bottom:1px solid var(--gb-border)}
+.gb-geoloc .geo-sheet__head .ms.lead{cursor:pointer}
+.gb-geoloc .geo-sheet__head h2{flex:1;margin:0;font-family:var(--gb-font-display);font-weight:800;font-size:18px;letter-spacing:-.02em}
+.gb-geoloc .geo-sheet__head .iconbtn{background:none;border:none;padding:0;display:inline-flex;align-items:center}
+.gb-geoloc .geo-sheet__head .ms.close{cursor:pointer;color:var(--gb-muted)}
+.gb-geoloc .geo-sheet__body{flex:1;overflow-y:auto;padding:18px 20px}
+.gb-geoloc .geo-sheet__foot{padding:14px 20px;border-top:1px solid var(--gb-border)}
+
+.gb-geoloc .geo-btn{font-family:var(--gb-font-ui);font-weight:700;font-size:15px;cursor:pointer;border-radius:var(--gb-r-md);padding:14px;border:none;width:100%}
+.gb-geoloc .geo-btn--primary{display:inline-flex;align-items:center;justify-content:center;gap:8px;color:#fff;background:var(--gb-grad);box-shadow:var(--gb-shadow-btn)}
+.gb-geoloc .geo-btn--ghost{background:none;border:none;color:var(--gb-muted);font-weight:700;font-size:14px}
+.gb-geoloc .geo-btn[disabled]{opacity:.55;cursor:not-allowed}
+
+/* STEP: permission */
+.gb-geoloc .geo-perm{display:flex;flex-direction:column;align-items:center;text-align:center;padding:14px 8px 4px}
+.gb-geoloc .geo-perm__ico{position:relative;width:96px;height:96px;border-radius:50%;background:#FFF1E7;display:flex;align-items:center;justify-content:center;margin-bottom:20px}
+[data-theme="dark"] .gb-geoloc .geo-perm__ico{background:rgba(255,124,57,.16)}
+.gb-geoloc .geo-perm__ico .ms{font-size:48px;color:var(--gb-zest-600)}
+[data-theme="dark"] .gb-geoloc .geo-perm__ico .ms{color:var(--gb-zest)}
+.gb-geoloc .geo-perm h3{margin:0;font-family:var(--gb-font-display);font-weight:800;font-size:21px;letter-spacing:-.02em}
+.gb-geoloc .geo-perm p{margin:9px 0 4px;font-size:13.5px;line-height:1.55;color:var(--gb-muted);max-width:32ch}
+
+/* geo status row (on/off toggle) */
+.gb-geoloc .geo-status{display:flex;align-items:center;gap:11px;background:var(--gb-surface-2);border:1px solid var(--gb-border);border-radius:var(--gb-r-md);padding:12px 14px;margin-top:18px}
+.gb-geoloc .geo-status .ico{width:34px;height:34px;border-radius:var(--gb-r-sm);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.gb-geoloc .geo-status .ico .ms{font-size:20px}
+.gb-geoloc .geo-status .main{flex:1;text-align:start}
+.gb-geoloc .geo-status .main b{font-size:13px;font-weight:700}
+.gb-geoloc .geo-status .main span{display:block;font-size:11.5px;color:var(--gb-muted);margin-top:1px}
+.gb-geoloc .geo-switch{width:44px;height:26px;border-radius:var(--gb-r-pill);background:var(--gb-border-strong);position:relative;cursor:pointer;flex-shrink:0;border:none;padding:0}
+.gb-geoloc .geo-switch.on{background:var(--gb-success)}
+.gb-geoloc .geo-switch i{position:absolute;top:2px;inset-inline-start:2px;width:22px;height:22px;border-radius:50%;background:#fff;transition:inset-inline-start .15s}
+.gb-geoloc .geo-switch.on i{inset-inline-start:20px}
+/* geo on → green icon ; geo off → muted icon (root carries data-geo) */
+.gb-geoloc[data-geo="on"]  .geo-status .ico{background:var(--gb-success-bg)} .gb-geoloc[data-geo="on"]  .geo-status .ico .ms{color:var(--gb-success)}
+.gb-geoloc[data-geo="off"] .geo-status .ico{background:var(--gb-border)}     .gb-geoloc[data-geo="off"] .geo-status .ico .ms{color:var(--gb-muted)}
+.gb-geoloc[data-geo="off"] .geo-switch{background:var(--gb-border-strong)} .gb-geoloc[data-geo="off"] .geo-switch.on{background:var(--gb-border-strong)} .gb-geoloc[data-geo="off"] .geo-switch i{inset-inline-start:2px}
+.gb-geoloc .geo-on-txt{display:none} .gb-geoloc[data-geo="on"] .geo-on-txt{display:inline}
+.gb-geoloc .geo-off-txt{display:none} .gb-geoloc[data-geo="off"] .geo-off-txt{display:inline}
+
+/* STEP: search */
+.gb-geoloc .geo-search{display:flex;align-items:center;gap:10px;background:var(--gb-field-bg);border:1.5px solid var(--gb-focus-border);border-radius:var(--gb-r-md);padding:12px 14px;box-shadow:var(--gb-focus)}
+.gb-geoloc .geo-search .ms{font-size:20px;color:var(--gb-muted-2)}
+.gb-geoloc .geo-search input{flex:1;border:none;outline:none;background:none;font-size:14px;color:var(--gb-text)}
+.gb-geoloc .geo-search .ms.clear{cursor:pointer}
+.gb-geoloc .geo-loc-btn{display:flex;align-items:center;gap:10px;width:100%;margin:12px 0;padding:12px 14px;background:var(--gb-surface-2);border:1px solid var(--gb-border);border-radius:var(--gb-r-md);cursor:pointer;color:var(--gb-text);font-weight:600;font-size:13.5px}
+.gb-geoloc .geo-loc-btn .ms{font-size:20px;color:var(--gb-zest-600)}
+[data-theme="dark"] .gb-geoloc .geo-loc-btn .ms{color:var(--gb-zest)}
+/* typeahead list (à venir — inert placeholder) */
+.gb-geoloc .geo-ac{border:1px solid var(--gb-border);border-radius:var(--gb-r-md);overflow:hidden;margin-top:4px}
+.gb-geoloc .geo-ac-group{display:flex;align-items:center;gap:8px;padding:11px 14px 8px}
+.gb-geoloc .geo-ac-group .soon{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:var(--gb-zest-600);background:rgba(255,138,40,.12);border:1px solid rgba(255,138,40,.25);border-radius:var(--gb-r-pill);padding:4px 10px}
+.gb-geoloc .geo-ac-group .soon .ms{font-size:14px;color:inherit}
+[data-theme="dark"] .gb-geoloc .geo-ac-group .soon{color:var(--gb-zest)}
+.gb-geoloc .geo-ac-item{display:flex;align-items:center;gap:11px;padding:10px 14px;cursor:pointer;border-top:1px solid var(--gb-border);width:100%;background:none;text-align:start;font:inherit;color:inherit}
+.gb-geoloc .geo-ac-item:hover{background:var(--gb-surface-2)}
+.gb-geoloc .geo-ac-item .lead{width:32px;height:32px;border-radius:var(--gb-r-sm);background:var(--gb-surface-2);border:1px solid var(--gb-border);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.gb-geoloc .geo-ac-item .lead .ms{font-size:18px;color:var(--gb-muted-2)}
+.gb-geoloc .geo-ac-item .txt{flex:1;min-width:0}
+.gb-geoloc .geo-ac-item .txt b{font-size:13.5px;font-weight:600;display:block}
+.gb-geoloc .geo-ac-item .txt b mark{background:none;color:var(--gb-zest-600);font-weight:800}
+[data-theme="dark"] .gb-geoloc .geo-ac-item .txt b mark{color:var(--gb-zest)}
+.gb-geoloc .geo-ac-item .txt span{font-size:12px;color:var(--gb-muted)}
+.gb-geoloc .geo-section-label{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--gb-muted-2);margin:18px 0 10px}
+.gb-geoloc .geo-saved{display:flex;align-items:flex-start;gap:12px;padding:13px;border:1px solid var(--gb-border);border-radius:var(--gb-r-lg);cursor:pointer;margin-bottom:9px;width:100%;background:var(--gb-surface);text-align:start;font:inherit;color:inherit;transition:border-color .12s,background .12s}
+.gb-geoloc .geo-saved:hover{background:var(--gb-surface-2);border-color:var(--gb-border-strong)}
+.gb-geoloc .geo-saved.is-default{border-color:var(--gb-success-bd)}
+.gb-geoloc .geo-saved .ico{width:40px;height:40px;border-radius:var(--gb-r-md);background:var(--gb-surface-2);border:1px solid var(--gb-border);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.gb-geoloc .geo-saved .ico .ms{font-size:21px;color:var(--gb-zest-600)}
+[data-theme="dark"] .gb-geoloc .geo-saved .ico .ms{color:var(--gb-zest)}
+.gb-geoloc .geo-saved .main{flex:1;min-width:0}
+.gb-geoloc .geo-saved .main .title{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.gb-geoloc .geo-saved .main b{font-family:var(--gb-font-display);font-size:14.5px;font-weight:700;white-space:nowrap}
+.gb-geoloc .geo-saved .main .badge-default{display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:700;color:#fff;background:var(--gb-grad);border-radius:6px;padding:2px 7px;white-space:nowrap;flex-shrink:0}
+.gb-geoloc .geo-saved .main .badge-default .ms{font-size:11px;color:#fff}
+.gb-geoloc .geo-saved .main .line{display:block;margin-top:3px;font-size:12.5px;line-height:1.45;color:var(--gb-muted)}
+.gb-geoloc .geo-saved .main .note{display:inline-flex;align-items:flex-start;gap:5px;margin-top:6px;font-size:11.5px;color:var(--gb-muted-2)}
+.gb-geoloc .geo-saved .main .note .ms{font-size:14px;margin-top:1px;color:inherit}
+.gb-geoloc .geo-saved .ms.go{font-size:20px;color:var(--gb-muted-2);margin-top:9px}
+.gb-geoloc .geo-recents-empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;padding:18px 12px 8px;border:1px dashed var(--gb-border-strong);border-radius:var(--gb-r-lg);background:var(--gb-surface-2)}
+.gb-geoloc .geo-recents-empty .ms{font-size:30px;color:var(--gb-muted-2)}
+.gb-geoloc .geo-recents-empty p{margin:0;font-size:12.5px;color:var(--gb-muted);line-height:1.5;max-width:32ch}
+
+/* STEP: map (à venir — inert visual placeholder) */
+.gb-geoloc .geo-map{position:relative;height:280px;border-radius:var(--gb-r-md);overflow:hidden;background:repeating-linear-gradient(135deg,#E5EDE4 0 20px,#EDF1EB 20px 40px)}
+[data-theme="dark"] .gb-geoloc .geo-map{background:repeating-linear-gradient(135deg,#10202F 0 20px,#16263A 20px 40px)}
+.gb-geoloc .geo-map .pin{position:absolute;top:50%;left:50%;transform:translate(-50%,-100%);display:flex;flex-direction:column;align-items:center}
+.gb-geoloc .geo-map .pin .head{width:34px;height:34px;border-radius:50% 50% 50% 2px;background:var(--gb-zest-600);rotate:45deg;box-shadow:0 8px 18px -4px rgba(242,87,14,.6)}
+.gb-geoloc .geo-map .pin .shadow{width:14px;height:5px;border-radius:50%;background:rgba(15,39,66,.25);margin-top:3px}
+.gb-geoloc .geo-map .recenter{position:absolute;inset-inline-end:12px;bottom:12px;width:40px;height:40px;border-radius:var(--gb-r-md);background:var(--gb-surface);border:1px solid var(--gb-border);display:flex;align-items:center;justify-content:center;cursor:pointer}
+.gb-geoloc .geo-map .recenter .ms{font-size:20px;color:var(--gb-zest-600)}
+[data-theme="dark"] .gb-geoloc .geo-map .recenter .ms{color:var(--gb-zest)}
+.gb-geoloc .geo-addr-confirm{display:flex;align-items:flex-start;gap:11px;background:var(--gb-surface-2);border:1px solid var(--gb-border);border-radius:var(--gb-r-md);padding:13px;margin-top:12px}
+.gb-geoloc .geo-addr-confirm>.ms{font-size:20px;color:var(--gb-zest-600);flex-shrink:0}
+[data-theme="dark"] .gb-geoloc .geo-addr-confirm>.ms{color:var(--gb-zest)}
+.gb-geoloc .geo-addr-confirm b{font-size:13.5px;font-weight:700}
+.gb-geoloc .geo-addr-confirm span{display:block;font-size:12px;color:var(--gb-muted);margin-top:2px}
+.gb-geoloc .geo-addr-confirm .edit{margin-inline-start:auto;font-size:12.5px;font-weight:700;color:var(--gb-zest-600);cursor:pointer;background:none;border:none;padding:0;font-family:inherit}
+[data-theme="dark"] .gb-geoloc .geo-addr-confirm .edit{color:var(--gb-zest)}
+
+/* step visibility — the root carries data-step */
+.gb-geoloc[data-step="perm"] .step-search,.gb-geoloc[data-step="perm"] .step-map{display:none}
+.gb-geoloc[data-step="search"] .step-perm,.gb-geoloc[data-step="search"] .step-map{display:none}
+.gb-geoloc[data-step="map"] .step-perm,.gb-geoloc[data-step="map"] .step-search{display:none}
+.gb-geoloc:not([data-step="perm"]) .head-perm{display:none}
+.gb-geoloc:not([data-step="search"]) .head-search{display:none}
+.gb-geoloc:not([data-step="map"]) .head-map{display:none}
+
+/* ===================== RESPONSIVE — breakpoint 720px ===================== */
+@media (max-width:720px){
+  .gb-geoloc .geo-backdrop{align-items:flex-end;padding:0}
+  .gb-geoloc .geo-sheet{max-width:none;max-height:94vh;border-radius:var(--gb-r-xl) var(--gb-r-xl) 0 0;border-bottom:none}
+  .gb-geoloc .geo-map{height:230px}
+}

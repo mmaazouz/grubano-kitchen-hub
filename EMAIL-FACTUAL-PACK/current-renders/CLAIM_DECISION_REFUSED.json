@@ -1,0 +1,9 @@
+{
+  "id": "CLAIM_DECISION_REFUSED",
+  "from": "\"Grubano\" <contact@grubano.com>",
+  "to": "lea.martin@example.invalid",
+  "subject": "Réclamation GR-ABC123 : refusée par le restaurant",
+  "hasText": false,
+  "hasImages": false,
+  "hasTable": false
+}

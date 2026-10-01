@@ -1,0 +1,9 @@
+{
+  "id": "ACCOUNT_EMAIL_CHANGE_LINK",
+  "from": "\"Grubano\" <contact@grubano.com>",
+  "to": "lea.new@example.invalid",
+  "subject": "Confirmez votre nouvelle adresse e-mail — Grubano",
+  "hasText": false,
+  "hasImages": false,
+  "hasTable": false
+}

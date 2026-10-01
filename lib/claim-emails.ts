@@ -1,0 +1,615 @@
+// ── T43 (vague 3) — emails du cycle RÉCLAMATION (le minimum vital) ─────────────
+//
+// Constat d'exécution fondateur : le cycle réclamation n'envoyait AUCUN email —
+// un client refusé ne l'apprenait jamais, et Q5 (pas de fil d'échanges) fait de
+// l'email l'INTÉGRALITÉ de la relation client sur ce canal.
+//
+// Rail : le pipeline central EXISTANT — sendTransactional(trigger, dedupeKey)
+// → réclamation @@unique(trigger, dedupeKey) AVANT envoi (rejouer une décision
+// = 'duplicate', zéro doublon) + EmailLog tracé. AUCUN mécanisme d'envoi inventé.
+// Localisation : patron onboarding-nudge — Operator.locale (null ⇒ fr) →
+// getTranslations({ locale, namespace: 'claimEmails' }), 5 locales, RTL pour ar.
+//
+// Ces senders sont appelés par les ROUTES en blocs ADDITIFS post-succès
+// (best-effort, jamais bloquants) — la machine à états lib/claims, le moteur de
+// remboursement et la logique de décision d'arbitrage sont INTOUCHÉS.
+//
+// Triggers (H01), all under dedupeKey claim:<id>:
+//   claim_ack                    ouverture (montant demandé)
+//   claim_decision_accepted      resto accepte (→ arbitrage Grubano)
+//   claim_decision_refused       resto refuse
+//   claim_decision_approved      Grubano tranche, remboursement pas encore émis
+//   claim_decision_refunded      Grubano tranche + remboursement émis (moteur), OU avis de clôture « remboursée » (H06)
+//   claim_decision_refused_final refus confirmé / refusée par Grubano (arbitrage, ou avis de clôture délégué)
+//   claim_closed_by_support      avis de clôture sur déclaration (H06)
+// The record trigger claim_closure_record (H05) is never sent: lib/claims writes it, this module only reads it.
+//
+// ROUND 13 (slice W6):
+//   H02 / R-D7 — every claim sender takes `claimsOpen`, read by the caller immediately before the call: while claims are
+//   closed nothing is sent, and the skip is traced (one EmailLog row « (non envoyé : claims_disabled) »).
+//   H06 — sendClaimClosureEmail sends a closure notice only for a claim closed by THIS build (the H05 record), on
+//   database facts and, for a refund, on Stripe's own refund object read in the same request — never an operator input.
+//   H15 — this module imports only lib/claim-action-rules, lib/prisma, lib/transactional-emails, lib/order-ref,
+//   lib/onboarding-nudge and next-intl/server: never lib/claims, lib/refund or lib/stripe, so no notice path can move money,
+//   and the Stripe webhook (which imports lib/claims) never bundles a sender.
+//   I-08 — exactly one EmailLog row per attempt that reaches a template: traceMiss when sendTransactional is never
+//   reached, sendTransactional's own row otherwise. A claim that is not a closure (not_applicable) is not an attempt and
+//   leaves none; a 'duplicate' leaves none (the earlier attempt's row stands).
+
+import { orderRef } from '@/lib/order-ref'
+// D′ L9.1 — EIGHT BECAME TEN, and each addition is named so it stays a decision rather than a drift.
+// `@/lib/claim-email-shell` is the e-mail chrome, extracted so the claim-agnostic restaurant sender can
+// share it instead of re-rendering the same notice a second way. It is a LEAF (zero imports), so it adds no
+// reach and the H15 walk is unaffected. `@/lib/refund-restaurant-notice` holds that sender: the restaurant's
+// post-money notice no longer depends on a claim, because a SUPPORT refund legitimately has none, and this
+// module now DELEGATES to it so one refund can only ever produce one such notice, whichever path finds it.
+import { claimShell, esc, euros } from '@/lib/claim-email-shell'
+import { sendRefundRestaurantNotice } from '@/lib/refund-restaurant-notice'
+import { getTranslations } from 'next-intl/server'
+import { prisma } from '@/lib/prisma'
+import { sendTransactional, logEmailSkipped, type SendStatus } from '@/lib/transactional-emails'
+import { resolveNudgeLocale } from '@/lib/onboarding-nudge'
+import { readClaimSelection, selectionLineSummary } from '@/lib/claim-selection'
+// D′ L8 (T-46): the confirmed financial block, as a TYPE only. lib/claim-financial-effect is a LEAF — it
+// imports nothing at all — so the H15 reachability ban (no lib/claims, lib/refund or lib/stripe from a
+// sender module) is untouched by naming it here. The figures are computed by the CALLER and passed in,
+// exactly like ClosureEvidence: a sender never reads a ledger, a row or Stripe for itself.
+import type { ClaimFinancialEffect } from '@/lib/claim-financial-effect'
+import {
+  claimClosureKind, refusalEmailKind, refundedRowProven, CLOSURE_TRIGGER, CLOSURE_RECORD_TRIGGER, closureRecordKey,
+  RESTAURANT_REFUNDED_TRIGGER, restaurantRefundedKey,
+  type ClaimFacts, type ClosureKind,
+} from '@/lib/claim-action-rules'
+
+
+
+
+/** H03: why a claim e-mail did not go out. The closed set — I-08's no_address, not_eligible and duplicate are not in it. */
+export type ClaimEmailWhy =
+  | 'claims_disabled'
+  | 'no_recipient'
+  | 'smtp_disabled'
+  | 'refunded_row_unproven'
+  | 'refunded_row_failed'
+  | 'stripe_not_confirmed'
+  | 'claim_not_found'
+  | 'no_closure_record'
+  | 'not_a_closure'
+  /** D′ L8 (§16): Stripe settled the refund, but the ledger cannot state the figures — no financial e-mail. */
+  | 'ledger_incomplete'
+  | 'sender_error'
+/** H03: what a claim sender returns. */
+export type ClaimEmailResult = { status: SendStatus | 'not_applicable'; why?: ClaimEmailWhy }
+/** H06: the closure sender also says which closure it read. */
+export type ClosureEmailResult = ClaimEmailResult & { kind: ClosureKind | null }
+/** H06: evidence produced by the server in the same request — Stripe's refund object amount, never our row's. */
+export type ClosureEvidence = { basis: 'stripe_read'; amountCents: number }
+
+/** Revue T43 (« aucun envoi sans ligne d'audit ») + H11 : un MISS hors rail — sendTransactional jamais atteint —
+ *  laisse sa trace EmailLog via logEmailSkipped (lui-même best-effort, ne throw jamais), avec sa raison. */
+async function traceMiss(trigger: string, claimId: string, why: ClaimEmailWhy) {
+  try { await logEmailSkipped(trigger, `claim ${claimId}`, { claimId, reason: why }, why) } catch { /* best-effort */ }
+}
+
+/** H02: the lease is closed — nothing is sent, one traced skip. */
+async function claimsClosedSkip(trigger: string, claimId: string): Promise<ClaimEmailResult> {
+  await traceMiss(trigger, claimId, 'claims_disabled')
+  return { status: 'skipped', why: 'claims_disabled' }
+}
+
+/** H03: sendTransactional's answer. Its own EmailLog row exists for skipped / failed: only a console line is added. */
+function transportResult(trigger: string, claimId: string, r: { status: SendStatus }): ClaimEmailResult {
+  if (r.status === 'skipped') {
+    console.error(`[EMAIL MISS] [${trigger}] claim ${claimId} smtp_disabled`)
+    return { status: 'skipped', why: 'smtp_disabled' }
+  }
+  if (r.status === 'failed') {
+    console.error(`[EMAIL MISS] [${trigger}] claim ${claimId} sender_error`)
+    return { status: 'failed', why: 'sender_error' }
+  }
+  return { status: r.status }
+}
+
+
+/** Le client (Operator) destinataire : email + prénom + locale email préférée. */
+async function resolveConsumer(consumerId: string) {
+  const consumer = await prisma.operator.findUnique({
+    where:  { id: consumerId },
+    select: { email: true, name: true, locale: true },
+  })
+  if (!consumer?.email) return null
+  return { to: consumer.email, name: consumer.name ?? '', locale: resolveNudgeLocale(consumer.locale) }
+}
+
+/** D′ L8: the OWNING restaurant's recipient — its operator's address, name and e-mail locale. */
+async function resolveRestaurantRecipient(restaurantId: string) {
+  const resto = await prisma.restaurant.findUnique({
+    where:  { id: restaurantId },
+    select: { name: true, operator: { select: { email: true, name: true, locale: true } } },
+  })
+  const email = resto?.operator?.email
+  if (!email) return null
+  return {
+    to: email,
+    restaurantName: resto?.name ?? '',
+    locale: resolveNudgeLocale(resto?.operator?.locale ?? null),
+  }
+}
+
+/**
+ * ── D′ L8 (T-46, spec v2 §6.5, resto notice (3)) — THE RESTAURANT IS TOLD WHAT A REFUND COST IT ──
+ *
+ * POST-MONEY, AND THAT IS THE WHOLE POINT. This is not a workflow notification: the money has already
+ * left. So no product flag may suppress it — `claimNoticeGate('post_money'|'closure')` is literally `true`
+ * (lib/claim-flags), and a Claims kill-switch that hid a debit a restaurateur can see on their Stripe
+ * statement would make the product less truthful than the bank. The parameter is kept, and checked, so the
+ * per-file notice-class pin stays meaningful and so this sender behaves like every other one.
+ *
+ * WHAT IT WILL NOT SAY. The figures are the caller's CONFIRMED block, derived from the ledger line of the
+ * Stripe refund (lib/claim-financial-effect). An unconfirmed block sends NOTHING and returns
+ * `ledger_incomplete` (§16): a mail saying « environ » or reconstructing a probable commission is worse
+ * than no mail, because the restaurateur would reconcile their accounts against it. The body carries no
+ * Stripe id, no refund id, no charge or PaymentIntent — a restaurateur has no use for them and they are
+ * ours, not theirs.
+ *
+ * IDEMPOTENCY is anchored on the PROVEN refund, not on the claim: `claim:<id>:resto_refunded:<re_>`. A
+ * claim can carry more than one refund over its life, and each one is its own financial event; anchoring
+ * on the claim alone would send once and then go quiet on the second debit. The trigger is distinct from
+ * every consumer trigger, so the two audiences never share a dedupe slot.
+ */
+// The trigger and the dedupe key live in lib/claim-action-rules (beside CLOSURE_TRIGGER), because the
+// admin's « was the restaurant told? » list needs the SAME key and must not import a sender module.
+// Re-exported here so callers that already import this module find them where they look.
+export { RESTAURANT_REFUNDED_TRIGGER, restaurantRefundedKey } from '@/lib/claim-action-rules'
+
+export async function sendRestaurantRefundedEmail(p: {
+  claimId:        string
+  restaurantId:   string
+  orderId:        string
+  /** The Stripe refund PROVEN succeeded by the caller. The dedupe anchor, never printed. */
+  stripeRefundId: string
+  /** The T-46 block. Only `confirmed: true` sends. */
+  effect:         ClaimFinancialEffect
+  /** The notice class read at send time by the calling file — `true` for post-money and closure. */
+  claimsOpen:     boolean
+}): Promise<ClaimEmailResult> {
+  // D′ L9.1 — THIS IS NOW A DELEGATION, and that is the point of the lot. The implementation moved to
+  // `lib/refund-restaurant-notice`, which needs no claim, because a SUPPORT refund legitimately has none and
+  // spec v2 §6.3 asked for a notice the old signature could not produce (it required a `claimId` and keyed its
+  // dedupe on `claim:<id>:resto_refunded:<re_>`). Keeping a second implementation here would have given one
+  // refund two senders and two chances to diverge — the failure this chantier has already paid for twice.
+  //
+  // The CLAIM path keeps this entry point, and keeps passing its `claimId`, for two reasons: the EmailLog
+  // trail still names the claim, and the LEGACY dedupe key can only be checked when a claim id is in hand.
+  const r = await sendRefundRestaurantNotice({
+    restaurantId:   p.restaurantId,
+    orderId:        p.orderId,
+    stripeRefundId: p.stripeRefundId,
+    effect:         p.effect,
+    noticeOpen:     p.claimsOpen,
+    traceLabel:     p.claimId,
+    claimId:        p.claimId,
+  })
+  // The claim vocabulary is narrower than the notice module's; map rather than widen it, so the toast table
+  // (H11, nine frozen keys) is untouched.
+  if (r.status === 'sent') return { status: 'sent' }
+  if (r.status === 'duplicate') return { status: 'duplicate' }
+  if (r.status === 'failed') return { status: 'failed', why: 'sender_error' }
+  // `notice_closed` maps back to this module's OWN word for the same fact, `claims_disabled`, because the
+  // toast table (H11) is nine frozen keys and this path used to answer exactly that. The mapping is explicit
+  // for each value: a default that swallowed an unknown reason into `ledger_incomplete` would tell an
+  // operator a ledger line is missing when it is not.
+  return { status: 'skipped', why: r.why === 'no_recipient' ? 'no_recipient'
+    : r.why === 'smtp_disabled' ? 'smtp_disabled'
+    : r.why === 'stripe_not_confirmed' ? 'stripe_not_confirmed'
+    : r.why === 'notice_closed' ? 'claims_disabled'
+    : 'ledger_incomplete' }
+}
+
+// ── (1) Accusé de réception — à l'OUVERTURE d'une réclamation ──────────────────
+export async function sendClaimAckEmail(p: {
+  claimId:              string
+  consumerId:           string
+  orderId:              string
+  requestedAmountCents: number
+  /**
+   * L7 (T-50) — the persisted selection snapshot, as stored on the claim. The acknowledgement then
+   * tells the customer WHICH articles they claimed and in what quantity, instead of only a figure.
+   * Absent, legacy or unreadable ⇒ NOTHING extra is rendered: a claim with no recorded selection must
+   * not acquire one in an e-mail, and « toute la commande » is never inferred from silence.
+   */
+  selection?:           unknown
+  /** H02: isClaimsEnabled() read by the caller immediately before this call. */
+  claimsOpen:           boolean
+}): Promise<ClaimEmailResult> {
+  if (!p.claimsOpen) return claimsClosedSkip('claim_ack', p.claimId)
+  try {
+    const consumer = await resolveConsumer(p.consumerId)
+    if (!consumer) {
+      await traceMiss('claim_ack', p.claimId, 'no_recipient')
+      return { status: 'skipped', why: 'no_recipient' }
+    }
+    const t = await getTranslations({ locale: consumer.locale, namespace: 'claimEmails' })
+    const ref = orderRef(p.orderId)
+    const r = await sendTransactional({
+      to:        consumer.to,
+      subject:   t('ack.subject', { ref }),
+      trigger:   'claim_ack',
+      dedupeKey: `claim:${p.claimId}`,
+      html: claimShell({
+        rtl:   consumer.locale === 'ar',
+        title: t('ack.title'),
+        footer: t('footer'),
+        bodyHtml:
+          // Revue : pas de « Bonjour , » orphelin quand Operator.name est vide.
+          (consumer.name ? `<p>${esc(t('greeting', { name: consumer.name }))}</p>` : '')
+          + `<p>${esc(t('ack.body', { ref, euros: euros(consumer.locale, p.requestedAmountCents) }))}</p>`
+          // L7 — the articles and quantities, when the claim recorded any. No PRICE per line, deliberately:
+          // a figure beside an article reads as « this is what you will get back », and nothing here is a
+          // promise about money. PRE-MONEY only, like the rest of this message.
+          + ((): string => {
+              const lines = selectionLineSummary(readClaimSelection(p.selection))
+              if (lines.length === 0) return ''
+              return `<p style="font-size:14px">${esc(t('ack.items'))}</p>`
+                + `<ul style="font-size:14px;margin:4px 0 0;padding-inline-start:18px">`
+                + lines.map((l) => `<li>${esc(l)}</li>`).join('')
+                + `</ul>`
+            })()
+          // H12: ack.next promises no later e-mail and carries the reference.
+          + `<p style="font-size:13px;color:#6b7280">${esc(t('ack.next', { ref }))}</p>`,
+      }),
+    })
+    return transportResult('claim_ack', p.claimId, r)
+  } catch (e) {
+    console.error('[EMAIL MISS] [claim-emails] ack failed (non-fatal):',
+      p.claimId, e instanceof Error ? e.message : e)
+    await traceMiss('claim_ack', p.claimId, 'sender_error')
+    return { status: 'failed', why: 'sender_error' }
+  }
+}
+
+// ── (1-bis) P0-08 — annulation d'une commande PAYÉE par le restaurant ──────────
+// Remplace, POUR LES COMMANDES PAYÉES SEULEMENT, l'email d'annulation générique
+// (qui ne disait RIEN de l'argent — constat d'exécution du 06/08). Contenu
+// VÉRIDIQUE : la commande est annulée, une demande de remboursement a été
+// transmise à Grubano (createSystemClaim — file d'arbitrage, réel).
+// AUCUNE promesse de remboursement déjà effectué, AUCUN délai, AUCUNE promesse d'un
+// e-mail ultérieur (H12). Même trigger `order_cancelled` + dedupeKey `order:<id>` que
+// l'email générique → UNE seule annulation notifiée par commande, rejeu = duplicate.
+// Not a claim e-mail (H13): the ROUTE chooses this variant only while the lease is still open at send time.
+export async function sendOrderCancelledPaidEmail(p: {
+  orderId:        string
+  consumerId:     string
+  restaurantName: string
+  /** Revue P0-08 : true = AUCUNE demande système créée (une réclamation était
+   *  déjà ACTIVE sur la commande) — le corps dit alors que la réclamation EN
+   *  COURS porte la question du remboursement, au lieu d'annoncer une demande
+   *  qui n'existe pas. */
+  existingClaim?: boolean
+}): Promise<{ status: SendStatus }> {
+  try {
+    const consumer = await resolveConsumer(p.consumerId)
+    if (!consumer) {
+      await traceMiss('order_cancelled', p.orderId, 'no_recipient')
+      return { status: 'skipped' }
+    }
+    const t = await getTranslations({ locale: consumer.locale, namespace: 'claimEmails' })
+    const ref = orderRef(p.orderId)
+    return await sendTransactional({
+      to:        consumer.to,
+      subject:   t('orderCancelledPaid.subject', { ref }),
+      trigger:   'order_cancelled',
+      dedupeKey: `order:${p.orderId}`,
+      html: claimShell({
+        rtl:    consumer.locale === 'ar',
+        title:  t('orderCancelledPaid.title'),
+        footer: t('footer'),
+        bodyHtml:
+          (consumer.name ? `<p>${esc(t('greeting', { name: consumer.name }))}</p>` : '')
+          + `<p>${esc(t(p.existingClaim ? 'orderCancelledPaid.bodyExisting' : 'orderCancelledPaid.body', { ref, resto: p.restaurantName }))}</p>`
+          + `<p style="font-size:13px;color:#6b7280">${esc(t('orderCancelledPaid.next', { ref }))}</p>`,
+      }),
+    })
+  } catch (e) {
+    console.error('[EMAIL MISS] [claim-emails] cancelled-paid failed (non-fatal):',
+      p.orderId, e instanceof Error ? e.message : e)
+    await traceMiss('order_cancelled', p.orderId, 'sender_error')
+    return { status: 'failed' }
+  }
+}
+
+// ── (1-ter) LOT C (P-1 M7) — annulation d'une commande PAYÉE, CLAIMS OFF ───────
+// Réglage bêta (décision fondateur D4) : CLAIMS_ENABLED=false → l'annulation
+// d'une commande payée ne crée AUCUNE demande système. L'email (1-bis) ci-dessus
+// MENTIRAIT (« demande transmise ») et le générique de lib/transactional-emails
+// est muet sur l'argent (« contactez directement le restaurant »). Cette variante
+// dit la vérité opérationnelle : commande payée annulée, remboursement instruit
+// par le SUPPORT — AUCUNE promesse de remboursement déjà effectué, AUCUN délai, et
+// AUCUNE réclamation nommée : elle reste vraie qu'une demande système cachée existe
+// ou non (H13). MÊME trigger `order_cancelled` + dedupeKey `order:<id>` que les deux
+// emails qu'elle remplace → UNE seule notification d'annulation par commande.
+export async function sendOrderCancelledPaidOffEmail(p: {
+  orderId:        string
+  consumerId:     string
+  restaurantName: string
+}): Promise<{ status: SendStatus }> {
+  try {
+    const consumer = await resolveConsumer(p.consumerId)
+    if (!consumer) {
+      await traceMiss('order_cancelled', p.orderId, 'no_recipient')
+      return { status: 'skipped' }
+    }
+    const t = await getTranslations({ locale: consumer.locale, namespace: 'claimEmails' })
+    const ref = orderRef(p.orderId)
+    return await sendTransactional({
+      to:        consumer.to,
+      subject:   t('orderCancelledPaidOff.subject', { ref }),
+      trigger:   'order_cancelled',
+      dedupeKey: `order:${p.orderId}`,
+      html: claimShell({
+        rtl:    consumer.locale === 'ar',
+        // Le titre du gabarit réutilise la clé existante « Commande annulée »
+        // (orderCancelledPaid.title, déjà traduite ×5) — le sujet porte l'angle argent.
+        title:  t('orderCancelledPaid.title'),
+        footer: t('footer'),
+        bodyHtml:
+          (consumer.name ? `<p>${esc(t('greeting', { name: consumer.name }))}</p>` : '')
+          + `<p>${esc(t('orderCancelledPaidOff.body', { ref, resto: p.restaurantName }))}</p>`
+          + `<p style="font-size:13px;color:#6b7280">${esc(t('orderCancelledPaidOff.next', { ref }))}</p>`,
+      }),
+    })
+  } catch (e) {
+    console.error('[EMAIL MISS] [claim-emails] cancelled-paid-off failed (non-fatal):',
+      p.orderId, e instanceof Error ? e.message : e)
+    await traceMiss('order_cancelled', p.orderId, 'sender_error')
+    return { status: 'failed' }
+  }
+}
+
+// ── (2) Notification de DÉCISION au client ─────────────────────────────────────
+export type ClaimDecisionKind =
+  | 'accepted'           // le RESTAURANT accepte → transmise à Grubano (P0-24)
+  | 'refused'            // le RESTAURANT refuse
+  | 'refunded'           // GRUBANO tranche en faveur du client, remboursement ÉMIS (moteur, H03)
+  | 'approved'           // GRUBANO tranche en faveur du client, remboursement pas encore émis
+  | 'refused_final'      // GRUBANO confirme le refus DU RESTAURANT — définitif (kind refused_confirmed only)
+  | 'refused_by_grubano' // GRUBANO refuse, sans refus du restaurant au dossier — définitif (H03, F02)
+  | 'approval_withdrawn' // D′ L4 (T-09) : GRUBANO RETIRE une approbation avant tout paiement — le dossier repart en arbitrage
+
+/** H03: the trigger of each decision kind — also the tag of every traceMiss. */
+export const DECISION_TRIGGER: Record<ClaimDecisionKind, string> = {
+  accepted:           'claim_decision_accepted',
+  refused:            'claim_decision_refused',
+  refunded:           'claim_decision_refunded',
+  approved:           'claim_decision_approved',
+  refused_final:      'claim_decision_refused_final',
+  refused_by_grubano: 'claim_decision_refused_final',
+  approval_withdrawn: 'claim_approval_withdrawn',
+}
+
+/** The template keys of each decision kind. refused_by_grubano reuses the final-decision subject (H03). */
+const DECISION_TEMPLATE: Record<ClaimDecisionKind, { subject: string; title: string; body: string }> = {
+  accepted:           { subject: 'accepted.subject',     title: 'accepted.title',         body: 'accepted.body' },
+  refused:            { subject: 'refused.subject',      title: 'refused.title',          body: 'refused.body' },
+  refunded:           { subject: 'refunded.subject',     title: 'refunded.title',         body: 'refunded.body' },
+  approved:           { subject: 'approved.subject',     title: 'approved.title',         body: 'approved.body' },
+  refused_final:      { subject: 'refusedFinal.subject', title: 'refusedFinal.title',     body: 'refusedFinal.body' },
+  refused_by_grubano: { subject: 'refusedFinal.subject', title: 'refusedByGrubano.title', body: 'refusedByGrubano.body' },
+  approval_withdrawn: { subject: 'withdrawn.subject',    title: 'withdrawn.title',         body: 'withdrawn.body' },
+}
+
+/**
+ * D′ L4 (§6.4) — the dedupe key of a DECISION notice. An approval and a withdrawal are stamped with the
+ * instant of the decision they announce, so a re-decided claim sends a new notice instead of being
+ * silently swallowed by the key of the previous one. Every other kind keeps the historical claim key.
+ */
+export function decisionDedupeKey(claimId: string, decision: ClaimDecisionKind, stamp?: Date | string | null): string {
+  if (decision !== 'approved' && decision !== 'approval_withdrawn') return `claim:${claimId}`
+  const iso = stamp instanceof Date ? stamp.toISOString() : (typeof stamp === 'string' && stamp ? stamp : null)
+  // No instant to stamp with ⇒ the historical key: better one notice too few than a duplicate storm.
+  if (!iso) return `claim:${claimId}`
+  return `claim:${claimId}:${decision === 'approved' ? 'approved' : 'withdrawn'}:${iso}`
+}
+
+export async function sendClaimDecisionEmail(p: {
+  claimId:    string
+  consumerId: string
+  orderId:    string
+  decision:   ClaimDecisionKind
+  /** Motif saisi par le décideur (resto ou admin) — affiché s'il existe. */
+  reason?:        string | null
+  /** Nom du restaurant (décisions resto) — dit PAR QUI la décision est prise. */
+  restaurantName?: string | null
+  /** Montant remboursé (décision 'refunded'), en centimes — celui du moteur, jamais le montant demandé. */
+  refundedCents?:  number | null
+  /**
+   * D′ L4 (D-11, spec v2 §6.4) — le montant APPROUVÉ, en centimes, RELU EN BASE après le CAS.
+   * C'est la décision de Grubano, pas la demande du client : jamais `requestedAmountCents`.
+   * L'e-mail « approved » le nomme ; il ne promet aucune émission ni aucun délai bancaire.
+   */
+  approvedCents?:  number | null
+  /**
+   * D′ L4 (§6.4) — la dédup est PAR DÉCISION, pas par réclamation : `claim:<id>:approved:<arbitratedAt ISO>`.
+   * Un cycle approuver 20 € → retirer → approuver 12 € doit envoyer DEUX avis d'approbation distincts et
+   * un avis de retrait ; une clé par réclamation en aurait avalé un et le client aurait lu le mauvais montant.
+   * Absent ⇒ la clé historique `claim:<id>` (les autres décisions gardent leur comportement).
+   */
+  decisionStamp?:  Date | string | null
+  /** H02: isClaimsEnabled() read by the caller immediately before this call. */
+  claimsOpen:      boolean
+}): Promise<ClaimEmailResult> {
+  const trigger = DECISION_TRIGGER[p.decision]
+  if (!p.claimsOpen) return claimsClosedSkip(trigger, p.claimId)
+  try {
+    const consumer = await resolveConsumer(p.consumerId)
+    if (!consumer) {
+      await traceMiss(trigger, p.claimId, 'no_recipient')
+      return { status: 'skipped', why: 'no_recipient' }
+    }
+    const t = await getTranslations({ locale: consumer.locale, namespace: 'claimEmails' })
+    const ref = orderRef(p.orderId)
+    const resto = p.restaurantName ?? t('theRestaurant')
+    const tpl = DECISION_TEMPLATE[p.decision]
+    const body =
+      // Revue : pas de « Bonjour , » orphelin quand Operator.name est vide.
+      (consumer.name ? `<p>${esc(t('greeting', { name: consumer.name }))}</p>` : '')
+      // D′ L4: an 'approved' notice names the APPROVED amount; 'refunded' keeps the ENGINE's amount.
+      + `<p>${esc(t(tpl.body, { ref, resto, euros: euros(consumer.locale, (p.decision === 'approved' ? p.approvedCents : p.refundedCents) ?? 0) }))}</p>`
+      + (p.reason ? `<p style="font-size:13px;color:#6b7280">${esc(t('reasonLabel'))} ${esc(p.reason)}</p>` : '')
+      // H12: the contest sentence is conditional (the 48 h window or a closed lease can withhold it) and carries the reference.
+      + (p.decision === 'refused' ? `<p style="font-size:13px;color:#6b7280">${esc(t('refused.contest', { ref }))}</p>` : '')
+      // D′ L10 (§7, S-21 second half) — THE BANK CLAUSE BELONGS AFTER THE MONEY, and it was on the wrong
+      // e-mail. Measured across all five locales: the ONLY claim string carrying it was `approved.body` — a
+      // notice sent when NOTHING has moved — while `refunded.body` (« un remboursement de … a été émis … »)
+      // carried none. So the customer was told about their bank before the money left and told nothing once it
+      // had. It is added HERE, on 'refunded' only, from the SHARED key: the founder's §7 allows a proven refund
+      // to be stated as a fact PROVIDED the appearance on the account is attributed to the bank.
+      + (p.decision === 'refunded' ? `<p style="font-size:13px;color:#6b7280">${esc(t('bankNoteIssued'))}</p>` : '')
+    const r = await sendTransactional({
+      to:        consumer.to,
+      subject:   t(tpl.subject, { ref }),
+      trigger,
+      dedupeKey: decisionDedupeKey(p.claimId, p.decision, p.decisionStamp),
+      html: claimShell({
+        rtl:      consumer.locale === 'ar',
+        title:    t(tpl.title),
+        footer:   t('footer'),
+        bodyHtml: body,
+      }),
+    })
+    return transportResult(trigger, p.claimId, r)
+  } catch (e) {
+    console.error('[EMAIL MISS] [claim-emails] decision failed (non-fatal):',
+      p.claimId, p.decision, e instanceof Error ? e.message : e)
+    await traceMiss(trigger, p.claimId, 'sender_error')
+    return { status: 'failed', why: 'sender_error' }
+  }
+}
+
+// ── (3) ROUND 13 (H06) — AVIS DE CLÔTURE ─────────────────────────────────────────
+/** The EmailLog tag of a notice attempt whose closure kind was not read (claim missing, or a failed read). */
+const CLOSURE_NOTICE_UNREAD_TRIGGER = 'claim_closure_notice'
+/** F03 (binders): the claims bound to a row that count as its owners — a resume_mismatch binding is disowned. */
+const binderWhere = (rowId: string) => ({
+  refundId: rowId,
+  OR: [{ refundError: null }, { NOT: { refundError: { startsWith: 'resume_mismatch' } } }],
+})
+
+/**
+ * H06 sendClaimClosureEmail. It receives only a claim id, evidence the SERVER produced in this request, and the gate —
+ * never an operator amount, outcome or note. Check order:
+ *   (1) the claim → claim_not_found; (2) its closure kind → not_applicable (REVERTED_AFTER_REFUND included);
+ *   (3) THE closure record of this build (H05, AMF-2 — never AdminAuditLog) → no_closure_record;
+ *   (4) the gate → claims_disabled; (5) refusal kinds → the decision sender, kind from provenance, reason from the DB;
+ *   (6) refunded → the bound row: failed → refunded_row_failed; not proven, or two or more binders → refunded_row_unproven;
+ *   (7) refunded → Stripe evidence: an integer amount > 0 read at Stripe, else stripe_not_confirmed; equal to the row's
+ *       amount → refundedLinked (with the amount), otherwise refundRecorded (no amount);
+ *   (8) the recipient → no_recipient; (9) declarations → closedBySupport (no refund sentence, no amount, no note);
+ *   (10) sendTransactional under CLOSURE_TRIGGER[kind], claim:<id>.
+ * It never throws.
+ */
+export async function sendClaimClosureEmail(p: {
+  claimId:    string
+  evidence?:  ClosureEvidence
+  /** H02: isClaimsEnabled() read by the caller immediately before this call. */
+  claimsOpen: boolean
+}): Promise<ClosureEmailResult> {
+  let trigger = CLOSURE_NOTICE_UNREAD_TRIGGER
+  let kind: ClosureKind | null = null
+  const skip = async (why: ClaimEmailWhy): Promise<ClosureEmailResult> => {
+    await traceMiss(trigger, p.claimId, why)
+    return { status: 'skipped', kind, why }
+  }
+  try {
+    // (1)
+    const c = await prisma.claim.findUnique({
+      where:  { id: p.claimId },
+      select: {
+        id: true, status: true, consumerId: true, orderId: true, refundId: true, refundError: true,
+        arbitrationDecision: true, restaurantResponse: true, arbitrationReason: true,
+      },
+    })
+    if (!c) return await skip('claim_not_found')
+    // (2)
+    kind = claimClosureKind(c as ClaimFacts)
+    if (!kind) return { status: 'not_applicable', kind: null, why: 'not_a_closure' }
+    trigger = CLOSURE_TRIGGER[kind]
+    // (3) H05 / AMF-2: the only eligibility source. A legacy closure has none and is never sent (R-D6 (d), E-18).
+    const record = await prisma.emailDispatch.findFirst({
+      where:  { trigger: CLOSURE_RECORD_TRIGGER, dedupeKey: closureRecordKey(c.id) },
+      select: { id: true },
+    })
+    if (!record) return await skip('no_closure_record')
+    // (4) R-D7
+    if (!p.claimsOpen) return await skip('claims_disabled')
+    // (5) the refusal notice is the decision e-mail of its kind.
+    if (kind === 'refused_confirmed' || kind === 'refused_by_grubano') {
+      const r = await sendClaimDecisionEmail({
+        claimId:    c.id,
+        consumerId: c.consumerId,
+        orderId:    c.orderId,
+        decision:   refusalEmailKind(c as ClaimFacts),
+        reason:     c.arbitrationReason ?? null,
+        claimsOpen: p.claimsOpen,
+      })
+      return { ...r, kind }
+    }
+    let linkedCents: number | null = null
+    if (kind === 'refunded') {
+      // (6) F03 on the bound row, and the binder count of A-S43.
+      const row = c.refundId
+        ? await prisma.refund.findUnique({ where: { id: c.refundId }, select: { orderId: true, status: true, amountCents: true, stripeRefundId: true } })
+        : null
+      // IMPLEMENTATION NOTE (W6) on H06 step 6: the binder count precedes the failed-row check. A row with two or more
+      // binders (A-S43) is not this claim's evidence whatever its status, and the customer reads the manual review there
+      // (F03 refundedRowTruth null) — so the sender answers refunded_row_unproven, the J-C25 parity. Both answers map to
+      // the same operator toast (rowUnproven).
+      const binders = c.refundId ? await prisma.claim.count({ where: binderWhere(c.refundId) }) : 0
+      if (binders >= 2) return await skip('refunded_row_unproven')
+      if (row && row.status === 'failed') return await skip('refunded_row_failed')
+      if (!row || !refundedRowProven(row, c.orderId)) return await skip('refunded_row_unproven')
+      // (7) Stripe's refund object, read in this request — never row.amountCents.
+      const ev = p.evidence
+      if (!ev || ev.basis !== 'stripe_read' || !Number.isInteger(ev.amountCents) || ev.amountCents <= 0) {
+        return await skip('stripe_not_confirmed')
+      }
+      linkedCents = ev.amountCents === row.amountCents ? ev.amountCents : null
+    }
+    // (8)
+    const consumer = await resolveConsumer(c.consumerId)
+    if (!consumer) return await skip('no_recipient')
+    const t = await getTranslations({ locale: consumer.locale, namespace: 'claimEmails' })
+    const ref = orderRef(c.orderId)
+    // (9) declarations → closedBySupport; refunded → linked (Stripe amount = row amount) or recorded (no amount).
+    const tpl = kind === 'refunded'
+      ? (linkedCents !== null
+        ? { subject: t('refunded.subject', { ref }), title: t('refunded.title'), body: t('refundedLinked.body', { ref, euros: euros(consumer.locale, linkedCents) }), next: t('refundedLinked.next', { ref }) }
+        : { subject: t('refundRecorded.subject', { ref }), title: t('refundRecorded.title'), body: t('refundRecorded.body', { ref }), next: t('refundRecorded.next', { ref }) })
+      : { subject: t('closedBySupport.subject', { ref }), title: t('closedBySupport.title'), body: t('closedBySupport.body', { ref }), next: t('closedBySupport.next', { ref }) }
+    // (10)
+    const r = await sendTransactional({
+      to:        consumer.to,
+      subject:   tpl.subject,
+      trigger,
+      dedupeKey: `claim:${c.id}`,
+      html: claimShell({
+        rtl:      consumer.locale === 'ar',
+        title:    tpl.title,
+        footer:   t('footer'),
+        bodyHtml:
+          (consumer.name ? `<p>${esc(t('greeting', { name: consumer.name }))}</p>` : '')
+          + `<p>${esc(tpl.body)}</p>`
+          + `<p style="font-size:13px;color:#6b7280">${esc(tpl.next)}</p>`
+          // D′ L10 (§7, S-21) — a closure that ANNOUNCES A REFUND states the bank dependency; a closure that
+          // announces nothing of the kind (closedBySupport) must NOT, or it would imply money moved.
+          + (kind === 'refunded' ? `<p style="font-size:13px;color:#6b7280">${esc(t('bankNoteIssued'))}</p>` : ''),
+      }),
+    })
+    return { ...transportResult(trigger, c.id, r), kind }
+  } catch (e) {
+    console.error('[EMAIL MISS] [claim-emails] closure notice failed (non-fatal):',
+      p.claimId, e instanceof Error ? e.message : e)
+    await traceMiss(trigger, p.claimId, 'sender_error')
+    return { status: 'failed', kind, why: 'sender_error' }
+  }
+}

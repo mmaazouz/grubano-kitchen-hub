@@ -1,0 +1,28 @@
+{
+  "objet": "Polices de la charte AUTO-HÉBERGÉES (mission polices+initiales+contention, arbitrage Design 2026-08-19). Déclarations : app/brand-fonts.css (importé par app/[locale]/layout.tsx). Toutes sous licence SIL OFL 1.1 (fichiers OFL-*.txt ci-contre).",
+  "ua-acquisition": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+  "fichiers": {
+    "gabarito-latin.woff2": { "source": "COPIE de scripts/design-qa-refs/fonts/ (provenance.json de ce dossier : gstatic /s/gabarito/v9/…W4U.woff2)", "sha256": "780dd129f53815f23c37d4b786c98139c3cfa3086c391ec0bb9aa40d26e7a8fe" },
+    "gabarito-latin-ext.woff2": { "source": "COPIE de scripts/design-qa-refs/fonts/ (gstatic /s/gabarito/v9/…W4XUng.woff2)", "sha256": "d38497efbc5dbb9c00a3f4a23940b0acc4cd4759ee8dae32dd58cff1332af200" },
+    "hanken-grotesk-latin.woff2": { "source": "COPIE de scripts/design-qa-refs/fonts/ (gstatic /s/hankengrotesk/v12/…59A.woff2)", "sha256": "e9201eddf1d41d0b62253295d869ce3cf65768f7102b797f02c7f8c876b4a9d5" },
+    "hanken-grotesk-latin-ext.woff2": { "source": "COPIE de scripts/design-qa-refs/fonts/", "sha256": "768af2923e0ab1549f1dfba0a5c8ea749c4c01f01d8e77ffaf7fcd12f57a0a24" },
+    "hanken-grotesk-cyrillic-ext.woff2": { "source": "COPIE de scripts/design-qa-refs/fonts/", "sha256": "7ba47c78279dc529afe577dc2476bc8fd3c0e32f78efa26dca9f9382d49a157d" },
+    "hanken-grotesk-vietnamese.woff2": { "source": "COPIE de scripts/design-qa-refs/fonts/", "sha256": "992b5d147edde9d637ce22e7bb9cc9e6909c05410226b36a2e581ada9877eb4a" },
+    "jetbrains-mono-latin.woff2": { "source": "COPIE de scripts/design-qa-refs/fonts/ (gstatic /s/jetbrainsmono/v24/…)", "sha256": "83c005d49d8a6a50474c73a5a36ac0468076e9c4a29da7bdb14995d80560a5be" },
+    "jetbrains-mono-latin-ext.woff2": { "source": "COPIE de scripts/design-qa-refs/fonts/", "sha256": "db5ff4db83e580426280e9337a58dc57d3a83784a1b03ad80914651594441d52" },
+    "jetbrains-mono-cyrillic.woff2": { "source": "COPIE de scripts/design-qa-refs/fonts/", "sha256": "e17cfd15fb96909d64095015f958207063a0c07191da3512df7d560a781aebdf" },
+    "jetbrains-mono-cyrillic-ext.woff2": { "source": "COPIE de scripts/design-qa-refs/fonts/", "sha256": "62213be8a78b42f1e29d1452d91e2f8b3e745572a9dd98d3941e39fa00b37d76" },
+    "jetbrains-mono-greek.woff2": { "source": "COPIE de scripts/design-qa-refs/fonts/", "sha256": "0a557721b1f8b36d3f3f84442689a71ca4a744300abcb46a1953f51bfc663b66" },
+    "jetbrains-mono-vietnamese.woff2": { "source": "COPIE de scripts/design-qa-refs/fonts/", "sha256": "c89b9cc0bc6262bd4f8d8494b6961601f3aefa829d08c2e3635f4d501d3a47c2" },
+    "cairo-arabic.woff2": { "source": "https://fonts.gstatic.com/s/cairo/v31/SLXVc1nY6HkvangtZmpQdkhzfH5lkSscQyyS4J0.woff2 (css2 Cairo:wght@400;500;600;700;800, UA Chrome, 2026-08-19)", "sha256": "748022f50c427456ad66031e855349be3448ee1f05a5f1eb59574ebe0c686749", "octets": 30896 },
+    "cairo-latin.woff2": { "source": "https://fonts.gstatic.com/s/cairo/v31/SLXVc1nY6HkvangtZmpQdkhzfH5lkSscRiyS.woff2", "sha256": "82c13cbd1352d76e97c3d335caa912ae68fecdc3949a43cf8d149eb892384c1b", "octets": 33820 },
+    "cairo-latin-ext.woff2": { "source": "https://fonts.gstatic.com/s/cairo/v31/SLXVc1nY6HkvangtZmpQdkhzfH5lkSscSCyS4J0.woff2", "sha256": "da6ada83c3a87c2f0211325dc0a123702e1d4a940958b3e943ac4f37b31d5371", "octets": 16648 },
+    "material-symbols-rounded.woff2": { "source": "déjà self-hosté (go-live hardening 9e1888a) — inchangé par cette mission", "sha256": "e3bdfa4d822f187fbfd753caf070bd29879ac73366854cf891039dae9bdcf27b" }
+  },
+  "licences": {
+    "OFL-gabarito.txt": "SIL OFL 1.1 — copie de scripts/design-qa-refs/fonts/",
+    "OFL-hanken-grotesk.txt": "SIL OFL 1.1 — copie de scripts/design-qa-refs/fonts/",
+    "OFL-jetbrains-mono.txt": "SIL OFL 1.1 — copie de scripts/design-qa-refs/fonts/",
+    "OFL-cairo.txt": "SIL OFL 1.1 — https://raw.githubusercontent.com/google/fonts/main/ofl/cairo/OFL.txt (2026-08-19)"
+  }
+}

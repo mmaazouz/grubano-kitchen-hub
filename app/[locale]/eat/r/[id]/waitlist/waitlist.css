@@ -1,0 +1,117 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+ * /eat/r/[id]/waitlist — « Liste d'attente » (restos complets) — VERBATIM repro of
+ * the FROZEN CD ref (Notion 38efd2c9-…-8167, file eat/waitlist.html). NEW epic,
+ * FULLY VISUAL / INERT: there is NO waitlist backend yet (future chantier — real
+ * queue, position, ETA, SMS/notif). The dial position / ETA / steps / AI alternatives
+ * are placeholders; the « Rejoindre » + « Quitter » buttons + the IA suggestions are
+ * inert (« bientôt »). Only the restaurant identity is bound to REAL data.
+ *
+ * Page CONTENT — renders inside EatShell in is-bare / immersive mode (route /eat/r/
+ * is IMMERSIVE: desktop rail kept, no top bar, this page's header governs), exactly
+ * like /eat/r/[id]/reserver. The CD design tokens all live in the gb-foundation
+ * (gb-tokens.css — the gb-zest / gb-basil / gb-info / gb-grad / gb-r families all present);
+ * only the COMPONENT CSS lives here, scoped under `.gb-waitlist`. The CD's generic
+ * `.btn` (the foundation already owns `.gb .btn`) is renamed `.wl-btn`; every other
+ * class is kept verbatim, scoped. RTL handled via logical properties + `.ms-flip`.
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+/* CD `.stage` → page wrapper. The shell already centres the column on desktop and
+ * provides the page background; we keep the CD card centred + capped at 430px and a
+ * comfortable vertical padding. On mobile (≤560px) the card goes full-bleed (CD). */
+.gb-waitlist{display:flex;align-items:flex-start;justify-content:center;padding:clamp(20px,4vw,40px) 20px}
+.gb-waitlist .wl{width:100%;max-width:430px;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-xl);box-shadow:var(--gb-shadow-card);overflow:hidden;display:flex;flex-direction:column}
+
+/* header */
+.gb-waitlist .wl__head{display:flex;align-items:center;gap:11px;padding:16px 18px;border-bottom:1px solid var(--gb-border)}
+.gb-waitlist .wl__head .back{display:inline-flex;align-items:center;justify-content:center;background:none;border:none;padding:0;margin:0;cursor:pointer;color:var(--gb-text)}
+.gb-waitlist .wl__head .back .ms{font-size:23px}
+.gb-waitlist .wl__head h1{flex:1;margin:0;font-family:var(--gb-font-display);font-weight:800;font-size:18px;letter-spacing:-.02em;color:var(--gb-text)}
+
+/* body */
+.gb-waitlist .wl__body{flex:1;overflow-y:auto;padding:18px}
+
+/* restaurant header (REAL name + cuisine; « COMPLET » + distance = placeholder) */
+.gb-waitlist .rst{display:flex;align-items:center;gap:12px;background:var(--gb-surface-2);border:1px solid var(--gb-border);border-radius:var(--gb-r-md);padding:11px 13px;margin-bottom:18px}
+.gb-waitlist .rst .img{width:48px;height:48px;border-radius:var(--gb-r-sm);background:repeating-linear-gradient(135deg,#FFE3CE 0 8px,#FFF1E7 8px 16px);flex-shrink:0}
+[data-theme="dark"] .gb-waitlist .rst .img{background:repeating-linear-gradient(135deg,#3A2C22 0 8px,#2C2118 8px 16px)}
+.gb-waitlist .rst .m{flex:1;min-width:0}
+.gb-waitlist .rst .m b{font-family:var(--gb-font-display);font-weight:700;font-size:15px;display:flex;align-items:center;gap:7px;color:var(--gb-text)}
+.gb-waitlist .rst .m b .full{font-size:10px;font-weight:700;color:var(--gb-zest-600);background:#FFF1E7;border-radius:5px;padding:2px 7px}
+[data-theme="dark"] .gb-waitlist .rst .m b .full{color:var(--gb-zest);background:rgba(255,124,57,.16)}
+.gb-waitlist .rst .m span{font-size:12px;color:var(--gb-muted)}
+
+/* dial (position ring) */
+.gb-waitlist .dial{display:flex;flex-direction:column;align-items:center;text-align:center;padding:6px 0 4px}
+.gb-waitlist .dial__ring{width:128px;height:128px;border-radius:50%;background:conic-gradient(var(--gb-zest-600) 0 75%,var(--gb-border) 75% 100%);display:flex;align-items:center;justify-content:center;margin-bottom:18px}
+.gb-waitlist .dial__ring.queued{background:conic-gradient(var(--gb-zest-600) 0 66%,var(--gb-border) 66% 100%)}
+.gb-waitlist .dial__in{width:104px;height:104px;border-radius:50%;background:var(--gb-surface);display:flex;flex-direction:column;align-items:center;justify-content:center}
+.gb-waitlist .dial__in .pos{font-family:var(--gb-font-display);font-weight:900;font-size:34px;line-height:1;color:var(--gb-zest-600)}
+[data-theme="dark"] .gb-waitlist .dial__in .pos{color:var(--gb-zest)}
+.gb-waitlist .dial__in small{font-size:9.5px;font-weight:700;letter-spacing:.06em;color:var(--gb-muted-2);margin-top:3px}
+.gb-waitlist .dial h2{margin:0;font-family:var(--gb-font-display);font-weight:800;font-size:20px;letter-spacing:-.02em;color:var(--gb-text)}
+.gb-waitlist .dial p{margin:8px 0 0;font-size:13px;line-height:1.5;color:var(--gb-muted);max-width:30ch}
+.gb-waitlist .dial .eta{display:inline-flex;align-items:center;gap:6px;margin-top:14px;font-size:13px;font-weight:700;color:var(--gb-text);background:var(--gb-surface-2);border:1px solid var(--gb-border);border-radius:var(--gb-r-pill);padding:8px 15px}
+.gb-waitlist .dial .eta .ms{font-size:17px;color:var(--gb-zest-600)}
+[data-theme="dark"] .gb-waitlist .dial .eta .ms{color:var(--gb-zest)}
+
+/* party-size selector (inert) */
+.gb-waitlist .field{margin-top:18px}
+.gb-waitlist .field .lbl{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--gb-muted-2);margin-bottom:9px}
+.gb-waitlist .party{display:flex;background:var(--gb-surface-2);border:1px solid var(--gb-border);border-radius:var(--gb-r-md);padding:4px;gap:2px}
+.gb-waitlist .party span{flex:1;text-align:center;font-weight:700;font-size:13.5px;color:var(--gb-muted);padding:9px 0;border-radius:var(--gb-r-sm);cursor:pointer}
+.gb-waitlist .party span.sel{color:#fff;background:var(--gb-grad)}
+
+/* notify row (inert toggle) */
+.gb-waitlist .notify{display:flex;align-items:center;gap:11px;background:var(--gb-info-bg);border-radius:var(--gb-r-md);padding:12px 13px;margin-top:14px}
+.gb-waitlist .notify .ms{font-size:19px;color:var(--gb-info)}
+.gb-waitlist .notify .m{flex:1}
+.gb-waitlist .notify .m b{font-size:12.5px;font-weight:700;color:var(--gb-text)}
+.gb-waitlist .notify .m span{display:block;font-size:11px;color:var(--gb-muted);margin-top:1px}
+.gb-waitlist .switch{width:44px;height:26px;border-radius:var(--gb-r-pill);background:var(--gb-basil-600);position:relative;cursor:pointer;flex-shrink:0}
+.gb-waitlist .switch i{position:absolute;top:2px;inset-inline-end:2px;width:22px;height:22px;border-radius:50%;background:#fff}
+
+/* queued — live banner + progress steps */
+.gb-waitlist .live{display:flex;align-items:center;gap:8px;justify-content:center;font-size:12.5px;font-weight:700;color:var(--gb-basil-600);margin-bottom:14px}
+.gb-waitlist .live i{width:8px;height:8px;border-radius:50%;background:var(--gb-basil-600);animation:gb-pulse 1.4s infinite}
+.gb-waitlist .steps{display:flex;align-items:center;margin:6px 4px 18px}
+.gb-waitlist .steps .d{width:13px;height:13px;border-radius:50%;background:var(--gb-border-strong);flex-shrink:0}
+.gb-waitlist .steps .d.on{background:var(--gb-zest-600)}
+.gb-waitlist .steps .d.cur{background:var(--gb-zest-600);box-shadow:0 0 0 4px #FFF1E7}
+[data-theme="dark"] .gb-waitlist .steps .d.cur{box-shadow:0 0 0 4px rgba(255,124,57,.22)}
+.gb-waitlist .steps .s{flex:1;height:3px;background:var(--gb-border);margin:0 4px}
+.gb-waitlist .steps .s.on{background:var(--gb-zest-600)}
+
+/* AI alternatives (inert « bientôt ») */
+.gb-waitlist .lbl2{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--gb-muted-2);margin:0 0 11px;display:flex;align-items:center}
+.gb-waitlist .alt{display:flex;align-items:center;gap:11px;border-radius:var(--gb-r-md);padding:1.5px;background:linear-gradient(135deg,#FFB020,#FF6A1F,#2BA45C);margin-bottom:9px}
+.gb-waitlist .alt__in{display:flex;align-items:center;gap:11px;background:var(--gb-surface);border-radius:calc(var(--gb-r-md) - 1px);padding:10px 12px;width:100%}
+.gb-waitlist .alt__in .img{width:40px;height:40px;border-radius:var(--gb-r-sm);flex-shrink:0}
+.gb-waitlist .alt__in .img.g{background:repeating-linear-gradient(135deg,#CDEBD8 0 7px,#EAF7EF 7px 14px)}
+.gb-waitlist .alt__in .img.b{background:repeating-linear-gradient(135deg,#D7E3F2 0 7px,#EAEFF6 7px 14px)}
+[data-theme="dark"] .gb-waitlist .alt__in .img.g{background:repeating-linear-gradient(135deg,#1E3B2B 0 7px,#172E22 7px 14px)}
+[data-theme="dark"] .gb-waitlist .alt__in .img.b{background:repeating-linear-gradient(135deg,#21344B 0 7px,#1A2A3D 7px 14px)}
+.gb-waitlist .alt__in .m{flex:1;min-width:0}
+.gb-waitlist .alt__in .m b{font-size:13px;font-weight:700;color:var(--gb-text)}
+.gb-waitlist .alt__in .m span{display:block;font-size:11px;color:var(--gb-muted)}
+.gb-waitlist .alt__in .open{font-size:10.5px;font-weight:700;color:var(--gb-basil-600);background:rgba(46,164,92,.12);border-radius:6px;padding:4px 9px;white-space:nowrap}
+.gb-waitlist .ai-tag{display:inline-flex;align-items:center;gap:5px;font-size:9.5px;font-weight:700;color:var(--gb-zest-600);background:rgba(255,138,40,.14);border-radius:6px;padding:3px 8px;margin-inline-start:7px}
+[data-theme="dark"] .gb-waitlist .ai-tag{color:var(--gb-zest)}
+
+/* footer (CTAs — inert) */
+.gb-waitlist .wl__foot{flex-shrink:0;border-top:1px solid var(--gb-border);padding:13px 18px;background:var(--gb-surface)}
+.gb-waitlist .wl-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;font-family:var(--gb-font-ui);font-weight:700;font-size:15px;border-radius:var(--gb-r-md);padding:14px;cursor:pointer;border:none}
+.gb-waitlist .wl-btn--primary{color:#fff;background:var(--gb-grad);box-shadow:var(--gb-shadow-btn)}
+.gb-waitlist .wl-btn--line{color:var(--gb-text);background:var(--gb-surface);border:1px solid var(--gb-border-strong);margin-top:9px}
+
+/* state toggle (the page root carries data-state="join|queued") */
+.gb-waitlist[data-state="join"] .s-queued{display:none}
+.gb-waitlist[data-state="queued"] .s-join{display:none}
+
+/* visually-hidden aria-live region (inert « bientôt » feedback) */
+.gb-waitlist .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+
+/* mobile full-bleed (CD @media max-width:560px) */
+@media (max-width:560px){
+  .gb-waitlist{padding:0}
+  .gb-waitlist .wl{max-width:none;border:none;border-radius:0;min-height:calc(100vh - 0px)}
+}

@@ -1,0 +1,104 @@
+import { NextResponse } from 'next/server'
+import { z } from 'zod'
+import { resolveAdmin } from '@/lib/admin-guard'
+import { attributeClaimRefund, adoptStripeRefundForClaim, STRIPE_REFUND_ID_RE } from '@/lib/claims'
+import { claimNoticeGate } from '@/lib/claim-flags'
+import { sendClaimClosureEmail, type ClosureEmailResult, type ClosureEvidence } from '@/lib/claim-emails'
+
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
+
+// ── POST /api/admin/claims/[id]/attribute (T-49 audit fix) ────────────────────────
+//
+// THE ESCALATION EXIT. The audit proved FINANCIAL VERIFICATION was an absorbing state: once a
+// claim was parked because no refund carried its identity, the automatic branches could never
+// fire again — nothing can create a row stamped for that claim afterwards, and nothing deletes
+// refund rows — so the claim, the order lock and the money-review row were permanent. The
+// founder's condition was explicit: fail-closed is acceptable ONLY if a real recovery path
+// exists. This is it.
+//
+// It is NOT the guess the policy forbids. The operator supplies the missing LINK — which existing
+// refund of THIS order belongs to this claim — and the system reads Stripe's evidence for that
+// row BEFORE any write (ROUND 13, G12), binding it only if Stripe reports it SUCCEEDED, on
+// Stripe's amount, in one Serializable transaction (C6). The operator states no outcome, states
+// no amount, and moves no money: there is no engine call, no Stripe write and no retry behind it.
+// ROUND 13 (D8 / D10 (iii) / H07, slice W6): after an OBSERVED commit (outcome 'refunded', never a preview, a refusal, a
+// lost race or the mirror-written 409), the closure notice is attempted on the Stripe refund object read by this request.
+//
+// A refund from another order is refused outright, so a claim can never be settled by an
+// unrelated payment. Every attribution is recorded in the admin audit log.
+//
+// NOT gated by CLAIMS_ENABLED: the money question outlives the feature flag, and gating the only
+// exit behind the flag is how the previous dead end was built.
+//
+// ROUND-6 AUDIT FIX (filed P0, confirmed P1): the row path above needs a LOCAL Refund row, and a
+// refund issued from the Stripe Dashboard leaves none — so that population had no exit short of
+// paying twice. The second body shape takes a Stripe refund id (re_…) and NOTHING else; the server
+// proves at Stripe that it sits on this order's payment and charge, mirrors it into a local row
+// only if Stripe says it SUCCEEDED, then binds it through attributeWithEvidence (C6). `dryRun: true`
+// reads and returns the facts without writing, so the console can show them first. Neither shape
+// carries an amount or an outcome field: the operator cannot supply one.
+// ROUND-8 AUDIT FIX (P3): both branches are STRICT. Non-strict objects stripped unknown keys, so a
+// body carrying both shapes parsed as the row shape — dropping dryRun:true and performing a write
+// the caller had asked not to happen — and extras such as an amount were silently discarded
+// instead of refused.
+const schema = z.union([
+  z.object({
+    refundRowId: z.string().min(1).max(200),
+    // ROUND 13 (D8 (6)): read Stripe's evidence for the row and write nothing.
+    dryRun:      z.boolean().optional(),
+    note:        z.string().max(1000).optional(),
+  }).strict(),
+  z.object({
+    stripeRefundId: z.string().regex(STRIPE_REFUND_ID_RE),
+    dryRun:         z.boolean().optional(),
+    note:           z.string().max(1000).optional(),
+  }).strict(),
+])
+
+/** H07: the closure-notice attempt; the lease is read at send time. It never throws and never changes the HTTP result. */
+async function closureNotice(claimId: string, evidence: ClosureEvidence | undefined): Promise<ClosureEmailResult> {
+  try {
+    // D′ L1 (FIN-EMAIL-01, S-25): an explicit closure is always sendable, whatever the feature flags say.
+    return await sendClaimClosureEmail({ claimId, evidence, claimsOpen: claimNoticeGate('closure') })
+  } catch {
+    return { status: 'failed', kind: null, why: 'sender_error' }
+  }
+}
+
+export async function POST(req: Request, { params }: { params: { id: string } }) {
+  const operator = await resolveAdmin()
+  if (!operator) return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
+
+  const parsed = schema.safeParse(await req.json().catch(() => ({})))
+  if (!parsed.success) return NextResponse.json({ error: 'Requête invalide.' }, { status: 400 })
+
+  if ('stripeRefundId' in parsed.data) {
+    const result = await adoptStripeRefundForClaim({
+      claimId:        params.id,
+      stripeRefundId: parsed.data.stripeRefundId,
+      dryRun:         parsed.data.dryRun === true,
+      adminId:        operator.id,
+      note:           parsed.data.note,
+    })
+    // The facts travel with a refusal too: the operator sees WHAT Stripe said, not just "no".
+    if (!result.ok) return NextResponse.json({ error: result.error, facts: result.facts ?? null, wrote: result.wrote ?? null }, { status: result.status })
+    const customerEmail = parsed.data.dryRun !== true && result.outcome === 'refunded'
+      ? await closureNotice(params.id, result.evidence === 'stripe_read' ? { basis: 'stripe_read', amountCents: result.amountCents } : undefined)
+      : null
+    return NextResponse.json({ result, customerEmail })
+  }
+
+  const result = await attributeClaimRefund({
+    claimId:     params.id,
+    refundRowId: parsed.data.refundRowId,
+    dryRun:      parsed.data.dryRun === true,
+    adminId:     operator.id,
+    note:        parsed.data.note,
+  })
+  if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
+  const customerEmail = parsed.data.dryRun !== true && result.outcome === 'refunded'
+    ? await closureNotice(params.id, result.evidence === 'stripe_read' ? { basis: 'stripe_read', amountCents: result.amountCents } : undefined)
+    : null
+  return NextResponse.json({ result, customerEmail })
+}

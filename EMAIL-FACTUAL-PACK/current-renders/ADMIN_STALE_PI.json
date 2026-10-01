@@ -1,0 +1,9 @@
+{
+  "id": "ADMIN_STALE_PI",
+  "from": "\"Grubano\" <contact@grubano.com>",
+  "to": "admin-alerts@example.invalid",
+  "subject": "[Grubano] Paiement capturé sur un PaymentIntent périmé — réconciliation requise",
+  "hasText": false,
+  "hasImages": false,
+  "hasTable": false
+}

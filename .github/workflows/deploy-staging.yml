@@ -1,0 +1,579 @@
+name: Deploy to Staging
+
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-staging
+  # Do NOT cancel in-progress runs: the cold FTPS sync (~30+ min for the
+  # standalone node_modules) was being killed by rapid develop pushes, leaving
+  # the staging app half-uploaded. Better to queue and let each finish.
+  cancel-in-progress: false
+
+# Opt JS actions into Node 24 now (checkout/setup-node/FTP-Deploy-Action still
+# ship Node 20, deprecated on the runner from 2026-06-02). Silences the warning.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  # ── Finance gate (A6 gardiens) ────────────────────────────────────────────
+  # Pure unit tests against lib/commission, lib/invoice's splits + month
+  # bounds, and the ledger golden equation. NO DB / NO Stripe / NO network.
+  # The deploy job below has `needs: test` — red tests block the FTP push.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
+      # Widened from test:finance after the full-suite audit (referral mock
+      # repaired, middleware green): every tests/ file now gates the deploy.
+      - name: Unit tests (full suite)
+        run: npm run test:ci
+      # B4 (Sprint 0 Lot B) — compile gate BLOQUANT : next build casse parfois
+      # quand les tests passent (ex. useSearchParams sans <Suspense>). Le job
+      # deploy échouerait de toute façon à son propre build — ici on échoue
+      # AVANT le FTP, plus vite et plus lisiblement (aucun risque nouveau).
+      # Secrets repo-level : pure gate de compilation — le deploy rebuilde
+      # ensuite avec l'env de sa cible.
+      # T-123 — ARBITRAGE FONDATEUR (2026-09-28) : le gel des rails money-OUT est un GATE DE BUILD.
+      # « Je préfère un build qui échoue si l'un de ces rails money-OUT est accidentellement ouvert
+      #   plutôt qu'une simple surveillance qui laisse compiler. »
+      # Il n'était invoqué que dans tests.yml, un workflow SÉPARÉ qui ne bloque pas ce déploiement :
+      # la règle n'avait donc aucune dent sur le chemin qui livre. Placé AVANT le build, il échoue
+      # vite et lisiblement. Portée honnête : il juge l'environnement du RUNNER — le `.env.local` du
+      # serveur n'est jamais écrit par la CI, et c'est phase2-preflight.js (T-119) qui l'asserte.
+      - name: Money-OUT rails frozen (T-123, build gate)
+        run: npm run check:flags
+      - name: Generate Prisma client (compile gate)
+        run: npx prisma generate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_STAGING }}
+      - name: Build (compile gate)
+        run: npm run build
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_STAGING }}
+          NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
+          NEXTAUTH_URL: https://app.grubano.com
+          NEXT_TELEMETRY_DISABLED: 1
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # i18n completeness gate — fails the deploy if any locale is missing or
+      # has empty keys vs messages/fr.json, so untranslated strings never ship.
+      - name: Check translations
+        run: node scripts/check-translations.js
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_STAGING }}
+
+      - name: Build
+        run: npm run build
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_STAGING }}
+          NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
+          NEXTAUTH_URL: https://app.grubano.com
+          NEXT_TELEMETRY_DISABLED: 1
+
+      - name: Patch server.js for Linux
+        run: node scripts/fix-server.js
+
+      - name: Prepare deploy folder
+        run: |
+          mkdir -p deploy-temp/.next
+
+          # Copy entire standalone output — INCLUDING its own trimmed node_modules.
+          # .next/standalone/node_modules is built by Next.js standalone mode and
+          # contains next, react, and all runtime packages the server needs.
+          # Do NOT delete it — the server cannot start without it.
+          cp -r .next/standalone/. deploy-temp/
+
+          # Verify node_modules/next is present (sanity check)
+          if [ ! -d deploy-temp/node_modules/next ]; then
+            echo "ERROR: node_modules/next missing from standalone output!"
+            echo "Check that next.config.js has: output: 'standalone'"
+            exit 1
+          fi
+          echo "OK: node_modules/next present in standalone"
+
+          # Static assets (CSS/JS bundles — not inside standalone by default)
+          cp -r .next/static deploy-temp/.next/static
+
+          # Prisma schema (only schema.prisma needed on server)
+          mkdir -p deploy-temp/prisma
+          cp prisma/schema.prisma deploy-temp/prisma/schema.prisma
+
+          # Server-run OPS scripts (JS only). scripts/server/ is the DESIGNATED
+          # server bucket: prune-next.js (post-deploy static prune) + admin/ops
+          # scripts like legacy-password-reset-notify.js (C-1). The WHOLE bucket
+          # ships (*.js) so a new server ops script deploys automatically. The .sh
+          # deploy scripts and the local dev tooling at scripts/ root (notion-sync,
+          # seed-demo-data, backfill-*) deliberately do NOT ship to the public server.
+          mkdir -p deploy-temp/scripts/server
+          cp scripts/server/*.js deploy-temp/scripts/server/
+
+          # Shared PURE reconciliation core (Phase 2 final preflight): the same file the
+          # HTTP route bundles is shipped as-is so the server-side read-only operator
+          # (scripts/server/phase2-preflight.js) runs the IDENTICAL financial logic
+          # directly against DB + Stripe TEST. Plain CommonJS, no secret, no auth.
+          mkdir -p deploy-temp/lib
+          cp lib/ledger-check-core.js deploy-temp/lib/ledger-check-core.js
+
+          # D' L5 (spec v2 8.5 / 8.8) — the payable selection of the claims financial rail.
+          # Same reason as above: the pay-window operator decides whether to OPEN a refund
+          # window by counting what the rail would pay, so it must ask the EXACT query the
+          # rail asks. Plain CommonJS, no auth, no env read, no write, no Stripe.
+          cp lib/claims-payable-core.js deploy-temp/lib/claims-payable-core.js
+
+          # Cron probes (rail A6 gardiens — ledger check + monthly invoices,
+          # called by cPanel cron). ONLY scripts/cron/ ships — never the whole
+          # scripts/ folder (local tooling like notion-sync must NOT reach a
+          # public server).
+          mkdir -p deploy-temp/scripts/cron
+          cp scripts/cron/*.js deploy-temp/scripts/cron/
+
+          # Public assets
+          [ -d public ] && cp -r public deploy-temp/public || true
+
+          # .htaccess is INTENTIONALLY NOT written into deploy-temp/. The
+          # server's .htaccess is the live Passenger config and is not FTP-
+          # writable (553 Permission denied on STOR). Passenger reads it in
+          # place; we don't need to re-ship it on every deploy. The FTP step
+          # also excludes .htaccess below as a second safety net.
+
+          # .env.local is INTENTIONALLY NOT written into deploy-temp/. The
+          # ENV_LOCAL_CONTENT secret was unset, so this line was creating an
+          # empty file that the FTP sync would push and overwrite the real
+          # server .env.local — the runtime source of truth. The server's
+          # .env.local is now authoritative; the FTP step also excludes
+          # .env* below as a second safety net so a deploy-temp/.env.local
+          # accidentally introduced upstream still can't reach the server.
+
+          echo "deploy-temp size: $(du -sh deploy-temp | cut -f1)"
+          echo "Files to upload: $(find deploy-temp -type f | wc -l)"
+
+      # S0-3 — build traceability: VERSION at the deploy root + public/version.json
+      # served statically at https://app.grubano.com/version.json (the middleware
+      # matcher excludes paths with a file extension, so it is never auth-gated).
+      # Static artifacts only — the app never reads them; zero runtime change.
+      - name: Stamp build info (VERSION + version.json)
+        run: node scripts/build-info.js deploy-temp
+
+      - name: Deploy via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          # O2SWITCH_HOST secret now holds the o2switch FTP hostname
+          # (ftp.deyi0010.odns.fr). The SSH step below uses the IP directly,
+          # because FTP and SSH use different endpoints on o2switch.
+          server: ${{ secrets.O2SWITCH_HOST }}
+          username: ${{ secrets.O2SWITCH_FTP_USER }}
+          password: ${{ secrets.O2SWITCH_FTP_PASS }}
+          # o2switch Pure-FTPd enforces explicit FTPS (FTP over TLS) on port 21.
+          # Plain `ftp` (the action default) hangs and times out — this is why
+          # no staging deploy had ever succeeded. ftps = explicit AUTH TLS.
+          protocol: ftps
+          port: 21
+          # Raise from the 30s default: TLS handshake + the many small files in
+          # the standalone node_modules push past 30s on shared hosting.
+          timeout: 120000
+          # Verbose so the exact FTP error is visible in the run log next time
+          # (job logs are admin-gated via the API).
+          log-level: verbose
+          local-dir: ./deploy-temp/
+          server-dir: /app.grubano.com/
+          exclude: |
+            # ~/app.grubano.com/node_modules on the server is a SYMLINK to
+            # the nodevenv's lib/node_modules. Pure-FTPd cannot CWD into it,
+            # so any FTP write under node_modules/ returns 550 "Can't change
+            # directory to node_modules" and aborts the whole sync. The app
+            # already runs on the nodevenv's modules — node_modules must NOT
+            # be transferred by FTP at all.
+            node_modules
+            node_modules/**
+            **/.git*
+            **/.git*/**
+            # Server-regenerated artifacts: the Post-deploy SSH step runs
+            # `npx prisma@5.22.0 generate` which rebuilds .prisma/client/*
+            # with the o2switch nodevenv binaryTarget. Including it in the
+            # FTP transfer is both redundant and triggers reproducible
+            # 553 "Can't open that file: No such file or directory" errors
+            # on Pure-FTPd when dir state diverges between deploys, which
+            # aborts the whole job (Post-deploy + restart + health check
+            # all skipped). Exclude entirely; the server regenerates it.
+            node_modules/.prisma
+            node_modules/.prisma/**
+            # Local CLI binaries / symlinks — not used at runtime by the
+            # standalone server, and FTP-syncing symlinks is fragile.
+            node_modules/.bin
+            node_modules/.bin/**
+            # @vercel/og + its WASM is shipped via deploy-temp/vercel-og.tar.gz
+            # and extracted server-side in the Post-deploy SSH step. Excluding
+            # the raw tree here keeps Pure-FTPd from drowning in thousands of
+            # nested binary STORs (the failure mode that took down deploys
+            # after the SEO change pulled in next/og).
+            node_modules/next/dist/compiled/@vercel/og
+            node_modules/next/dist/compiled/@vercel/og/**
+            # Never overwrite the server's .env.local — it is the runtime
+            # source of truth (DB URL, NEXTAUTH_SECRET, etc.). The workflow
+            # no longer writes one into deploy-temp/, and this exclude is a
+            # belt-and-suspenders guard: even if a future change accidentally
+            # re-introduces a deploy-temp/.env.local (empty or stale), the
+            # FTP sync will skip every .env* file.
+            .env.local
+            .env*
+            # Server's .htaccess (Passenger config) is not FTP-writable
+            # (553 Permission denied) and doesn't need to be re-shipped —
+            # Passenger reads it in place. The workflow no longer writes one
+            # into deploy-temp/, and this exclude is a second safety net.
+            .htaccess
+
+      # ── SSH: post-deploy server tasks ─────────────────────────────────────────
+      # Runs AFTER the FTP upload completes. Each line is best-effort (|| true)
+      # so a single failure (e.g. prisma generate hiccup) does not skip the
+      # Passenger restart at the end — that restart is the LAST line on
+      # purpose, so it always fires while the SSH session is still open.
+      #
+      # Order matters:
+      #   1. prisma generate  — rebuild client for the server's binaryTarget
+      #   2. prune-next       — delete stale .next/static artifacts owned by
+      #                          previous builds. This is the FIX for the
+      #                          recurring "blank page / CSS 404" right after
+      #                          a deploy: SamKirkland/FTP-Deploy-Action never
+      #                          removes remote files, so without this the
+      #                          new HTML keeps 404-ing on chunks the next
+      #                          process state still expects.
+      #   3. touch restart.txt — Passenger picks up fresh code + clean static
+      #
+      # NOTE (P0 security): the former "seed test user" step is gone FOR GOOD —
+      # it upserted a demo account whose credentials are versioned in this
+      # PUBLIC repo, re-arming them on every deploy. Never reintroduce an
+      # automatic account seed here; account provisioning goes through the
+      # gated MANUAL seeds only.
+      # ── P0 AUTH HYDRATION (2026-09-06) — the `[no-restart]` marker is GONE FOR GOOD ──
+      # From 2026-09-04 to 2026-09-06 a head commit containing `[no-restart]` deployed the
+      # files but skipped the three Passenger restart steps below. MEASURED consequence
+      # (run 34006442266 → fb994f6): the FTP sync REPLACES .next/static (new webpack
+      # runtime + page chunks uploaded, the previous build's files DELETED) while the
+      # Next.js standalone process spawned by the previous deploy keeps running. That
+      # process snapshots the .next/static file list at boot, so every freshly uploaded
+      # asset answered 404 (text/html) and every deleted one 400 — the browser could not
+      # load the webpack runtime, NO client JavaScript ran on ANY page, /fr/auth/magic
+      # stayed on its Suspense skeleton forever and /fr/eat/auth was inert on both
+      # app.grubano.com and business.grubano.com (same app root). /version.json is a
+      # static file and kept saying "deployed", so the health check stayed green.
+      # RULE: a deploy that ships a build ALWAYS restarts Passenger. Ops operators that
+      # need a live process untouched must be shipped by their own operator, never by
+      # a build deploy. The blocking "Client bundle integrity" step at the end of this
+      # job fails the run whenever the served HTML references an asset the server
+      # cannot serve — the exact signature of this incident.
+      - name: Post-deploy server tasks
+        id: ssh_post
+        uses: appleboy/ssh-action@v1.0.0
+        continue-on-error: true
+        with:
+          host: 109.234.165.222
+          username: ${{ secrets.O2SWITCH_USER }}
+          key: ${{ secrets.O2SWITCH_SSH_KEY }}
+          port: 22
+          script: |
+            source ~/nodevenv/app.grubano.com/24/bin/activate
+            cd ~/app.grubano.com
+            npx prisma@5.22.0 generate || true
+            node scripts/server/prune-next.js || true
+            mkdir -p tmp
+            touch tmp/restart.txt
+
+      # ── SSH: chmod + Passenger restart ────────────────────────────────────────
+      # node_modules is bundled in the standalone output — no npm ci needed.
+      - name: Fix permissions and restart
+        id: ssh_restart
+        uses: appleboy/ssh-action@v1.0.0
+        continue-on-error: true
+        with:
+          # SSH uses the IP directly — O2SWITCH_HOST now holds the FTP hostname,
+          # which is not the SSH endpoint. Restart is non-critical (continue-on-error).
+          host: 109.234.165.222
+          username: ${{ secrets.O2SWITCH_USER }}
+          key: ${{ secrets.O2SWITCH_SSH_KEY }}
+          port: 22
+          script: |
+            chmod -R 755 ~/app.grubano.com/.next/    2>/dev/null || true
+            chmod 600    ~/app.grubano.com/.env.local 2>/dev/null || true
+            chmod 644    ~/app.grubano.com/server.js  2>/dev/null || true
+            mkdir -p ~/app.grubano.com/tmp
+            touch ~/app.grubano.com/tmp/restart.txt
+            echo "✅ Staging restarted"
+
+      # ── Trigger Passenger restart via FTPS (SSH-independent fallback) ─────────
+      # Belt-and-suspenders alongside the two SSH `touch tmp/restart.txt` calls
+      # above. Both SSH steps can fail intermittently:
+      #   "Fix permissions and restart": dial tcp 109.234.165.222:22 i/o timeout
+      # → o2switch intermittently firewalls GHA runner IPs on SSH, so we can NOT
+      # rely on SSH for the restart. FTP/FTPS is on a different control channel
+      # and stays reachable when SSH does not.
+      #
+      # FTPS HOSTNAME — why we hardcode `muscadier.o2switch.net` here:
+      # The shared `O2SWITCH_HOST` secret (=ftp.deyi0010.odns.fr) is a per-user
+      # CNAME alias and is NOT in the FTPS server's Let's Encrypt certificate
+      # SAN list. Strict TLS verification therefore fails with curl exit 60:
+      #   "SSL: no alternative certificate subject name matches target host name"
+      # The main FTP step (SamKirkland/FTP-Deploy-Action with basic-ftp under
+      # the hood) tolerates that mismatch by default; a strict `curl --ssl-reqd`
+      # does not, so we have to use a hostname that IS in the cert's SAN.
+      # The cert SANs include `muscadier.o2switch.net` (the o2switch shared
+      # server hostname for this account), resolved to the same IP as the FTP
+      # secret. Verified locally:
+      #   subject=CN = autoconfig.muscadier.o2switch.net
+      #   SAN: ...muscadier.o2switch.net (bare)...cpanel.muscadier.o2switch.net...
+      #   openssl s_client ... → Verify return code: 0 (ok)
+      # Using this hostname keeps full strict cert chain + hostname verification
+      # ACTIVE (no --insecure), so the transfer is properly authenticated.
+      #
+      # Important runtime ordering: this step runs AFTER the main FTP sync AND
+      # AFTER both SSH steps, so the restart.txt mtime is bumped LAST — the new
+      # Passenger process picks up a fully-flushed deploy, not a partial one.
+      # tmp/restart.txt is deliberately NOT in deploy-temp/, so the main FTP
+      # step never touches it at random timing.
+      #
+      # Production workflow is intentionally NOT changed yet: this is staging-
+      # only until two consecutive deploys confirm the FTPS step finishes with
+      # exit 0 (no more exit 60) AND CSS lands without manual cPanel `touch`.
+      - name: Trigger Passenger restart via FTPS (independent of SSH)
+        id: ftps_restart
+        if: ${{ success() }}
+        continue-on-error: true
+        run: |
+          STAMP="restart from run ${{ github.run_id }} at $(date -u +%FT%TZ) sha ${{ github.sha }}"
+          MARKER=$(mktemp)
+          ERRLOG=$(mktemp)
+          printf '%s\n' "$STAMP" > "$MARKER"
+          echo "── FTPS restart trigger ──"
+          echo "host:   muscadier.o2switch.net (cert SAN match — strict TLS verify)"
+          echo "target: ~/app.grubano.com/tmp/restart.txt"
+          echo "marker: $STAMP"
+          if curl --fail --silent --show-error \
+                  --ssl-reqd \
+                  --ftp-create-dirs \
+                  --connect-timeout 30 \
+                  --max-time 60 \
+                  --upload-file "$MARKER" \
+                  --user "${{ secrets.O2SWITCH_FTP_USER }}:${{ secrets.O2SWITCH_FTP_PASS }}" \
+                  "ftp://muscadier.o2switch.net/app.grubano.com/tmp/restart.txt" \
+                  2> "$ERRLOG"; then
+            RC=0
+            echo "✅ SUCCESS — FTPS upload returned exit 0"
+            echo "Passenger smart-spawner should reload within seconds."
+          else
+            RC=$?
+            echo "❌ FAILED — FTPS upload returned exit $RC"
+            echo "curl stderr:"
+            sed 's/^/  /' "$ERRLOG"
+            echo ""
+            echo 'The two SSH "touch tmp/restart.txt" steps above may still have'
+            echo 'triggered the restart. If staging still serves stale code, run'
+            echo 'in cPanel Terminal:  touch ~/app.grubano.com/tmp/restart.txt'
+          fi
+          rm -f "$MARKER" "$ERRLOG"
+          exit $RC
+
+      # ── PROD-15 (2026-09-29) — A GREEN STAGING DEPLOY MUST NOT MEAN "THE FILES ARRIVED" ──
+      # Founder arbitration: « staging ne doit jamais considérer un déploiement vert uniquement
+      # parce que version.json a été téléversé », and « si toutes les méthodes de restart
+      # échouent, le workflow doit être rouge ».
+      #
+      # WHY THIS STEP HAS TO EXIST. The three steps above are each `continue-on-error: true`,
+      # deliberately: any one of them may fail for a reason that does not matter (SSH to this host
+      # has timed out 3/3 historically). But `continue-on-error` also makes GitHub report each
+      # step's `conclusion` as SUCCESS whatever happened — which is why the run that deployed
+      # adfb4981 showed three green restart steps and told us nothing. Proving the restart required
+      # opening the raw log by hand. A gate you have to read a log to evaluate is not a gate.
+      #
+      # `outcome` is the RAW result and is NOT masked by continue-on-error, so the aggregate below
+      # can do what the conclusions cannot: fail when EVERY restart path failed, while staying
+      # green when at least one worked. No new secret, no new schedule, production untouched.
+      - name: Restart proven (at least one method succeeded) — BLOCKING
+        if: ${{ !cancelled() }}
+        run: |
+          echo "ssh_post      outcome = ${{ steps.ssh_post.outcome }}"
+          echo "ssh_restart   outcome = ${{ steps.ssh_restart.outcome }}"
+          echo "ftps_restart  outcome = ${{ steps.ftps_restart.outcome }}"
+          if [ "${{ steps.ssh_post.outcome }}" = "success" ] \
+          || [ "${{ steps.ssh_restart.outcome }}" = "success" ] \
+          || [ "${{ steps.ftps_restart.outcome }}" = "success" ]; then
+            echo "OK at least one restart method reported success — tmp/restart.txt was written"
+            exit 0
+          fi
+          echo "::error::EVERY restart method failed. The files are uploaded but the OLD process is"
+          echo "still serving them: a deploy that is green here would be green AND inert."
+          echo "Recover in cPanel Terminal:  touch ~/app.grubano.com/tmp/restart.txt"
+          exit 1
+
+      # S0-3 — verify the deployed build matches this run's commit. Non-blocking:
+      # Passenger may still be swapping processes when this runs. Manual check
+      # any time:  curl -s https://app.grubano.com/version.json
+      - name: Verify deployed build (version.json)
+        continue-on-error: true
+        run: |
+          sleep 20
+          DEPLOYED=$(curl -sL --max-time 30 https://app.grubano.com/version.json || echo '{}')
+          echo "deployed version.json: $DEPLOYED"
+          if printf '%s' "$DEPLOYED" | grep -q "${{ github.sha }}"; then
+            echo "OK deployed staging build matches commit ${{ github.sha }}"
+          else
+            echo "WARN staging does not (yet) serve ${{ github.sha }} — Passenger may still be restarting; re-check manually."
+          fi
+
+      # S0-D — Health check STAGING, BLOQUANT. Interroge app.grubano.com (jamais
+      # la production) et exige que le build SERVI soit EXACTEMENT le commit de
+      # ce run, lu dans /version.json (stampe par scripts/build-info.js).
+      # Bug corrige : l'ancien step interrogeait le domaine de PRODUCTION et
+      # journalisait un succes a partir de sa reponse — un staging casse (ou
+      # jamais redemarre) passait vert tant que la production repondait 200.
+      # Tolerance de propagation : Passenger respawn apres touch tmp/restart.txt,
+      # d'ou la boucle de retries (~15 s + 8 x 15 s ~ 2 min) avant de conclure.
+      - name: Health check (staging @ expected SHA)
+        run: |
+          EXPECTED="${{ github.sha }}"
+          URL="https://app.grubano.com/version.json"
+          ATTEMPTS=8
+          DELAY=15
+          BODY_FILE="$(mktemp)"
+          CODE="000"
+          SERVED=""
+          echo "expected sha : $EXPECTED"
+          echo "target       : $URL"
+          sleep 15
+          i=1
+          while [ "$i" -le "$ATTEMPTS" ]; do
+            : > "$BODY_FILE"
+            CODE=$(curl -sS -L --max-time 30 -o "$BODY_FILE" -w '%{http_code}' "$URL") || CODE="000"
+            SERVED=$(sed -n 's/.*"commit"[[:space:]]*:[[:space:]]*"\([0-9a-fA-F]\{7,40\}\)".*/\1/p' "$BODY_FILE" | head -n 1)
+            echo "attempt $i/$ATTEMPTS — HTTP $CODE — served commit: ${SERVED:-<none>}"
+            if [ "$CODE" = "200" ] && [ "$SERVED" = "$EXPECTED" ]; then
+              echo "OK staging healthy at expected SHA ($EXPECTED)"
+              rm -f "$BODY_FILE"
+              exit 0
+            fi
+            i=$((i + 1))
+            if [ "$i" -le "$ATTEMPTS" ]; then sleep "$DELAY"; fi
+          done
+          echo "ERR staging health check FAILED after $ATTEMPTS attempts"
+          echo "  url             : $URL"
+          echo "  last HTTP status: $CODE"
+          echo "  expected commit : $EXPECTED"
+          echo "  served commit   : ${SERVED:-<none — version.json illisible ou absent>}"
+          echo "  body (400 o max):"
+          head -c 400 "$BODY_FILE" | sed 's/^/    /'
+          echo ""
+          echo "  Piste : Passenger n'a pas repris le build. En cPanel Terminal :"
+          echo "    touch ~/app.grubano.com/tmp/restart.txt"
+          rm -f "$BODY_FILE"
+          exit 1
+
+      # ── P0 AUTH HYDRATION (2026-09-06) — CLIENT BUNDLE INTEGRITY, BLOQUANT ────────
+      # ── PROD-15 — THE DATABASE MUST BE REACHABLE THROUGH THE DEPLOYED PRISMA CLIENT ──
+      # Ported from deploy-production.yml, where PROD-2 added it, with the staging host. It is the
+      # step that answers the founder's « au moins une requête traverse l'application / Prisma
+      # vivant »: version.json is STATIC (upload only), and the bundle-integrity step below reads
+      # pages that render without touching the database. Only a route that QUERIES proves the live
+      # process can reach MySQL through the client that was actually deployed — and staging has
+      # already served « new schema + new code + STALE Prisma client » once, a failure invisible to
+      # every 200-based check. /api/restaurants is public, read-only and hits the database.
+      - name: Database reachable through the deployed Prisma client (BLOCKING)
+        run: |
+          URL="https://app.grubano.com/api/restaurants"
+          ATTEMPTS=6
+          DELAY=15
+          i=1
+          while [ "$i" -le "$ATTEMPTS" ]; do
+            CODE=$(curl -sS -L -o /dev/null --max-time 30 -w '%{http_code}' "$URL") || CODE="000"
+            echo "attempt $i/$ATTEMPTS - $URL -> HTTP $CODE"
+            if [ "$CODE" = "200" ]; then
+              echo "OK the deployed Prisma client reaches the staging database"
+              exit 0
+            fi
+            i=$((i + 1))
+            if [ "$i" -le "$ATTEMPTS" ]; then sleep "$DELAY"; fi
+          done
+          echo "ERR the database is NOT reachable through the deployed build (last HTTP $CODE)"
+          echo "  Most likely, in order:"
+          echo "    1. the Prisma client on the server is STALE - the SSH generate step timed out."
+          echo "       In cPanel Terminal:  source ~/nodevenv/app.grubano.com/24/bin/activate"
+          echo "                            cd ~/app.grubano.com && npx prisma@5.22.0 generate"
+          echo "                            touch tmp/restart.txt"
+          echo "    2. the process never restarted (see the restart-proven step above);"
+          echo "    3. DATABASE_URL is missing or wrong in ~/app.grubano.com/.env.local."
+          exit 1
+
+      # version.json is a static file: it proves the UPLOAD, never that the RUNNING
+      # process can serve the bundles its own HTML references. This step fetches the
+      # two authentication pages, extracts every /_next/static asset they reference
+      # (webpack runtime, page chunks, CSS) and requires HTTP 200 on each. A mismatch
+      # between the served HTML and the servable assets = zero client JavaScript =
+      # permanent Suspense skeleton / inert forms — the P0 of 2026-09-06. Retries
+      # cover the Passenger swap window; the final verdict is BLOCKING.
+      - name: Client bundle integrity (served HTML → every _next/static asset 200)
+        run: |
+          BASE="https://app.grubano.com"
+          PAGES="/fr/auth/magic /fr/eat/auth"
+          ATTEMPTS=6
+          DELAY=15
+          i=1
+          while [ "$i" -le "$ATTEMPTS" ]; do
+            FAIL=0
+            CHECKED=0
+            for P in $PAGES; do
+              HTML=$(curl -sS -L --max-time 30 "$BASE$P") || HTML=""
+              ASSETS=$(printf '%s' "$HTML" | grep -o '/_next/static/[^" <>\\]*\.\(js\|css\)' | sort -u)
+              if [ -z "$ASSETS" ]; then
+                echo "ERR $P references no /_next/static asset (empty or non-HTML response)"
+                FAIL=1
+                continue
+              fi
+              if ! printf '%s\n' "$ASSETS" | grep -q 'chunks/webpack-'; then
+                echo "ERR $P does not reference a webpack runtime chunk"
+                FAIL=1
+              fi
+              for A in $ASSETS; do
+                CODE=$(curl -sS -o /dev/null --max-time 30 -w '%{http_code}' "$BASE$A") || CODE="000"
+                CHECKED=$((CHECKED + 1))
+                if [ "$CODE" != "200" ]; then
+                  echo "ERR $A → HTTP $CODE (referenced by $P)"
+                  FAIL=1
+                fi
+              done
+            done
+            if [ "$FAIL" = "0" ]; then
+              echo "OK client bundle integrity — $CHECKED referenced assets served 200 for: $PAGES"
+              exit 0
+            fi
+            echo "attempt $i/$ATTEMPTS failed — Passenger may still be swapping processes; retry in ${DELAY}s"
+            i=$((i + 1))
+            if [ "$i" -le "$ATTEMPTS" ]; then sleep "$DELAY"; fi
+          done
+          echo "ERR CLIENT BUNDLE INTEGRITY FAILED — the served HTML references assets the server cannot serve."
+          echo "  Meaning: the running process and the files on disk belong to different builds"
+          echo "  (no client JavaScript → permanent auth skeleton / inert forms)."
+          echo "  Fix: cPanel Terminal →  touch ~/app.grubano.com/tmp/restart.txt  then re-run this job."
+          exit 1

@@ -1,0 +1,39 @@
+tests/admin-provision.test.ts(104,108): error TS1501: This regular expression flag is only available when targeting 'es2018' or later.
+tests/api-tenant-scoping.test.ts(101,34): error TS2345: Argument of type 'Request' is not assignable to parameter of type 'NextRequest'.
+tests/api-tenant-scoping.test.ts(110,34): error TS2345: Argument of type 'Request' is not assignable to parameter of type 'NextRequest'.
+tests/api-tenant-scoping.test.ts(120,34): error TS2345: Argument of type 'Request' is not assignable to parameter of type 'NextRequest'.
+tests/api-tenant-scoping.test.ts(130,34): error TS2345: Argument of type 'Request' is not assignable to parameter of type 'NextRequest'.
+tests/api-tenant-scoping.test.ts(79,33): error TS2345: Argument of type 'Request' is not assignable to parameter of type 'NextRequest'.
+tests/api-tenant-scoping.test.ts(86,21): error TS2345: Argument of type 'Request' is not assignable to parameter of type 'NextRequest'.
+tests/api-tenant-scoping.test.ts(94,21): error TS2345: Argument of type 'Request' is not assignable to parameter of type 'NextRequest'.
+tests/brand-fonts.test.ts(19,23): error TS2802: Type 'RegExpStringIterator<RegExpExecArray>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+tests/email-order-status.test.ts(154,48): error TS1501: This regular expression flag is only available when targeting 'es2018' or later.
+tests/email-order-status.test.ts(155,55): error TS1501: This regular expression flag is only available when targeting 'es2018' or later.
+tests/email-truthfulness-hotfix.test.ts(269,37): error TS2493: Tuple type '[]' of length '0' has no element at index '0'.
+tests/email-truthfulness-hotfix.test.ts(43,141): error TS1501: This regular expression flag is only available when targeting 'es6' or later.
+tests/loyalty-refund-apply.test.ts(34,9): error TS2322: Type '{ order: { findUnique: () => Promise<{ pointsRedeemed: number; pointsEarned: number; consumerId: string; } | null>; }; operator: { findUnique: () => Promise<{ email: string; } | null>; }; loyaltyCustomer: { ...; }; loyaltyTransaction: { ...; }; $queryRawUnsafe: (_sql: string, ..._a: unknown[]) => Promise<...>; $tran...' is not assignable to type 'Record<string, { findUnique?: unknown; findFirst?: unknown; create?: unknown; update?: unknown; }> & { $transaction: (fn: (tx: unknown) => Promise<unknown>) => Promise<unknown>; $queryRawUnsafe: (sql: string, ...a: unknown[]) => Promise<...>; }'.
+tests/operator-qa-render-health.test.ts(102,7): error TS2353: Object literal may only specify known properties, and 'failures' does not exist in type '{ pageOrigin: string | null; }'.
+tests/operator-qa-render-health.test.ts(112,7): error TS2353: Object literal may only specify known properties, and 'failures' does not exist in type '{ pageOrigin: string | null; }'.
+tests/operator-qa-render-health.test.ts(123,7): error TS2353: Object literal may only specify known properties, and 'failures' does not exist in type '{ pageOrigin: string | null; }'.
+tests/operator-qa-render-health.test.ts(133,7): error TS2353: Object literal may only specify known properties, and 'failures' does not exist in type '{ pageOrigin: string | null; }'.
+tests/operator-qa-render-health.test.ts(142,7): error TS2353: Object literal may only specify known properties, and 'failures' does not exist in type '{ pageOrigin: string | null; }'.
+tests/operator-qa-render-health.test.ts(152,7): error TS2353: Object literal may only specify known properties, and 'failures' does not exist in type '{ pageOrigin: string | null; }'.
+tests/operator-qa-render-health.test.ts(163,7): error TS2353: Object literal may only specify known properties, and 'failures' does not exist in type '{ pageOrigin: string | null; }'.
+tests/operator-qa-render-health.test.ts(172,7): error TS2353: Object literal may only specify known properties, and 'failures' does not exist in type '{ pageOrigin: string | null; }'.
+tests/operator-qa-render-health.test.ts(181,7): error TS2353: Object literal may only specify known properties, and 'failures' does not exist in type '{ pageOrigin: string | null; }'.
+tests/operator-qa-render-health.test.ts(199,7): error TS2353: Object literal may only specify known properties, and 'failures' does not exist in type '{ pageOrigin: string | null; }'.
+tests/operator-qa-render-health.test.ts(209,58): error TS2353: Object literal may only specify known properties, and 'failures' does not exist in type '{ pageOrigin: string | null; }'.
+tests/operator-qa-render-health.test.ts(219,58): error TS2353: Object literal may only specify known properties, and 'failures' does not exist in type '{ pageOrigin: string | null; }'.
+tests/operator-qa-render-health.test.ts(225,55): error TS2353: Object literal may only specify known properties, and 'failures' does not exist in type '{ pageOrigin: string | null; }'.
+tests/operator-qa-render-health.test.ts(231,7): error TS2353: Object literal may only specify known properties, and 'failures' does not exist in type '{ pageOrigin: string | null; }'.
+tests/operator-qa-render-health.test.ts(241,7): error TS2353: Object literal may only specify known properties, and 'failures' does not exist in type '{ pageOrigin: string | null; }'.
+tests/operator-qa-render-health.test.ts(26,58): error TS2353: Object literal may only specify known properties, and 'failures' does not exist in type '{ pageOrigin: string | null; }'.
+tests/operator-qa-render-health.test.ts(37,7): error TS2353: Object literal may only specify known properties, and 'failures' does not exist in type '{ pageOrigin: string | null; }'.
+tests/operator-qa-render-health.test.ts(58,7): error TS2353: Object literal may only specify known properties, and 'failures' does not exist in type '{ pageOrigin: string | null; }'.
+tests/operator-qa-render-health.test.ts(67,7): error TS2353: Object literal may only specify known properties, and 'failures' does not exist in type '{ pageOrigin: string | null; }'.
+tests/operator-qa-render-health.test.ts(78,7): error TS2353: Object literal may only specify known properties, and 'failures' does not exist in type '{ pageOrigin: string | null; }'.
+tests/operator-qa-render-health.test.ts(88,7): error TS2353: Object literal may only specify known properties, and 'failures' does not exist in type '{ pageOrigin: string | null; }'.
+tests/order-notification-reliability.test.ts(52,13): error TS2802: Type 'Set<string>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+tests/p1-p10/p4-annulation-client.test.ts(84,34): error TS2802: Type 'RegExpStringIterator<RegExpExecArray>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+tests/p1-p10/p6-support-decoratif.test.ts(110,22): error TS2802: Type 'RegExpStringIterator<RegExpExecArray>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+tests/qa-env-gate.test.ts(3,1): error TS2578: Unused '@ts-expect-error' directive.

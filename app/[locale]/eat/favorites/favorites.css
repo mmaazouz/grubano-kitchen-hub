@@ -1,0 +1,119 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+ * /eat/favorites — « Favoris / Enregistrés » — VERBATIM reproduction of the FROZEN
+ * CD ref (Notion 38efd2c9-…-8156, file eat/favorites.html). Page CONTENT only:
+ * renders INSIDE the existing EatShell (like /orders & /rewards) — the shell governs
+ * navigation, so the CD's top back-arrow is dropped (top-level framed page).
+ *
+ * The CD design tokens live in the gb-foundation (gb-tokens.css). The *favorites*
+ * accent colours --gb-fav / --gb-fav-bg / --gb-grad-fav are NOT yet in the
+ * foundation, so they are declared here, scoped under `.gb-favorites`, with light +
+ * dark values verbatim from the CD :root / [data-theme="dark"] blocks. (REPORTED:
+ * they ideally belong in gb-tokens.css — but that file is owned by parallel agents.)
+ *
+ * Foundation-colliding class names are renamed to avoid clashing with `.gb .card`,
+ * `.gb .btn`, `.gb .tag`, `.gb .field`, `.gb .badge`, `.gb .chip`:
+ *   CD .card  → .fav-card     CD .tag  → .fav-tag
+ *   CD .btn   → .fav-btn      CD .tabs → .fav-tabs
+ *   CD .grid  → .fav-grid     CD .hint → .fav-hint   CD .empty → .fav-empty
+ *   CD .dish  → .fav-dish     (.dish__* kept under it)
+ * All other CD class names kept verbatim, scoped under `.gb-favorites`.
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+/* ── favorites-only accent tokens (verbatim CD, scoped — not in the foundation) ── */
+.gb-favorites{
+  --gb-fav:#E0356E; --gb-fav-bg:#FCE8F0;
+  --gb-grad-fav:linear-gradient(135deg,#FF5C8A,#E0356E);
+}
+[data-theme="dark"] .gb-favorites{
+  --gb-fav:#FF6FA1; --gb-fav-bg:rgba(224,53,110,.18);
+}
+
+/* ===================== PAGE CONTENT (sits inside nav shell) ===================== */
+.gb-favorites{max-width:960px;margin:0 auto;padding:clamp(18px,3vw,30px) clamp(16px,3vw,28px) 80px}
+.gb-favorites .fav-top{display:flex;align-items:center;gap:14px;margin-bottom:6px}
+.gb-favorites .fav-top h1{flex:1;margin:0;font-family:var(--gb-font-display);font-weight:800;font-size:clamp(22px,3.2vw,28px);letter-spacing:-.025em;display:flex;align-items:center;gap:9px;color:var(--gb-text)}
+.gb-favorites .fav-top h1 .ms{font-size:26px;color:var(--gb-fav);font-variation-settings:'FILL' 1}
+.gb-favorites .fav-sub{font-size:13.5px;color:var(--gb-muted);margin:0 0 20px 0}
+
+/* hint → search Favoris filter */
+.gb-favorites .fav-hint{display:flex;align-items:center;gap:10px;background:var(--gb-fav-bg);border:1px solid transparent;border-radius:var(--gb-r-md);padding:12px 15px;margin-bottom:18px}
+.gb-favorites .fav-hint .ms{font-size:19px;color:var(--gb-fav)}
+.gb-favorites .fav-hint span{flex:1;font-size:12.5px;color:var(--gb-text)}
+.gb-favorites .fav-hint b{font-weight:700}
+.gb-favorites .fav-hint a{font-size:12.5px;font-weight:700;color:var(--gb-fav);text-decoration:none;white-space:nowrap;cursor:pointer}
+
+/* tabs */
+.gb-favorites .fav-tabs{display:inline-flex;background:var(--gb-surface-2);border:1px solid var(--gb-border);border-radius:var(--gb-r-md);padding:4px;gap:2px;margin-bottom:20px}
+.gb-favorites .fav-tabs button{font-family:var(--gb-font-ui);font-weight:700;font-size:13.5px;color:var(--gb-muted);background:none;border:none;border-radius:var(--gb-r-sm);padding:9px 18px;cursor:pointer;display:inline-flex;align-items:center;gap:7px}
+.gb-favorites .fav-tabs button[aria-selected="true"]{color:#fff;background:var(--gb-grad-fav)}
+.gb-favorites .fav-tabs .count{font-size:11px;font-weight:800;background:rgba(255,255,255,.25);border-radius:6px;padding:1px 7px}
+.gb-favorites .fav-tabs button:not([aria-selected="true"]) .count{background:var(--gb-border);color:var(--gb-muted)}
+
+/* grid */
+.gb-favorites .fav-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+@media (max-width:860px){ .gb-favorites .fav-grid{grid-template-columns:1fr 1fr} }
+@media (max-width:560px){ .gb-favorites .fav-grid{grid-template-columns:1fr} }
+
+/* restaurant card */
+.gb-favorites .fav-card{background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-lg);overflow:hidden;box-shadow:var(--gb-shadow-card);cursor:pointer}
+.gb-favorites .card__img{position:relative;height:128px;background-size:cover;background-position:center}
+.gb-favorites .card__img.t1{background:repeating-linear-gradient(135deg,#FFE3CE 0 12px,#FFF1E7 12px 24px)}
+.gb-favorites .card__img.t2{background:repeating-linear-gradient(135deg,#D7E3F2 0 12px,#EAEFF6 12px 24px)}
+.gb-favorites .card__img.t3{background:repeating-linear-gradient(135deg,#CDEBD8 0 12px,#EAF7EF 12px 24px)}
+.gb-favorites .card__img.t4{background:repeating-linear-gradient(135deg,#FFD9C2 0 12px,#FFE9D6 12px 24px)}
+.gb-favorites .card__img.t5{background:repeating-linear-gradient(135deg,#F3D9E0 0 12px,#FBEAF1 12px 24px)}
+.gb-favorites .card__img.t6{background:repeating-linear-gradient(135deg,#E6EFD9 0 12px,#EFF5E6 12px 24px)}
+[data-theme="dark"] .gb-favorites .card__img.t1,[data-theme="dark"] .gb-favorites .card__img.t4{background:repeating-linear-gradient(135deg,#3A2C22 0 12px,#2C2118 12px 24px)}
+[data-theme="dark"] .gb-favorites .card__img.t2{background:repeating-linear-gradient(135deg,#21344B 0 12px,#1A2A3D 12px 24px)}
+[data-theme="dark"] .gb-favorites .card__img.t3,[data-theme="dark"] .gb-favorites .card__img.t6{background:repeating-linear-gradient(135deg,#1E3B2B 0 12px,#172E22 12px 24px)}
+[data-theme="dark"] .gb-favorites .card__img.t5{background:repeating-linear-gradient(135deg,#3A2230 0 12px,#2C1A24 12px 24px)}
+.gb-favorites .card__time{position:absolute;top:10px;left:10px;background:rgba(15,39,66,.82);color:#fff;font-size:11px;font-weight:600;padding:4px 9px;border-radius:7px}
+.gb-favorites .card__heart{position:absolute;top:9px;right:9px;width:34px;height:34px;border-radius:50%;background:var(--gb-surface);display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(15,39,66,.18);cursor:pointer;border:none}
+.gb-favorites .card__heart .ms{font-size:19px;color:var(--gb-fav);font-variation-settings:'FILL' 1}
+.gb-favorites .card__heart.off .ms{color:var(--gb-muted-2);font-variation-settings:'FILL' 0}
+.gb-favorites .card__b{padding:13px 15px}
+.gb-favorites .card__row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.gb-favorites .card__row b{font-family:var(--gb-font-display);font-weight:700;font-size:15.5px;line-height:1.3;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--gb-text)}
+.gb-favorites .card__rating{display:inline-flex;align-items:center;gap:3px;font-size:12.5px;font-weight:700;flex-shrink:0;color:var(--gb-text)}
+.gb-favorites .card__rating .ms{font-size:15px;color:#EA9410}
+.gb-favorites .card__meta{font-size:12.5px;color:var(--gb-muted);margin-top:4px}
+.gb-favorites .card__tags{display:flex;gap:6px;margin-top:11px;flex-wrap:wrap}
+.gb-favorites .fav-tag{font-size:11px;font-weight:600;border-radius:7px;padding:4px 9px}
+.gb-favorites .fav-tag--free{color:var(--gb-basil-600);background:rgba(46,164,92,.1)}
+.gb-favorites .fav-tag--closed{color:var(--gb-muted);background:var(--gb-surface-2);border:1px solid var(--gb-border)}
+.gb-favorites .fav-tag--pop{color:var(--gb-zest-600);background:#FFF1E7}
+[data-theme="dark"] .gb-favorites .fav-tag--pop{background:rgba(255,124,57,.16);color:var(--gb-zest)}
+
+/* dish card (Plats tab) */
+.gb-favorites .fav-dish{display:flex;gap:13px;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-lg);padding:12px;box-shadow:var(--gb-shadow-card)}
+.gb-favorites .dish__img{width:84px;height:84px;border-radius:var(--gb-r-md);flex-shrink:0}
+.gb-favorites .dish__b{flex:1;min-width:0;display:flex;flex-direction:column}
+.gb-favorites .dish__b b{font-family:var(--gb-font-display);font-weight:700;font-size:15px;color:var(--gb-text)}
+.gb-favorites .dish__b .resto{font-size:12px;color:var(--gb-muted);margin-top:2px}
+.gb-favorites .dish__b .bottom{margin-top:auto;display:flex;align-items:center;justify-content:space-between;padding-top:8px}
+.gb-favorites .dish__b .price{font-family:var(--gb-font-display);font-weight:800;font-size:15px;color:var(--gb-text)}
+.gb-favorites .dish__add{width:32px;height:32px;border-radius:10px;background:var(--gb-grad);display:flex;align-items:center;justify-content:center;border:none;cursor:pointer;box-shadow:var(--gb-shadow-btn)}
+.gb-favorites .dish__add .ms{font-size:18px;color:#fff}
+.gb-favorites .dish__heart{align-self:flex-start;width:30px;height:30px;border-radius:50%;background:var(--gb-fav-bg);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;border:none}
+.gb-favorites .dish__heart .ms{font-size:17px;color:var(--gb-fav);font-variation-settings:'FILL' 1}
+
+/* empty state */
+.gb-favorites .fav-empty{display:flex;flex-direction:column;align-items:center;text-align:center;padding:60px 24px}
+.gb-favorites .empty__ico{width:96px;height:96px;border-radius:50%;background:var(--gb-fav-bg);display:flex;align-items:center;justify-content:center;margin-bottom:20px}
+.gb-favorites .empty__ico .ms{font-size:48px;color:var(--gb-fav)}
+.gb-favorites .fav-empty h2{margin:0;font-family:var(--gb-font-display);font-weight:800;font-size:20px;letter-spacing:-.02em;color:var(--gb-text)}
+.gb-favorites .fav-empty p{margin:9px 0 22px;font-size:14px;line-height:1.55;color:var(--gb-muted);max-width:36ch}
+.gb-favorites .fav-btn{font-family:var(--gb-font-ui);font-weight:700;font-size:14px;cursor:pointer;border-radius:var(--gb-r-md);padding:13px 22px;border:none;display:inline-flex;align-items:center;gap:8px;text-decoration:none}
+.gb-favorites .fav-btn--primary{color:#fff;background:var(--gb-grad);box-shadow:var(--gb-shadow-btn)}
+.gb-favorites .fav-btn--primary .ms{font-size:18px}
+
+/* state visibility (the page root carries data-tab / data-state) */
+.gb-favorites[data-tab="resto"] .pane-dish,.gb-favorites[data-tab="dish"] .pane-resto{display:none}
+.gb-favorites[data-state="empty"] .pane-resto,.gb-favorites[data-state="empty"] .pane-dish,.gb-favorites[data-state="empty"] .fav-tabs,.gb-favorites[data-state="empty"] .fav-hint{display:none}
+/* GLOBAL empty block shows only in the empty state; the dish-pane local empty is
+ * always shown inside its (already tab-gated) pane. */
+.gb-favorites:not([data-state="empty"]) > .fav-empty{display:none}
+.gb-favorites .fav-empty--pane{display:flex}
+
+/* loading skeleton */
+.gb-favorites .fav-skel{height:222px;border-radius:var(--gb-r-lg);background:var(--gb-surface-2);border:1px solid var(--gb-border);animation:gb-pulse 1.4s ease-in-out infinite}

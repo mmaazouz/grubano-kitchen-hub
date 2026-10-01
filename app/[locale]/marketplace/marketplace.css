@@ -1,0 +1,51 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+ * /marketplace — operator MARKETPLACE hub content, operator foundation (--op-*).
+ * WP-DES-01 honest re-skin: the page already renders UNDER the navy OperatorShell
+ * (it is NOT in AppChrome BARE_PREFIXES); this file only styles the <section>
+ * inside op-content. The navy shell (op-side / op-top / op-bottomnav / op-content)
+ * and all --op-* tokens live in components/operator/operator-shell.css — NOT
+ * redefined here. Self-sufficient (recopies the shared op-dash__head / op-card /
+ * set-block / set-row / set-badge it uses, like more.css / dashboard.css).
+ *
+ * 🌐 HONEST: the two real destinations (supplier sourcing, and — flag-gated —
+ * services discovery) are LINKS to real pages. The delivery/payment/marketing
+ * "integrations" have NO connector rail yet, so they are rendered inert with a
+ * « bientôt » badge — NO invented commission / rating / "Connecté" state, and no
+ * upsell to a specific plan. ZERO money on this screen.
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+/* ── page head (shared with dashboard) ── */
+.gb-op .op-dash__head{margin-bottom:18px}
+.gb-op .op-dash__title{margin:0;font-family:var(--op-font-display);font-weight:800;font-size:23px;letter-spacing:-.02em}
+.gb-op .op-dash__sub{margin:5px 0 0;font-size:12.5px;color:var(--op-muted)}
+
+/* ── shared card shell ── */
+.gb-op .op-card{background:var(--op-surface);border:1px solid var(--op-border);border-radius:var(--op-r-lg);box-shadow:var(--op-shadow-card);min-width:0}
+
+/* ── blocks ── */
+.gb-op .set-block{margin-bottom:18px}
+.gb-op .set-block__head{padding:6px 4px 10px;font-family:var(--op-font-display);font-weight:800;font-size:13px;letter-spacing:.02em;text-transform:uppercase;color:var(--op-muted)}
+
+/* ── rows (link + inert integration) ── */
+.gb-op .set-row{display:flex;align-items:center;gap:14px;padding:14px 18px;border-bottom:1px solid var(--op-border);cursor:pointer;color:inherit;background:none;border-inline:none;border-top:none;width:100%;text-align:start;font-family:inherit;text-decoration:none}
+.gb-op .set-row:last-child{border-bottom:none}
+.gb-op .set-row:hover{background:var(--op-surface-2)}
+.gb-op .set-row.is-inert{cursor:default}
+.gb-op .set-row.is-inert:hover{background:none}
+.gb-op .set-row__ic{width:36px;height:36px;border-radius:var(--op-r-md);background:var(--op-surface-2);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.gb-op .set-row__ic .ms{font-size:20px;color:var(--op-muted)}
+.gb-op .set-row__m{flex:1;min-width:0}
+.gb-op .set-row__m b{display:block;font-size:14px;font-weight:700}
+.gb-op .set-row__m span{font-size:12px;color:var(--op-muted)}
+.gb-op .set-row__chev{font-size:20px;color:var(--op-muted-2);flex-shrink:0}
+
+/* ── "bientôt" badge (muted tone) ── */
+.gb-op .set-badge{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;border-radius:999px;padding:4px 10px;white-space:nowrap;flex-shrink:0}
+.gb-op .set-badge .dot{width:6px;height:6px;border-radius:50%;background:currentColor}
+.gb-op .set-badge.muted{background:var(--op-surface-2);color:var(--op-muted);border:1px solid var(--op-border)}
+
+/* ── honest note under the integrations block ── */
+.gb-op .mkt-note{margin:10px 4px 0;font-size:11.5px;line-height:1.5;color:var(--op-muted-2)}
+
+/* first link block gets a little breathing room from the head */
+.gb-op .mkt-links{margin-bottom:22px}

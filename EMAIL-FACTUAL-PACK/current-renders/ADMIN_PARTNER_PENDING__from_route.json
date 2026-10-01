@@ -1,0 +1,9 @@
+{
+  "id": "ADMIN_PARTNER_PENDING__from_route",
+  "from": "\"Grubano\" <contact@grubano.com>",
+  "to": "admin-alerts@example.invalid",
+  "subject": "[Grubano] Nouveau dossier restaurant à valider",
+  "hasText": false,
+  "hasImages": false,
+  "hasTable": true
+}

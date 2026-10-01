@@ -1,0 +1,9 @@
+{
+  "id": "PARTNER_NEW_RESERVATION",
+  "from": "\"Grubano\" <contact@grubano.com>",
+  "to": "gnocchi.bar@example.invalid",
+  "subject": "Nouvelle réservation — samedi 12 septembre à 19:30",
+  "hasText": false,
+  "hasImages": false,
+  "hasTable": true
+}

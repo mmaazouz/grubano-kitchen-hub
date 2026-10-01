@@ -1,0 +1,9 @@
+{
+  "id": "CONSUMER_NOSHOW_PENALTY_CHARGED",
+  "from": "\"Grubano\" <contact@grubano.com>",
+  "to": "lea.martin@example.invalid",
+  "subject": "Pénalité no-show débitée — Gnocchi Bar",
+  "hasText": false,
+  "hasImages": false,
+  "hasTable": true
+}

@@ -1,0 +1,81 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+ * /supplier/reglages — CD v1 Lot 6 (Réglages) content, scoped `.sup-set`. Chrome +
+ * tokens live in supplier-shell.css. Re-skin of the REAL supplier profile: only the
+ * fields that persist via PATCH /api/supplier/profile are editable; the identity block
+ * is read-only. CD elements with no backing column (logo, description, delivery-days,
+ * order-cutoff, VAT number, DAC7, team, notif prefs, in-place password change,
+ * account closure) are honest "bientôt" / omitted — never fabricated.
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+.gb-op .sup-set .op-dash__head{margin-bottom:18px}
+
+.gb-op .sup-set .set-card{margin-bottom:18px}
+.gb-op .sup-set .set-card__head{display:flex;align-items:flex-start;gap:12px;padding:16px 18px;border-bottom:1px solid var(--op-border)}
+.gb-op .sup-set .set-card__head .ic{width:34px;height:34px;border-radius:var(--op-r-md);background:var(--op-surface-2);display:flex;align-items:center;justify-content:center;color:var(--op-muted-2);flex-shrink:0}
+.gb-op .sup-set .set-card__head .ic .ms{font-size:19px}
+.gb-op .sup-set .set-card__head .m{flex:1;min-width:0}
+.gb-op .sup-set .set-card__head h2{margin:0;font-family:var(--op-font-display);font-weight:800;font-size:15px}
+.gb-op .sup-set .set-card__head p{margin:2px 0 0;font-size:11.5px;color:var(--op-muted)}
+.gb-op .sup-set .set-card__body{padding:18px;display:flex;flex-direction:column;gap:16px}
+.gb-op .sup-set .set-card__foot{display:flex;justify-content:flex-end;gap:10px;padding:14px 18px;border-top:1px solid var(--op-border)}
+
+.gb-op .sup-set .op-field{display:flex;flex-direction:column;gap:6px}
+.gb-op .sup-set .op-field label{font-size:11.5px;font-weight:700;color:var(--op-muted)}
+.gb-op .sup-set .op-field-row{display:flex;gap:12px}
+.gb-op .sup-set .op-field-row .op-field{flex:1;min-width:0}
+.gb-op .sup-set .op-input,.gb-op .sup-set .op-textarea{width:100%;box-sizing:border-box;border:1px solid var(--op-border-strong);background:var(--op-surface);border-radius:var(--op-r-md);padding:10px 12px;font-family:var(--op-font-ui);font-size:13.5px;color:var(--op-text)}
+.gb-op .sup-set .op-input.mono{font-family:var(--op-font-mono);direction:ltr;unicode-bidi:isolate}
+.gb-op .sup-set .op-input:focus,.gb-op .sup-set .op-textarea:focus{outline:none;border-color:var(--op-zest-600);box-shadow:var(--op-focus)}
+.gb-op .sup-set .op-textarea{resize:vertical;min-height:76px;line-height:1.55}
+
+.gb-op .sup-set .op-btn-primary{display:inline-flex;align-items:center;justify-content:center;gap:8px;background:linear-gradient(135deg,#FF8A3D,#F2570E);color:#fff;border:none;border-radius:var(--op-r-md);padding:11px 18px;font-size:13px;font-weight:700;cursor:pointer}
+.gb-op .sup-set .op-btn-primary:disabled{opacity:.6;cursor:default}
+.gb-op .sup-set .op-btn-ghost{background:none;border:1px solid var(--op-border-strong);border-radius:var(--op-r-md);padding:11px 18px;font-size:13px;font-weight:700;color:var(--op-text);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.gb-op .sup-set .op-btn-danger{background:none;border:1px solid var(--op-danger-bd);border-radius:var(--op-r-md);padding:11px 18px;font-size:13px;font-weight:700;color:var(--op-danger);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.gb-op .sup-set .op-btn-danger:disabled{opacity:.55;cursor:default}
+
+/* category chips */
+.gb-op .sup-set .chip-row{display:flex;flex-wrap:wrap;gap:8px}
+.gb-op .sup-set .chip{border:1px solid var(--op-border-strong);background:var(--op-surface);border-radius:999px;padding:7px 13px;font-size:12px;font-weight:700;color:var(--op-text);cursor:pointer;user-select:none;font-family:inherit}
+.gb-op .sup-set .chip.is-active{background:linear-gradient(135deg,#FF8A3D,#F2570E);color:#fff;border-color:transparent}
+
+/* legal (read-only) */
+.gb-op .sup-set .legal-row{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--op-border)}
+.gb-op .sup-set .legal-row:last-child{border-bottom:none;padding-bottom:0}
+.gb-op .sup-set .legal-row .m{flex:1;min-width:0}
+.gb-op .sup-set .legal-row .m b{display:block;font-size:11.5px;font-weight:700;color:var(--op-muted)}
+.gb-op .sup-set .legal-val{font-family:var(--op-font-mono);font-weight:700;font-size:14px;margin-top:2px;direction:ltr;unicode-bidi:isolate}
+.gb-op .sup-set .legal-val.txt{font-family:var(--op-font-ui);direction:inherit}
+.gb-op .sup-set .legal-badge{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:800;border-radius:999px;padding:4px 10px;white-space:nowrap;flex-shrink:0;background:var(--op-surface-2);color:var(--op-muted);border:1px solid var(--op-border)}
+.gb-op .sup-set .legal-badge.ok{background:var(--op-success-bg);color:var(--op-success);border-color:var(--op-success-bd)}
+.gb-op .sup-set .legal-badge.warn{background:var(--op-warning-bg);color:var(--op-warning);border-color:var(--op-warning-bd)}
+
+/* honest "bientôt" placeholder for unbuilt sections */
+.gb-op .sup-set .bientot{display:flex;align-items:center;gap:12px;padding:16px 18px}
+.gb-op .sup-set .bientot .ms{font-size:22px;color:var(--op-muted-2);flex-shrink:0}
+.gb-op .sup-set .bientot .m{flex:1;min-width:0}
+.gb-op .sup-set .bientot .m b{display:block;font-size:13px;font-weight:700}
+.gb-op .sup-set .bientot .m span{font-size:12px;color:var(--op-muted)}
+.gb-op .sup-set .bientot .pill{font-size:10px;font-weight:800;border-radius:999px;padding:4px 10px;background:var(--op-ai-bg);color:var(--op-ai-text);white-space:nowrap;flex-shrink:0}
+[data-theme="dark"] .gb-op .sup-set .bientot .pill{color:var(--op-ai-2)}
+
+/* security note */
+.gb-op .sup-set .sec-note{font-size:11.5px;color:var(--op-muted);line-height:1.55;margin:0}
+.gb-op .sup-set .sec-actions{display:flex;justify-content:flex-end}
+
+/* danger zone */
+.gb-op .sup-set .danger-card{border-color:var(--op-danger-bd)}
+.gb-op .sup-set .danger-card .set-card__head{border-bottom-color:var(--op-danger-bd)}
+.gb-op .sup-set .danger-card .set-card__head h2{color:var(--op-danger)}
+.gb-op .sup-set .danger-card .set-card__head .ic{background:var(--op-danger-bg);color:var(--op-danger)}
+.gb-op .sup-set .danger-text{margin:0;font-size:12.5px;line-height:1.55;color:var(--op-muted)}
+
+/* save feedback */
+.gb-op .sup-set .save-banner{display:flex;align-items:center;gap:10px;padding:13px 18px;margin-bottom:18px;border-radius:var(--op-r-lg);border:1px solid var(--op-success-bd);background:var(--op-success-bg)}
+.gb-op .sup-set .save-banner .ms{color:var(--op-success);font-size:20px}
+.gb-op .sup-set .save-banner b{font-size:13px;color:var(--op-text)}
+.gb-op .sup-set .form-err{background:var(--op-danger-bg);color:var(--op-danger);border:1px solid var(--op-danger-bd);border-radius:var(--op-r-md);padding:10px 12px;font-size:12.5px}
+
+@container gbop (max-width: 880px){
+  .gb-op .sup-set .op-field-row{flex-direction:column}
+}

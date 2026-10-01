@@ -1,32 +1,69 @@
-# Logs
-logs
-*.log
+# dependencies
+/node_modules
+/.pnp
+.pnp.js
+.yarn/install-state.gz
+
+# testing
+/coverage
+qa-vitest-results.json
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
-.output
-.vinxi
-.tanstack/**
-.nitro
-*.local
+# local env files
+.env*.local
+.env*.bak
+.env
+# T-98 (PRE-L11 hardening) — THE OPERATOR BACKUPS WERE NOT IGNORED, AND THEY ARE BYTE COPIES OF
+# .env.local. `.env*.bak` above only matches a name ENDING in `.bak`, so `.env.local.bak` was ignored
+# while every name the window operators actually write — `.env.local.bak-refund-gate-<stamp>`,
+# `.bak-modeb-gate-…`, `.bak-claims-gate-…`, `.bak-phase2-…` — was NOT (measured with
+# `git check-ignore`). Those files carry DATABASE_URL, STRIPE_SECRET_KEY, NEXTAUTH_SECRET, SMTP_PASS
+# and INTERNAL_CRON_TOKEN verbatim, and the house session ritual is `git add .`. One `git add .` on a
+# host that had run a window would have pushed every staging secret to GitHub. Anchored on the prefix,
+# not on the suffix, so a new operator inventing a new stamp is covered before it is written.
+.env*.bak*
+.env.local.bak*
 
-# Wrangler / Cloudflare
-.wrangler/
-.dev.vars
+# vercel
+.vercel
 
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
-.DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# prisma
+prisma/*.db
+
+# deploy artifacts
+/deploy/
+/deploy-temp/
+/deploy-package/
+*.zip
+deploy.zip
+grubano-deploy.zip
+grubano-prod.zip
+grubano-staging.zip
+
+# SSH deploy keys — NEVER commit private keys
+deploy_key
+deploy_key.pub
+grubano/_lovable_tmp/
+_lovable_tmp/
+
+# Visual-QA robot generated artifacts (scripts/design-qa.mjs) — keep the script + refs, ignore the output
+design-qa/

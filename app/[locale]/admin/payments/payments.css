@@ -1,0 +1,71 @@
+/* ============================================================================
+   /admin/payments — accounting ledger (CD ADM5 🔒, VERBATIM). Renders inside
+   AdminShell's .gb-op .op-content; op-* primitives + --op-* tokens in admin-shell.css.
+   ============================================================================ */
+.gb-op .ro-badge{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:var(--op-admin-text);background:var(--op-admin-bg);border:1px solid var(--op-admin-bd);border-radius:999px;padding:6px 12px}
+.gb-op .ro-badge .ms{font-size:15px}
+.gb-op .op-dash__head.ov-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.gb-op .op-empty{display:flex;flex-direction:column;align-items:center;text-align:center;padding:70px 20px}
+.gb-op .op-empty .ms{font-size:44px;color:var(--op-muted-2);margin-bottom:12px}
+.gb-op .op-empty b{font-size:16px;font-weight:700}
+.gb-op .op-empty span{font-size:12.5px;color:var(--op-muted);margin-top:5px;max-width:360px}
+
+/* ── decomposition banner (golden equation) ── */
+.gb-op .led-decomp{display:grid;grid-template-columns:1.1fr auto 1fr auto 1fr;gap:0;align-items:stretch;margin-bottom:16px;overflow:hidden}
+.gb-op .led-cell{padding:18px 20px}
+.gb-op .led-cell .l{font-size:11.5px;font-weight:700;color:var(--op-muted);display:flex;align-items:center;gap:6px}
+.gb-op .led-cell .l .ms{font-size:16px}
+.gb-op .led-cell .v{font-family:var(--op-font-mono);font-weight:800;font-size:23px;margin-top:8px;direction:ltr;unicode-bidi:isolate}
+.gb-op .led-cell .s{font-size:11px;color:var(--op-muted-2);margin-top:4px}
+.gb-op .led-cell.brut{background:linear-gradient(120deg,var(--op-admin-bg),transparent)}
+.gb-op .led-cell.comm .v{color:var(--op-admin)}
+.gb-op .led-cell.net .v{color:var(--op-success)}
+.gb-op .led-op{display:flex;align-items:center;justify-content:center;font-family:var(--op-font-mono);font-weight:800;font-size:22px;color:var(--op-muted-2);padding:0 4px;background:var(--op-surface-2)}
+
+/* ── toolbar ── */
+.gb-op .led-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+.gb-op .led-tabs{display:flex;gap:2px;background:var(--op-surface);border:1px solid var(--op-border-strong);border-radius:var(--op-r-pill);padding:3px;flex-wrap:wrap}
+.gb-op .led-tabs button{border:none;background:none;cursor:pointer;font-weight:700;font-size:12.5px;color:var(--op-muted);padding:8px 14px;border-radius:var(--op-r-pill)}
+.gb-op .led-tabs button.is-active{background:var(--op-text);color:var(--op-surface)}
+.gb-op .led-period{margin-inline-start:auto;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--op-muted)}
+.gb-op .led-period select{border:1px solid var(--op-border-strong);background:var(--op-surface);border-radius:var(--op-r-md);padding:8px 10px;font-family:inherit;font-size:12.5px;font-weight:700;color:var(--op-text)}
+
+/* ── ledger table ── */
+.gb-op .led-thead{display:grid;grid-template-columns:130px 150px 1.3fr 130px 130px 120px;gap:12px;padding:12px 18px;font-size:10.5px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:var(--op-muted-2);border-bottom:1px solid var(--op-border)}
+.gb-op .led-row{display:grid;grid-template-columns:130px 150px 1.3fr 130px 130px 120px;gap:12px;align-items:center;padding:13px 18px;border-bottom:1px solid var(--op-border)}
+.gb-op .led-row:last-child{border-bottom:none}
+.gb-op .led-row:hover{background:var(--op-surface-2)}
+.gb-op .led-dt{font-family:var(--op-font-mono);font-size:11.5px;color:var(--op-muted);direction:ltr;unicode-bidi:isolate}
+.gb-op .led-ref{font-family:var(--op-font-mono);font-weight:700;font-size:12px}
+.gb-op .led-party{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gb-op .led-party span{display:block;font-size:11px;color:var(--op-muted);font-weight:400}
+.gb-op .led-type{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;border-radius:999px;padding:4px 9px;white-space:nowrap;width:fit-content}
+.gb-op .led-type .ms{font-size:14px}
+.gb-op .led-type.order{background:var(--op-success-bg);color:var(--op-success)}
+.gb-op .led-type.refund{background:var(--op-danger-bg);color:var(--op-danger)}
+.gb-op .led-type.fee{background:var(--op-admin-bg);color:var(--op-admin-text)}
+.gb-op .led-type.adj{background:var(--op-surface-2);color:var(--op-muted);border:1px solid var(--op-border)}
+.gb-op .led-amt{font-family:var(--op-font-mono);font-weight:800;font-size:13.5px;text-align:end;direction:ltr;unicode-bidi:isolate}
+.gb-op .led-amt.in{color:var(--op-success)}
+.gb-op .led-amt.out{color:var(--op-danger)}
+.gb-op .led-net{font-family:var(--op-font-mono);font-weight:700;font-size:12.5px;text-align:end;color:var(--op-muted);direction:ltr;unicode-bidi:isolate}
+.gb-op .led-mini{display:none;font-size:11px;color:var(--op-muted);align-items:center;gap:8px;flex-wrap:wrap}
+
+.gb-op .led-note{display:flex;align-items:flex-start;gap:8px;background:var(--op-info-bg);border:1px solid var(--op-info-bd);border-radius:var(--op-r-md);padding:11px 14px;font-size:11.5px;line-height:1.5;color:var(--op-muted);margin-top:16px}
+.gb-op .led-note .ms{font-size:16px;color:var(--op-info);flex-shrink:0}
+
+@container gbop (max-width: 1040px){
+  .gb-op .led-decomp{grid-template-columns:1fr}
+  .gb-op .led-op{padding:6px 0;background:none}
+  .gb-op .led-cell{border-bottom:1px solid var(--op-border)}
+}
+@container gbop (max-width: 880px){ .gb-op .led-period{margin-inline-start:0} }
+@container gbop (max-width: 780px){
+  .gb-op .led-thead{display:none}
+  .gb-op .led-row{grid-template-columns:1fr auto;gap:5px 12px}
+  .gb-op .led-ref-cell{grid-column:1;grid-row:1}
+  .gb-op .led-amt{grid-column:2;grid-row:1;align-self:center}
+  .gb-op .led-dt-cell,.gb-op .led-type-cell,.gb-op .led-net{display:none}
+  .gb-op .led-party-cell{grid-column:1;grid-row:2}
+  .gb-op .led-mini{display:flex;grid-column:2;grid-row:2;justify-self:end}
+}

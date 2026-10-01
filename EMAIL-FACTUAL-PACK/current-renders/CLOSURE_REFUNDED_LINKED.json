@@ -1,0 +1,9 @@
+{
+  "id": "CLOSURE_REFUNDED_LINKED",
+  "from": "\"Grubano\" <contact@grubano.com>",
+  "to": "lea.martin@example.invalid",
+  "subject": "Réclamation GR-ABC123 : remboursement émis",
+  "hasText": false,
+  "hasImages": false,
+  "hasTable": false
+}

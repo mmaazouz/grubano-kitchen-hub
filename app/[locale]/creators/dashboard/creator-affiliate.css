@@ -1,0 +1,110 @@
+/* ── CR5 · Affiliation (content classes, scoped under the CreatorShell .gb-op) ──
+ * Verbatim CD CR5 primitives. VOLUMES ONLY — this screen NEVER shows € (the gains
+ * live on CR6 / « Mes gains »). Consumes the --op-* / --op-cr (rose-magenta) tokens
+ * defined in creator-shell.css (do NOT redefine :root here — they are global from
+ * the shell). Only the real referral link (+ copy / share / QR of the real link) and
+ * the real « Nouveaux clients » count are surfaced; the volume aggregates (clics,
+ * commandes générées, taux de conversion) and dedicated-link creation / share-kit
+ * assets are honest « bientôt » (inert), never a fabricated number. */
+
+/* hero — real referral link card */
+.gb-op .aff-hero{padding:22px;margin-bottom:16px;background:linear-gradient(120deg,var(--op-cr-bg),transparent)}
+.gb-op .aff-hero h3{margin:0 0 4px;font-family:var(--op-font-display);font-weight:800;font-size:16px}
+.gb-op .aff-hero p{margin:0 0 14px;font-size:12.5px;color:var(--op-muted)}
+.gb-op .aff-linkbox{display:flex;align-items:center;gap:10px;background:var(--op-surface);border:1px solid var(--op-cr-bd);border-radius:var(--op-r-md);padding:6px 6px 6px 15px;flex-wrap:wrap}
+.gb-op .aff-linkbox .url{flex:1;min-width:180px;font-family:var(--op-font-mono);font-size:13px;font-weight:600;color:var(--op-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;direction:ltr;unicode-bidi:isolate}
+.gb-op .aff-linkbox .acts{display:flex;gap:7px}
+.gb-op .aff-copy{display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#EC4899,#DB2777);color:#fff;border:none;border-radius:var(--op-r-sm);padding:9px 14px;font-size:12.5px;font-weight:700;cursor:pointer}
+.gb-op .aff-copy .ms{font-size:16px}
+.gb-op .aff-share{width:36px;height:36px;border:1px solid var(--op-border-strong);background:var(--op-surface);border-radius:var(--op-r-sm);color:var(--op-muted);cursor:pointer;display:flex;align-items:center;justify-content:center}
+.gb-op .aff-share .ms{font-size:17px}
+.gb-op .aff-share.on{border-color:var(--op-cr);color:var(--op-cr)}
+[data-theme="dark"] .gb-op .aff-share.on{color:var(--op-cr-2)}
+
+/* inline QR panel (real QR of the real link) */
+.gb-op .aff-qr{margin-top:14px;display:flex;flex-direction:column;align-items:center;gap:10px;background:#fff;border:1px solid var(--op-border);border-radius:var(--op-r-md);padding:18px}
+.gb-op .aff-qr svg{display:block}
+.gb-op .aff-qr p{margin:0;max-width:280px;text-align:center;font-size:11.5px;color:var(--op-muted)}
+
+/* stats — VOLUMES ONLY, no € */
+.gb-op .vol-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:16px}
+.gb-op .vol{padding:18px}
+.gb-op .vol__top{display:flex;align-items:center;gap:9px;margin-bottom:12px}
+.gb-op .vol__ic{width:34px;height:34px;border-radius:var(--op-r-md);background:var(--op-cr-bg);display:flex;align-items:center;justify-content:center;color:var(--op-cr);flex-shrink:0}
+[data-theme="dark"] .gb-op .vol__ic{color:var(--op-cr-2)}
+.gb-op .vol__ic .ms{font-size:19px}
+.gb-op .vol__label{font-size:12px;font-weight:700;color:var(--op-muted)}
+.gb-op .vol__val{font-family:var(--op-font-mono);font-weight:800;font-size:26px;letter-spacing:-.02em;direction:ltr;unicode-bidi:isolate}
+.gb-op .vol__sub{font-size:11px;color:var(--op-muted-2);margin-top:6px;display:flex;align-items:center;gap:4px}
+.gb-op .vol__sub .ms{font-size:14px}
+.gb-op .vol__sub.up{color:var(--op-success)}
+/* « bientôt » tile — inert placeholder value, no fabricated number */
+.gb-op .vol.soon .vol__val{color:var(--op-muted-2)}
+.gb-op .vol__soon{display:inline-flex;align-items:center;gap:5px;margin-top:8px;font-size:8.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;background:var(--op-warning-bg);color:var(--op-warning);border:1px solid var(--op-warning-bd);border-radius:999px;padding:2px 7px;width:fit-content}
+
+.gb-op .aff-two{display:grid;grid-template-columns:1.5fr 1fr;gap:16px;margin-bottom:16px;align-items:start}
+.gb-op .card-pad{padding:18px}
+.gb-op .card-pad__hd{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:4px}
+.gb-op .card-pad__hd h3{margin:0;font-family:var(--op-font-display);font-weight:800;font-size:15px}
+.gb-op .card-pad .hint{font-size:11.5px;color:var(--op-muted);margin-bottom:16px}
+
+/* links table (only the real main link is live; dedicated links = « bientôt ») */
+.gb-op .lk-thead{display:grid;grid-template-columns:1.7fr 90px 90px 90px;gap:12px;padding:11px 0;font-size:10.5px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:var(--op-muted-2);border-bottom:1px solid var(--op-border)}
+.gb-op .lk-thead span:not(:first-child){text-align:end}
+.gb-op .lk-row{display:grid;grid-template-columns:1.7fr 90px 90px 90px;gap:12px;align-items:center;padding:13px 0;border-bottom:1px solid var(--op-border)}
+.gb-op .lk-row:last-child{border-bottom:none}
+.gb-op .lk-name{display:flex;align-items:center;gap:11px;min-width:0}
+.gb-op .lk-ic{width:34px;height:34px;border-radius:var(--op-r-md);background:var(--op-surface-2);display:flex;align-items:center;justify-content:center;color:var(--op-cr);flex-shrink:0}
+[data-theme="dark"] .gb-op .lk-ic{color:var(--op-cr-2)}
+.gb-op .lk-ic .ms{font-size:18px}
+.gb-op .lk-name__t{min-width:0}
+.gb-op .lk-name__t b{display:block;font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gb-op .lk-name__t span{font-size:10.5px;color:var(--op-muted);font-family:var(--op-font-mono);direction:ltr;unicode-bidi:isolate;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+.gb-op .lk-num{font-family:var(--op-font-mono);font-weight:700;font-size:13px;text-align:end;color:var(--op-muted-2);direction:ltr;unicode-bidi:isolate}
+.gb-op .lk-mini{display:none}
+/* « Nouveau lien » creation + dedicated-link stats are not live yet — inert row */
+.gb-op .lk-soon{display:flex;align-items:center;gap:9px;margin-top:14px;padding:13px 14px;border:1px dashed var(--op-border-strong);border-radius:var(--op-r-md);font-size:12px;color:var(--op-muted)}
+.gb-op .lk-soon .ms{font-size:18px;color:var(--op-muted-2);flex-shrink:0}
+.gb-op .lk-soon .tag{margin-inline-start:auto;font-size:8.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;background:var(--op-warning-bg);color:var(--op-warning);border:1px solid var(--op-warning-bd);border-radius:999px;padding:2px 7px;flex-shrink:0}
+
+/* leaderboard — volumes, NO € (real rank + name + tier only; no per-creator number) */
+.gb-op .lb-note{display:flex;align-items:flex-start;gap:7px;font-size:11px;color:var(--op-muted-2);margin-bottom:14px;line-height:1.5;background:var(--op-surface-2);border-radius:var(--op-r-md);padding:9px 12px}
+.gb-op .lb-note .ms{font-size:14px;flex-shrink:0}
+.gb-op .lb-row{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--op-border)}
+.gb-op .lb-row:last-child{border-bottom:none}
+.gb-op .lb-rank{width:24px;text-align:center;font-family:var(--op-font-display);font-weight:800;font-size:14px;color:var(--op-muted-2);flex-shrink:0;direction:ltr;unicode-bidi:isolate}
+.gb-op .lb-row.me{background:var(--op-cr-bg);margin:0 -12px;padding-inline:12px;border-radius:var(--op-r-md);border-bottom:none}
+.gb-op .lb-row.me .lb-rank{color:var(--op-cr-text)}
+[data-theme="dark"] .gb-op .lb-row.me .lb-rank{color:var(--op-cr-2)}
+.gb-op .lb-av{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--op-font-display);font-weight:800;font-size:11px;color:#fff;flex-shrink:0;background:linear-gradient(135deg,#EC4899,#A61E5D)}
+.gb-op .lb-m{flex:1;min-width:0}
+.gb-op .lb-m b{display:block;font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gb-op .lb-m span{font-size:10.5px;color:var(--op-muted)}
+.gb-op .lb-tier{font-size:10px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:var(--op-cr-text);background:var(--op-cr-bg);border:1px solid var(--op-cr-bd);border-radius:999px;padding:3px 9px;flex-shrink:0}
+[data-theme="dark"] .gb-op .lb-tier{color:var(--op-cr-2)}
+.gb-op .lb-empty{padding:26px 14px;text-align:center;font-size:12px;color:var(--op-muted);border:1px dashed var(--op-border);border-radius:var(--op-r-md)}
+.gb-op .lb-empty .ms{font-size:30px;color:var(--op-muted-2);display:block;margin-bottom:8px}
+
+/* share kit — QR of the real link is OK; visuals / captions = « bientôt » inert */
+.gb-op .asset-row{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--op-border)}
+.gb-op .asset-row:last-child{border-bottom:none}
+.gb-op .asset-ic{width:34px;height:34px;border-radius:var(--op-r-md);background:var(--op-surface-2);display:flex;align-items:center;justify-content:center;color:var(--op-muted);flex-shrink:0}
+.gb-op .asset-ic .ms{font-size:18px}
+.gb-op .asset-m{flex:1;min-width:0}
+.gb-op .asset-m b{display:block;font-size:12.5px;font-weight:700}
+.gb-op .asset-m span{font-size:11px;color:var(--op-muted)}
+.gb-op .asset-dl{border:1px solid var(--op-border-strong);background:var(--op-surface);border-radius:var(--op-r-sm);padding:7px 11px;font-size:11.5px;font-weight:700;color:var(--op-text);cursor:pointer;display:inline-flex;align-items:center;gap:5px;flex-shrink:0}
+.gb-op .asset-dl .ms{font-size:15px}
+.gb-op .asset-soon{font-size:8.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;background:var(--op-warning-bg);color:var(--op-warning);border:1px solid var(--op-warning-bd);border-radius:999px;padding:3px 9px;flex-shrink:0}
+
+@container gbop (max-width: 1100px){ .gb-op .vol-grid{grid-template-columns:repeat(2,1fr)} }
+@container gbop (max-width: 980px){ .gb-op .aff-two{grid-template-columns:1fr} }
+@container gbop (max-width: 680px){
+  .gb-op .lk-thead{display:none}
+  .gb-op .lk-row{grid-template-columns:1fr auto;gap:5px 12px}
+  .gb-op .lk-name{grid-column:1;grid-row:1}
+  .gb-op .lk-row .lk-clicks{grid-column:2;grid-row:1;align-self:center}
+  .gb-op .lk-row .lk-conv,.gb-op .lk-row .lk-rate{display:none}
+  .gb-op .lk-mini{display:block;grid-column:1;grid-row:2;font-size:11px;color:var(--op-muted-2);font-family:var(--op-font-mono)}
+}
+@container gbop (max-width: 520px){ .gb-op .vol-grid{grid-template-columns:1fr} }

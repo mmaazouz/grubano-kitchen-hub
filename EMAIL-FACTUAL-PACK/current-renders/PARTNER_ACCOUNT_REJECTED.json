@@ -1,0 +1,9 @@
+{
+  "id": "PARTNER_ACCOUNT_REJECTED",
+  "from": "\"Grubano\" <contact@grubano.com>",
+  "to": "gnocchi.bar@example.invalid",
+  "subject": "Votre demande Grubano n'a pas été validée",
+  "hasText": false,
+  "hasImages": false,
+  "hasTable": false
+}

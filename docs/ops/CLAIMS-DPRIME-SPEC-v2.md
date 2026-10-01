@@ -1,0 +1,403 @@
+# CLAIMS D′ — SPÉCIFICATION D'IMPLÉMENTATION v2 (FIGÉE 2026-09-22, base `dab754d`)
+
+> Décision fondateur (2026-09-22) : la décision D4 (« `CLAIMS_ENABLED=false` toute la bêta ») est
+> abandonnée. Architecture retenue : **D′** — client 24/7 → restaurant 24/7 → décision Grubano 24/7 →
+> file financière séparée → remboursement uniquement sous autorisation financière fail-closed.
+> Cette page est la référence d'implémentation ; les règles R13 qu'elle remplace sont listées dans
+> l'addendum v1.1 de `CLAIMS-T49-ROUND13-SPEC-v1.md` (les textes gelés y restent lisibles).
+
+Conventions : **FAIT** = vérifié dans le code à `dab754d` ; **RÈGLE** = exigence ; **INTERPRÉTATION** = dérivée
+d'une décision fondateur, acceptée explicitement le 2026-09-22 (GO Phase 1).
+
+---
+
+## 0. Décisions fondateur (finales)
+
+| ID | Décision |
+|---|---|
+| D-1 | Ancre STRICTE : `Order.deliveredAt=null` ⇒ inéligible au self-service, aucun fallback `updatedAt` ; support manuel |
+| D-2 | Réclamation SYSTÈME (annulation d'une commande payée) : suit la surface (gatée par `CLAIMS_SURFACE_ENABLED`, **pas** par INTAKE — ce n'est pas un dépôt client) |
+| D-3 | Rail financier déclenché par SESSION ADMIN uniquement (`resolveAdmin`) ; ni `INTERNAL_CRON_TOKEN`, ni cron, ni dispatch GitHub comme déclencheur métier |
+| D-4 | Lot : `dryRun` obligatoire → `confirm:'PAYER'` → max 20 → rapport individuel par réclamation |
+| D-5 | Retrait d'une approbation fondé uniquement sur la frontière financière (aucune limite de temps) ; retour en `arbitration` ; jamais de `refused_final` silencieux |
+| D-6 | Remboursement finalisé plus tard par webhook : E3 (avis post-fenêtre via console admin) + invariant FIN-EMAIL-01 ; pas d'e-mail depuis le webhook (H15 conservé) |
+| D-7 | `restaurant_closed` retiré du choix client ; `excessive_wait`/`payment_issue` = choix explicite ; page d'aide alignée ; stepper quantité |
+| D-8 | `/legal/cgv` ×5 locales + lien visible ; pas de checkbox de dépôt ; validation juridique du contenu avant production (hors spec — cette spec ne vaut pas validation juridique). **AMENDÉ PAR PRE-L11 (2026-09-28)** : les CGV pointent vers le **contact support déjà configuré** (`lib/support-contact.SUPPORT_EMAIL`, source unique, aucune seconde adresse en dur) et NON vers une identité légale — `LEGAL_INFO.editor.email` et les trois champs médiateur restent des placeholders, faits du fondateur que §12 interdit d'inventer. Trois faits distincts et **séparés** : `version = 0.1-beta`, `lastUpdated = 2026-09-28`, **`effectiveDate = null`** — là où une date figurerait, la page rend « Projet — version bêta, non entrée en vigueur » ×5 locales, sans un chiffre. **PORTE DE PRODUCTION** `cgvProductionReadiness()` : NON tant que (a) `CGV_COUNSEL_REVIEWED !== true`, (b) `effectiveDate` absente, (c) un fait légal requis est un placeholder, ou (d) **aucun médiateur configuré** — chacune suffisante à ELLE SEULE, aucune lecture d'`env`, aucun drapeau de contournement. |
+| D-9 | Flags produit `CLAIMS_SURFACE_ENABLED` (lecture + workflow) et `CLAIMS_INTAKE_ENABLED` (nouvelles réclamations client) ; `CLAIMS_ENABLED`/`CLAIMS_WINDOW_UNTIL` restent l'outillage historique Mode A/B |
+| D-10 | Arrêter les nouveaux dépôts = `INTAKE=false` ; `SURFACE=false` = kill-switch d'incident majeur seulement |
+| D-11 | E-mail `approved` : montant réellement approuvé, « sera exécuté séparément », « une fois émis … dépend de votre banque », jamais « déjà émis » |
+| D-12 | Restaurant : remboursement client brut / commission Grubano restituée / impact net ; jamais une estimation présentée comme une écriture Stripe confirmée |
+| D-13 | `CLAIM_MAX_ORDER_AGE_DAYS = 30` (constante) ; fenêtre métier 48 h depuis `deliveredAt` |
+| D-14 | Aucune ré-approbation admin n'est jamais un chemin d'argent ; v13 payables uniquement via `claimIds` explicites du rail |
+| D-15 | Fidélité : prorata à `delivered` sur le cash effectivement conservé (arrondi cumulé §9 du contrat fidélité) ; 8 tests imposés |
+| T-50 | `selection` persistée ; **aucune** consommation/blocage automatique par quantité historique en bêta ; dette ANTI-REPEAT ITEM CLAIM POLICY — POST-BETA |
+| FIN-EMAIL-01 | Un avis attestant un refund Stripe `succeeded` ne dépend ni de SURFACE, ni d'INTAKE, ni d'un bail legacy ; dédup conservée |
+| Interprétations acceptées | T1 amendé minimalement (§8.3) ; système gaté SURFACE ; rail refusé sous kill-switch ; retrait étendu aux preuves sans moteur ; `ADMIN_AUDIT_ENABLED='true'` obligatoire pour retrait et PAYER |
+
+Automatismes toute la bêta : `CLAIMS_AUTO_APPROVE_ENABLED`, `CLAIM_AUTO_RESOLVE_ENABLED`, `GHOST_ORDER_AUTO_REFUND_ENABLED` = OFF ; `autoResolveSmallClaim` rendu inerte par construction ; aucun chemin machine n'écrit `status='approved'`.
+
+---
+
+## 1. Architecture cible
+
+```
+ ZONE MÉTIER — 24/7 sous CLAIMS_SURFACE_ENABLED='true' (jamais un bail)
+   CLIENT ──dépôt (commande LIVRÉE, 48 h après deliveredAt, INTAKE)──▶ restaurant_review
+                                          resto accept ──▶ arbitration ; resto refuse ──▶ refused ──contest──▶ arbitration
+   SYSTÈME (annulation payée) ──────────────────────────────────────▶ arbitration
+   ADMIN refuse_final ──▶ refused_final
+   ADMIN approve(montant ≤ demandé, confirm) ──▶ APPROVED_AWAITING_PAYMENT   (aucun appel moteur, même RE ouvert)
+   ADMIN withdraw_approval(confirm) ◀── correction d'erreur humaine, avant tout Stripe
+   Récupération par preuve (R13) : non gatée, inchangée
+ ═══════════════════ MONEY BOUNDARY (RE = REFUNDS_ENABLED + REFUNDS_WINDOW_UNTIL ≤ 30 min) ═══════════════════
+   OPÉRATEUR autorisé ouvre un bail T-48 (opérateur pay-window, précheck T-42 par compte Connect)
+   ADMIN (session) POST /api/admin/claims/pay-approved {dryRun} puis {confirm:'PAYER', token}
+     sélection serveur = APPROVED_AWAITING_PAYMENT, FIFO, cap 20, RE relu AVANT chaque réclamation
+     → triggerClaimRefund(claimId) [T1 amendé §8.3 ; T2..T4 inchangés] → executeRefund (moteur gelé, SHA épinglé)
+     → Stripe → webhook → ledger → fidélité → avis post-argent → UI client/resto
+   Bail expiré ⇒ arrêt immédiat, reste « non tenté », décisions métier intactes
+```
+
+Frontières : aucune écriture Stripe dans la zone métier ; seul appelant de `triggerClaimRefund` = le rail ; `lib/refund.ts` et `middleware.ts` intouchés ; vérité après coup (webhook, ledger, fidélité, réconciliation) inchangée.
+
+---
+
+## 2. Machine à états
+
+### 2.1 Représentation (sans nouveau statut)
+| État logique | Représentation |
+|---|---|
+| `restaurant_review`, `arbitration`, `refused`, `refused_final`, `refunding`, `refunded`, `financial_verification` | statuts existants |
+| **APPROVED_AWAITING_PAYMENT** | `status='approved' ∧ arbitrationDecision='approved' ∧ refundAttempted=false ∧ refundId=null ∧ refundError=null ∧ arbitratedAt≠null ∧ approvedAmountCents≠null` |
+| APPROVED héritée (à ratifier) | même forme avec `arbitrationDecision=null` ∨ `approvedAmountCents=null` — visible, jamais payable (population staging mesurée : 0) |
+| Sous-états argent (`refundError` préfixés) | inchangés (R13) |
+
+### 2.2 Transitions
+| # | De → Vers | Acteur · route | Préconditions | Effets DB | Stripe | Concurrence |
+|---|---|---|---|---|---|---|
+| T-01 | ∅ → `restaurant_review` | client · `POST /api/claims` | `claimsIntakeOpen()` ; propriétaire ; `paymentStatus='paid'` ; **`status='delivered'`** ; `now−deliveredAt ≤ 48 h` ; `now−createdAt ≤ 30 j` ; motif canonique ; `scope` explicite (§5) ; montant ≤ `min(DB, Stripe)` | `Claim` + `selection` + `activeOrderKey` | 2 lectures | `activeOrderKey @unique` → 409 |
+| T-02 | ∅ → `arbitration` (système) | resto/admin · `PATCH /api/orders/[id]/status` cancelled | `claimsSurfaceOpen()` ∧ `paid` ∧ total>0 | même transaction que l'annulation ; `selection={v:1,mode:'whole',modeSource:'system',…}` | non | P2002 → `already_active` |
+| T-03 | `restaurant_review` → `refused` | resto · `respond` | scope établissement | `restaurantResponse/Reason`, `decidedBy='restaurant'`, `activeOrderKey=null` | non | CAS |
+| T-04 | `restaurant_review` → `arbitration` | resto (accept) | idem | `restaurantResponse='accepted'` | **jamais** | CAS |
+| T-05 | `refused` → `arbitration` | client · `contest` | ≤ 48 h après `decidedAt` ; `claimsSurfaceOpen()` | re-pose `activeOrderKey` | non | CAS + P2002 |
+| T-06 | `arbitration` / `restaurant_review` échu → `refused_final` | admin · `arbitrate {decision:'refuse_final'}` | `arbitrationRefusal` (AM-B3 conservé) | terminal, `activeOrderKey=null`, closure record | non | CAS |
+| **T-07** | `arbitration` / `restaurant_review` échu → APPROVED_AWAITING_PAYMENT | admin · `arbitrate {decision:'approve', approvedAmountCents, confirm:'APPROUVER', reason?, reduceReason?}` | `1 ≤ approvedAmountCents ≤ requestedAmountCents` ; `reduceReason` obligatoire si `<` ; plafond Stripe affiché (§7), avertissement bloquant si `>` reste | décision + `approvedAmountCents` écrits **une fois** ; audit `claim.arbitrate {moneyMoved:false}` ; e-mail `claim_decision_approved` (dédup par décision) | **jamais** | CAS `arbitrationDecision:null` |
+| **T-08** | APPROVED héritée → APPROVED_AWAITING_PAYMENT (**ratification**) | admin · `arbitrate {decision:'approve', …}` | `status='approved' ∧ refundAttempted=false ∧ refundId=null ∧ approvedAmountCents IS NULL ∧ refundError ∈ {null, v13}` | CAS épingle `approvedAmountCents:null` ; écrit `approvedAmountCents`, `arbitrationDecision='approved'`, `arbitrationReason`, et `arbitratedBy/At`, `decidedBy='admin'`, `decidedAt` **seulement s'ils sont nuls** ; `refundError` v13 intact ; audit `claim.ratify` | jamais | `approvedAmountCents≠null` ⇒ 409 `APPROVE_ALREADY_SET` |
+| **T-09** | APPROVED_AWAITING_PAYMENT → `arbitration` (**withdraw_approval**) | admin · `POST /api/admin/claims/[id]/withdraw-approval {reason≥10, confirm:'RETIRER'}` | §4 | §4 | jamais | CAS exclusif avec T1 |
+| **T-10** | APPROVED_AWAITING_PAYMENT → `refunding` (T1) | rail · `pay-approved` PAYER → `triggerClaimRefund` | RE ∧ SURFACE strict ; sélection §8.5 ; `approvedAmountCents≠null` | T1 CAS amendé §8.3 | pas encore | un gagnant par pré-image |
+| T-11..T-19 | T2/T4 existants (holds, park FV, preuve, refunded, 202, resume_mismatch, engine_failed, crash) | interne | inchangés ; montant = `approvedAmountCents` | oui (T3) | CAS `{refunding, M}` |
+| T-20 | `refunding` (202) → `refunded` | webhook → `reconcileClaimForRefund` | ligne liée `succeeded` | `refunded`, closure record `noNoticeSource` | non | avis client par `closure-notice` (E3) |
+| T-21 | `refunding` → `approved`+`stripe_failed:` | webhook `refund.failed` | ligne `failed` (verrou commande permanent, FAIT) | existant | non | existant |
+| T-22..T-27 | FV → refunded/approved… (reconcile, attribute, adopt, stuck_close, reverted) | admin · routes non gatées | inchangés | lecture seule | inchangés |
+
+Sorties de APPROVED_AWAITING_PAYMENT (D1 v1.1) : `pay` (rail, gaté RE ∧ SURFACE) · `withdraw` (admin) · `approve` refusé (`APPROVE_ALREADY_SET`) · `refuse_final` refusé (AM-B3) · `reconcile` refusé (réclamation saine). v13 après instant : `pay` via `claimIds` explicite + `reconcile`.
+
+---
+
+## 3. Contrat des flags
+
+### 3.1 Définitions (`lib/claim-flags.ts` — lit `process.env` seulement, n'importe rien ; `lib/claims` ré-exporte `isClaimsEnabled`)
+```
+isClaimsSurfaceEnabled() = CLAIMS_SURFACE_ENABLED === 'true'
+isClaimsIntakeEnabled()  = CLAIMS_INTAKE_ENABLED  === 'true'
+isClaimsEnabled()        = bail legacy (CLAIMS_ENABLED + CLAIMS_WINDOW_UNTIL ≤ 60 min) — logique inchangée
+claimsSurfaceOpen()      = isClaimsSurfaceEnabled() || isClaimsEnabled()
+claimsIntakeOpen()       = isClaimsSurfaceEnabled() ? isClaimsIntakeEnabled() : isClaimsEnabled()
+claimNoticeGate(cls)     = cls === 'pre_money' ? claimsSurfaceOpen() : true     // 'post_money' | 'closure'
+```
+- Flags produit prioritaires : `SURFACE='true'` ⇒ bail legacy inerte ; `SURFACE` absent ⇒ le bail ouvre surface+intake (Mode A/B).
+- `INTAKE='true'` sans `SURFACE='true'` ⇒ rien ; `check-flags.mjs` : ERREUR `CLAIMS_INTAKE_ENABLED ⇒ CLAIMS_SURFACE_ENABLED` ; WARNING si `SURFACE='true'` et `CLAIMS_ENABLED='true'` ; WARNINGS §19 T-53 limités au bail ; aucun couplage à `REFUNDS_ENABLED`.
+- `'TRUE'`/`'1'`/`''` ⇒ OFF.
+
+### 3.2 Matrice
+| Surface | SURFACE=true · INTAKE=true | SURFACE=true · INTAKE=false | SURFACE=false (kill-switch) |
+|---|---|---|---|
+| `POST /api/claims` | 201 | **403 `{error, gated:false, enabled:true, intakeOpen:false, reason:'intake_closed'}`** (sondes ⇒ UNKNOWN, jamais CLOSED) | 403 `{gated:true}` |
+| `GET /api/claims?orderId` | `{enabled:true, intakeOpen:true, eligibility}` | overlay route : `not_owner` inchangé ; sinon `{...e, canClaim:false, reason:'intake_closed'}` — `existingClaim`/`scope` conservés | `{enabled:false}` |
+| `GET /api/claims` (historique), `contest` | ok | ok | `{enabled:false}` / 403 |
+| Réclamation système | créée | créée | non créée (variante Off + alerte admin) |
+| Resto liste/historique/respond | ok | ok | `{enabled:false}` / 403 |
+| Admin arbitrate / ratify / withdraw | ok | ok | 403 |
+| `GET /api/admin/claims` | complet | complet | **scindé** : `enabled:false`, listes workflow `[]`, **`actionableRefunds` + `approvedAwaitingPayment` toujours renvoyés**, `counts.actionableTotal = money` |
+| FV, lignes non finalisées, avis non envoyés, « À rembourser », census | visibles | visibles | **visibles** |
+| Rail `dryRun` | ok | ok | ok (lecture) |
+| Rail `PAYER` | **`isRefundsEnabled() ∧ isClaimsSurfaceEnabled()`** strict (jamais le bail legacy) | idem | **403** `{gated:true, flag:'CLAIMS_SURFACE_ENABLED'}` |
+| E-mails pré-argent automatiques | envoyés | envoyés | sautés `claims_disabled` |
+| Avis post-argent / clôtures explicites | envoyables | envoyables | **envoyables** |
+| Récupération par preuve, webhook | ok | ok | ok |
+| Badge admin | workflow + argent | idem | 0 + argent |
+| auto-approve / auto-resolve / ghost | OFF | OFF | OFF |
+
+### 3.3 Sites (FAIT : 25 lecteurs de `isClaimsEnabled()`, tous côté appelant)
+- INTAKE : `POST /api/claims:43` ; overlay GET ; formulaires client (`intakeOpen`).
+- SURFACE : GET `/api/claims:127` (première instruction), `contest:17`, `restaurant:13`, `respond:25`, `admin/claims:13` (scindé), `arbitrate:28`, `stale-alerts:24`, `status/route.ts:123` (`claimsOn = claimsSurfaceOpen()`) et `:246` (`claimsOpenNow = claimNoticeGate('pre_money')`), `orders/page.tsx:165`, `admin/claims/page.tsx:40` (cartes argent hors `claimsOpen &&`), `admin-overview.ts:78`, `admin-establishments.ts:111` (états argent hors ternaire), `census`.
+- Bail legacy + flag propre : `auto-approve/route.ts:32` seulement. `autoResolveSmallClaim` : inerte (`{state:'not_eligible'}` inconditionnel, branche `claims/route.ts:107-118` retirée).
+- Nouveaux : `withdraw-approval` (SURFACE), `ceiling` (SURFACE), `pay-approved` (dryRun admin ; PAYER RE ∧ SURFACE strict), `rows/[rowId]/notify` (admin, non gaté), `admin/loyalty/reconcile` (admin, non gaté).
+
+### 3.4 Opérateurs historiques
+| Outil | Sous flags produit | Changement L1 |
+|---|---|---|
+| `phase2-claims-gate.js` (Mode A) | sonde OPEN ⇒ refuse (`:475`) ; precheck disait READY | anomalie precheck + refus **nommant** le flag ; sonde UNKNOWN sur `intake_closed` ⇒ refus |
+| `phase2-modeb-gate.js` (Mode B) | refuse (`:495/:592`) | message nommant le flag |
+| `phase2-refund-gate.js window` | ne sonde que `refunds/run` | refus si SURFACE/INTAKE `'true'` ; sonde `POST /api/claims` ajoutée ; impression |
+| `phase2-backup-neutralize.js` | garde les deux baux | inchangé |
+| `env-provenance.js` `WATCHED_SECRET_KEYS` | | + 2 flags |
+| Runbooks Mode A/B | | en-tête « valides uniquement avec SURFACE/INTAKE absents ; historique figé (Mode A 2026-09-15→18, Mode B 2026-09-22 `dab754d`) » |
+
+Incompatibilités : bail legacy inerte sous SURFACE ; Mode A/B impossibles en bêta ; Mode B non reproductible sur D′ par construction (approve ≠ argent) ; combiné archivé ; `refund-rehearsal.yml` inapte au rail réclamations ; le bail legacy n'ouvre jamais le rail.
+
+### 3.5 Procédures
+- Bêta : `SURFACE=true`, `INTAKE=true` dans `.env.local` seulement (jamais l'UI cPanel) + restart + provenance ; preuves `POST /api/claims` 401, `GET /api/admin/claims` liste.
+- Suspendre l'intake : `INTAKE=false` + restart ; preuve POST 403 `intake_closed`.
+- Kill-switch : `SURFACE=false` **et** `INTAKE=false` **et** `CLAIMS_ENABLED` absent/false (sinon emergency-close d'abord) + restart + provenance ; preuves POST 403 `{gated:true}`, `GET /api/admin/claims` `{enabled:false, actionableRefunds:[…]}`.
+
+---
+
+## 4. Retrait d'une approbation (withdraw-approval)
+
+Route `POST /api/admin/claims/[id]/withdraw-approval` · `{ reason: string ≥ 10, confirm: 'RETIRER' }` · `resolveAdmin()` · `rateLimit 'admin_claims_withdraw' 10/60` · gate `claimsSurfaceOpen()` · **409 `audit_disabled` si `ADMIN_AUDIT_ENABLED !== 'true'`**.
+
+Préconditions (lues immédiatement avant le CAS) :
+1. Forme : `status='approved' ∧ arbitrationDecision='approved' ∧ refundAttempted=false ∧ refundId=null ∧ refundError ∈ {null, `no_refund_proven:v13:`…, `no_refund_proven_rail_locked:`…}` (textes écrits uniquement par des chemins sans moteur avec 0 ligne propre) ; `refund_safety_hold:` (`refundAttempted=true`) et tout autre `refundError` ⇒ 409 « état argent enregistré : réconciliez ».
+2. `prisma.refund.count({ where: { orderId, reason: 'claim:<id>' } }) === 0` (estampille, tout statut). Miroirs `external:` couverts par `refundId=null`. Lecture en échec ⇒ 409.
+3. Aucune limite temporelle. Une tentative restaurée par `revertPreImage` (0 moteur, 0 ligne) n'interdit pas le retrait.
+
+Transaction unique (client racine) : `updateMany` CAS sur la forme (dont `refundError: before.refundError`, `approvedAmountCents: before.approvedAmountCents`) → `data { status:'arbitration', arbitrationDecision:null, arbitratedBy:null, arbitratedAt:null, arbitrationReason:null, decidedBy:null, decidedAt:null, approvedAmountCents:null }` ; `count !== 1` ⇒ 409 ; puis `adminAuditLog.create({ action:'claim.withdraw_approval', metadata:{ previousArbitratedBy, previousArbitratedAt, previousArbitrationReason, previousApprovedAmountCents, previousDecidedAt, previousRefundError, reason, moneyMoved:false } })` — échec ⇒ rollback. `activeOrderKey` conservé.
+
+Exclusivité avec le rail : même ligne, même pré-état que T1 ⇒ au plus un gagnant. Effets : e-mail `claim_approval_withdrawn` (pré-argent), dédup `claim:<id>:withdrawn:<previousArbitratedAt ISO>` ; statut client `arbitration` ; pas de closure record ; l'admin re-décide explicitement ; pin statique « la route n'écrit jamais `refused_final` ».
+
+---
+
+## 5. Sélection / T-50
+
+- `Claim.selection Json?` : `{ v:1, mode:'items'|'amount'|'whole', modeSource:'client'|'derived'|'system', lines:[{index,itemId,qty,unitCents,name}], requestedCents, ceilingVerified:boolean }` — jamais un montant/id Stripe ; écrite dans le même `create` ; système : `{mode:'whole', modeSource:'system', lines:[], …}` ; legacy `null` ⇒ « Sélection non enregistrée ».
+- `POST /api/claims` : champ `scope` explicite (ITEM_REQUIRED forcé `items` ; ITEM_OPTIONAL obligatoire, 400 sinon ; `not_received` défaut `whole` ; `excessive_wait`/`payment_issue` explicite) ; `picked` vidé au changement de motif ; `restaurant_closed` retiré (refusé À LA ROUTE, `reason_not_selectable` ; `createSystemClaim` porte toujours la question sous `system_order_cancelled`) ; page d'aide alignée + stepper.
+- **AMENDÉ PAR L7 — REFUS AU LIEU D'IGNORER.** Cette section disait « `items` ignorés si `scope≠'items'` ». Le lot livré REFUSE la combinaison (`items_not_allowed`), et symétriquement un montant envoyé à côté d'une sélection (`amount_not_allowed`). Un champ ignoré sans un mot EST le défaut que T-50 ferme : deux champs qui prétendent fixer le montant sont une contradiction que seul le client peut trancher. Même famille, même lot : un montant **au-dessus du plafond** n'est plus rabattu en silence mais refusé (`amount_over_ceiling`) — le plafond reste atteignable par sa propre portée. Aucun des deux ne peut élargir une autorité : tous deux remplacent une valeur silencieuse par un refus codé et localisé.
+- **ORDRE DES CONTRÔLES (L7)** : l'éligibilité de la COMMANDE (E1→E6) parle AVANT la forme de la REQUÊTE (portée, sélection, montant). L'invariant L6 « `createClaim` et `getClaimEligibility` répondent le même code » l'exige : demander « indiquez ce que vous réclamez » sur une commande non livrée pose une question à laquelle le client peut répondre parfaitement et être refusé quand même.
+- **Aucune consommation automatique** : `buildClaimScope`/`resolveClaimAmount` inchangés, et l'historique n'est pas un de leurs paramètres. Protections : `activeOrderKey`, plafond argent restant, historique visible.
+- Signal visuel non bloquant `previouslyClaimed[index] = [{claimId, status, qty}]`, **pas au client**. L7 livre le CALCUL (`previouslyClaimedByLine`, pur, sans plafond ni quantité restante, plus la liste des réclamations antérieures NON attribuables à une ligne : legacy, mode `amount`, mode `whole`, zéro ligne). Le RENDU restaurant relève du contrat S-19 de L8, avec la projection que L8 conçoit ; l'admin voit la sélection sur la file d'arbitrage et la liste `restaurant_review`, et rien n'est affiché là où la colonne n'a pas été lue (`undefined` ≠ `null`).
+- Dette : **ANTI-REPEAT ITEM CLAIM POLICY — POST-BETA** (voir `POST-BETA-CLAIMS-BACKLOG.md`).
+
+---
+
+## 6. Notifications post-argent (FIN-EMAIL-01)
+
+### 6.1 Classes
+| Classe | Gate | Déclencheurs |
+|---|---|---|
+| Pré-argent (automatiques) | `claimNoticeGate('pre_money') = claimsSurfaceOpen()` | `claim_ack`, `claim_decision_accepted/refused`, `claim_decision_approved`, `claim_decision_refused_final` inline, `claim_approval_withdrawn`, `order_cancelled` variante « demande transmise », resto (1)(2) |
+| Post-argent (Stripe prouvé) | `true` | `claim_decision_refunded` (rail), clôture H06 `refunded`/`refundedLinked`/`refundRecorded`, `refund_confirmation`, resto (3) |
+| Clôtures terminales explicites | `true` | `closure-notice` toutes sortes, `resolve-stuck` |
+
+### 6.2 Sites (classe choisie par le fichier appelant)
+`POST /api/claims` (ack) → pre ; `respond` → pre ; `status/route.ts` → pre ; `arbitrate` → pre ; `withdraw-approval` → pre ; `pay-approved` → post ; `closure-notice`, `reconcile`, `attribute`, `resolve-stuck` → `'closure'` ; `rows/[rowId]/notify` → post. Senders inchangés (paramètre `claimsOpen` conservé). Pin J-C21 remplacé : chaque appel porte `claimsOpen: claimNoticeGate('pre_money'|'post_money'|'closure')` conforme ; contrôle négatif : `claimsOpen: true`, `isClaimsEnabled()`, `claimsSurfaceOpen()` littéraux = violations ; `H15_IMPORTERS` liste explicite étendue.
+
+### 6.3 E3 — avis différés
+- Aucun envoi depuis le webhook (H15). R13 §23 amendé par §26 (v1.1).
+- Lignes support « non notifiées » = `Refund.status='succeeded' ∧ stripeRefundId≠null ∧ reason NOT LIKE 'claim:%' ∧ idempotencyKey NOT LIKE 'external:%' ∧ aucun lieur (`Claim.refundId=row.id`) ∧ aucune `EmailDispatch('refund_confirmation', k)` pour `k ∈ {refund:<re_>, refund:<rowId>}`.
+- `POST /api/admin/refunds/rows/[rowId]/notify` (`resolveAdmin`, non gaté) : relit ces conditions (409 `claim_bound`/`already_sent`) **et** `stripe.refunds.retrieve(re_)` dans la requête (lecture seule) : `succeeded` + montant entier > 0 ; `failed/canceled` ⇒ 409 + alerte `support_row_reverted` ; envoie `refund_confirmation` (`refund:<re_>`) + resto (3). Importe `lib/stripe` (lecture) et `lib/transactional-emails` ; jamais `lib/refund` ni `lib/claim-emails`.
+- Lignes réclamation : `closure-notice` existant (envoie aussi resto (3)). Carte « Avis non envoyés » étendue aux lignes support ; l'opérateur pay-window imprime la liste après fermeture.
+- Dédup `@@unique([trigger, dedupeKey])` inchangée.
+
+**AMENDÉ PAR L9.1 — LA CLAUSE « + resto (3) » EST LEVÉE, ET LA CONTRADICTION ÉTAIT DANS LA SPEC, PAS DANS LE CODE (arbitrage fondateur, 2026-09-27).** L9 avait énoncé un STOP : §6.3 demandait à la route support d'envoyer l'avis restaurant **et** lui interdisait `lib/claim-emails`, seul module qui le contenait ; pire, `sendRestaurantRefundedEmail` exigeait un `claimId` et clé sur `claim:<id>:resto_refunded:<re_>`, qu'une ligne support ne peut par construction pas former — `/api/admin/refunds/run` et le remboursement automatique de panier abandonné créent des `Refund` sans aucune `Claim`. Le fondateur corrige l'implémentation, pas l'intention : **l'avis ne dépend plus d'une réclamation, et aucune réclamation synthétique n'est inventée pour le porter.**
+- **Nouveau module émetteur `lib/refund-restaurant-notice.ts`**, claim-agnostique : il prend `orderId`, `restaurantId`, `stripeRefundId`, l'effet financier confirmé et une étiquette de trace. **AUCUN `claimId` obligatoire.** Le `claimId` n'est accepté qu'en option, et uniquement pour consulter l'ancienne clé.
+- **Identité de l'avis = LE REMBOURSEMENT.** Trigger `claim_restaurant_refunded` (**valeur historique CONSERVÉE** : `EmailDispatch` est unique sur le COUPLE `(trigger, dedupeKey)`, donc renommer le trigger orphelinerait tous les avis déjà distribués par L8 et ferait réapparaître le bouton — soit exactement le doublon que la clause legacy existe pour empêcher), clé canonique **`refund:<re_>`**. Invariant : **UN `re_` réel ⇒ AU PLUS UN avis post-argent restaurant**, quel que soit le chemin qui le découvre.
+- **Compatibilité legacy, en LECTURE seule et sans migration :** `already_sent` si la clé canonique **OU** `claim:<id>:resto_refunded:<re_>` existe. L'ancienne forme n'est plus jamais écrite ; une ligne support, n'ayant pas de réclamation, ne la forme même pas.
+- **Source financière strictement L8 :** la ligne `LedgerEntry {type:'refund', sourceEventId:<re_>}` et rien d'autre (§6.5). Ledger incomplet ⇒ **0 e-mail restaurant**, la ligne reste visible `ledger_incomplete` — un e-mail financier sans chiffres n'est pas une version allégée de celui-là, c'est un autre message.
+- **Liste FERMÉE d'appelants** (H15 reste un invariant, aucun wildcard) : le chemin de clôture (`lib/claim-emails.sendRestaurantRefundedEmail`, qui **délègue** désormais ici pour qu'il n'existe qu'UNE implémentation) et `app/api/admin/refunds/rows/[rowId]/notify`. **JAMAIS le webhook** : contrôle négatif, la marche d'accessibilité depuis le webhook n'atteint ni ce module ni les senders, et le webhook ne le NOMME pas.
+- Le module n'importe ni `lib/refund` (le moteur), ni `lib/stripe` (tout chemin d'écriture), ni `lib/claims` — asserté, pas seulement voulu. Le chrome d'e-mail partagé vit dans `lib/claim-email-shell.ts`, **feuille délibérée** (zéro import), pour qu'il n'ajoute aucune accessibilité à ce qu'il rejoint.
+- Les deux avis sont **INDÉPENDANTS** : un avis restaurant impossible ne supprime jamais la confirmation client, et réciproquement.
+
+### 6.4 E-mail `approved` (D-11)
+`sendClaimDecisionEmail` gagne `approvedCents` (valeur = `approvedAmountCents` relu après le CAS) ; `approved.body` ×5 : fr « Un remboursement de {euros} a été approuvé par Grubano. Il sera exécuté séparément par notre équipe. Une fois émis, le délai d'apparition sur votre compte dépend de votre banque. » ; verbes imposés en *carried out / processed*, es *ejecutado / tramitado*, it *eseguito*, ar *تنفيذ* (jamais refund/pay/reembolsado/rimborsato/استرداد) ; dédup **par décision** `claim:<id>:approved:<arbitratedAt ISO>`.
+
+**AMENDÉ PAR L10 — LE SUJET ET LE TITRE DISAIENT « ACCEPTÉE », LE VERBE DU RESTAURANT.** Mesuré dans les cinq locales : `claimEmails.approved.subject` / `.title` portaient « acceptée par Grubano » / « Réclamation acceptée », **byte-identiques au titre de l'avis d'ACCEPTATION PAR LE RESTAURANT** (`claimEmails.accepted.title`), alors que seul le `.body` employait le verbe d'approbation imposé ci-dessus. Les deux notices énoncent pourtant deux faits différents : le restaurant accepte (→ arbitrage Grubano), Grubano approuve (→ décision prise, remboursement NON exécuté). Sujet et titre portent désormais le verbe d'approbation de chaque locale, et une assertion vérifie que `approved.title ≠ accepted.title` partout. Le `.body` est inchangé : il était déjà conforme.
+
+### 6.5 Restaurant (D-12)
+Bloc financier (projection + e-mail (3)) lu dans `LedgerEntry {type:'refund', sourceEventId:<re_>}` : brut = `−grossAmount` ; commission restituée = `−applicationFeeAmount` ; impact net = `netToRestaurant` — **jamais** `Refund.restaurantReverseCents/applicationFeeRefundCents` (prédiction, FAIT `lib/refund.ts:808-824`, jamais réécrite). Sans ligne ledger : bloc absent, avis (3) non envoyé (`ledger_line_missing`).
+
+**AMENDÉ PAR L8 — « COMMISSION » EST LE MAUVAIS MOT POUR LE CHIFFRE DU MILIEU.** `application_fee_amount` est COMPOSÉ au paiement (`app/api/orders/[id]/pay`) : la commission de `lib/commission`, MOINS le crédit fidélité absorbé par Grubano, PLUS les frais de petite commande, PLUS la royalty franchise retenue pour le franchiseur, PLUS le pourboire livreur, PLUS la totalité des frais de livraison quand la commande est portée par un livreur Grubano. `−applicationFeeAmount` est donc la part de FRAIS Grubano restituée, pas la commission : sur une commande avec 5,00 € de pourboire, un écran disant « commission Grubano restituée : 6,00 € » annoncerait une commission quatre fois supérieure à la réalité. L'entier est inchangé et reste celui de la spec ; le champ s'appelle `grubanoFeeReturnedCents` et la copie dit « frais Grubano restitués », ×5 locales, e-mail compris, avec la phrase qui précise ce que ces frais regroupent. Découvert par la revue adversariale de L8.
+
+**AMENDÉ PAR L8 — UN GARDE DE COHÉRENCE, ET LA FORME NON CONFIRMÉE EST NUE.** Les trois dérivations sont appliquées telles quelles, mais une ligne dont les entiers ne peuvent porter aucun libellé honnête est rapportée NON CONFIRMÉE : équation d'or `gross = fee + net`, brut strictement négatif, frais restitués dans `[0, remboursement]`, impact net jamais CRÉDITEUR, et — quand les lignes de paiement de la même charge sont lisibles — une **conservation** (on ne rend pas plus de frais qu'on n'en a pris), qui est ce qui ferme le cas « Dashboard sans fee-back prouvé ». S'y ajoutent deux gardes hors ligne ledger : `Claim.refundError` posé (notre propre trace que la vérité argent est ouverte — liaison désavouée `resume_mismatch`, remboursement ANNULÉ après règlement, ligne morte) et une ligne `Refund` portant un `orderId` différent de celui de la réclamation. La forme non confirmée envoyée au restaurant est `{ confirmed: false }` **et rien d'autre** : les raisons (`ledger_line_missing`, `ledger_inconsistent`, `ledger_ambiguous`, `claim_money_state_open`, …) sont du vocabulaire de diagnostic destiné à qui répare la comptabilité, et restent côté serveur (logs, carte admin, `AdminAuditLog`).
+
+**AMENDÉ PAR L8 — L'AVIS (3) A SA PROPRE POPULATION.** Surfacé d'abord comme une colonne de « Avis client non envoyés », il n'aurait jamais été déclenché sur le chemin ORDINAIRE (le rail distribue l'avis client, donc la réclamation quitte cette liste). `listPendingRestaurantRefundNotices` répond à sa propre question — quels remboursements ABOUTIS, dont le ledger sait énoncer les montants, n'ont pas encore de dispatch restaurant ? — avec sa section, son compteur `restaurantNoticesPending` et sa carte. Trigger `claim_restaurant_refunded`, clé `claim:<id>:resto_refunded:<re_>` (ancrée sur le remboursement PROUVÉ, car une réclamation peut en porter plusieurs et chacun est son propre événement financier), déclarés dans `lib/claim-action-rules` à côté de `CLOSURE_TRIGGER` pour que le sender et la liste admin partagent UNE définition sans s'importer.
+
+**AMENDÉ PAR L9.1 — LA CLÉ DEVIENT `refund:<re_>`.** L8 avait déjà ancré l'avis sur le remboursement prouvé ; L9.1 va au bout du raisonnement, parce qu'un remboursement peut exister **sans** réclamation. La clé ne cite plus la réclamation du tout : canonique `refund:<re_>`, ancienne forme lue en compatibilité et jamais réécrite (§6.3 amendé). `listPendingRestaurantRefundNotices` et le ré-adressage de `listMissingClaimClosureNotices` posent tous deux la question « déjà envoyé ? » sur **les deux** formes, sans quoi le premier envoi d'après-L9.1 aurait doublé chaque avis déjà distribué par L8.
+
+---
+
+## 7. Contrats UX
+
+### 7.1 Éligibilité client (même liste, même ordre dans `createClaim` et `getClaimEligibility`)
+| # | Règle | `reason` |
+|---|---|---|
+| E1 | commande existe et propriétaire | `not_owner` |
+| E2 | `paymentStatus === 'paid'` | `not_paid` |
+| E3 | **`status === 'delivered'`** (annulée payée = réclamation SYSTÈME ; `picked_up` bloqué = support) | **`not_delivered`** (nouveau, ×5 locales) |
+| E4 | `deliveredAt !== null ∧ now − deliveredAt ≤ 48 h` (ancre `deliveredAt`, jamais `updatedAt`) | `window_expired` |
+| E5 | `now − createdAt ≤ CLAIM_MAX_ORDER_AGE_DAYS (30)` (invariant ≤ `LOGISTICS_ORDER_COORDS_RETENTION_DAYS`) | `window_expired` |
+| E6 | plafond `min(total − ΣRefund succeeded, capturé − remboursé Stripe)` ; 0 ⇒ refus | (scope) |
+| E7 | supprimée (T-50 : pas de consommation) | — |
+| E8 | pas de réclamation active ; `existingClaim` calculé **avant** E3 | `active_claim` |
+| — | overlay route : `claimsIntakeOpen()` faux ⇒ `intake_closed` (sauf `not_owner`) | `intake_closed` |
+Message serveur `lib/claims.ts:376` remplacé par un code rendu par clé i18n. Writers de `deliveredAt` : `status/route.ts:130-133` et `:153-156` (même write, jamais réécrit) ; le seed démo ne le pose pas.
+
+### 7.2 Client
+Formulaire sans présélection (tri-état) ; statuts `claims.status.*` inchangés ; `refundedRowProven` durci (`succeeded ∧ stripeRefundId≠null`, jamais `pending`) ; historique « Mes réclamations » dans `/eat/account` ; `refundSummary` dérivé (Refund succeeded + ledger refund par PI + LoyaltyTransaction), `paymentStatus` intact, calculé seulement si PI présent et statut terminal ; badge « Remboursée X € » seulement prouvé ; « points repris » remplace « crédités » si `earn_reversal`.
+
+**AMENDÉ PAR L9 (livré 2026-09-27), six points :**
+1. **`refundedRowProven` est ENFIN durci — et c'est une SUPERSESSION, pas un rattrapage.** §7.2 annonçait le durcissement depuis deux lots alors que le code implémentait encore R13 v1 §F03, qui PRESCRIT `status ∈ {succeeded, pending}` sans aucun identifiant, et dont l'entrée A-S31d EXIGE « Remboursée » sur une ligne pending. Mesuré : une réclamation `refunded` liée à `(pending, stripeRefundId NULL, 500 c)` rendait « Remboursée » au client tandis que la MÊME ligne lisait `local_pending_unconfirmed` en console admin et `refund_not_succeeded` dans les chiffres restaurant de L8 — trois surfaces, une ligne, et le client recevait la seule optimiste. §1 de L9 tranche : **v2 gagne, A-S31d bascule vers l'état neutre**, et le type du paramètre déclare enfin `stripeRefundId` (il ne le déclarait pas, donc aucun appelant ne POUVAIT durcir en le passant). La règle est portée par une primitive commune `refundRowSettled`, partagée par les surfaces client, restaurant et admin.
+2. **LE CONTRAT D'IDENTIFIANT est celui de la LECTURE, pas celui de la validation d'entrée.** Deux prédicats existent et ne sont pas interchangeables : lire notre propre ligne ⇒ `startsWith('re_')` (`lib/loyalty-prorata.isStripeRefundId`, ensemble §24 **gelé**) ; valider un identifiant qu'un humain TAPE dans la route d'adoption ⇒ `/^re_[A-Za-z0-9]{8,}$/` (`lib/claims`). Prendre le second pour lire nos lignes faisait diverger `buildDbKnownRefundSet` et le read-model sur « quelles lignes comptent » — le défaut même que T-46 a livré puis dû corriger. Un test épingle la parité des deux prédicats sur une fixture partagée.
+3. **`refundSummary` existe (T-45 / V-02).** `lib/order-refund-summary.ts`, additif, dérivé, jamais persisté : `refundedCents` (lignes prouvées, **dédupliquées par `re_`** — le rail et un miroir externe du même objet portent le même identifiant), `pendingCents` (pending AVEC `re_`, jamais additionné, jamais formulé « remboursé »), `unattributedCents` (lignes ledger `refund` du PI dont le `re_` n'appartient à aucune ligne de la commande — **disjoint par construction**, donc « ne pas double-compter » tient sans soustraction), `chargeCents` (ligne ledger `payment` du PI sinon `round(total×100)`, même repli nommé que §24), `isTotal`/`isPartial` (cumul CONFIRMÉ seul), `refunds[]` (`amountCents`, `at`, `source ∈ {claim, support, system, external}`), `pointsReversed`/`pointsRestored` (**lignes** `LoyaltyTransaction`, sommes SIGNÉES, jamais `Order.pointsEarned` ni `pointsBalance`). Calculé seulement si PI présent ET statut terminal ; trois requêtes pour une commande **comme pour une page de 50** ; aucun appel Stripe. **PIÈGE FERMÉ :** le côté `Refund` du test d'attribution n'est PAS filtré sur `succeeded` — le ledger est écrit AVANT que `stripeRefundId` soit posé, et `markRefundRowFailed` pose l'identifiant sur une ligne *failed*, donc filtrer rapporterait NOTRE propre remboursement comme celui d'un inconnu.
+4. **`Order.paymentStatus` reste INTACT (§2, ferme).** Il décrit le PAIEMENT ; le remboursement est un fait séparé. Épinglé par un détecteur portant sur les écritures `prisma.order.*` : exactement deux écrivains produit (route de paiement, webhook), et `'refunded'` reste écrit **uniquement** sur le chemin panier-abandonné préexistant. Aucun `partially_refunded` nulle part.
+5. **L'historique « Mes réclamations » est un CONSTRUCTEUR, et il fuyait.** `listConsumerClaims` renvoyait `{ ...claim }` moins cinq clés — le motif que L8 a retiré du côté restaurant — et livrait au présent `consumerId`, `decidedBy`, `arbitrationDecision` brut, `contestReason`, `photoUrl`, `responseDeadlineAt`, `restaurantId`, `restaurantResponse` brut et **l'instantané `selection` complet** (`itemId`, `unitCents`). Désormais clé par clé : `id · orderRef · orderId · restaurantName · createdAt · reason · requestedAmountCents · approvedAmountCents (seulement s'il DIFFÈRE) · status dérivé · canContest · decidedAt · restaurantResponseReason · arbitrationReason · selectionSummary {lines, items}`. Le précis de sélection est **deux compteurs** : il n'élargit pas L7, deux compteurs ne pouvant pas devenir une autorité, et `null` se lit « non enregistré », jamais « toute la commande ». **§18 :** la vérité `refundSummary` attachée à une COMMANDE n'est jamais effacée par `CLAIMS_SURFACE_ENABLED=false` (les routes commandes ne lisent aucun drapeau réclamation, épinglé) ; seule la surface Claims est coupée.
+6. **E3 est livré pour la moitié CLIENT, et la moitié RESTAURANT est un STOP énoncé.** `POST /api/admin/refunds/rows/[rowId]/notify` (`resolveAdmin`, non gaté) relit Stripe en lecture seule dans la requête et envoie **le montant relu chez Stripe** ; `failed/canceled/illisible-comme-réussi` ⇒ 0 e-mail, 409, alerte `support_row_reverted`. Deux pièges de traduction fermés : (a) `reason NOT LIKE 'claim:%'` traduit naïvement DROPPE toute ligne à `reason` NULL (en MySQL `NULL NOT LIKE 'x%'` vaut NULL), or `reason` est OPTIONNEL dans `/api/admin/refunds/run` — c'est-à-dire la ligne support la plus courante ; (b) la clé legacy `order:<orderId>:<amountCents>` d'avant T-47 existe et n'est jamais supprimée, donc ne chercher que `{refund:<re_>, refund:<rowId>}` enverrait une SECONDE confirmation pour un argent annoncé à l'époque pilote. **Non implémenté, et pourquoi :** §6.3 demande « + resto (3) » ET « jamais `lib/claim-emails` » — le seul module qui le contient ; de plus `sendRestaurantRefundedEmail` exige un `claimId` et clé sur `claim:<id>:resto_refunded:<re_>`, qu'une ligne support ne peut par construction pas former, et `H15_IMPORTERS` fixe par égalité exacte les dix routes autorisées à importer ce module. La clause est donc **inapplicable telle qu'écrite** ; la résoudre demande un nouveau module émetteur, soit un changement de spec, soumis au fondateur plutôt qu'inventé.
+
+   **AMENDÉ PAR L9.1 — LA MOITIÉ RESTAURANT EST LIVRÉE.** Le fondateur a tranché le 2026-09-27 : l'intention tient, l'implémentation était fausse. `lib/refund-restaurant-notice.ts` est claim-agnostique, clé sur `refund:<re_>`, lit l'ancienne clé en compatibilité, n'invente aucune `Claim`, et sa liste d'appelants est **fermée** (chemin de clôture qui délègue + route notify ; jamais le webhook). Détail complet en §6.3 amendé. Le STOP ci-dessus est donc **FERMÉ**, et il aura coûté un lot — ce qui est le prix correct pour ne pas avoir inventé une réclamation afin de porter un e-mail.
+8. **Un refus est un CODE, et plus une phrase française (L10 §2).** `components/claims/ClaimSection` — le widget monté sur `/eat/track` — rendait `data.error`, c'est-à-dire la phrase du serveur, à un client lisant l'application en anglais, espagnol, italien ou arabe ; les clés existaient pourtant dans les cinq locales. La table code→clé quitte la page d'aide pour `lib/claim-refusal-labels.ts` (une FEUILLE) et les deux surfaces la lisent : deux copies d'une même table dérivent sans bruit, car une entrée manquante ne lève rien — elle **retombe silencieusement**. La règle de repli devient : un code inconnu donne un GÉNÉRIQUE LOCALISÉ, jamais la phrase serveur. Quatre codes que la route transmet prouvablement (`invalid_scope`, `reason_not_selectable`, `items_not_allowed`, `amount_not_allowed`) n'avaient **aucune clé dans aucune locale** — leur note disait « laissés NON MAPPÉS exprès », mais l'alternative n'était pas « cinq traductions ou du bruit », c'était « cinq traductions ou de la prose française dans quatre locales ». `contestClaim` et `respondToClaim` reçoivent des codes (ils n'en avaient AUCUN ; l'un interpolait même un NOMBRE dans une chaîne intraduisible — « Le délai de contestation (48 h) est dépassé »), et la course P2002 de `createClaim` reçoit le code `active_claim` qu'elle seule omettait. `not_delivered` et `window_expired` restent DISTINCTS de bout en bout, comme le §2 l'exige.
+9. **L'avis post-argent est localisé (L10 §6), et c'était le dernier émetteur français-seulement.** `sendRefundConfirmation` — le seul e-mail client qui portait la clause bancaire — était 100 % littéraux français, sans paramètre de locale (donc aucun appelant ne POUVAIT en fournir), avec un format monétaire `fr-FR` en dur (un destinataire EN lisait « 12,50 € », un AR perdait le RLM) et sans `dir`, donc un arabophone recevait tout en LTR. Mesuré : la route E3 de L9 envoyait, dans UNE requête, un avis RESTAURANT entièrement localisé et un avis CLIENT français pour le même remboursement. Désormais `claimEmails.refundConfirmation.*` ×5, `euros(locale, …)`, `claimShell({rtl})`, salutation CONDITIONNELLE (le gabarit rendait « Bonjour , » quand `Operator.name` est vide) et la référence PUBLIQUE de commande — sans elle, deux remboursements légitimes du même montant, le cas propre de T-47, donnaient deux e-mails indiscernables. **COUPLAGE LE PLUS RISQUÉ DU LOT, traité explicitement :** `scripts/server/phase2-email-timeline.js` reconstruit le SUJET byte-à-byte pour corréler un remboursement à son `EmailLog`. Localiser sans le lui dire n'aurait rien cassé bruyamment — `bySubject` serait revenu vide et l'outil aurait replié sur « claim only », pouvant choisir un autre e-mail : un trou par locale dans la piste de preuve. Le script porte donc les CINQ sujets (il ne peut pas lire `messages/*.json` : le déploiement ne livre pas ces fichiers sur le serveur) et `tests/l10-refund-confirmation-i18n.test.ts` épingle l'égalité byte-à-byte par locale. **LIMITE ÉNONCÉE :** rien n'ÉCRIT `Operator.locale`, donc tout destinataire résout vers `fr` — la localisation est préparatoire (T-72), et le test épingle la LIMITE au lieu de revendiquer l'effet.
+10. **La porte « remboursement établi » de `/eat/track` était une TAUTOLOGIE (L10 §9).** `refundEstablished` comptait les faits de FIDÉLITÉ parmi ses preuves (`|| pointsAllReversed || pointsRestored > 0`) et ses deux seuls sites d'usage sont à l'intérieur de ces mêmes conditions : la branche fausse était **inatteignable**. Conséquence mesurée dans l'état exact pour lequel la porte avait été écrite — points repris en totalité tandis que notre ligne est encore `pending` avec un `re_` — l'écran rendait « … repris APRÈS LE REMBOURSEMENT » trois lignes sous « Remboursement en cours », et les deux variantes `*PendingNote` étaient mortes dans les cinq locales. Une reprise de points est une CONSÉQUENCE d'un remboursement, jamais sa preuve : la porte n'interroge plus que l'argent. Et `eat.track.refundRecorded` / `eat.refund.refundRecorded` attribuent désormais la confirmation au PRESTATAIRE DE PAIEMENT — vrai dans les deux sous-cas (argent d'origine produit non établie, ou notre propre ligne non encore finalisée) et sans contredire le « en cours » du widget voisin.
+11. **`/legal/cgv` ×5 existe (D-8, L10 §11→§18), et n'invente RIEN.** La page n'énonce AUCUN fait de société : elle interroge `isLegalInfoComplete()` pour son bandeau de brouillon et son `noindex`, et RENVOIE vers `/legal/mentions-legales`, où chaque fait vient de `lib/legal-info.ts` et s'affiche comme placeholder visible tant qu'il n'est pas rempli. Les deux nombres produit sont LUS DANS LE CODE qui les applique — `claimWindowHours()` depuis `lib/claim-flags` (déplacé là pour qu'une route publique ne tire pas Prisma et Stripe) et `CLAIM_MAX_ORDER_AGE_DAYS` : un « 48 h » tapé dans cinq locales devient faux le jour où l'env change. Le §7 des CGV dit en propres termes que ces délais organisent le SERVICE, ne limitent pas les droits que la loi reconnaît et ne valent pas renonciation. **AUCUNE case à cocher** n'est ajoutée au dépôt d'une réclamation. **VALIDATION JURIDIQUE REQUISE AVANT PRODUCTION** — ce lot ne la constitue pas, et le bandeau le dit au lecteur.
+7. **Le zéro-fuite est une PROJECTION PARTAGÉE, pas une liste noire par route.** `POST /api/claims/[id]/contest` renvoyait encore la `Claim` Prisma BRUTE : L9 avait corrigé l'historique et laissé cette réponse-là intacte, si bien que la même réclamation fuyait par une route ce qu'elle ne fuyait plus par l'autre. `buildConsumerClaimView(...)` est extraite et devient la SEULE forme rendue au client (historique, contestation, et toute réponse client ultérieure) : aucun spread Prisma, un DTO à quatorze clés. Interdits par nom **et** par valeur : `consumerId`, `refundId`, `refundError`, `refundAttempted`, `stripeRefundId`, `activeOrderKey`, `arbitratedBy`, `decidedBy`, jetons d'arbitrage internes, clés d'idempotence, métadonnées d'audit, données Stripe internes. Épinglé par un test **sentinelle** : une réclamation dont chaque champ sensible porte une valeur repérable, un POST réussi, le JSON final scanné — plus deux contrôles négatifs, la row brute (qui fuit, donc l'assertion n'est pas vide) et une COLONNE FUTURE fictive (`riskScore`, `opsNote`) qui ne fuit pas, ce qui est la raison même d'un constructeur plutôt que d'une liste noire.
+
+### 7.3 Restaurant
+Projection sûre (`select` explicite ; jamais `consumerId/refundError/refundId/arbitratedBy/contestReason/activeOrderKey/decidedBy`) ; `?view=history` whitelisté ; vocabulaire `received / answered_refused / grubano_deciding / approved_awaiting_refund / refunded / refusal_confirmed|refused_by_grubano / closed` ; réclamations système incluses ; onglets « À répondre » / « Historique » ; T-46 : `/api/finance/summary` ajoute `refundedCents`, `netReversedCents`, `refundsCount` depuis les lignes ledger `refund` **des PaymentIntents des commandes de la fenêtre** (une même population des deux côtés du P&L) ; `caBrut` inchangé, `netResto −= refundedCents/100` — **le BRUT, jamais `netReversedCents`** (arbitrage fondateur du 2026-09-26, option 1 : la commission refund-nette réintroduit déjà les frais restitués, cf. §3 ci-dessous) ; pin « refund ⇒ commission nette » conservé ; l'écran `/finance` replie le brut rendu dans le total « FRAIS » qu'il affiche et renomme ce total dès qu'il contient un remboursement ; e-mails resto (1) reçu, (2) décidé (pré-argent), (3) remboursé (post-argent, ledger).
+
+**AMENDÉ PAR L8 (livré 2026-09-26), cinq points :**
+1. **La projection est un CONSTRUCTEUR, pas seulement un `select`.** `lib/claim-restaurant-view.buildRestaurantClaimView` assigne chaque clé par son nom, sans spread, donc une colonne additive future de `Claim` ne peut pas atteindre un restaurant par défaut — un `select` curaté répare aujourd'hui et fuit à la prochaine extension. La réponse de `POST /api/claims/[id]/respond` est projetée de la même façon (elle renvoyait la ligne entière). Deux champs de plus sont exclus au-delà de la liste ci-dessus : `arbitrationReason` (motif de Grubano, hors liste admise) et le `status` brut, remplacé par le label dérivé ; l'`orderId` brut est remplacé par la référence publique.
+2. **Le vocabulaire gagne deux valeurs**, et chacune est une nécessité démontrée : `refunding` (le cycle de vie doit pouvoir dire « remboursement en cours ») et `under_review`, le REPLI — `Claim.status` est un `String` dont la liste vit dans un commentaire de schéma, donc un statut additif futur arrive dans la table de labels et une table sans défaut afficherait son chemin de clé. `under_review` porte aussi les états dont la vérité argent est ouverte, et la réclamation dont le remboursement a été ANNULÉ chez Stripe (statut brut encore `refunded`).
+3. **`netResto` soustrait le BRUT — arbitrage fondateur du 2026-09-26, option 1.** La spec écrivait `netResto −= netReversedCents/100` ; le garde anti-double-comptage a MESURÉ que les frais restitués re-entrent déjà via la commission refund-nette (`− commission` ⇒ `+ feeReturned`), donc ce terme les compterait deux fois (8 380 au lieu de 8 340). La formule figée est `netResto −= refundedCents/100`, commission laissée refund-nette : la variation vaut alors `(F − V)/100 = netToRestaurant/100`, soit exactement `restaurantNetImpactCents` — identité algébrique, indépendante de la reprise. `netReversedCents` reste EXPOSÉ pour lecture et n'est jamais soustrait. Ancien texte pour mémoire : Les trois champs mesurés sont ajoutés, mais la formule reste intacte : `GO-LIVE-TICKETS` T-46 écrit que la remédiation est « à trancher » par le fondateur, et les deux candidats divergent. 5,00 € remboursés dont 0,40 € de commission restituée : soustraire `netReversedCents` (4,60) laisse un résidu de 0,40 exactement égal à la commission rendue ; soustraire `refundedCents` (5,00) atterrit sur 0. **Arbitrage fondateur en attente** ; aucun chiffre existant ne bouge d'ici là.
+4. **Un GARDE DE COHÉRENCE encadre §6.5.** Les trois dérivations sont appliquées telles quelles, mais une ligne dont les entiers ne peuvent pas porter les libellés est rapportée NON CONFIRMÉE (`ledger_inconsistent`) au lieu d'être affichée : équation d'or, signes, commission restituée dans `[0, remboursement]`, impact net jamais créditeur, et — quand les lignes de paiement sont lisibles — commission restituée bornée par la commission PRÉLEVÉE. Raison : `−applicationFeeAmount` est la part TOTALE de Grubano (commission rendue + absorption), donc sur un remboursement sans reprise de transfert le libellé « commission restituée » atteindrait le remboursement entier. C'est ce garde qui ferme le cas « Dashboard sans fee-back prouvé ».
+5. **La fermeture de T-46 a exigé DEUX correctifs de plus, tous deux trouvés par la revue adversariale du changement lui-même** — parce que déplacer un terme dans `netResto` touche deux choses que la formule ne voit pas. (a) **L'écran se contredisait.** `/finance` imprime l'équation littérale « BRUT − FRAIS = NET » en sommant les FRAIS **côté client** (`commission + créateurs + remises`) ; une déduction que l'API applique sans l'exposer rendait donc l'addition fausse à l'œil, de exactement le montant remboursé (100,00 − 11,60 ≠ 83,40). Le brut rendu est maintenant replié dans ce total, avec sa propre ligne de décomposition, la ligne « dont réellement retiré de votre part » (= `netReversedCents`, le même entier que le bloc par réclamation) et une note disant que la commission affichée est DÉJÀ nette des frais restitués — sans quoi la ligne commission se lit comme une commission prélevée sur de l'argent rendu. Le libellé du total bascule de « Frais Grubano » vers « Frais & remboursements » (et la légende avec) **dès qu'un remboursement y entre**, par la règle fondateur « ne jamais nommer un agrégat composé du nom d'une de ses parties » — et seulement alors, donc l'écran ordinaire rend exactement les mêmes chaînes qu'avant. (b) **Les deux moitiés du P&L ne portaient pas sur la même population.** `caBrut` est `Σ Order.subtotal` (commandes), alors que le ledger porte TOUS les rails : un ticket sur place (`payment` avec `ticketId`, sans `Order`) et un acompte capturé (`deposit_capture`) en font partie. Soustraire « toutes les lignes `refund` de la fenêtre » d'une base commandes-seules inventait une PERTE FANTÔME : rembourser intégralement un ticket sur place de 50 € **ne concerne pas cet écran** — la ligne ledger porte bien `netToRestaurant = −4 500 c`, le restaurant a bien rendu l'argent, mais ni ce revenu ni ce remboursement n'appartiennent à une base construite sur les commandes — et la soustraction non bornée affichait −47,50 € sur un écran qui n'avait jamais compté les 50 €. Les trois champs sont donc restreints aux **PaymentIntents des commandes de la fenêtre**. **ET LE PÉRIMÈTRE PORTE SUR LA LIGNE ENTIÈRE, pas sur une moitié — la première tentative ne bornait que le BRUT et laissait la moitié FRAIS s'appliquer à toutes les lignes `refund` de la fenêtre, donc un remboursement hors périmètre rétrécissait encore la commission sans rien soustraire et `netResto` MONTAIT — exactement le défaut T-46.** Mesuré sur la route avant correction : remboursement de 500 c d'une commande sortie de la fenêtre ⇒ `netResto` 8 800 → **8 840** ; remboursement de 5 000 c sans reprise de transfert ⇒ `netResto` **14 400** sur un `caBrut` de 10 000 avec une commission de **−4 400** ; ticket sur place de 50 € remboursé intégralement ⇒ **+500 c**. Une ligne `refund` est désormais soit DEDANS (les deux moitiés comptent) soit DEHORS (aucune ne compte), ce qui ferme la commande sortie de la fenêtre, la ligne sans PaymentIntent, la fenêtre sans commande, et rend un remboursement de ticket sur place **strictement inévénementiel** (mêmes chiffres qu'avec la note seule). Les lignes `payment` et `deposit_capture` ne sont PAS bornées : ce sont les frais estampillés V3-2 que cet écran a toujours montrés, et les borner changerait la SPEC au lieu de corriger un défaut — l'écart de base qui en résulte (frais du ticket sur place dans la commission, revenu du ticket hors `caBrut`) est antérieur, mesuré, et enregistré au backlog. **Constats enregistrés, non corrigés** (dans `POST-BETA-CLAIMS-BACKLOG`) : les frais de livraison restent hors `caBrut` (écart de base CONSTANT, antérieur au changement et inchangé par lui) ; les lignes `adjustment` / chargeback ne sont pas lues par cet écran (filtre de types épinglé) ; et `/api/restaurants/[id]/finance/summary` garde sa propre base, donc les deux écrans ne sont pas comparables au centime.
+
+### 7.4 Admin
+Dialogue d'approbation obligatoire (demandé · reste remboursable Stripe via `GET /api/admin/claims/[id]/ceiling` · déjà remboursé · sélection · montant approuvé · case réduction + motif · note « aucun remboursement déclenché ») ; toast nominal `admin.approvedNotSent` réécrit ; file « À rembourser (n) » (forme exacte, FIFO `arbitratedAt`) avec « Retirer l'approbation » et « Payer le lot (n) » (actif seulement si `refundGateState().open`) ; sous-liste « À ratifier » ; relabel `legacy_pending_money_decision` → `awaiting_payment` ; guidances F15/AM-B3 sans « approuvez-la à nouveau » ; FV inchangée.
+
+---
+
+## 8. Rail financier
+
+### 8.1 Surface
+`POST /api/admin/claims/pay-approved` · `resolveAdmin()` · `rateLimit 'admin_claims_pay_approved' 5/60` · 409 `audit_disabled` si audit OFF (PAYER) · **jamais** `INTERNAL_CRON_TOKEN`.
+
+### 8.2 dryRun → PAYER
+- `dryRun:true` (non gaté RE/SURFACE) : sélection §8.5 ; préflight par réclamation **sans écriture** : `preflightRefundFunding` (`held:routed_without_fee`), lecture live `charge.amount − amount_refunded` (`held:exceeds_refundable`), ligne `Refund pending` sur la commande (`held:order_has_pending_row`), `refundGateState()` ; renvoie la liste + **jeton** = `base64url(JSON{v:1, adminId, sha:DEPLOYED_SHA, iat, lease:expiresAt, items:[{claimId, approvedAmountCents, arbitratedAt}]}) + '.' + HMAC-SHA256(derive(NEXTAUTH_SECRET,'claims-pay-approved-v1'), payload)`, validité 10 min, ≤ 20 items.
+- PAYER `{confirm:'PAYER', token}` : `isRefundsEnabled() ∧ isClaimsSurfaceEnabled()` sinon 403 ; vérifie signature/exp/adminId/sha ; **paie uniquement les items du jeton, dans l'ordre, jamais de re-sélection** ; par item : relecture (forme, `approvedAmountCents`, `arbitratedAt`) sinon `skipped:stale_dryrun` ; `refundGateState()` relu avant chaque item, marge 60 s ; budget 40 s (`not_reached`) ; rejeu d'un jeton consommé inoffensif.
+
+### 8.3 Amendement T1 — seul delta de `triggerClaimRefund`
+```
+T1_SELECT += approvedAmountCents, arbitrationDecision
+après la porte RE et la lecture de before :
+  const payable = before.approvedAmountCents
+  if (before.arbitrationDecision !== 'approved' || payable == null || !Number.isInteger(payable) || payable <= 0 || payable > before.requestedAmountCents)
+      return { state:'failed', error:'amount_not_ratified' }     // 0 écriture
+T1 CAS where += { arbitrationDecision:'approved', approvedAmountCents: payable }
+`requested` → `payable` aux 6 usages (:767, :844, :899, :938-942, :992/:1028, :1025)
+```
+T2/T3/T4 sinon byte-identiques ; `reconcileNoRowByDerivation` (`:2525/:2548`), alerte FV (`:2116-2131`), `reconcileClaimEvidence` (`:3642`) lisent `approvedAmountCents ?? requestedAmountCents`.
+
+### 8.4 Ratification
+Voir T-08. `approvedAmountCents` n'a que deux écrivains : ratification/première décision (CAS épinglant `null`) et le retrait (remise à `null`) — S-29.
+
+### 8.5 Sélection
+`where {status:'approved', refundAttempted:false, refundId:null, refundError:null, arbitrationDecision:'approved', approvedAmountCents:{not:null}}`, `orderBy [{arbitratedAt:'asc'},{createdAt:'asc'}]`, `take ≤ 20` ; v13 exclus sauf `claimIds`. Un id hors sélection ⇒ `skipped:not_selectable`.
+
+### 8.6 Rapport par réclamation
+| Résultat | `outcome` | Suite |
+|---|---|---|
+| `refunded` | `paid {refundId, amountCents}` + avis post-argent | continue |
+| `pending/stripe_pending` | `accepted_pending {refundId}` — aucun e-mail | continue |
+| `pending/refunds_disabled` | `lease_closed` | **stop**, reste `not_attempted` |
+| `already_handled` | `state_changed_since_dryrun` — jamais « payée » | continue |
+| `failed/attempt_superseded` | `superseded` | continue |
+| `failed/amount_not_ratified` | `not_paid:amount_not_ratified` | continue |
+| `failed/{safety_hold, proof_stale, own_row_exists, unconfirmed_within_window, safety_check_unreadable}` | `held:<cause>` (0 €) | continue |
+| `failed/{resume_mismatch, identity_unverified, engine_own_row}` | `review:<cause>` « argent possiblement déplacé, preuve requise » | continue |
+| `failed/<erreur moteur>` | `not_paid:<erreur>` | continue |
+| `throw` (catch par réclamation) | `crashed {engineCalled:unknown}` | **stop**, 200 avec rapport partiel |
+Audit `claim.pay` par réclamation + `claim.pay_batch`. Aucune alerte nouvelle (toutes existent dans `triggerClaimRefund`).
+
+### 8.7 Le rail ne fait jamais
+n'écrit ni `arbitratedBy/At`, `arbitrationDecision`, `decidedAt`, `approvedAmountCents` ; n'importe ni `executeRefund`, ni `@/lib/stripe` en écriture, ni `INTERNAL_CRON_TOKEN` ; ne crée ni objet Stripe ni ligne `Refund` ; `refundGateState(` ≥ 2 occurrences ; jamais de re-sélection sous PAYER.
+
+### 8.8 Opérateur `phase2-claims-pay-window.js` (nouveau ; réutilise `writeFlag`/`emergencyRefreeze` exportés par `phase2-refund-gate.js`)
+Precheck : `version.json.commit ∈ CERTIFIED_SHAS`, `CLAIMS_SURFACE_ENABLED='true'`, `CLAIMS_ENABLED` absent/false, flags machine false, sélection recalculée en DB via `lib/claims-payable-core.js` (pur, partagé avec le dryRun, ajouté à la liste `cp` du workflow), **T-42 par compte Connect destination** (`available ≥ Σ approvedAmountCents du compte`, tout manque ⇒ WAIT) ; ouvre `REFUNDS_WINDOW_UNTIL` puis `REFUNDS_ENABLED` ; restart prouvé ; attend `stoppedBy` ou TTL ≤ 28 min ; referme (bail d'abord) ; sonde 403 ; `backup-neutralize` ; imprime les avis non envoyés. N'écrit jamais un flag CLAIMS. Cadence : un créneau par jour ouvré si file non vide.
+
+---
+
+## 9. Modèle de données
+
+Colonnes additives nullables (aucune contrainte, aucun backfill) :
+```prisma
+model Claim { approvedAmountCents Int?   selection Json? }
+model Order { deliveredAt DateTime? }
+```
+Migration : opérateur `scripts/server/dprime-staging-migrate.js` (STAGING seul, mysqldump vérifié, baseline, 3 × `ALTER TABLE … ADD COLUMN IF NOT EXISTS … NULL`, vérification `information_schema`, préservation des comptes, idempotent, PASS/FAIL, aucun secret) — **jamais** `prisma-push.sh` (chemins production, non déployé, diff global) ni `--accept-data-loss`. Ordre : L3a (opérateurs seuls) → migrate PASS → L3b (schéma) → `dprime-regen-client.js` PASS (preuve : `approvedAmountCents` et `selection` dans `index.d.ts` + regex `OrderScalarFieldEnum … deliveredAt`) → restart → `schemaReady()` (probe mise en cache) exposé au recensement ; `schemaReady=false` ⇒ 503 sur pay/withdraw/approve/POST claims ; **aucun repli** sur `requestedAmountCents`. Rollback : code = re-dispatch SHA précédent ; schéma = colonnes conservées.
+
+Compatibilité (recensement MESURÉ 2026-09-22T17:11Z) : 9 réclamations = `refunded` 4, `refused` 3, `refused_final` 2 ; active 0 ; `approvedUnpaid` 0 ; FV 0 ; `closure.missing` 0 ; `terminalWithoutRecord` 4. Aucune réinterprétation, aucun backfill.
+
+---
+
+## 10. Invariants de sécurité (testables)
+
+| ID | Invariant |
+|---|---|
+| S-01 | Aucune action restaurant n'atteint `executeRefund`/`triggerClaimRefund` |
+| S-02 | `arbitrateClaim`, `approveClaim`, le balayage n'appellent jamais `triggerClaimRefund` — même RE ouvert, même bail legacy ; aucun chemin machine n'écrit `status='approved'` |
+| S-03 | RE fermé ⇒ 0 `stripe.refunds.create` sur toute la zone métier, flags quelconques |
+| S-04 | Seul appelant HTTP de `triggerClaimRefund` = `pay-approved` PAYER, session admin |
+| S-05 | Rail : `refundGateState()` relu avant chaque réclamation, marge 60 s, arrêt sans écriture |
+| S-06 | Le rail n'écrit jamais `arbitratedBy/At`, `arbitrationDecision`, `decidedAt`, `approvedAmountCents` |
+| S-07 | Une décision approuvée n'est jamais transformée en refus par le rail, Stripe, un bail ou un flag |
+| S-08 | ≤ 1 appel moteur par pré-image (MariaDB 2 processus 20/20) |
+| S-09 | Retrait ⊥ paiement (MariaDB 20/20 + contrôle négatif) |
+| S-10 | `1 ≤ approvedAmountCents ≤ requestedAmountCents` ; jamais augmenté hors nouvelle décision après retrait |
+| S-11 | Montant moteur === `approvedAmountCents` épinglé par le CAS T1 === textes de preuve/mismatch |
+| S-12 | **Équivalence des portes** : flags produit absents ⇒ `claimsSurfaceOpen ≡ claimsIntakeOpen ≡ isClaimsEnabled` sur tous les sites. Départs énumérés, voulus, indépendants des flags : (a) avis post-argent/clôtures envoyables, (b) états argent comptés/visibles sans porte, (c) approve ≠ argent, (d) `payable = approvedAmountCents`, (e) delivered-only + `deliveredAt` + D-15, (f) routes nouvelles non gatées |
+| S-13 | Les flags produit n'ouvrent ni auto-approve, ni auto-resolve, ni ghost ; aucun couplage à `REFUNDS_ENABLED` ; INTAKE ⇒ SURFACE (ERREUR) |
+| S-14 | Opérateurs Mode A/B et `refund-gate window` refusent (message nommant le flag) si SURFACE/INTAKE `'true'` ; `pay-window` refuse si SURFACE absent, `CLAIMS_ENABLED='true'`, ou `version.json.commit ∉ CERTIFIED_SHAS` ; le bail legacy n'ouvre jamais le rail |
+| S-14b | v13 jamais sélectionnée automatiquement ; payable seulement via `claimIds` explicite après son instant |
+| S-15 | `lib/refund.ts` SHA (LF) et `middleware.ts` inchangés |
+| S-16 | `status≠'delivered'` ⇒ 409 ; ancre immobile sous rebond `updatedAt` ; `createdAt` > 30 j ⇒ refus ; `deliveredAt=null` ⇒ refus |
+| S-17 | Réclamation système reste créable (bypass E3) sous SURFACE, INTAKE quelconque |
+| S-18 | Plafond `min(DB, Stripe)` reste la borne ; aucune règle de lignes n'ajoute d'autorité |
+| S-19 | Projection resto sans champs internes ; bloc financier ⇔ ligne ledger `refund` du `re_` |
+| S-20 | « Remboursée »/« refunded » exigent `succeeded ∧ stripeRefundId≠null` ∧ ligne non libérée |
+| S-21 | Aucun texte client/resto du cycle ne contient un délai bancaire chiffré ni « sera remboursé(e)/payé(e) » (5 locales). **PROUVÉ PAR L10** : `tests/l10-s21-bank-delay.test.ts`, scanner à DEUX ÉTAGES sur les cinq locales — étage 1, la locution « jours ouvrés » dans toutes les langues (y compris « أيام عمل »), sans aucune liste blanche hors 7 clés NOMMÉES étrangères au remboursement ; étage 2, un nombre (ou un placeholder de comptage) collé à une unité de temps, borné au périmètre client/resto **et** au contexte monétaire — sans ce second filtre, un temps de préparation (« ~{mins} min »), une ETA de livraison et un filtre de période financière étaient rapportés comme des promesses bancaires (mesuré). Le scanner lit AUSSI les littéraux français de `lib/claim-console-copy`, `claim-money-line`, `claim-action-rules`, `claim-email-toast` : un gate qui ne lirait que `messages/*.json` passerait pendant que l'écran opérateur promet un délai. **MOITIÉ POSITIVE AJOUTÉE** : toute copie qui énonce un remboursement ÉMIS porte `claimEmails.bankNoteIssued` — avant L10 la clause était sur l'avis *pas encore payé* (`approved.body`) et sur AUCUN avis post-argent. |
+| S-22 | `refunds_disabled` n'est plus une cause d'alerte ; 0 alerte par approbation |
+| S-23 | `INTAKE=false` ⇒ `POST /api/claims` 403 `intake_closed` ; GET/contest/resto/admin/rail inchangés ; aucune réclamation masquée |
+| S-24 | `SURFACE=true ∧ INTAKE=false ∧ RE=false` ⇒ workflow existant fonctionne (sauf POST client), 0 `refunds.create`, 0 `Refund` créée |
+| S-25 | Tout avis post-argent reste envoyable avec `SURFACE=false ∧ INTAKE=false ∧` bail absent |
+| S-26 | Aucune quantité historique ne refuse une sélection |
+| S-27 | T1 refuse sans écriture toute réclamation `approvedAmountCents=null` ; aucun repli sur `requestedAmountCents` ; `schemaReady()=false` ⇒ 503 |
+| S-28 | Fidélité : à `delivered`, points nets = `E − min(round(E×ΣR_i/T), E)` (deltas cumulés, jamais un arrondi par événement) ; T=1410, E=14, 470×3 ⇒ −5/−4/−5, net 0 ; 705 ⇒ −7 ; rejeu ⇒ 0 écriture ; quel que soit l'état des flags |
+| S-29 | `approvedAmountCents` : écrivains = ratification/première décision (CAS épinglant `null`) et retrait (`null`) ; tout autre = violation |
+| S-30 | Retrait et PAYER exigent `ADMIN_AUDIT_ENABLED='true'` ; le retrait est transactionnel avec son audit |
+
+---
+
+## 11. Plan d'implémentation
+
+| Lot | Contenu | Préalables |
+|---|---|---|
+| L0 | Recensement mesuré ; addendum R13 v1.1 ; contrat fidélité ; docs périmées ; dette ANTI-REPEAT ; script `typecheck` + baseline | — |
+| L2 | Approve = décision (3 appels inline retirés, balayage étape 2 supprimé, machine ⇒ `arbitration`, `autoResolveSmallClaim` inerte, `refunds_disabled` supprimé, audit `moneyMoved:false`, copies, exit table D1 v1.1) | — |
+| L1 | Flags produit (`lib/claim-flags.ts`, 25 sites, `intake_closed`, GET admin scindé, opérateurs, `WATCHED_SECRET_KEYS`, check-flags, docs, pins) — pin S-02 dans ce commit | L2 |
+| L3a | `dprime-staging-migrate.js` + `dprime-regen-client.js` seuls | L0 |
+| L3b | `schema.prisma` (3 colonnes + commentaires) ; regen ; `schemaReady` | L3a PASS serveur |
+| L4 | Approbation avec montant, ratification, T1 amendé, « À rembourser », withdraw, e-mail `approved` | L3b regen PASS |
+| L5 | Rail + `claims-payable-core` + pay-window + différentiel + MariaDB | L4 |
+| L6 | Éligibilité delivered-only, `deliveredAt`, plafond, D-15 + route de réparation | L3b |
+| L7 | T-50 | L3b |
+| L8 | Restaurant | L4 |
+| L9 | Client T-45 + E3 | L5 |
+| L10 | Textes + CGV | — |
+| L11 | Certification + répétition staging D′ (autorisation séparée) | L1-L10 |
+| L12 | Préparation production (fondateur) : `dprime-prod-migrate.js` ; `main` ne reçoit L3b qu'après PASS prod | L11 |
+
+Ordre dur : L0 → L2 → L1 → L3a → L3b → L4 → L5 → L6/L7/L8 → L9 → L10 → L11. Chaque lot : build frais, suite complète, i18n, typecheck vs baseline (0 erreur produit, `comm -13` vide), commit séparé, push `develop`. Les pins à inverser sont listés dans la spec v2 (§8.9 du rendu fondateur) et rappelés dans chaque commit.
+
+### L6 — D-15 détail
+> **Amendé par L6.1 (arbitrage fondateur 2026-09-25, option (a)).** La séquence ci-dessous reste exacte pour l'ancre, l'ordre d'exécution, la source de l'ensemble et la route de réparation. Ce qui change : la persistance ne somme plus des deltas par événement keyés sur le `re_`, elle **converge vers la cible cumulative** (cible de l'ensemble prouvé − effet réellement appliqué, écrit en une ligne d'ajustement). Voir `LOYALTY-REFUND-CONTRACT.md` §9/§10/§16 et §24 (7) « CLOSED BY L6.1 ». La composition avec `recoveryOffsetPoints` est **DIFFÉRÉE À T-44 PRE-LIVE** (§24 (8)).
+
+Ensemble DB-connu = union dédupliquée par `re_` de `Refund {orderId, status:'succeeded', stripeRefundId ~ RE}` ∪ `LedgerEntry {type:'refund', stripePaymentIntentId = order.stripePaymentIntentId, sourceEventId ~ RE}` ; `createdUnix = floor(ledger.createdAt/1000)` sinon `floor((settledAt ?? createdAt)/1000)` ; `chargeAmountCents` = ligne ledger `payment` du PI sinon `round(order.total×100)` ; aucun import Stripe dans la route status. Séquence : skip de l'earn si ligne `earn` existe **ou** marqueur legacy `(refund, sourceEventId null)` ; sinon tx earn inchangée → commit ; **toujours** `reconcileLoyaltyOnRefund(prisma, …)` sur le client racine (jamais imbriqué), une tentative + un retry ; échec après earn ⇒ `[LOYALTY MISS] earn_prorata_incomplete` + alerte `loyalty_prorata_incomplete` ; réparation `POST /api/admin/loyalty/reconcile {orderId}` (`resolveAdmin`, DB seulement, non gatée). Tests 1-8 (aucun refund ; partiel avant ; total avant ; points dépendus ; 470×3 ; idempotence webhook/DB ; earn OK + rejeu jette ⇒ alerte puis réparation ; marqueur legacy ⇒ `grandfathered`).

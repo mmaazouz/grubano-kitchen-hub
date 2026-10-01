@@ -1,0 +1,205 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+ * GRUBANO — gb-* DESIGN FOUNDATION · base COMPONENTS
+ *
+ * Recurring patterns extracted VERBATIM from Claude-Design's code (auth figée
+ * 38dfd2c9-81be, auth états 38cfd2c9-81c5, magic-link desktop 38dfd2c9-81be-9556).
+ * The CSS rules are CD's own — only two non-visual adaptations:
+ *   1. every selector is SCOPED under the `.gb` root (CD's generic names .btn/.input/
+ *      .card/.otp/.hero… can't leak onto the operator app or collide with auth.css);
+ *   2. CD's `[data-theme="dark"] X` overrides become `[data-theme="dark"] .gb X` +
+ *      `.gb[data-theme="dark"] X` so dark works whether the theme attr is on an
+ *      ancestor or on the .gb element itself.
+ * Icons are Material Symbols (the `.gb .ms` font is in gb-tokens.css), NOT lucide.
+ * The OAuth social button matches the SHIPPED/validated auth (Google G 18px, label
+ * 700 — Agent 167 correction) and carries the multicolor Google + verbatim Apple SVG.
+ * No Tailwind utilities, no shadcn. Reproduction only.
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+/* ══ BUTTONS ══════════════════════════════════════════════════════════════════ */
+.gb .btn{width:100%;font-family:var(--gb-font-ui);font-weight:700;font-size:15px;cursor:pointer;border-radius:var(--gb-r-md);padding:14px;border:none}
+.gb .btn--primary{display:inline-flex;align-items:center;justify-content:center;gap:9px;color:#fff;background:var(--gb-grad);box-shadow:var(--gb-shadow-btn)}
+.gb .btn--white{color:var(--gb-ink);background:#fff;border:none}
+.gb .btn--line{display:inline-flex;align-items:center;justify-content:center;gap:8px;color:var(--gb-text);background:var(--gb-surface);border:1px solid var(--gb-border-strong);font-weight:600;font-size:14px;padding:13px}
+.gb .btn--line .ms{color:var(--gb-zest-600);font-size:19px}
+[data-theme="dark"] .gb .btn--line .ms,.gb[data-theme="dark"] .btn--line .ms{color:var(--gb-zest)}
+
+/* OAuth social buttons (Google + Apple) */
+.gb .oauth{display:flex;gap:10px}
+.gb .btn-social{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:8px;font-family:var(--gb-font-ui);font-weight:700;font-size:13.5px;color:var(--gb-text);background:var(--gb-surface);border:1px solid var(--gb-border-strong);border-radius:var(--gb-r-md);padding:12px;cursor:pointer}
+.gb .btn-social svg{height:18px;width:auto;display:block}
+
+/* ══ INPUT / FIELD / STRENGTH ════════════════════════════════════════════════ */
+.gb .input{display:flex;align-items:center;gap:10px;background:var(--gb-field-bg);border:1px solid var(--gb-border-strong);border-radius:11px;padding:12px 14px}
+.gb .input .ms{font-size:19px;color:var(--gb-muted-2)}
+.gb .input input{border:none;outline:none;background:none;font-size:14px;color:var(--gb-text);width:100%}
+.gb .input input::placeholder{color:var(--gb-muted);opacity:.7}
+.gb .input:focus-within{border-color:var(--gb-focus-border);box-shadow:var(--gb-focus)}
+.gb .input:focus-within .ms{color:var(--gb-focus-border)}
+.gb .input .toggle{cursor:pointer}
+
+.gb .field{margin-bottom:14px}
+.gb .field__label{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;font-weight:600;margin-bottom:7px;color:var(--gb-text)}
+.gb .field__label a{color:var(--gb-zest-600);font-weight:600;text-decoration:none;font-size:12px;cursor:pointer}
+[data-theme="dark"] .gb .field__label a,.gb[data-theme="dark"] .field__label a{color:var(--gb-zest)}
+
+.gb .strength{display:flex;gap:5px;margin:8px 0 20px}
+.gb .strength i{flex:1;height:5px;border-radius:3px;background:var(--gb-border)}
+.gb .strength i.on1{background:var(--gb-basil-600)}
+.gb .strength i.on2{background:#EA9410}
+
+/* ══ DIVIDER (« or ») ════════════════════════════════════════════════════════ */
+.gb .divider{display:flex;align-items:center;gap:12px;font-size:11.5px;font-weight:600;color:var(--gb-muted)}
+.gb .divider::before,.gb .divider::after{content:"";flex:1;height:1px;background:var(--gb-border)}
+
+/* ══ CARD ════════════════════════════════════════════════════════════════════ */
+.gb .card{background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-lg);padding:16px}
+.gb .card h3{margin:0 0 5px;font-family:var(--gb-font-display);font-weight:700;font-size:15px;color:var(--gb-text)}
+.gb .card p{margin:0 0 14px;font-size:12px;line-height:1.45;color:var(--gb-muted)}
+
+/* ══ OTP boxes ═══════════════════════════════════════════════════════════════ */
+.gb .otp{display:flex;gap:8px}
+.gb .otp i{flex:1;aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-family:var(--gb-font-display);font-weight:800;font-size:22px;background:var(--gb-field-bg);border:1px solid var(--gb-border-strong);border-radius:var(--gb-r-md);font-style:normal;color:var(--gb-text)}
+.gb .otp i.active{border:1.5px solid var(--gb-focus-border);box-shadow:var(--gb-focus)}
+.gb .otp i.empty{color:var(--gb-border-strong)}
+
+/* ══ HERO ICON (plain + halo) ════════════════════════════════════════════════ */
+.gb .hero-ico{width:90px;height:90px;border-radius:50%;background:#FFF1E7;display:flex;align-items:center;justify-content:center}
+[data-theme="dark"] .gb .hero-ico,.gb[data-theme="dark"] .hero-ico{background:rgba(255,124,57,.16)}
+.gb .hero-ico .ms{font-size:46px;color:var(--gb-zest-600)}
+[data-theme="dark"] .gb .hero-ico .ms,.gb[data-theme="dark"] .hero-ico .ms{color:var(--gb-zest)}
+.gb .hero{position:relative;width:104px;height:104px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#FFF1E7}
+[data-theme="dark"] .gb .hero,.gb[data-theme="dark"] .hero{background:rgba(255,124,57,.16)}
+.gb .hero::after{content:"";position:absolute;inset:-10px;border-radius:50%;background:radial-gradient(circle,rgba(255,138,40,.28),transparent 70%);animation:gb-pulse 6s ease-in-out infinite}
+.gb .hero .ms{position:relative;font-size:52px;color:var(--gb-zest-600)}
+[data-theme="dark"] .gb .hero .ms,.gb[data-theme="dark"] .hero .ms{color:var(--gb-zest)}
+
+/* ══ SPINNER + DOTS ══════════════════════════════════════════════════════════ */
+.gb .spin{width:46px;height:46px;border-radius:50%;border:4px solid var(--gb-border);border-top-color:var(--gb-zest-600);animation:gb-spin .8s linear infinite}
+[data-theme="dark"] .gb .spin,.gb[data-theme="dark"] .spin{border-top-color:var(--gb-zest)}
+.gb .dots{display:flex;gap:6px}
+.gb .dots i{width:7px;height:7px;border-radius:50%;background:var(--gb-border-strong);animation:gb-pulse 1.4s ease-in-out infinite}
+.gb .dots i:nth-child(2){animation-delay:.2s}
+.gb .dots i:nth-child(3){animation-delay:.4s}
+
+/* ══ SUCCESS NOTE (green) ════════════════════════════════════════════════════ */
+.gb .note{display:flex;align-items:center;gap:9px;background:var(--gb-success-bg);border:1px solid var(--gb-success-bd);border-radius:var(--gb-r-md);padding:11px 13px}
+.gb .note .ms{font-size:18px;color:var(--gb-success)}
+.gb .note span{font-size:11.5px;line-height:1.4;color:var(--gb-success-fg)}
+
+/* ══ PAYMENT BAR (Confirm & pay) ═════════════════════════════════════════════ */
+.gb .paybar{border-top:1px solid var(--gb-border);background:var(--gb-surface);padding:12px 24px 18px}
+.gb .paybar__btn{display:flex;align-items:center;justify-content:space-between;background:var(--gb-grad);border-radius:13px;padding:14px 18px;box-shadow:var(--gb-shadow-btn)}
+.gb .paybar__btn span{font-size:13.5px;font-weight:700;color:#fff}
+.gb .paybar__btn b{font-family:var(--gb-font-display);font-size:16px;font-weight:800;color:#fff}
+
+/* ══ TAGS / CHIPS / BADGE ════════════════════════════════════════════════════ */
+.gb .tag-guest{font-size:11px;font-weight:700;color:var(--gb-zest-600);background:#FFF1E7;border-radius:7px;padding:4px 9px}
+[data-theme="dark"] .gb .tag-guest,.gb[data-theme="dark"] .tag-guest{color:var(--gb-zest);background:rgba(255,124,57,.16)}
+.gb .ai-soon{display:inline-flex;align-items:center;gap:5px;font-size:9.5px;font-weight:700;color:var(--gb-zest-600);background:rgba(255,138,40,.14);border-radius:6px;padding:3px 7px}
+[data-theme="dark"] .gb .ai-soon,.gb[data-theme="dark"] .ai-soon{color:var(--gb-zest)}
+.gb .badge{display:inline-flex;align-items:center;gap:8px;background:rgba(255,255,255,.2);border-radius:var(--gb-r-pill);padding:8px 14px;font-size:12.5px;font-weight:700;color:#fff}
+
+/* ══ AI-SOON TIP (gradient-clipped icon) ═════════════════════════════════════ */
+.gb .tip{display:flex;align-items:center;gap:10px;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-md);padding:11px 15px}
+.gb .tip .ms{font-size:19px;background:linear-gradient(135deg,#FFB020,#F2570E);-webkit-background-clip:text;background-clip:text;color:transparent}
+.gb .tip span{flex:1;font-size:12.5px;color:var(--gb-muted);text-align:left}
+.gb .tip .soon{font-size:9.5px;font-weight:700;color:var(--gb-zest-600);background:rgba(255,138,40,.14);border-radius:6px;padding:3px 7px;white-space:nowrap}
+[data-theme="dark"] .gb .tip .soon,.gb[data-theme="dark"] .tip .soon{color:var(--gb-zest)}
+
+/* ══ BRAND PANEL (navy / Sunrise, logo, pitch, deco circles) ═════════════════ */
+.gb .gb-brand{position:relative;overflow:hidden;color:var(--gb-on-ink);background:var(--gb-panel-ink);display:flex;flex-direction:column;justify-content:space-between;gap:40px;padding:clamp(28px,3.4vw,44px);border-radius:var(--gb-r-lg);min-height:320px}
+.gb .gb-brand.is-sunrise{background:var(--gb-grad-sunrise)}
+.gb .gb-brand::before{content:"";position:absolute;right:-90px;top:-70px;width:340px;height:340px;border-radius:50%;background:radial-gradient(circle,rgba(255,138,40,.32),transparent 66%);filter:blur(10px)}
+.gb .gb-brand.is-sunrise::before{right:-80px;bottom:-110px;top:auto;width:400px;height:400px;background:rgba(255,255,255,.16);filter:none}
+.gb .gb-brand::after{content:"";position:absolute;left:-70px;bottom:-90px;width:300px;height:300px;border-radius:50%;background:radial-gradient(circle,rgba(43,164,92,.20),transparent 68%);filter:blur(12px)}
+.gb .gb-brand.is-sunrise::after{display:none}
+.gb .gb-brand__logo{position:relative;display:flex;align-items:center;gap:11px}
+.gb .gb-brand__logo img{height:40px;width:auto;display:block}
+.gb .gb-brand__logo b{font-family:var(--gb-font-display);font-weight:800;font-size:24px;letter-spacing:-.02em}
+.gb .gb-brand__pitch{position:relative}
+.gb .gb-brand__pitch h2{margin:0;font-family:var(--gb-font-display);font-weight:800;font-size:clamp(26px,3vw,34px);letter-spacing:-.03em;line-height:1.06}
+.gb .gb-brand__pitch p{margin:14px 0 0;font-size:15px;line-height:1.6;color:var(--gb-on-ink-muted);max-width:34ch}
+.gb .gb-brand__meta{position:relative;display:flex;gap:18px;font-size:12.5px;color:var(--gb-on-ink-faint)}
+.gb .gb-brand__meta span{display:inline-flex;align-items:center;gap:6px}
+
+/* ══ TITLE / SUB (page headings used on auth-state screens) ══════════════════ */
+.gb .gb-title{font-family:var(--gb-font-display);font-weight:800;font-size:23px;letter-spacing:-.02em;margin:0;color:var(--gb-text)}
+.gb .gb-sub{margin:9px 0 22px;font-size:13.5px;line-height:1.55;color:var(--gb-muted)}
+.gb .gb-sub b{color:var(--gb-text)}
+
+/* ══ REWARDS (CD /rewards 38cfd2c9-…-8198, VERBATIM CSS) ══════════════════════
+ * Recurring Rewards components, NAMESPACED `.rw-*` so they never collide with the
+ * auth `.hero` / `.card` primitives above (CD reused those generic names for a
+ * DIFFERENT component). Scoped `.gb`, Material icons, --gb-* literals; the progress
+ * bar / week / tier-current / reward-locked states are toggled by the page.        */
+/* points hero (sunrise) */
+.gb .rw-hero{position:relative;overflow:hidden;border-radius:var(--gb-r-2xl);background:var(--gb-grad-sunrise);padding:clamp(22px,3vw,30px);color:#fff}
+.gb .rw-hero::after{content:"";position:absolute;right:-40px;bottom:-60px;width:200px;height:200px;border-radius:50%;background:rgba(255,255,255,.14)}
+.gb .rw-hero__top{position:relative;display:flex;justify-content:space-between;align-items:flex-start}
+.gb .rw-hero__label{font-size:13px;font-weight:700;color:rgba(255,255,255,.9)}
+.gb .rw-hero__chip{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:800;color:var(--gb-zest-600);background:#fff;border-radius:var(--gb-r-pill);padding:6px 13px}
+.gb .rw-hero__pts{position:relative;font-family:var(--gb-font-display);font-weight:800;font-size:clamp(40px,6vw,54px);letter-spacing:-.02em;line-height:1.04;margin-top:8px}
+.gb .rw-hero__sub{position:relative;font-size:13.5px;color:rgba(255,255,255,.92);margin-bottom:16px}
+.gb .rw-hero__bar{position:relative;height:8px;border-radius:var(--gb-r-pill);background:rgba(255,255,255,.28)}
+.gb .rw-hero__bar i{display:block;height:8px;border-radius:var(--gb-r-pill);background:#fff}
+/* streak */
+.gb .rw-streak{background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-2xl);padding:clamp(18px,2.4vw,24px);box-shadow:var(--gb-shadow-card)}
+.gb .rw-streak__top{display:flex;align-items:center;gap:11px;margin-bottom:14px}
+.gb .rw-streak__ico{width:44px;height:44px;border-radius:var(--gb-r-md);background:#FFF1E7;display:flex;align-items:center;justify-content:center}
+[data-theme="dark"] .gb .rw-streak__ico,.gb[data-theme="dark"] .rw-streak__ico{background:rgba(255,124,57,.16)}
+.gb .rw-streak__ico .ms{font-size:24px;color:var(--gb-zest-600)}
+[data-theme="dark"] .gb .rw-streak__ico .ms,.gb[data-theme="dark"] .rw-streak__ico .ms{color:var(--gb-zest)}
+.gb .rw-streak__top b{font-family:var(--gb-font-display);font-weight:800;font-size:17px}
+/* sub-text span ONLY — scoped to `div span` so it does NOT clobber the .rw-streak__ico span's
+ * display:flex (the CD's own `.streak__top span` over-reaches and breaks the fire centering). */
+.gb .rw-streak__top div span{display:block;font-size:12px;color:var(--gb-muted);margin-top:1px}
+.gb .rw-streak__week{display:flex;gap:6px}
+.gb .rw-streak__week i{flex:1;height:9px;border-radius:5px;background:var(--gb-border)}
+.gb .rw-streak__week i.on{background:var(--gb-grad)}
+/* big card (tier ladder container) */
+.gb .rw-card{background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-2xl);padding:clamp(18px,2.4vw,24px);box-shadow:var(--gb-shadow-card)}
+.gb .rw-card__h{font-family:var(--gb-font-display);font-weight:700;font-size:16px;margin:0 0 18px}
+/* tier ladder */
+.gb .rw-ladder{display:flex;align-items:flex-start}
+.gb .rw-tier{flex:1;text-align:center;position:relative}
+.gb .rw-tier__dot{width:46px;height:46px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:var(--gb-surface-2);border:1px solid var(--gb-border)}
+.gb .rw-tier__dot .ms{font-size:24px}
+.gb .rw-tier.cur .rw-tier__dot{width:58px;height:58px;background:var(--gb-grad);box-shadow:0 8px 18px -6px rgba(242,87,14,.5);border:none}
+.gb .rw-tier.cur .rw-tier__dot .ms{font-size:30px;color:#fff;font-variation-settings:'FILL' 1}
+.gb .rw-tier__name{font-size:12px;font-weight:700;margin-top:8px}
+.gb .rw-tier.cur .rw-tier__name{font-size:13px;color:var(--gb-zest-600)}
+[data-theme="dark"] .gb .rw-tier.cur .rw-tier__name,.gb[data-theme="dark"] .rw-tier.cur .rw-tier__name{color:var(--gb-zest)}
+.gb .rw-tier__pts{font-size:10.5px;color:var(--gb-muted);margin-top:2px}
+.gb .rw-bridge{flex:0 0 auto;height:3px;width:8%;margin-top:22px;background:var(--gb-border)}
+.gb .rw-bridge.done{background:var(--gb-basil-600)}
+/* AI insight (info pill) */
+.gb .rw-insight{display:flex;align-items:center;gap:11px;background:var(--gb-info-bg);border:1px solid color-mix(in srgb,var(--gb-info) 30%,transparent);border-radius:var(--gb-r-lg);padding:14px 16px;margin-top:18px}
+.gb .rw-insight .ms{font-size:21px;color:var(--gb-info)}
+.gb .rw-insight p{margin:0;flex:1;font-size:13px;line-height:1.45;color:var(--gb-text)}
+.gb .rw-insight .ai-soon{font-size:10px;font-weight:700;color:var(--gb-zest-600);background:rgba(255,138,40,.14);border-radius:6px;padding:3px 8px}
+[data-theme="dark"] .gb .rw-insight .ai-soon,.gb[data-theme="dark"] .rw-insight .ai-soon{color:var(--gb-zest)}
+/* rewards grid */
+.gb .rw-rgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.gb .rw-reward{background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-lg);padding:18px;position:relative}
+.gb .rw-reward__ico{width:46px;height:46px;border-radius:var(--gb-r-md);display:inline-flex;align-items:center;justify-content:center}
+.gb .rw-reward__ico .ms{font-size:25px}
+.gb .rw-reward__name{font-family:var(--gb-font-display);font-weight:700;font-size:14.5px;margin-top:12px}
+.gb .rw-reward__cost{font-size:12.5px;font-weight:600;color:var(--gb-zest-600);margin-top:3px}
+[data-theme="dark"] .gb .rw-reward__cost,.gb[data-theme="dark"] .rw-reward__cost{color:var(--gb-zest)}
+.gb .rw-reward.locked{opacity:.55}
+.gb .rw-reward.locked .rw-reward__lock{position:absolute;top:14px;right:14px;font-size:17px;color:var(--gb-muted)}
+.gb .rw-reward__cta{margin-top:12px;width:100%;border:none;border-radius:var(--gb-r-sm);padding:9px;font-size:12.5px;font-weight:700;cursor:pointer}
+.gb .rw-reward__cta.able{color:#fff;background:var(--gb-grad)}
+.gb .rw-reward__cta.unable{color:var(--gb-muted);background:var(--gb-surface-2);border:1px solid var(--gb-border);cursor:not-allowed}
+
+/* ══ SKELETONS (CD 38efd2c9-…-813a « Skeletons de chargement », verbatim) ══════════
+ * Loading primitive — reproduce the REAL layout (no spinners). Reuse the same radii/
+ * heights as the real components so there is ZERO layout shift on load. Tokens
+ * --sk-base/--sk-hi live in gb-tokens.css (light + dark). Respects reduced-motion. */
+@keyframes gb-sk{100%{background-position:-200% 0}}
+.gb .sk{background:linear-gradient(90deg,var(--sk-base) 25%,var(--sk-hi) 37%,var(--sk-base) 63%);background-size:200% 100%;background-position:200% 0;animation:gb-sk 1.4s ease-in-out infinite;border-radius:7px;display:block}
+.gb .sk-circle{border-radius:50%}
+.gb .sk-line{height:11px;border-radius:6px}
+.gb .sk-line.lg{height:15px}
+.gb .sk-line.sm{height:9px}
+@media (prefers-reduced-motion:reduce){ .gb .sk{animation:none} }

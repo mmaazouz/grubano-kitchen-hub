@@ -1,0 +1,128 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Dish detail modal — CONSUMER S1.1, reproduction of the FOUNDER-APPROVED
+ * reference docs/design/handoffs/S1.1-ref/restaurant-menu.html (`.ov` / `.pm`)
+ * and CONTRACT.md §10-§11. Only this page imports this file.
+ *
+ * 🔒 CONDITIONAL RENDERING (§10) — the block ORDER is imposed and every optional
+ *    block simply DISAPPEARS when its field is empty (page.tsx owns that):
+ *      photo → name+price → description → labels → calories → ALLERGENS → note
+ *      → stepper + CTA.
+ *    Nothing below reserves space, draws an empty container or a placeholder.
+ * 🔒 SALIENCE (§10/§11) — allergens are a framed zest attention block, strictly
+ *    more salient than the label pills and the calories line, and never before
+ *    the price.
+ *
+ * Scoped under `.gb-resto` so it inherits the page's `--s1-*` tokens
+ * (restaurant.css). The `.cr*` creator insert below is UNCHANGED apart from its
+ * scope (was `.gb-dish`): it is real adopted-recipe data and out of S1.1 scope.
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+/* ═══════════ OVERLAY + SHEET ═══════════ */
+.gb-resto .ov{position:fixed;inset:0;z-index:70;background:var(--s1-overlay);display:flex;align-items:center;justify-content:center;padding:24px}
+.gb-resto .pm{width:520px;max-width:100%;max-height:88vh;background:var(--gb-surface);border-radius:var(--s1-r-xl);box-shadow:var(--s1-sh-pop);display:flex;flex-direction:column;overflow:hidden}
+
+/* photo 16:9 — no photo ⇒ neutral weave, never a stock shot of another dish */
+.gb-resto .pm__ph{position:relative;aspect-ratio:16/9;background:repeating-linear-gradient(135deg,var(--s1-tile-a) 0 16px,var(--s1-tile-b) 16px 32px);flex-shrink:0}
+.gb-resto .pm__ph img{width:100%;height:100%;object-fit:cover;display:block}
+.gb-resto .pm__x{position:absolute;top:14px;inset-inline-start:14px;width:38px;height:38px;padding:0;border-radius:50%;border:none;background:rgba(255,255,255,.94);color:#0F2742;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.gb-resto .pm__x .ms{font-size:20px}
+
+.gb-resto .pm__b{flex:1;overflow-y:auto;padding:22px 24px}
+.gb-resto .pm__t{display:flex;align-items:flex-start;gap:14px}
+.gb-resto .pm__t h2{flex:1;font-size:24px;font-weight:800;color:var(--gb-text)}
+.gb-resto .pm__t .pr{font-family:var(--gb-font-display);font-weight:800;font-size:22px;color:var(--gb-zest-600);white-space:nowrap}
+[data-theme="dark"] .gb-resto .pm__t .pr{color:var(--gb-zest)}
+
+/* DESCRIPTION — rendered only when non-empty (§10) */
+.gb-resto .pm__desc{margin-top:12px;font-size:14.5px;line-height:1.6;color:var(--s1-muted)}
+/* LABELS — rendered only when length > 0 (§10), secondary to the allergen block */
+.gb-resto .pm__labels{display:flex;flex-wrap:wrap;gap:7px;margin-top:14px}
+.gb-resto .pm__lab{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--s1-basil-bd);background:var(--s1-basil-bg);color:var(--s1-basil-600);border-radius:var(--gb-r-pill);padding:4px 11px;font-size:12.5px;font-weight:700}
+.gb-resto .pm__lab .ms{font-size:15px}
+/* CALORIES — rendered only when non-null (§10), discreet single line */
+.gb-resto .pm__kcal{display:inline-flex;align-items:center;gap:6px;margin-top:12px;font-size:13px;font-weight:600;color:var(--s1-muted-2)}
+.gb-resto .pm__kcal .ms{font-size:16px}
+
+/* ALLERGENS (§11) — framed attention block, icon + text (never colour alone).
+   Empty list ⇒ SAME frame, but the chip list is replaced by an explicit
+   « not provided » warning (.alg--none / .alg__w). The block is never absent
+   and never reassuring: silence would read as « no allergen ». */
+.gb-resto .alg{margin-top:18px;border:1px solid var(--s1-zest-bd);background:var(--s1-zest-bg);border-radius:var(--gb-r-md);padding:14px 16px}
+.gb-resto .alg__h{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:800;color:var(--gb-zest-600);text-transform:uppercase;letter-spacing:.05em}
+[data-theme="dark"] .gb-resto .alg__h{color:var(--gb-zest)}
+.gb-resto .alg__h .ms{font-size:18px}
+.gb-resto .alg__l{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.gb-resto .alg__i{display:inline-flex;align-items:center;gap:6px;background:var(--gb-surface);border:1px solid var(--s1-zest-bd);border-radius:var(--gb-r-pill);padding:5px 12px;font-size:13.5px;font-weight:700;color:var(--gb-text)}
+.gb-resto .alg__i .ms{font-size:15px;color:var(--gb-zest-600)}
+[data-theme="dark"] .gb-resto .alg__i .ms{color:var(--gb-zest)}
+.gb-resto .alg__n{margin-top:9px;font-size:11.5px;color:var(--s1-muted)}
+/* Empty state: the sentence IS the content, so it takes the block's body size
+   and full text colour — a safety warning must not be set as fine print. */
+.gb-resto .alg--none{border-style:dashed}
+.gb-resto .alg__w{margin-top:10px;font-size:13.5px;line-height:1.45;font-weight:600;color:var(--gb-text)}
+
+/* NOTE — real per-line customisation, never sold as a guaranteed option */
+.gb-resto .note-f{margin-top:18px}
+.gb-resto .note-f label{display:block;font-size:12.5px;font-weight:700;margin-bottom:6px;color:var(--gb-text)}
+.gb-resto .note-f textarea{width:100%;min-height:74px;border:1px solid var(--s1-border-2);border-radius:var(--gb-r-md);background:var(--s1-surface-3);padding:11px 13px;font-size:14px;line-height:1.5;resize:vertical;color:var(--gb-text);font-family:inherit}
+.gb-resto .note-f textarea::placeholder{color:var(--s1-muted-2)}
+
+.gb-resto .pm__f{flex-shrink:0;border-top:1px solid var(--gb-border);padding:14px 24px;display:flex;align-items:center;gap:12px}
+.gb-resto .pm__f .qty{margin:0;flex-shrink:0}
+.gb-resto .pm__f .btn-go{margin:0;flex:1;justify-content:space-between;padding:0 18px}
+
+/* ═══════════ MOBILE — rising sheet, scrolling body, fixed foot (§10) ═══════════
+   Thresholds shifted by the shell rail exactly as restaurant.css (long note
+   there): the reference's `@container s1 (max-width:900px)` is viewport ≤1136 in
+   the product, so the §14 « modale 560 » composition starts on the same page
+   width as the single-column body it belongs to. `.pm` keeps `max-width:100%`,
+   so the 560 sheet can never overflow a narrower viewport. */
+@media (max-width:1136px){          /* reference @container s1 (max-width:900px) */
+  .gb-resto .pm{width:560px}
+}
+@media (max-width:560px){           /* reference @container s1 (max-width:560px) */
+  .gb-resto .ov{padding:0;align-items:flex-end}
+  .gb-resto .pm{width:100%;max-height:94vh;border-radius:var(--s1-r-xl) var(--s1-r-xl) 0 0}
+  .gb-resto .pm__b{padding:18px 16px;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+  .gb-resto .pm__f{padding:12px 16px calc(12px + env(safe-area-inset-bottom))}
+  .gb-resto .pm__t h2{font-size:20px}
+  .gb-resto .pm__desc{font-size:14px}
+  .gb-resto .pm__x{width:44px;height:44px} /* §19 — 44px mobile targets */
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * « Encart Recette du chef » — VERBATIM reproduction of the FROZEN CD ref
+ * (Notion 38efd2c9-…-81c4, file eat/chef-recipe.html). Decorative/INERT insert
+ * inside the dish modal body, rendered ONLY for an adopted creator recipe (real
+ * `dish.creator`). Out of S1.1 scope: only the scope selector changed
+ * (`.gb-dish` → `.gb-resto`) and `--gb-muted*` → `--s1-muted*` so it matches the
+ * page palette. « Suivre » + the AI-pairings block stay INERT (« bientôt »).
+ * ───────────────────────────────────────────────────────────────────────────── */
+.gb-resto .cr{margin-top:22px;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--s1-r-lg);box-shadow:var(--s1-sh-1);overflow:hidden}
+.gb-resto .cr__head{display:flex;align-items:center;gap:12px;padding:15px 16px}
+.gb-resto .cr__av{position:relative;width:50px;height:50px;border-radius:50%;flex-shrink:0;background:repeating-linear-gradient(135deg,#FFD9C2 0 7px,#FFE9D6 7px 14px);display:flex;align-items:center;justify-content:center;font-family:var(--gb-font-display);font-weight:800;font-size:17px;color:#B5560A}
+[data-theme="dark"] .gb-resto .cr__av{background:repeating-linear-gradient(135deg,#3A2C22 0 7px,#2C2118 7px 14px);color:var(--gb-zest)}
+.gb-resto .cr__av .cr-vrf{position:absolute;bottom:-2px;inset-inline-end:-2px;width:20px;height:20px;border-radius:50%;background:var(--gb-info);border:2.5px solid var(--gb-surface);display:flex;align-items:center;justify-content:center}
+.gb-resto .cr__av .cr-vrf .ms{font-size:12px;color:#fff;font-variation-settings:'FILL' 1}
+.gb-resto .cr__id{flex:1;min-width:0}
+.gb-resto .cr__id .cr-ov{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--gb-zest-600);display:flex;align-items:center;gap:5px}
+[data-theme="dark"] .gb-resto .cr__id .cr-ov{color:var(--gb-zest)}
+.gb-resto .cr__id .cr-ov .ms{font-size:13px}
+.gb-resto .cr__id b{font-family:var(--gb-font-display);font-weight:700;font-size:16px;letter-spacing:-.01em;display:flex;align-items:center;gap:6px;margin-top:2px;color:var(--gb-text)}
+.gb-resto .cr__id span{font-size:11.5px;color:var(--s1-muted)}
+.gb-resto .cr__follow{flex-shrink:0;font-weight:700;font-size:12px;color:var(--gb-zest-600);background:var(--s1-zest-bg);border:none;border-radius:var(--gb-r-pill);padding:8px 13px;cursor:pointer}
+[data-theme="dark"] .gb-resto .cr__follow{color:var(--gb-zest)}
+.gb-resto .cr__quote{margin:0 16px;padding:13px 15px;background:var(--s1-surface-2);border:1px solid var(--gb-border);border-radius:var(--gb-r-md);position:relative}
+.gb-resto .cr__quote .cr-qm{font-family:var(--gb-font-display);font-weight:800;font-size:30px;color:var(--gb-zest-300);line-height:.6;position:absolute;top:12px;inset-inline-start:11px}
+.gb-resto .cr__quote p{margin:0;padding-inline-start:24px;font-size:12.5px;line-height:1.55;color:var(--gb-text);font-style:italic}
+.gb-resto .cr__ai{display:flex;align-items:center;gap:8px;margin:13px 16px 0;padding:10px 12px;border-radius:var(--gb-r-md);background:var(--s1-surface-2);border:1px dashed var(--s1-border-2)}
+.gb-resto .cr__ai .ms{font-size:17px;color:var(--gb-zest-600)}
+[data-theme="dark"] .gb-resto .cr__ai .ms{color:var(--gb-zest)}
+.gb-resto .cr__ai span{flex:1;font-size:11px;color:var(--s1-muted)}
+.gb-resto .cr__ai .cr-soon{font-size:8.5px;font-weight:700;color:var(--gb-zest-600);background:var(--s1-zest-bg);border-radius:5px;padding:2px 6px;white-space:nowrap}
+[data-theme="dark"] .gb-resto .cr__ai .cr-soon{color:var(--gb-zest)}
+.gb-resto .cr__more{padding:14px 16px 16px}
+.gb-resto .cr__more .cr-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:11px}
+.gb-resto .cr__more .cr-h b{font-size:12.5px;font-weight:700;color:var(--gb-text)}
+.gb-resto .cr__more .cr-h a{font-size:11.5px;font-weight:700;color:var(--gb-zest-600);text-decoration:none;cursor:pointer}
+[data-theme="dark"] .gb-resto .cr__more .cr-h a{color:var(--gb-zest)}
