@@ -229,6 +229,11 @@ describe('PROD-3 — production can be backed up, by the SAME verified code', ()
     expect(prod).toMatch(/3 (prisma|manifest)/)
   })
 
+  it('accepts 0 INSERT statements only when the live database has 0 rows', () => {
+    const src = read('scripts/server/staging-backup.js')
+    expect(src).toContain('if (totalRows > 0 && insertCount < 1)')
+    expect(src).not.toContain("if (insertCount < 1) { cleanup(sqlPath); return fail('5 verify: 0 INSERT statements (empty dump)') }")
+  })
   it('the dump filename carries the target, so two dumps cannot be confused', () => {
     expect(read('scripts/server/staging-backup.js')).toContain('`${TARGET}-${LABEL}-${stamp}.sql`')
   })
