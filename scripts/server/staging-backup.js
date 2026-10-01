@@ -183,7 +183,7 @@ function fail(step, action) {
   const completed = /-- Dump completed/.test(sqlText)
   if (sizeBytes < 512) { cleanup(sqlPath); return fail(`5 verify: dump trivially small (${sizeBytes} bytes, < 512)`) }
   if (!completed) { cleanup(sqlPath); return fail('5 verify: no "-- Dump completed" marker (truncated dump)') }
-  if (insertCount < 1) { cleanup(sqlPath); return fail('5 verify: 0 INSERT statements (empty dump)') }
+  if (totalRows > 0 && insertCount < 1) { cleanup(sqlPath); return fail(`5 verify: 0 INSERT statements but live database has ${totalRows} rows`) }
   // MANIFEST: every schema table has a CREATE TABLE; every non-empty table has ≥ 1 INSERT.
   const missingCreate = tables.filter((t) => !sqlText.includes('CREATE TABLE `' + t + '`'))
   const missingInsert = tables.filter((t) => live.get(t) > 0 && !new RegExp('^INSERT INTO `' + t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '` ', 'm').test(sqlText))
