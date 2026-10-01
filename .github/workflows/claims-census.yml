@@ -1,0 +1,46 @@
+name: Grubano — Claims census (staging, read-only, counts only)
+
+# Mode A precheck (§21). The staging database is unreachable from a developer workstation
+# (o2switch MySQL and SSH are both closed to it), so the claim population has to be measured
+# from somewhere that CAN reach it. This job asks staging for COUNTS ONLY, over the internal
+# token the other maintenance routes already use.
+#
+# It writes nothing, changes no flag, touches no Stripe object and prints no claim id, order id,
+# consumer id or amount — only how many rows sit in each state. Target is FIXED to staging: this
+# workflow can never touch production.
+on:
+  workflow_dispatch:
+  # GitHub only registers a workflow that has run at least once or that lives on the default
+  # branch; this file is develop-only (main = production, untouched). A push that touches THIS
+  # file registers it — and runs the read-only census once — so later manual dispatches on
+  # --ref develop work. Same mechanism as internal-token-probe.yml.
+  push:
+    branches: [develop]
+    paths: ['.github/workflows/claims-census.yml']
+
+permissions: {}
+
+jobs:
+  census:
+    runs-on: ubuntu-latest
+    steps:
+      - name: GET /api/admin/claims/census (counts only, never ids)
+        env:
+          TOK: ${{ secrets.INTERNAL_CRON_TOKEN }}
+        run: |
+          set -u
+          if [ -z "${TOK}" ]; then echo "GITHUB SECRET INTERNAL_CRON_TOKEN = ABSENT"; exit 0; fi
+          echo "TARGET = https://app.grubano.com (staging, fixed)"
+          BODY=$(curl -s --max-time 60 -w $'\n%{http_code}' \
+            -H "X-Internal-Token: ${TOK}" -H 'User-Agent: grubano-claims-census/1' \
+            "https://app.grubano.com/api/admin/claims/census")
+          CODE=$(printf '%s' "$BODY" | tail -n1)
+          JSON=$(printf '%s' "$BODY" | sed '$d')
+          echo "HTTP STATUS = ${CODE}"
+          if [ "${CODE}" != "200" ]; then
+            echo "CENSUS = NOT MEASURED (status ${CODE})"
+            exit 0
+          fi
+          # The payload is counts only, so printing it whole discloses nothing.
+          echo "CENSUS PAYLOAD:"
+          printf '%s\n' "$JSON"

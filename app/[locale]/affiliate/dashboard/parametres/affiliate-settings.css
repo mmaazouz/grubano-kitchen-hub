@@ -1,0 +1,100 @@
+/* ── AF6 · Paramètres (content classes, scoped under AffiliateShell .gb-op) ──────
+ * Verbatim CD AF6, calque of CR7 (creator-settings.css) with the TEAL --op-af accent.
+ * RE-SKIN only — 0 backend, 0 migration. There is NO affiliate profile PATCH endpoint,
+ * so the profile fields are READ-ONLY (server-resolved) and channel editing is an inert
+ * « bientôt ». No money surface: the payout rail is gated OFF → « Activer les versements »
+ * is INERT and NO bank details are collected here (Stripe). Consumes --op-* / --op-af from
+ * affiliate-shell.css (never redefines :root). */
+
+/* card + section header */
+.gb-op .set-card{margin-bottom:16px;overflow:hidden}
+.gb-op .set-hd{display:flex;align-items:center;gap:11px;padding:16px 18px;border-bottom:1px solid var(--op-border)}
+.gb-op .set-hd .ic{width:34px;height:34px;border-radius:var(--op-r-md);background:var(--op-af-bg);display:flex;align-items:center;justify-content:center;color:var(--op-af);flex-shrink:0}
+[data-theme="dark"] .gb-op .set-hd .ic{color:var(--op-af-2)}
+.gb-op .set-hd .ic .ms{font-size:19px}
+.gb-op .set-hd__t b{display:block;font-family:var(--op-font-display);font-weight:800;font-size:14.5px}
+.gb-op .set-hd__t span{font-size:11.5px;color:var(--op-muted)}
+.gb-op .set-body{padding:6px 18px 16px}
+
+/* profile row (avatar = initials only) */
+.gb-op .prof-row{display:flex;align-items:center;gap:16px;padding:14px 0 18px}
+.gb-op .prof-av{width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,#22C4E0,#0A6178);display:flex;align-items:center;justify-content:center;color:#fff;font-family:var(--op-font-display);font-weight:800;font-size:24px;flex-shrink:0}
+.gb-op .prof-row__m{flex:1;min-width:0}
+.gb-op .prof-row__m b{display:block;font-family:var(--op-font-display);font-weight:800;font-size:16px}
+.gb-op .prof-row__m span{font-size:12px;color:var(--op-muted)}
+
+/* fields */
+.gb-op .field{padding:13px 0;border-bottom:1px solid var(--op-border)}
+.gb-op .field:last-child{border-bottom:none}
+.gb-op .field__label{font-size:12.5px;font-weight:700;margin-bottom:7px;display:flex;align-items:center;gap:7px}
+.gb-op .field__label .ro{font-family:var(--op-font-ui);font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;background:var(--op-af-bg);color:var(--op-af-text);border:1px solid var(--op-af-bd);border-radius:999px;padding:1px 7px;display:inline-flex;align-items:center;gap:3px}
+[data-theme="dark"] .gb-op .field__label .ro{color:var(--op-af-2)}
+.gb-op .field__label .ro .ms{font-size:11px}
+.gb-op .inp{width:100%;border:1px solid var(--op-border-strong);border-radius:var(--op-r-md);background:var(--op-surface);padding:10px 13px;font-size:13.5px;color:var(--op-text)}
+.gb-op .inp:disabled,.gb-op .inp[readonly]{background:var(--op-surface-2);color:var(--op-muted);cursor:not-allowed}
+.gb-op .field__hint{font-size:11px;color:var(--op-muted-2);margin-top:6px;display:flex;align-items:flex-start;gap:5px}
+.gb-op .field__hint .ms{font-size:13px;flex-shrink:0}
+.gb-op .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+
+/* affiliate link box (read-only « identifiant fixe » + copy) */
+.gb-op .mylink{display:flex;align-items:center;gap:10px;background:var(--op-surface-2);border:1px solid var(--op-border);border-radius:var(--op-r-md);padding:6px 6px 6px 14px;flex-wrap:wrap}
+.gb-op .mylink .url{flex:1;min-width:150px;font-family:var(--op-font-mono);font-size:13px;font-weight:700;direction:ltr;unicode-bidi:isolate;word-break:break-all}
+.gb-op .mylink .cp{display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#12A6C4,#0E8AA6);color:#fff;border:none;border-radius:var(--op-r-sm);padding:8px 13px;font-size:12px;font-weight:700;cursor:pointer}
+.gb-op .mylink .cp .ms{font-size:15px}
+
+/* channels — inert « bientôt » (no affiliate profile endpoint) */
+.gb-op .soc-row{display:flex;align-items:center;gap:11px;padding:11px 0;border-bottom:1px solid var(--op-border)}
+.gb-op .soc-row:last-child{border-bottom:none}
+.gb-op .soc-ic{width:32px;height:32px;border-radius:var(--op-r-md);background:var(--op-surface-2);display:flex;align-items:center;justify-content:center;color:var(--op-muted);flex-shrink:0}
+.gb-op .soc-ic .ms{font-size:17px}
+.gb-op .soc-row .inp{flex:1;min-width:0}
+.gb-op .soon-card{display:flex;align-items:center;gap:8px;padding:12px 14px;background:var(--op-surface-2);border:1px solid var(--op-border);border-radius:var(--op-r-md);margin-bottom:12px}
+.gb-op .soon-card .ms{font-size:18px;color:var(--op-muted-2);flex-shrink:0}
+.gb-op .soon-card b{font-size:12.5px;font-weight:800}
+.gb-op .soon-card span{display:block;font-size:11px;color:var(--op-muted);margin-top:1px}
+.gb-op .soon-tag{display:inline-flex;align-items:center;font-size:8.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;background:var(--op-warning-bg);color:var(--op-warning);border:1px solid var(--op-warning-bd);border-radius:999px;padding:2px 7px;flex-shrink:0}
+
+/* read-only identity rows (statut / verified) */
+.gb-op .idrow{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--op-border)}
+.gb-op .idrow:last-child{border-bottom:none}
+.gb-op .idrow .k{font-size:12.5px;font-weight:700;display:flex;align-items:center;gap:7px}
+.gb-op .idrow .k .ms{font-size:17px;color:var(--op-muted-2)}
+.gb-op .idrow .v{font-size:12.5px;color:var(--op-muted);text-align:end;min-width:0}
+.gb-op .pill{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;border-radius:999px;padding:3px 10px;white-space:nowrap}
+.gb-op .pill .ms{font-size:13px}
+.gb-op .pill.ok{background:var(--op-success-bg);color:var(--op-success)}
+.gb-op .pill.af{background:var(--op-af-bg);color:var(--op-af-text);border:1px solid var(--op-af-bd)}
+[data-theme="dark"] .gb-op .pill.af{color:var(--op-af-2)}
+.gb-op .pill.wait{background:var(--op-surface-2);color:var(--op-muted-2);border:1px solid var(--op-border)}
+
+/* toggles (INERT « bientôt » placeholder — no persistence backing) */
+.gb-op .tog-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--op-border)}
+.gb-op .tog-row:last-child{border-bottom:none}
+.gb-op .tog-row .m b{display:block;font-size:12.5px;font-weight:700}
+.gb-op .tog-row .m span{font-size:11px;color:var(--op-muted)}
+.gb-op .tog{width:40px;height:23px;border-radius:999px;background:var(--op-border-strong);position:relative;flex-shrink:0;border:none;opacity:.6;cursor:not-allowed}
+.gb-op .tog i{position:absolute;top:2.5px;inset-inline-start:2.5px;width:18px;height:18px;border-radius:50%;background:#fff}
+.gb-op .notif-soon{display:flex;align-items:center;gap:8px;padding:12px 14px;background:var(--op-surface-2);border:1px solid var(--op-border);border-radius:var(--op-r-md);margin-bottom:4px}
+.gb-op .notif-soon .ms{font-size:18px;color:var(--op-muted-2);flex-shrink:0}
+.gb-op .notif-soon b{font-size:12.5px;font-weight:800}
+.gb-op .notif-soon span{display:block;font-size:11px;color:var(--op-muted);margin-top:1px}
+
+/* payout status (Connect gated OFF → honest « prochainement ») */
+.gb-op .payout-status{display:flex;align-items:center;gap:11px;padding:14px 16px;background:var(--op-warning-bg);border:1px solid var(--op-warning-bd);border-radius:var(--op-r-md);margin-bottom:4px}
+.gb-op .payout-status .ms{font-size:20px;color:var(--op-warning);flex-shrink:0}
+.gb-op .payout-status b{font-size:12.5px;font-weight:800;color:var(--op-warning)}
+.gb-op .payout-status span{display:block;font-size:11px;color:var(--op-muted);margin-top:1px}
+
+/* danger zone (INERT « bientôt » — no real account-closure flow) */
+.gb-op .danger-card{border-color:var(--op-danger-bd)}
+.gb-op .danger-card .set-hd{border-bottom-color:var(--op-danger-bd)}
+.gb-op .danger-card .set-hd .ic{background:var(--op-danger-bg);color:var(--op-danger)}
+.gb-op .danger-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 0}
+.gb-op .danger-row .m b{display:block;font-size:12.5px;font-weight:700}
+.gb-op .danger-row .m span{font-size:11px;color:var(--op-muted)}
+.gb-op .btn-danger{background:none;border:1px solid var(--op-danger-bd);color:var(--op-danger);border-radius:var(--op-r-md);padding:11px 18px;font-size:13px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;gap:6px;opacity:.7;cursor:not-allowed}
+.gb-op .btn-danger .ms{font-size:17px}
+
+.gb-op .acct-actions{margin-top:12px;display:flex;gap:9px;flex-wrap:wrap}
+
+@container gbop (max-width: 560px){ .gb-op .row2{grid-template-columns:1fr} }

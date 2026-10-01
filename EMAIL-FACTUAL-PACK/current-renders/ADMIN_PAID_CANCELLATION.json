@@ -1,0 +1,9 @@
+{
+  "id": "ADMIN_PAID_CANCELLATION",
+  "from": "\"Grubano\" <contact@grubano.com>",
+  "to": "admin-alerts@example.invalid",
+  "subject": "[Grubano] Commande payée annulée — remboursement à instruire",
+  "hasText": false,
+  "hasImages": false,
+  "hasTable": false
+}

@@ -1,0 +1,43 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+ * gb-rtl.css — Arabic (RTL) global rules · CD « 🌐 Arabe RTL » 38efd2c9-…-814c
+ *
+ * The 6 CD rules, applied GLOBALLY for the `ar` locale. Imported by gb-tokens.css.
+ * Every selector is `[dir="rtl"]`-gated, so this sheet is INERT in LTR locales.
+ * `<html lang="ar" dir="rtl">` is set by app/[locale]/layout.tsx for the ar locale,
+ * which (Rule 1) flips all flex/grid layouts automatically — rail/nav move to the
+ * right, content to the left — with no per-component CSS.
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+/* Rule 2 — Cairo for Arabic body text; the --gb-* design tokens stay unchanged.
+ * (the Cairo @import lives at the top of gb-tokens.css where @import must be.) */
+:root{ --gb-font-ar:'Cairo', system-ui, sans-serif }
+[dir="rtl"] .gb,
+[lang="ar"] .gb{ font-family:var(--gb-font-ar) }
+
+/* Rule 2 — prices, promo codes, phone numbers and the logo stay LTR.
+ * Use `.gb-ltr` / a <bdi> on any latin/number run that must read left-to-right
+ * (€ amounts, GR-codes, ···· card digits, +33 phones). */
+[dir="rtl"] .price,
+[dir="rtl"] .code,
+[dir="rtl"] .gb-ltr,
+[dir="rtl"] bdi{ direction:ltr; unicode-bidi:plaintext; display:inline-block }
+
+/* Rule 3 — only DIRECTIONAL icons flip; symbolic icons (★ ♥ 🔔 …) are unchanged.
+ * Add `.ms-flip` to a directional Material Symbol (arrow_back, chevron_right,
+ * arrow_forward, navigate_next/before, send, reply…). */
+[dir="rtl"] .ms-flip{ transform:scaleX(-1) }
+
+/* Rule 6 — fields, search inputs and titles align to the logical start. */
+[dir="rtl"] input,
+[dir="rtl"] textarea,
+[dir="rtl"] .gb h1,
+[dir="rtl"] .gb h2,
+[dir="rtl"] .gb h3{ text-align:start }
+
+/* Rules 4 + 5 — badges/counters move to the opposite side, and layouts use logical
+ * properties (margin-inline / padding-inline / inset-inline-start) so a single CSS
+ * serves LTR + RTL. dir="rtl" already mirrors flex/grid + logical-property boxes;
+ * this sheet intentionally adds NO hard left/right overrides so authored
+ * logical-property layouts mirror cleanly. New screens MUST prefer the logical
+ * properties over left/right; absolutely-positioned chrome (cart badge, hero
+ * buttons) should use inset-inline-* so it lands on the mirrored side. */

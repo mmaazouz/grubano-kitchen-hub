@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grubano — D2.1 Éditeur de plat (référence design)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Gabarito:wght@500;600;700;800&family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..700,0..1,0&display=block" rel="stylesheet">
+<style>
+/* ══ D2.1 DISH EDITOR — TOKENS (contexte OperatorShell) ══ */
+:root{
+  --op-zest:#FF6A1F; --op-zest-600:#F2570E; --op-zest-bg:#FFF1E7; --op-zest-bd:#F8D3BC;
+  --op-ink:#0F2742;
+  --op-surface:#FFFFFF; --op-surface-2:#F7F8FA; --op-canvas-dim:rgba(10,18,32,.55);
+  --op-border:#E3E7EE; --op-border-strong:#D2D8E1;
+  --op-text:#101828; --op-muted:#5B6472; --op-muted-2:#8992A3;
+  --op-danger:#D5372A; --op-danger-bg:#FCEAE7; --op-danger-bd:#F5C9C0;
+  --op-font-display:'Gabarito',system-ui,sans-serif;
+  --op-font-ui:'Hanken Grotesk',system-ui,sans-serif;
+  --op-font-mono:'JetBrains Mono',ui-monospace,monospace;
+  --op-r-md:8px; --op-r-lg:12px; --op-r-xl:16px; --op-r-pill:999px;
+  --op-focus:0 0 0 3px rgba(255,106,31,.18);
+  --de-modal-w:720px;       /* 1440 */
+  --de-modal-w-md:600px;    /* 768 */
+  --de-pad:24px;            /* padding interne desktop */
+  --de-field-gap:16px;      /* entre champs */
+  --de-section-gap:24px;    /* entre sections */
+  --de-input-h:44px; --de-btn-h:44px; --de-chip-h:36px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:#0E1D33;color:var(--op-text);font-family:var(--op-font-ui);-webkit-font-smoothing:antialiased;line-height:1.5}
+.ms{font-family:'Material Symbols Rounded';font-weight:normal;line-height:1;display:inline-block;-webkit-font-feature-settings:'liga'}
+button,input,select,textarea{font-family:inherit}
+button:focus-visible,input:focus-visible,textarea:focus-visible{outline:none;box-shadow:var(--op-focus)}
+.mono{font-family:var(--op-font-mono);direction:ltr;unicode-bidi:isolate}
+
+/* barre de démonstration — retirée au banking */
+.demo{position:sticky;top:0;z-index:90;display:flex;gap:8px;flex-wrap:wrap;justify-content:center;background:#fff;border-bottom:1px solid #E3E7EE;padding:8px 12px}
+.demo group{display:flex;gap:2px;background:#F2F4F7;border-radius:999px;padding:3px}
+.demo button{border:none;background:none;cursor:pointer;border-radius:999px;padding:6px 12px;font-size:11.5px;font-weight:700;color:#5B6472}
+.demo button.on{background:#101828;color:#fff}
+.demo .lbl{font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#8992A3;align-self:center}
+
+/* scène : fond assombri (placeholder OperatorShell) + modale */
+.stage{min-height:920px;background:linear-gradient(180deg,#12233C,#0E1D33);position:relative;display:flex;align-items:flex-start;justify-content:center;padding:56px 24px;container-type:inline-size;container-name:de}
+.stage::before{content:"";position:absolute;inset:0;background:var(--op-canvas-dim)}
+.wrapm{width:100%;max-width:1440px;display:flex;justify-content:center;position:relative}
+.force-mobile .stage{padding:0}
+.force-mobile .wrapm{max-width:390px}
+
+/* ══ MODALE ══ */
+.dem{position:relative;width:var(--de-modal-w);max-width:100%;background:var(--op-surface);border-radius:var(--op-r-xl);box-shadow:0 32px 80px -24px rgba(4,10,20,.6);display:flex;flex-direction:column;max-height:820px;overflow:hidden}
+.dem__head{flex-shrink:0;display:flex;align-items:center;gap:12px;padding:18px var(--de-pad);border-bottom:1px solid var(--op-border)}
+.dem__title{margin:0;font-family:var(--op-font-display);font-weight:800;font-size:19px;letter-spacing:-.01em}
+.dem__close{margin-inline-start:auto;width:36px;height:36px;border-radius:var(--op-r-md);border:none;background:var(--op-surface-2);color:var(--op-muted);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.dem__close .ms{font-size:20px}
+.dem__scroll{flex:1;overflow-y:auto;padding:var(--de-pad)}
+.dem__foot{flex-shrink:0;border-top:1px solid var(--op-border);background:var(--op-surface);padding:14px var(--de-pad);display:flex;align-items:center;gap:10px;justify-content:flex-end}
+
+/* bandeau d'erreur — slot fixe au-dessus du pied, toujours visible */
+.dem__err{flex-shrink:0;display:none;align-items:flex-start;gap:9px;margin:0 var(--de-pad) 12px;padding:11px 14px;background:var(--op-danger-bg);border:1px solid var(--op-danger-bd);border-radius:var(--op-r-md);font-size:13px;line-height:1.5;color:var(--op-text)}
+.dem__err .ms{font-size:18px;color:var(--op-danger);flex-shrink:0}
+.dem[data-state="error"] .dem__err{display:flex}
+
+/* zone identité : photo + nom/description côte à côte en desktop */
+.de-id{display:grid;grid-template-columns:240px 1fr;gap:var(--de-field-gap);margin-bottom:var(--de-section-gap)}
+.de-photo{aspect-ratio:4/3;border-radius:var(--op-r-lg);border:2px dashed var(--op-border-strong);background:repeating-linear-gradient(135deg,#EDF0F4 0 14px,#E5E9EF 14px 28px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--op-muted);cursor:pointer}
+.de-photo .ms{font-size:30px;color:var(--op-muted-2)}
+.de-photo b{font-size:13px;font-weight:700;color:var(--op-text)}
+.de-photo span{font-size:11px;color:var(--op-muted-2)}
+.de-id__f{display:flex;flex-direction:column;gap:var(--de-field-gap)}
+
+.fld label{display:block;font-size:12.5px;font-weight:700;margin-bottom:6px}
+.inp{width:100%;height:var(--de-input-h);border:1px solid var(--op-border-strong);border-radius:var(--op-r-md);background:var(--op-surface);padding:0 13px;font-size:14.5px;color:var(--op-text)}
+.inp::placeholder{color:var(--op-muted-2)}
+.inp:focus{border-color:var(--op-zest)}
+textarea.inp{height:auto;min-height:84px;padding:11px 13px;resize:vertical;line-height:1.5}
+.fld__help{margin-top:5px;font-size:11.5px;color:var(--op-muted-2);display:flex;align-items:center;gap:4px}
+.fld__help .ms{font-size:14px}
+
+.de-row2{display:grid;grid-template-columns:1fr 1fr;gap:var(--de-field-gap);margin-bottom:var(--de-section-gap)}
+
+.de-sec{margin-bottom:var(--de-section-gap)}
+.de-sec>label{display:block;font-size:12.5px;font-weight:700;margin-bottom:9px}
+
+/* chips catégorie — mono-sélection : actif = plein encre */
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{height:var(--de-chip-h);display:inline-flex;align-items:center;gap:6px;padding:0 14px;border-radius:var(--op-r-pill);border:1px solid var(--op-border-strong);background:var(--op-surface);font-size:13px;font-weight:600;color:var(--op-text);cursor:pointer;white-space:nowrap}
+.chip.is-cat-on{background:var(--op-ink);border-color:var(--op-ink);color:#fff;font-weight:700}
+
+/* chips allergènes — multi : actif = teinte zest + ✓ (jamais couleur seule) */
+.chip.allergen.is-on{background:var(--op-zest-bg);border-color:var(--op-zest-bd);color:var(--op-zest-600);font-weight:700}
+
+/* tuiles labels */
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.tile{height:56px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;border-radius:var(--op-r-lg);border:1px solid var(--op-border-strong);background:var(--op-surface);font-size:12px;font-weight:700;color:var(--op-text);cursor:pointer}
+.tile .ms{font-size:19px;color:var(--op-muted)}
+.tile.is-on{background:var(--op-zest-bg);border-color:var(--op-zest-bd);color:var(--op-zest-600)}
+.tile.is-on .ms{color:var(--op-zest-600)}
+
+/* best-seller */
+.de-switchrow{display:flex;align-items:center;gap:12px;padding:14px 16px;border:1px solid var(--op-border);border-radius:var(--op-r-lg);background:var(--op-surface-2)}
+.de-switchrow .m{flex:1}
+.de-switchrow .m b{display:block;font-size:13.5px;font-weight:700}
+.de-switchrow .m span{font-size:12px;color:var(--op-muted)}
+.sw{width:44px;height:25px;border-radius:999px;background:var(--op-border-strong);border:none;position:relative;cursor:pointer;flex-shrink:0}
+.sw i{position:absolute;top:2.5px;inset-inline-start:2.5px;width:20px;height:20px;border-radius:50%;background:#fff;transition:transform .15s}
+.sw.on{background:var(--op-zest-600)}
+.sw.on i{transform:translateX(19px)}
+[dir="rtl"] .sw.on i{transform:translateX(-19px)}
+
+/* suppression — édition uniquement, zone séparée */
+.de-del{display:none;margin-top:4px}
+.dem[data-state="edit"] .de-del,.dem[data-state="saving"][data-from="edit"] .de-del{display:block}
+.de-del button{display:inline-flex;align-items:center;gap:7px;border:none;background:none;color:var(--op-danger);font-size:13px;font-weight:700;cursor:pointer;padding:10px 2px}
+.de-del button .ms{font-size:17px}
+
+/* boutons pied */
+.btn{height:var(--de-btn-h);display:inline-flex;align-items:center;justify-content:center;gap:8px;border-radius:var(--op-r-md);font-size:14px;font-weight:700;cursor:pointer;border:1px solid transparent;padding:0 20px}
+.btn .ms{font-size:18px}
+.btn--cancel{background:var(--op-surface);border-color:var(--op-border-strong);color:var(--op-text)}
+.btn--save{background:linear-gradient(135deg,#FF8A3D,#F2570E);color:#fff;font-weight:800;min-width:150px}
+.btn--save[disabled]{opacity:.55;cursor:not-allowed;box-shadow:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+.btn--save .spin{animation:spin 1s linear infinite}
+@media (prefers-reduced-motion:reduce){.btn--save .spin{animation:none}}
+.save-idle{display:inline-flex;align-items:center;gap:8px}
+.save-busy{display:none;align-items:center;gap:8px}
+.dem[data-state="saving"] .save-idle{display:none}
+.dem[data-state="saving"] .save-busy{display:inline-flex}
+.dem[data-state="saving"] .btn--save{opacity:.55;cursor:not-allowed}
+
+/* état create : bouton désactivé (nom vide) */
+.dem[data-state="create"] .btn--save{opacity:.55;cursor:not-allowed}
+
+/* ══ RESPONSIVE ══ */
+@container de (max-width:900px){ .dem{width:var(--de-modal-w-md)} .de-id{grid-template-columns:1fr} .de-photo{aspect-ratio:16/7} }
+@container de (max-width:560px){
+  .dem{width:100%;max-width:100%;min-height:900px;max-height:none;border-radius:0}
+  .stage{padding:0}
+  :root{--de-pad:16px}
+  .dem__head{padding:14px 16px}
+  .de-photo{aspect-ratio:16/8}
+  .de-row2{grid-template-columns:1fr 1fr}
+  .tiles{grid-template-columns:repeat(2,1fr)}
+  .chip{height:40px}
+  .dem__foot{gap:10px}
+  .dem__foot .btn{flex:1;height:48px}
+  .btn--save{min-width:0}
+}
+</style>
+</head>
+<body>
+
+<div class="demo">
+  <group><span class="lbl">État</span><button id="st-create" class="on" onclick="setState('create')">Create</button><button id="st-edit" onclick="setState('edit')">Edit</button><button id="st-error" onclick="setState('error')">Erreur</button><button id="st-saving" onclick="setState('saving')">Saving</button></group>
+  <group><span class="lbl">Écran</span><button id="dv-desktop" class="on" onclick="setDev('desktop')">1440</button><button id="dv-mobile" onclick="setDev('mobile')">390</button></group>
+  <group><span class="lbl">Sens</span><button id="dr-ltr" class="on" onclick="setDir('ltr')">LTR</button><button id="dr-rtl" onclick="setDir('rtl')">RTL</button></group>
+</div>
+
+<div id="root">
+<div class="stage">
+<div class="wrapm">
+
+  <div class="dem" id="dem" data-state="create" data-from="create" role="dialog" aria-modal="true" aria-labelledby="demTitle" data-screen-label="D2.1 — Éditeur de plat">
+
+    <header class="dem__head">
+      <h2 class="dem__title" id="demTitle">Ajouter un plat</h2>
+      <button class="dem__close" aria-label="Fermer"><span class="ms">close</span></button>
+    </header>
+
+    <div class="dem__scroll">
+
+      <!-- Identité : photo + nom/description -->
+      <div class="de-id">
+        <div class="de-photo" role="button" tabindex="0">
+          <span class="ms">add_photo_alternate</span>
+          <b id="photoLbl">Ajouter une photo</b>
+          <span>JPG, PNG ou WebP · 8 Mo max</span>
+        </div>
+        <div class="de-id__f">
+          <div class="fld">
+            <label for="fName">Nom du plat</label>
+            <input class="inp" id="fName" type="text" placeholder="Nom du plat" value="">
+          </div>
+          <div class="fld">
+            <label for="fDesc">Description</label>
+            <textarea class="inp" id="fDesc" rows="3" placeholder="Description"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- Prix / Calories -->
+      <div class="de-row2">
+        <div class="fld">
+          <label for="fPrice">Prix (€)</label>
+          <input class="inp mono" id="fPrice" type="number" step="0.1" min="0" value="0">
+          <div class="fld__help"><span class="ms">info</span>Supérieur à 0 €</div>
+        </div>
+        <div class="fld">
+          <label for="fCal">Calories</label>
+          <input class="inp mono" id="fCal" type="number" min="0" placeholder="">
+          <div class="fld__help"><span class="ms">info</span>Facultatif — nombre entier</div>
+        </div>
+      </div>
+
+      <!-- Catégorie -->
+      <div class="de-sec">
+        <label>Catégorie</label>
+        <div class="chips" id="cats">
+          <button type="button" class="chip">Entrées</button>
+          <button type="button" class="chip is-cat-on">✓ Plats</button>
+          <button type="button" class="chip">Desserts</button>
+          <button type="button" class="chip">Boissons</button>
+        </div>
+      </div>
+
+      <!-- Allergènes UE 14 -->
+      <div class="de-sec">
+        <label>Allergènes (UE 14)</label>
+        <div class="chips" id="allg">
+          <button type="button" class="chip allergen">Gluten</button>
+          <button type="button" class="chip allergen">Lactose</button>
+          <button type="button" class="chip allergen">Œuf</button>
+          <button type="button" class="chip allergen">Soja</button>
+          <button type="button" class="chip allergen">Arachide</button>
+          <button type="button" class="chip allergen">Fruits à coque</button>
+          <button type="button" class="chip allergen">Poisson</button>
+          <button type="button" class="chip allergen">Crustacés</button>
+          <button type="button" class="chip allergen">Mollusques</button>
+          <button type="button" class="chip allergen">Céleri</button>
+          <button type="button" class="chip allergen">Moutarde</button>
+          <button type="button" class="chip allergen">Sésame</button>
+          <button type="button" class="chip allergen">Sulfites</button>
+          <button type="button" class="chip allergen">Lupin</button>
+        </div>
+        <div class="fld__help" style="margin-top:8px"><span class="ms">info</span>Sans sélection, le client verra « Information non renseignée par le restaurant ».</div>
+      </div>
+
+      <!-- Labels -->
+      <div class="de-sec">
+        <label>Labels</label>
+        <div class="tiles">
+          <button type="button" class="tile"><span class="ms">eco</span>Veggie</button>
+          <button type="button" class="tile"><span class="ms">mosque</span>Halal</button>
+          <button type="button" class="tile"><span class="ms">grain</span>Sans gluten</button>
+          <button type="button" class="tile"><span class="ms">local_fire_department</span>Épicé</button>
+        </div>
+      </div>
+
+      <!-- Best-seller -->
+      <div class="de-sec">
+        <div class="de-switchrow">
+          <div class="m"><b>Best-seller</b><span>Mis en avant auprès des clients</span></div>
+          <button type="button" class="sw" id="swBest" aria-label="Best-seller"><i></i></button>
+        </div>
+      </div>
+
+      <!-- Supprimer — édition uniquement -->
+      <div class="de-del">
+        <button type="button"><span class="ms">delete</span>Supprimer ce plat</button>
+      </div>
+
+    </div>
+
+    <!-- Bandeau d'erreur serveur — slot fixe, toujours visible au-dessus des actions -->
+    <div class="dem__err" role="alert">
+      <span class="ms">error</span>
+      <span id="errTxt">Photo invalide (format ou taille). Acceptés : JPG, PNG, WebP — 8 Mo max.</span>
+    </div>
+
+    <footer class="dem__foot">
+      <button type="button" class="btn btn--cancel">Annuler</button>
+      <button type="button" class="btn btn--save" id="btnSave">
+        <span class="save-idle"><span class="ms">check</span>Enregistrer</span>
+        <span class="save-busy"><span class="ms spin">progress_activity</span>Enregistrement…</span>
+      </button>
+    </footer>
+
+  </div>
+
+</div>
+</div>
+</div>
+
+<script>
+  var dem=document.getElementById('dem');
+  function sync(p,v){document.querySelectorAll('[id^="'+p+'"]').forEach(function(b){b.classList.remove('on')});var e=document.getElementById(p+v);if(e)e.classList.add('on')}
+  function fill(edit){
+    document.getElementById('demTitle').textContent = edit?'Modifier le plat':'Ajouter un plat';
+    document.getElementById('photoLbl').textContent = edit?'Changer la photo':'Ajouter une photo';
+    document.getElementById('fName').value = edit?'Risotto de démonstration':'';
+    document.getElementById('fDesc').value = edit?'Plat de démonstration créé par le banc de captures D2.1.':'';
+    document.getElementById('fPrice').value = edit?'14.5':'0';
+    document.getElementById('swBest').classList.toggle('on', !!edit);
+    // allergènes : Lactose + Céleri en édition (multiple selected) ; aucun en création (empty)
+    var sel = edit?['Lactose','Céleri']:[];
+    document.querySelectorAll('#allg .chip').forEach(function(c){
+      var name=c.textContent.replace('✓ ','');
+      var on=sel.indexOf(name)>=0;
+      c.classList.toggle('is-on',on);
+      c.textContent=(on?'✓ ':'')+name;
+    });
+  }
+  function setState(v){
+    var from=(v==='saving'||v==='error')?(dem.dataset.state==='edit'||dem.dataset.from==='edit'?'edit':'create'):v;
+    dem.dataset.state=v; dem.dataset.from=from;
+    fill(from==='edit'||v==='edit'||v==='error'||v==='saving');
+    if(v==='create'){fill(false);}
+    sync('st-',v);
+  }
+  function setDev(v){document.getElementById('root').classList.toggle('force-mobile',v==='mobile');sync('dv-',v)}
+  function setDir(v){dem.setAttribute('dir',v);document.documentElement.setAttribute('dir',v);sync('dr-',v)}
+  // interactions de démonstration (visuel seul, aucune logique métier)
+  document.querySelectorAll('#allg .chip').forEach(function(c){c.addEventListener('click',function(){
+    var name=c.textContent.replace('✓ ','');var on=!c.classList.contains('is-on');
+    c.classList.toggle('is-on',on);c.textContent=(on?'✓ ':'')+name;})});
+  document.querySelectorAll('#cats .chip').forEach(function(c){c.addEventListener('click',function(){
+    document.querySelectorAll('#cats .chip').forEach(function(x){x.classList.remove('is-cat-on');x.textContent=x.textContent.replace('✓ ','');});
+    c.classList.add('is-cat-on');c.textContent='✓ '+c.textContent;})});
+  document.querySelectorAll('.tile').forEach(function(t){t.addEventListener('click',function(){t.classList.toggle('is-on')})});
+  document.getElementById('swBest').addEventListener('click',function(){this.classList.toggle('on')});
+  // ?state=create|edit|error|saving — mécanisme contractuel Puppeteer
+  var q=new URLSearchParams(location.search);
+  if(q.get('state')) setState(q.get('state'));
+  if(q.get('device')==='mobile') setDev('mobile');
+</script>
+</body>
+</html>

@@ -1,0 +1,132 @@
+import { NextResponse } from 'next/server'
+import { z } from 'zod'
+import { prisma } from '@/lib/prisma'
+import { requireRefundAdmin } from '@/lib/refund-route-guard'
+import { recordAdminAudit } from '@/lib/admin-audit'
+import { isRefundsEnabled } from '@/lib/refund'
+import { rateLimit } from '@/lib/rate-limit'
+import { refundPayment } from '@/lib/refunds'
+import { sendRefundConfirmation, resolveReservationLocale, refundEmailDedupeKey } from '@/lib/transactional-emails'
+
+// ── POST /api/tickets/[id]/refund ─────────────────────────────────────────────
+// P0-03 (vague 1, Q3 fondateur) : refund a PAID bill — ADMIN GRUBANO ONLY
+// (used to be OWNER-scoped; every refund now requires a Grubano-admin session,
+// denied + accepted attempts audited). Mechanics unchanged (rail A5): partial
+// ({ amountCents }) or full (empty body); the refund takes Grubano's commission
+// back pro-rata and, on a routed charge, pulls the funds back from the resto's
+// account (lib/refunds). The ticket STAYS 'paid' (no state change, no
+// migration): the compensating 'refund' ledger line written by the
+// charge.refunded webhook is the source of truth of what was given back.
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
+
+const bodySchema = z.object({
+  amountCents: z.number().int().positive().optional(),
+})
+
+export async function POST(
+  req: Request,
+  { params }: { params: { id: string } },
+) {
+  try {
+    // P0-26 — même régime que /api/admin/refunds/run : rate-limit → kill-switch
+    // REFUNDS_ENABLED (défaut OFF → 403 explicite, AUCUN Stripe) → garde admin.
+    const limited = rateLimit(req, 'ticket_refund', { limitDefault: 20, windowDefault: 60 })
+    if (limited) return limited
+    if (!isRefundsEnabled()) {
+      return NextResponse.json({ error: 'Remboursements indisponibles', gated: true }, { status: 403 })
+    }
+
+    // P0-03 — ADMIN GRUBANO only (denied attempts audited inside the gate).
+    const gate = await requireRefundAdmin(req, { route: 'tickets/[id]/refund', targetType: 'ticket', targetId: params.id })
+    if (!gate.ok) return gate.res
+
+    const parsed = bodySchema.safeParse(await req.json().catch(() => ({})))
+    if (!parsed.success) {
+      return NextResponse.json({ error: 'Montant invalide.' }, { status: 400 })
+    }
+
+    const ticket = await prisma.tableTicket.findUnique({
+      where:  { id: params.id },
+      select: { id: true, restaurantId: true, status: true, stripePaymentIntentId: true, reservationId: true },
+    })
+    if (!ticket) return NextResponse.json({ error: 'Addition introuvable' }, { status: 404 })
+    if (ticket.status !== 'paid' || !ticket.stripePaymentIntentId) {
+      return NextResponse.json({ error: 'Addition non payée — rien à rembourser.' }, { status: 409 })
+    }
+
+    const result = await refundPayment({
+      paymentIntentId: ticket.stripePaymentIntentId,
+      amountCents:     parsed.data.amountCents,
+    })
+    if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
+
+    // P0-03 — audit the ACCEPTED refund (best-effort, after the money moved).
+    await recordAdminAudit({
+      actorId:    gate.actorId,
+      actorEmail: gate.actorEmail,
+      action:     'refund.run',
+      targetType: 'ticket',
+      targetId:   ticket.id,
+      metadata:   { route: 'tickets/[id]/refund', refundId: result.refund.id, refundedCents: result.refundedCents, remainingCents: result.remainingCents },
+      req,
+    })
+
+    // ── Transactional email v1 — POST-success, BEST-EFFORT (never throws).
+    // The client's email lives on the LINKED reservation; a walk-in ticket
+    // (reservationId null) or a reservation without email → nothing to send.
+    // Email truthfulness hotfix (2026-09-06): rail A returns ok as soon as Stripe ACCEPTED the
+    // refund; a refund can still be `pending` (or later fail). The customer e-mail says
+    // « confirmé » ⇒ send it ONLY when the Stripe refund object is `succeeded`, and show the
+    // Stripe refund amount (the actual cash movement), never a requested/estimated figure.
+    if (ticket.reservationId && result.refund.status === 'succeeded') {
+      try {
+        const [reservation, resto] = await Promise.all([
+          prisma.reservation.findUnique({
+            where:  { id: ticket.reservationId },
+            // D′ L10 (§6): `userId` is the hop to the account's e-mail LANGUAGE (Reservation has no locale).
+            select: { email: true, customerName: true, userId: true },
+          }),
+          prisma.restaurant.findUnique({ where: { id: ticket.restaurantId }, select: { name: true } }),
+        ])
+        if (reservation?.email) {
+          await sendRefundConfirmation({
+            to:             reservation.email,
+            customerName:   reservation.customerName,
+          // D′ L10 (§6): the recipient's language, read through `userId → Operator.locale` — Reservation has no
+          // locale column and a text lot does not add one. A walk-in with no account stays 'fr', as before.
+          locale:         await resolveReservationLocale(reservation),
+            // D′ L10 (§6): NOT the French literal any more. This e-mail is localized, so a French fallback
+            // would be spliced into an English or Arabic subject and body. Empty ⇒ the sender uses the
+            // locale's own `claimEmails.theRestaurant`.
+            restaurantName: resto?.name ?? '',
+            refundedCents:  result.refund.amount,
+            partial:        result.remainingCents > 0,
+            // T-47, CLOSED HERE TOO (PRE-L11 review, found independently by two reviewers). The key was
+            // `ticket:<id>:<amount>`, so a SECOND distinct refund of the SAME amount on the same ticket
+            // collided with the first and the customer was never told their money had come back — real
+            // cash, silently unannounced, which is the exact defect T-47 named and closed on the order
+            // rails. The identity of a refund is its `re_`, never its size. Replays still collapse (same
+            // `re_` ⇒ one e-mail); a refund already announced under the old key may produce one extra
+            // notice, the trade the order rail already made — a duplicate is visible, a silence is not.
+            dedupeKey:      refundEmailDedupeKey({ stripeRefundId: result.refund.id }),
+          })
+        }
+      } catch (e) {
+        console.error('[EMAIL MISS] [POST /api/tickets/[id]/refund] context lookup failed',
+          JSON.stringify({ ticketId: ticket.id, refundId: result.refund.id }),
+          e instanceof Error ? e.message : e)
+      }
+    }
+
+    return NextResponse.json({
+      refundId:       result.refund.id,
+      refundedCents:  result.refundedCents,
+      remainingCents: result.remainingCents,
+      routed:         result.routed,
+    })
+  } catch (err) {
+    console.error('[POST /api/tickets/[id]/refund]', err instanceof Error ? err.message : err)
+    return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
+  }
+}

@@ -1,0 +1,28 @@
+# EMAIL-DEAD-ORPHAN-REGISTER — unused, duplicate, superseded, unscheduled (nothing deleted)
+
+| # | Item | Kind | Evidence | Recommendation (for the implementation handoff, not done here) |
+|---|---|---|---|---|
+| D1 | `app/api/email-agent/route.ts` — 4 LLM-written sends (`inactive_14d`, `milestone_<n>`, `dish_approved_<id>`, `weekly_digest`) | **dead route (unscheduled by founder decision P0-07)** | `cron.yml:28-30, 61-63`; `docs/ops/crons.md §4`: "AUCUN scheduler"; route still answers to `Bearer CRON_SECRET`; own nodemailer transport; `emailLog.findFirst` non-race-safe dedupe; promo code `RETOUR…` never persisted; no consent / unsubscribe. | Keep dead until a consent + unsubscribe foundation exists; treat any revival as a **marketing** track (RGPD), never transactional. Candidate for removal. |
+| D2 | `@getbrevo/brevo` dependency | **dead dependency** | `package.json:24`; zero imports in `app/ lib/ scripts/`. `CLAUDE.md §2` still lists "Email/SMS: Brevo". | Remove from package.json and fix CLAUDE.md in the implementation lot. |
+| D3 | `sendPartnerStatusEmail({status:'docs_needed'})` — trigger `partner_docs_needed` | **template without caller** | grep: only the lib + tests reference `docs_needed`; no route exposes a KYC-docs transition (B4 memory: "GAP noted, not invented"). | Keep as prepared; product contract for the KYC step not confirmed → E3 lists it as *not wired*. |
+| D4 | `sendPartnerStatusEmail({role:'restaurant', status:'rejected'})` | **unreachable branch** | no restaurant rejection route exists (`admin/restaurants/[id]/approve` only approves). Rejected reaches suppliers/influencers only, behind role flags. | Product decision needed: restaurant rejection flow. |
+| D5 | `sendReservationCancelledByClientToClient/ToOwner` header comment `:544-545` "no consumer cancel route exists yet" | **stale comment** | route `POST /api/reservations/[id]/cancel` exists and is wired (`:163-188`). | Fix the comment. |
+| D6 | Comment on `sendOrderConfirmation` `:721-722` "the idempotence marker the confirm route greps in EmailLog.subject" and route header `:16-18` | **stale comments** (superseded by `EmailDispatch` B0) | confirm route uses `emailDispatch.findFirst` + sendOnce (`:97-107`). | Fix comments. |
+| D7 | `lib/order-email-sweep.ts` + `POST /api/admin/orders/confirm-sweep` | **live code, inert scheduler** | `cron.yml` sweep every 20 min not active (default branch `main` = Lovable tree without workflows, measured 2026-09-05); route callable by admin/token only. | Decide the scheduler (cPanel crontab entry or `cron.yml` on the real default branch) before beta scale; otherwise the payment-triggered emails depend on the client poll. |
+| D8 | `cron.yml` daily jobs: onboarding nudges, reconcile digest, stale-claims alerts | **live routes, inert scheduler** | same. Only 3 cPanel crontab jobs run (relevé 26-27/07/2026). | idem. |
+| D9 | `scripts/archive/i18n/seed-emails-v2-i18n.js` | **archived one-shot script** (auth.reset.* UI strings, already seeded) | header "Usage: node scripts/seed-emails-v2-i18n.js puis npm run check:i18n"; lives under `scripts/archive/`. | Archive is fine; not an email template. |
+| D10 | `.claude/worktrees/gracious-jang-338861/` | **stale git worktree duplicating the tree** | contains a copy of every email file (older revision, e.g. `transactional-emails.ts:152` vs `:160`). Excluded from every sweep. | `git worktree prune` + delete the directory (memory: phantom worktrees lock branches). |
+| D11 | Duplicate `nodemailer.createTransport` ×10 | **duplicate transport definitions** | listed in `EMAIL-INFRASTRUCTURE.md §1`. | Consolidate into one sender module (implementation handoff). |
+| D12 | Duplicate shells: `shell()` (rail, private) · `claimShell()` (claim-emails) · `renderNudgeHtml()` (nudges) · inline `<div style=…>` ×6 · admin `<div style="…system-ui…">` | **duplicate templates (same visual, 4 copies + variants)** | code. | One renderer with variants (handoff). |
+| D13 | `sendRefundConfirmation` call in `reservations/[id]/refund-deposit` **without** `dedupeKey` | **inconsistent guard (orphan of the B0 retrofit)** | `:77-84` passes no key; the 3 other refund callers do. | Add `resv:<id>:<cents>`. |
+| D14 | Legacy tokens in every current email (`#F97316`, `#1a1a2e`, `Inter`) vs `gb-foundation` | **superseded design language** | `EMAIL-DESIGN-SYSTEM-FACTS.md §1`. | Redesign scope (E1 contract). |
+| D15 | `.env.example:65 ALERT_EMAIL="ops@grubano.com"` | **placeholder diverging from staging reality** | staging OBSERVED `m.maazouz@grubano.com` → `admin-qa@` (v2) → REQUIRED `m.maazouz@grubano.com` (v3). | Document the monitored mailbox policy. |
+| D16 | Test-only fixtures naming real-looking addresses | **test data** | `tests/customer-initials.test.ts:65` (a personal Gmail), `tests/customer-scope.test.ts:67`. | Replace with `example.invalid` addresses (hygiene). |
+| D17 | `EmailLog.claudeTokens` column | **only written by the dead email-agent** | schema `EmailLog.claudeTokens Int?`. | Harmless; note for EmailLog v2. |
+| D18 | Historical email caller removed by P0-07: `POST /api/admin/claims/auto-approve` (refund without human) | **unscheduled route** (no email of its own) | `cron.yml:128-133`. | Not an email item; listed because its former scheduler shared the cron. |
+
+## Dead / orphan **emails** count (for the final return)
+- Dead sends: **4** (EMAIL_AGENT_*).
+- Orphan templates (no caller): **1** (PARTNER_DOCS_NEEDED) + 1 unreachable branch (restaurant rejected).
+- Live-but-unscheduled catch-ups: **4 routes** (confirm-sweep, nudges, reconcile digest, stale-claims).
+- Duplicate templates/transports: 4 shells, 10 transports.

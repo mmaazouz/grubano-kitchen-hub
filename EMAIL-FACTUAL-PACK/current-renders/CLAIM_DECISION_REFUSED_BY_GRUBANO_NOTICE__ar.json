@@ -1,0 +1,9 @@
+{
+  "id": "CLAIM_DECISION_REFUSED_BY_GRUBANO_NOTICE__ar",
+  "from": "\"Grubano\" <contact@grubano.com>",
+  "to": "lea.martin@example.invalid",
+  "subject": "الشكوى GR-ABC123: قرار Grubano النهائي",
+  "hasText": false,
+  "hasImages": false,
+  "hasTable": false
+}

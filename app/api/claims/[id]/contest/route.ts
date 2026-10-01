@@ -1,0 +1,38 @@
+import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
+import { getToken } from 'next-auth/jwt'
+import { z } from 'zod'
+import { contestClaim } from '@/lib/claims'
+import { claimsSurfaceOpen } from '@/lib/claim-flags'
+
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
+
+// ── POST /api/claims/[id]/contest (P4.5-C2) ───────────────────────────────────────
+// The CLIENT who owns a REFUSED claim contests it within CLAIM_CONTEST_HOURS → the
+// claim goes to neutral admin arbitration. Gated by CLAIMS_ENABLED. Owner-scoped from
+// the session (token.sub) — a claim that is not the caller's is 404 (no IDOR).
+const bodySchema = z.object({ reason: z.string().max(1000).optional() })
+
+export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+  if (!claimsSurfaceOpen()) { // D′ L1: SURFACE (contesting an existing claim needs no intake)
+    return NextResponse.json({ error: 'Réclamations indisponibles', gated: true }, { status: 403 })
+  }
+  const token = await getToken({ req })
+  if (!token?.sub) return NextResponse.json({ error: 'Authentification requise' }, { status: 401 })
+
+  const parsed = bodySchema.safeParse(await req.json().catch(() => ({})))
+  if (!parsed.success) return NextResponse.json({ error: 'Requête invalide.' }, { status: 400 })
+
+  const result = await contestClaim({ claimId: params.id, consumerId: token.sub, reason: parsed.data.reason })
+  // D′ L10 (§2): the CODE travels beside the sentence, so the client renders it in the customer's own
+  // language. The sentence stays in the payload for logs and for an operator reading a 409 — no surface
+  // displays it any more (lib/claim-refusal-labels + a test that greps for `data.error`).
+  if (!result.ok) {
+    return NextResponse.json(
+      result.reason ? { error: result.error, reason: result.reason } : { error: result.error },
+      { status: result.status },
+    )
+  }
+  return NextResponse.json({ claim: result.claim })
+}

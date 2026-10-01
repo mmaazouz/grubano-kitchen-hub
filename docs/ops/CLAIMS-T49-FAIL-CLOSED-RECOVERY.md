@@ -1,0 +1,1069 @@
+# T-49 — RÉCUPÉRATION FERMÉE PAR DÉFAUT, FONDÉE SUR LA PREUVE
+
+> Décision fondateur du 2026-09-10 : **PREUVE UNIQUEMENT / FERMÉ PAR DÉFAUT SUR L'AMBIGUÏTÉ**.
+> Ce document décrit ce qui est implémenté, ce qui est prouvé, et ce qui ne l'est pas.
+>
+> Portée : Claims **NON activé**, Refunds **NON ouverts**, aucun Stripe exécuté, aucune Clean Room,
+> **0 ligne de schéma Prisma**. Le Mode A n'est **PAS** autorisé par ce document.
+
+---
+
+## 1. Le principe directeur
+
+Deux propriétés indépendantes, toutes deux obligatoires :
+
+**SÛRETÉ ARGENT** — si la vérité Stripe est ambiguë : aucun nouvel argent, aucun nouveau
+remboursement, aucune clôture financière, aucune re-déposition client qui pourrait créer un
+second effet argent.
+
+**VIVACITÉ DE RÉCUPÉRATION** — une réclamation financièrement ambiguë ne doit pas disparaître
+dans un état indéfini que personne ne voit et que personne ne peut récupérer.
+
+D'où l'invariant : **FERMÉ PAR DÉFAUT FINANCIÈREMENT + VISIBLE PAR DÉFAUT OPÉRATIONNELLEMENT.**
+Un état sûr sans sortie réelle n'est pas un design de bêta acceptable.
+
+---
+
+## 2. Les cinq issues, et ce que le code fait de chacune
+
+| Preuve | Ce qui est fait | Argent |
+|---|---|---|
+| **Stripe prouve ABOUTI** | Liaison sur l'identité exacte de la ligne `Refund`, puis réconciliation par la fonction déjà auditée (`reconcileClaimForRefund`) : réclamation → `refunded`, montant RÉEL de la ligne, `activeOrderKey` libéré. | aucun mouvement |
+| **Stripe prouve ÉCHOUÉ** | La vérité d'échec est enregistrée, la réclamation revient dans l'état récupérable canonique (`approved` + `refundError`), atteignable par l'échappatoire admin existante. Aucune relance aveugle. | aucun mouvement |
+| **Stripe dit EN ATTENTE** | La réclamation reste en attente. Aucun succès terminal, aucun échec terminal, aucun second remboursement. Seul le marqueur de crash est effacé, l'identité étant désormais connue. | aucun mouvement |
+| **Aucun remboursement prouvé + aucun cash parti** | **Preuve POSITIVE d'absence** : Stripe ne rapporte ni remboursement abouti ni en attente, **et** aucune ligne `Refund` de la commande n'a jamais déplacé d'argent (ni `succeeded`, ni `pending`). Une ligne morte — échouée ou annulée — ne rend PAS la preuve ambiguë (correctif d'audit). Seule branche qui remet `refundAttempted` à `false` — donc la seule qui rouvre une tentative — et elle exige la preuve, jamais l'absence de liaison. | aucun mouvement |
+| **Attribution AMBIGUË** | `financial_verification` : pas d'argent, pas de clôture, pas de re-déposition, pas de devinette. Escalade opérateur. | aucun mouvement |
+
+`reconcileClaimEvidence` **n'appelle jamais le moteur de remboursement**, n'écrit jamais chez
+Stripe et ne relance rien. Sa seule autorité est : lire, identifier, appliquer la vérité qui
+existe déjà.
+
+---
+
+## 3. La fenêtre de crash ne peut plus produire un état muet
+
+Le passage en `refunding` écrit désormais un marqueur `reconcile_required` **dans le même CAS
+atomique**. Aucune écriture supplémentaire, donc **aucune nouvelle fenêtre de crash**. Les cinq
+chemins terminaux écrivaient déjà `refundError` (ou le remettaient à `null`), donc un
+remboursement abouti ne conserve jamais le marqueur.
+
+Le marqueur **ne dit pas** que le remboursement a échoué. Il dit qu'une tentative a démarré et
+que son identité n'est pas encore liée. Il est **exclu** de l'échappatoire par assertion admin
+(`isStuckResolvable`) : un état dont la vérité argent est inconnue ne doit pas être clos par un
+jugement humain, mais par la preuve.
+
+---
+
+## 4. L'identité, pas le montant (T-51)
+
+La reprise du moteur ne comparait que des **montants**. Deux remboursements légitimes d'une même
+commande peuvent porter le même montant, donc une réclamation pouvait être liée au remboursement
+créé par le rail admin, le rail ghost-order ou une réclamation antérieure — puis rapportée
+`refunded`. Même argent, mauvaise attribution.
+
+La liaison est désormais vérifiée sur l'identité propre de la ligne, sur **les deux** issues du
+moteur (aboutie et en attente). Une identité **illisible échoue FERMÉ** : une liaison qu'on ne
+peut pas vérifier est traitée exactement comme une mauvaise liaison.
+
+---
+
+## 5. Vivacité : la file, l'alerte, et la sortie
+
+- **File durable non gatée** — `GET /api/admin/claims/financial-verification` et une section
+  montée sur la console admin **même quand `CLAIMS_ENABLED` est OFF**. Le drapeau produit cache la
+  fonctionnalité ; il ne doit pas cacher une question d'argent ouverte.
+- **Badge admin** — `lib/admin-overview.ts` compte `financial_verification` **hors** de la
+  branche gatée.
+- **Alerte à l'entrée** — dédupliquée par réclamation **et** par cause, donc un rejeu ne peut pas
+  créer de tempête. L'e-mail est au mieux-effort : **s'il échoue, la réclamation reste dans la
+  file**. La file est le contrôle, pas l'e-mail.
+- **Sortie réelle** — `POST /api/admin/claims/[id]/reconcile`, garde `resolveAdmin()` (donc
+  atteignable par l'admin que le script de provisionnement crée réellement), trace admin, et
+  **aucune autorité de créer de l'argent**.
+
+---
+
+## 6. Ce qui n'est PAS prétendu
+
+- **RÉCONCILIATION AUTOMATIQUE = NON.** Aucun planificateur n'est prouvé actif : GitHub ne
+  déclenche `schedule` que depuis la branche par défaut, et `origin/main` ne contient aucun
+  répertoire `.github/`. La récupération est **manuelle et atteignable**, et c'est ce qui est
+  écrit à l'écran. Aucune copie ne décrit un chemin manuel comme automatique.
+- **Aucun handler SIGKILL** n'est revendiqué nulle part. La propriété qui tient sous mort de
+  processus est le **bail** (T-53) : après l'échéance, la surface est refusée même si le nettoyage
+  local n'a jamais tourné.
+- **La population staging** de réclamations n'est mesurée que par le recensement en lecture seule
+  (`/api/admin/claims/census`, jetons internes, comptes uniquement, aucun identifiant).
+
+---
+
+## 7. Audit adversarial (2026-09-10) — 7 auditeurs, 35 constats, **22 confirmés**
+
+Diff gelé avant l'audit. Auditeurs indépendants par dimension, **un réfuteur hostile par constat**.
+**22 confirmés / 13 réfutés.** Les quatre P1 sont fermés ; l'historique n'est pas effacé.
+
+### P1 fermés
+
+| Constat | Correctif |
+|---|---|
+| **`financial_verification` était un état ABSORBANT.** Une fois garée avec `refund_moved_unattributed`, la réclamation ne pouvait plus JAMAIS sortir : les branches automatiques sont inatteignables par construction (`triggerClaimRefund` exige `approved` + `refundAttempted:false`, donc plus aucune ligne ne peut être estampillée pour cette réclamation ; et rien ne supprime de ligne `Refund`). La commande restait verrouillée à vie et la file d'argent inépuisable. **Cela violait la condition même du fondateur : « fermé par défaut n'est acceptable QUE si une vraie sortie existe ».** | **Sortie d'escalade** `POST /api/admin/claims/[id]/attribute`. Ce n'est PAS la devinette interdite : l'opérateur fournit le **LIEN** (quel remboursement EXISTANT de CETTE commande appartient à la réclamation), et le système lit le **statut et le montant de la ligne** pour les appliquer. Un remboursement d'une AUTRE commande est refusé net. Aucun appel moteur, aucune écriture Stripe. Les candidats sont affichés dans la console pour que la sortie soit réellement praticable. |
+| **La preuve d'absence était défaite par une ligne périmée.** Elle exigeait `rows.length === 0`, donc UN remboursement échoué ou annulé des mois plus tôt — qui n'a jamais déplacé d'argent — garait la réclamation à vie alors que Stripe prouvait positivement que rien n'était parti. | La condition porte sur ce qui compte : Stripe ne rapporte ni remboursement abouti ni en attente, **et** aucune ligne n'a jamais bougé d'argent (`succeeded` ou `pending`). Une ligne morte ne rend plus la preuve ambiguë. |
+| **Les issues NON ambiguës éjectaient la réclamation de la seule surface non gatée.** Un remboursement encore en attente repartait en `refunding` marqueur effacé, donc visible uniquement via une route gatée par le drapeau. La population héritée (antérieure au marqueur) n'était dans AUCUNE des deux files. | La file non gatée porte désormais **tout** état d'argent non soldé, dédupliqué. |
+| **Ma propre suite T-49 réintroduisait le mock aveugle à la clause `where`** (`mockResolvedValue({ count: 1 })`) : chaque CAS ajouté par ce lot était exécuté et jamais vérifié. Exactement le défaut que ce lot existe pour supprimer. | Mock partagé évaluant les opérateurs, plus une option `applyWrites` pour les CHAÎNES de CAS (une ligne figée fait échouer le second verrou pour une raison étrangère à la logique testée). |
+
+### P2/P3 fermés dans la foulée
+
+Preuve finale du neutraliseur encore limitée aux remboursements ; marqueur de crash affiché pour un
+remboursement **légitimement en vol** (fenêtre de grâce ajoutée) ; bail ancré à l'écriture plutôt
+qu'au début de la boucle ; absence d'avertissement pour un bail au-delà du plafond ; deux messages de
+couplage citant encore la règle transitive supprimée ; précheck aveugle à `financial_verification` ;
+résidu non rapporté sur les chemins d'abandon ; file illisible indiscernable d'une file vide ;
+verdict de `enterFinancialVerification` ignoré ; garde d'identité jamais exercée dans sa direction
+refusante ; propriété « survit au drapeau » épinglée seulement dans la bibliothèque, pas à la route
+ni à la page ; routes de sortie sans test ; préconditions de l'opérateur non épinglées.
+
+### Reste ouvert, assumé
+
+`RECONCILE_GRACE_MS` (5 min) est une heuristique, et cette phrase était INEXACTE : elle affirmait
+que la réclamation « reste invisible dans la file » pendant la fenêtre de grâce. C'est faux, et
+l'audit du rond 3 l'a relevé. La réclamation reste **listée** dans la file non gatée pendant toute
+la fenêtre, avec un libellé qui dit que l'état argent n'est pas établi ; la grâce retire seulement
+le bouton de réconciliation tant que la tentative peut être légitimement en vol. Aucun argent n'est
+en jeu pendant ce délai.
+
+---
+
+## 8. RE-AUDIT des correctifs (2026-09-10) — 4 auditeurs, 25 constats, **16 confirmés dont 4 P1**
+
+Discipline appliquée : les correctifs P1 du §7 ont été audités **à leur tour**, parce que l'audit qui
+les avait validés portait sur du code qui n'existait plus. Ce n'était pas une formalité — **trois
+fois dans ce chantier, un correctif a introduit le défaut suivant**.
+
+### Trouvé dans les correctifs eux-mêmes
+
+| Sév. | Constat | Correctif |
+|---|---|---|
+| **P1** | **La fenêtre de grâce était INERTE.** La regex d'horodatage avait perdu ses antislashs en passant par le shell : `/(d{4}-d{2}-d{2}T[d:.]+Z)/`. Elle ne pouvait matcher aucun ISO, `reconcileMarkerAge` renvoyait toujours `null`, et **chaque** marqueur — y compris un remboursement légitimement en vol une seconde plus tôt — était listé comme échoué. **Trois auditeurs indépendants l'ont trouvée.** | Littéral de regex (échappements visibles), plus un test qui vérifie **le parsing lui-même** et un contrôle négatif qui reproduit la regex inerte. |
+| **P1** | **`attributeClaimRefund` pouvait adopter un remboursement DÉJÀ lié à une autre réclamation de la même commande.** Une seule somme aurait soldé deux réclamations, et `reconcileClaimForRefund` retrouve la réclamation par `findFirst({refundId})` — une colonne sans contrainte d'unicité — donc la réconciliation atterrissait sur une réclamation arbitraire. Le client aurait vu « Réclamation remboursée » sans qu'un centime ne bouge pour elle. | La ligne doit être **libre** : refus si une autre réclamation la porte déjà. |
+| **P1** | **La preuve d'absence rouvrait la réclamation sur un rail VERROUILLÉ par la ligne échouée qu'elle venait d'ignorer.** `executeRefund` refuse tout remboursement ultérieur sur une commande portant une ligne `failed` avec un identifiant Stripe. Écrire « de nouveau payable par le rail normal » était une promesse que le moteur refusera. | Le verrou est détecté et **dit** : reprise manuelle Stripe requise. |
+| **P1** | **La file affirmait « Argent : INDÉTERMINÉ » sur des lignes dont l'état EST connu**, promettait qu'aucun remboursement ne serait lancé sur des lignes que le rail réclamations peut payer, et offrait le bouton « Réconcilier d'après la preuve » sur des réclamations approuvées ordinaires — où il n'y a rien à réconcilier et où il aurait estampillé une erreur sur un dossier sain. | Le message d'argent, la bannière et le bouton distinguent désormais les deux catégories. |
+
+### Ce que cela signifie pour l'autorisation
+
+**MODE A AUTHORIZATION SAFE = NON.** Les quatre P1 ci-dessus sont corrigés, mais **ces
+correctifs-là n'ont pas encore été audités**. La règle §24 est explicite : un P0/P1 dans le
+périmètre interdit de demander l'autorisation. Deux rondes consécutives ont trouvé des P1 dans les
+correctifs de la ronde précédente ; déclarer sûr le troisième jeu sur la foi du deuxième audit
+répéterait exactement le schéma que ces audits mettent au jour.
+
+---
+
+## 9. AUDIT ROND 3 (2026-09-10) — sur la révision DÉPLOYÉE `d94df77`
+
+5 auditeurs, 18 constats, **6 confirmés / 12 réfutés. P0 = 0, P1 = 1.**
+
+**Le P1 : un correctif que j'avais RAPPORTÉ COMME FAIT ne s'était pas appliqué.** Le remplacement
+de chaîne qui devait restreindre le bouton « Réconcilier d'après la preuve » aux seules lignes
+ambiguës n'a rien remplacé, silencieusement, et je ne l'ai pas vérifié. Le bouton a donc été livré
+inconditionnel — et sur une réclamation approuvée mais jamais payée, un clic la garait
+définitivement en `financial_verification`, donc structurellement impayable par le rail
+réclamations. **Le commit et ce document affirmaient tous deux le contraire.**
+
+Les cinq autres constats sont des variantes du même thème : une formulation qui affirme plus que
+ce que le code établit. La raison honnête du verrou de rail était écrite dans un champ qu'aucun
+humain ne lit ; « état connu » était affirmé sur des lignes dont l'état est précisément inconnu ;
+le message renvoyait vers une file que le drapeau produit retire de la page ; et les tests de la
+fenêtre de grâce retapaient le marqueur à la main au lieu de faire un aller-retour par le vrai
+producteur — exactement l'angle mort qui avait laissé passer la regex inerte.
+
+### Corrigé (rond 4)
+
+Bouton restreint **et vérifié dans le fichier** cette fois. Issue `no_refund_proven_rail_locked`
+distincte, qui remonte jusqu'au message opérateur. Ligne « argent » qui ne parle d'état connu que
+lorsqu'un remboursement est réellement lié. Tonalité du message : un rail verrouillé, un
+remboursement échoué et un cas toujours indéterminé ne s'affichent plus en vert. Forme héritée
+(sans marqueur) réintégrée dans la file ambiguë. Marqueur daté dans le futur traité comme
+illisible, donc visible. Avertissement sur les lignes que la garde d'attribution refusera, et
+bouton désactivé sur celles-là. Tests : garde d'attribution pilotée jusqu'au REFUS, aller-retour
+par le vrai producteur de marqueur, et contrôle négatif sur la fusion des deux issues d'absence.
+
+**Ces correctifs-là n'ont pas encore été audités.** Rond 4 en cours.
+
+---
+
+## 10. AUDIT ROND 4 (2026-09-10) — sur `9843e9f`
+
+4 auditeurs, 18 constats, **14 confirmés / 4 réfutés. P0 = 0, P1 = 1.**
+
+**Le P1 : mon test « aller-retour par le vrai producteur » n'atteignait jamais le producteur.** Il
+appelait une fonction qui n'écrit aucun marqueur, puis retombait sur une chaîne tapée à la main et
+vérifiait sa propre chaîne. C'est-à-dire précisément la tautologie qu'il était censé supprimer :
+une divergence écrivain/lecteur — exactement la regex inerte du rond 2 — serait passée une seconde
+fois. Corrigé en pilotant `runClaimAutoApproval → approveClaim → triggerClaimRefund`, le vrai
+producteur, et **prouvé par injection** : casser l'horodatage de l'écrivain fait ROUGIR la suite,
+le restaurer la remet au VERT, et le fichier source revient identique.
+
+**Les P2 convergents** : la nouvelle ligne « argent » utilisait `refundId` comme preuve qu'un
+remboursement répond pour la réclamation — faux précisément sur les lignes où le moteur a REFUSÉ
+l'attribution (`resume_mismatch`), c'est-à-dire là où un remboursement est lié mais répond pour
+quelqu'un d'autre. La correction de tonalité du rond 4 n'avait été appliquée qu'à un des deux
+gestionnaires. Et la légende du bouton était restée derrière lui : rendue deux fois sur les cartes
+qui ont le bouton, et en promesse orpheline sur celles qui ne l'ont plus.
+
+**Le constat le plus important pour la méthode** : *aucun* des cinq correctifs de composant du rond
+4 n'était épinglé par un test — les annuler laissait la suite verte. C'est exactement ainsi qu'un
+correctif rapporté comme fait, et jamais appliqué, a survécu à un rond entier.
+
+### Corrigé (rond 5)
+
+Décision de la ligne « argent » extraite dans `lib/claim-money-line.ts`, **fonction pure et
+testée**, qui teste le marqueur de mésattribution AVANT la liaison. Tonalité appliquée aux deux
+gestionnaires. Légende rendue une seule fois, avec son bouton. Bannière qui ne classe plus le
+troisième groupe dans une catégorie et renvoie à la ligne. Aller-retour de marqueur réel. Et sept
+épingles au niveau source pour que l'annulation d'un correctif de composant fasse rougir la suite.
+
+**Ces correctifs-là ont été audités au rond 5 — voir §11.**
+
+---
+
+## 11. AUDIT ROND 5 (2026-09-10) — sur `68998a8`
+
+4 auditeurs, 6 constats, **5 confirmés / 1 réfuté. P0 = 0, P1 = 1.**
+
+**Le P1 : j'ai réintroduit au rond 4 exactement la classe de défaut que trois ronds avaient
+retirée.** Le gestionnaire d'attribution disait à l'opérateur « Aucun argent n'a atteint le
+client » dès qu'une ligne de remboursement échouée était attribuée. C'est une affirmation sur le
+CLIENT dérivée du statut d'UNE ligne : cette ligne-là n'a rien versé, mais elle ne dit rien des
+autres remboursements de la commande — et l'attribution ne se déclenche justement que sur des
+commandes où Stripe a prouvé qu'un remboursement existe. Corrigé : la phrase porte désormais sur
+la ligne, pas sur le client, et le dit explicitement.
+
+**Les P2 convergents (deux auditeurs, même cible)** : la ligne « argent » de mésattribution
+affirmait « de l'argent a bougé pour quelqu'un d'autre ». Le marqueur `resume_mismatch` a **quatre
+écrivains** dans le moteur, et **deux d'entre eux sont sur le chemin PENDING** — là, le moteur n'a
+obtenu qu'une ACCEPTATION Stripe, rien n'a encore bougé. L'affirmation était vraie pour deux
+écrivains et fausse pour les deux autres, donc elle n'est plus faite du tout : ce qui est établi
+sur les quatre, c'est que le remboursement lié n'est pas celui de cette réclamation.
+
+**Le P3 de méthode** : le contrat du nouveau module était épinglé sur une chaîne tapée à la
+main — la tautologie du rond 2 sous une autre forme. Les chaînes de test sont maintenant **lues
+dans `lib/claims.ts`** (`SHIPPED_MISMATCH_WRITERS`) : si un écrivain cesse d'émettre le marqueur,
+la suite rougit. Un contrôle négatif dans le fichier montre que la fixture tapée à la main aurait
+passé quoi qu'il arrive.
+
+### Corrigé (rond 6 en audit)
+
+Affirmation « client » retirée du gestionnaire d'attribution et remplacée par un énoncé de portée
+« ligne ». Affirmation de mouvement retirée de la ligne de mésattribution. Contrat du module lié
+aux écrivains expédiés, plus une épingle source `not.toContain` sur la phrase retirée pour que sa
+réapparition fasse rougir la suite.
+
+---
+
+## 12. AUDIT ROND 6 (2026-09-10) — sur `e4707f9`
+
+5 auditeurs (véracité opérateur, instrument de test, contrat moteur, régression §7–§10, enveloppe
+Mode A), 23 constats, **15 confirmés / 8 réfutés. P0 = 0, P1 = 7, P2 = 4, P3 = 4.**
+
+**Le P0 déposé, ramené en P1 par les réfutateurs** : `financial_verification` n'a AUCUNE sortie
+quand la commande n'a pas de ligne `Refund` locale — le cas du remboursement fait depuis le
+**Dashboard Stripe**, qui ne laisse aucune ligne. `attributeClaimRefund` ne sait lier qu'une ligne
+existante ; la réconciliation re-gare ; l'échappatoire par assertion refuse le statut. Les deux
+corrections des réfutateurs sont retenues : `RECONCILABLE_STATUSES` inclut bien `financial_verification`,
+donc un `stripe_unreadable` TRANSITOIRE sort à la réconciliation suivante ; et la variante « commande
+sans PaymentIntent » est injoignable (`createClaim` refuse les commandes non payées, le moteur
+retourne avant de créer une ligne). Reste la population Dashboard, réelle, sans sortie honnête.
+
+**Les six autres P1** : le writer `stripe_failed` disait « aucun argent reçu par le client » depuis
+UNE ligne (la classe récurrente, encore) ; l'étiquette `refund_moved_unattributed` était FAUSSE sur
+l'un de ses deux écrivains (celui où une ligne porte bien l'identité) ; l'épingle contre la phrase
+retirée ne couvrait qu'un fichier ; la branche FAILED du réconciliateur de ligne ÉCRASAIT le
+marqueur `resume_mismatch` (seule entrée du prédicat « ce remboursement est-il le nôtre ») ; la file
+d'arbitrage imprimait l'argent d'une AUTRE réclamation sous « Montant réellement remboursé » sur les
+lignes désavouées ; et « aucun remboursement n'est LIÉ » s'affichait sur des lignes liées mais non
+abouties.
+
+### Corrigé (rond 7) — en audit
+
+- **Sortie ancrée Stripe** (`adoptStripeRefundForClaim`, même route `/attribute`, corps
+  `{ stripeRefundId }`) : conception choisie par un panel de 3 designs × 3 juges (aucune faille
+  fatale ; gagnant sur la sûreté argent). L'opérateur fournit un IDENTIFIANT `re_…`, jamais un
+  montant ni un résultat. Avant toute écriture, le serveur prouve chez Stripe que le remboursement
+  porte sur le PaymentIntent de la commande ET sur sa `latest_charge`, refuse un remboursement
+  créé par le moteur (`metadata.grubano_refund_row`), refuse pending/failed, borne le montant au
+  capturé. Une seule écriture : une ligne `Refund` MIROIR (statut/montant copiés de Stripe,
+  découpes à 0, `idempotencyKey external:<re_>` UNIQUE, `reason = claim:<id>`), puis la queue
+  auditée d'`attributeClaimRefund`. `dryRun` lit et n'écrit rien : le panneau montre les faits
+  avant l'unique écriture. Aucun appel moteur, aucune écriture Stripe/ledger/fidélité.
+- Writer `stripe_failed` ramené à la LIGNE ; garde `resume_mismatch` sur la branche FAILED ;
+  `reconcile_not_applied` et `no_payment_intent` comme causes propres ; `actualRefundedCents` nul
+  sur une liaison désavouée (+ `refundNotOurs`) ; carte d'arbitrage en trois cas ; preuve
+  d'absence portée par un marqueur `no_refund_proven:` reconnu par le classificateur (état
+  `absence_proven_payable`) et exclu de l'échappatoire ; message `already_parked_or_moved` ;
+  résidu rapporté sur les chemins d'abandon ; épingle de CLASSE sur les quatre fichiers (hors
+  commentaires) ; extracteur de writers classé par le RETOUR du moteur, plus le contrôle
+  discriminant ; regex inerte remplacée par un test hors négation avec contrôle négatif.
+- Durcissement retenu d'un constat RÉFUTÉ (deux réclamations actives par commande impossibles,
+  `activeOrderKey` unique) : le chemin par ligne refuse une ligne estampillée pour une AUTRE
+  réclamation (T-51 : `reason` EST l'identité).
+
+**Contrôles négatifs différentiels (rond 7) : 10/10 PROUVÉS.** Pour chaque correctif : le code
+livré est cassé (aiguille unique), la suite qui prétend l'épingler ROUGIT, le fichier est restauré
+depuis une copie (jamais `git checkout` — les correctifs n'étaient pas commités), prouvé
+byte-identique, la suite REVERDIT. Garde FAILED, montant désavoué, ancre PaymentIntent, règle
+« succeeded seulement », writer `stripe_failed`, message `already_parked_or_moved`, résidu sur
+abandon, moitié discriminante du prédicat, garde de provenance moteur, `dryRun` sans écriture.
+Suite complète : 400 fichiers / 4249 tests verts ; typecheck 41 = base, 0 hors `tests/`.
+
+---
+
+## 13. AUDIT ROND 7 (2026-09-10/11) — sur `0321537`
+
+5 auditeurs, 25 constats, **24 confirmés / 1 réfuté. P0 = 0, P1 = 9, P2 = 10, P3 = 5.** (Le premier
+passage a perdu 26 réfutateurs sur la limite de session ; le run a été REPRIS depuis le cache —
+mêmes auditeurs, réfutateurs manquants rejoués — avant toute correction.)
+
+**Ce que le rond 7 a trouvé, en une phrase : la classe récurrente vivait aussi HORS des quatre
+fichiers épinglés.** Le toast d'approbation (`messages/*.json`, 5 locales) affirmait « de l'argent
+EST parti, pour un autre montant » sur les QUATRE écrivains `resume_mismatch` — deux sont sur le
+chemin PENDING (rien n'a bougé) et deux enregistrent un montant IDENTIQUE — et son test
+`toMatch(/EST parti/)` IMPOSAIT la phrase fausse ; son jumeau « aucun argent n'est parti » était
+affiché sur des refus moteur qui incluent « Paiement déjà intégralement remboursé ». L'échappatoire
+par assertion toastait « client payé hors rail » et « Aucun argent n'a bougé » à la voix du
+système. Le badge `absence_proven_payable` que j'avais ajouté au rond 7 promettait « sera versée
+par le rail » — aucun job joignable ne le fait (balayage auto-approbation gaté OFF toute la bêta,
+cron mort) : c'est une ré-approbation humaine. Les chaînes moteur « réessayez » étaient persistées
+brutes sous « Détail : » sur une carte sans aucune relance. Et mon durcissement du rond 7 (refus
+serveur des lignes estampillées pour une autre réclamation) avait recréé le défaut du rond 3 :
+bouton « Attribuer » ACTIF là où le serveur refuse.
+
+**Sur la nouvelle voie d'écriture** : le dryRun de reprise-après-crash répondait 409 « lancez
+Lier sans vérification » alors que la console garde « Lier » désactivé sans aperçu, et le succès
+de cette branche fabriquait des « faits Stripe » (montant 0, statut de la ligne relabellisé) sans
+avoir lu Stripe. Une réclamation DÉJÀ garée ne pouvait jamais voir sa cause rafraîchie (le CAS de
+garage excluait `financial_verification` alors que le réconciliateur l'admet) : preuve fraîche
+jetée, étiquette périmée. Le chemin par ligne n'avait pas la garde « une ligne porte déjà
+l'identité de cette réclamation » que la voie Stripe applique.
+
+**Sur l'instrument** : le test « miroir puis liaison par la queue auditée » ne pinçait pas la
+queue (une écriture terminale directe restait verte) ; l'épingle « sortie sur CHAQUE ligne garée »
+était satisfaite par un bloc JSX sans rapport (ancre présente deux fois) ; les gardes DB de
+l'adoption étaient pincées par l'ORDRE des appels, pas par leurs `where` ; deux conjonctions du
+prédicat de reprise n'étaient pincées par rien ; l'extracteur d'écrivains ne voyait que les
+gabarits backtick (ni ternaire, ni constante) ; deux tests vérifiaient leur propre fixture.
+
+### Corrigé (rond 8) — en audit
+
+Toasts d'approbation réécrits dans les 5 locales sur ce que les quatre écrivains établissent
+(remboursement PAS le nôtre ; rien de réglé ; aucune relance) et sur « aucun montant établi par
+cette action » ; test inversé. Toasts de clôture attribués à la DÉCLARATION de l'opérateur et
+bornés à l'action. Badge et toast de preuve d'absence : « rien ne la paiera automatiquement —
+nouvelle approbation admin, réclamations et remboursements ouverts ». Chaîne moteur enveloppée
+`engine_failed: <texte> — aucune relance possible depuis les réclamations`. Bouton désactivé sur
+`belongsToAnotherClaim` avec légende « sera refusé » ; 409 d'adoption qui NOMME la réclamation
+propriétaire au lieu de renvoyer vers un bouton refusé. Reprise-après-crash : dryRun = aperçu réel
+(`source: 'local_row'`, `wouldWrite: false`), faits lus sur NOTRE ligne et dits tels ; « Lier »
+armé uniquement sur l'identifiant vérifié. CAS de RELABEL sur une réclamation déjà garée (cause
+rafraîchie, statut inchangé, aucune alerte réémise, issue distincte d'`already_parked_or_moved`).
+Garde « ligne estampillée pour cette réclamation » ajoutée au chemin par ligne. Épingle de CLASSE
+étendue à `messages/fr|en.json` et `lib/claim-approval-toast.ts` avec les motifs de la classe
+(« argent EST parti », « aucun argent n'est parti » hors négation, « client payé », « n'a bougé »
+non borné) et contrôles négatifs sur chaque phrase trouvée. Signature de la queue pincée (CAS de
+liaison sur FV, CAS de réconciliation sur l'identité liée, DEUX écritures d'audit). Épingle de
+PLACEMENT du panneau Stripe avec contrôle négatif de la régression du rond 6. Gardes DB pincées
+par leurs `where` via `matchWhere`. Conjonctions du prédicat de reprise pincées. Extracteur lisant
+toute affectation `refundError` (ternaire, constante) avec un ensemble ATTENDU de familles au lieu
+d'un plancher. Tautologies supprimées ; « le corps ne porte ni montant ni issue » prouvé sur un
+identifiant VALIDE avec des extras rejetés. `triggerClaimRefund` exporté pour le test du wrapper.
+Garde « une identité, une ligne » documentée comme check-then-act (l'unicité est par `re_`, pas
+par réclamation ; la structure exigerait un schéma).
+
+**Vérification du rond 8, avant commit.** Contrôles négatifs différentiels : **12/12 PROUVÉS**
+(relabel, wrapper `engine_failed`, garde d'estampille du chemin par ligne, bouton désactivé,
+aperçu de reprise, toast d'approbation FR, toast de clôture, 409 nommant la réclamation,
+placement du panneau Stripe, queue auditée, conjonction `succeeded`, toast d'échec FR) ; empreinte
+du `git diff` identique avant/après (`448163c856037ef3`). Typecheck : 41 = base, 0 hors `tests/`.
+Suite complète : **400 fichiers / 4265 tests verts**, 0 échec.
+
+**Incident consigné (ne pas effacer).** Un premier passage complet a ÉCHOUÉ (1 test,
+`tests/punitive-capture.test.ts`, délai de 5 s dépassé) alors que la notification de la tâche
+de fond annonçait « exit 0 » : ce code était celui du `tail` final, pas de vitest — la même
+fausse réussite que la fiche mémoire « exits RÉELS » documente déjà, reproduite ici. Diagnostic
+avant toute conclusion : le test seul passe (12/12, 1,26 s), ni lui ni la route qu'il pilote
+n'importe un module modifié, et le passage avait duré 162 s contre ~87 s d'habitude (charge
+machine). La suite a néanmoins été relancée sur l'arbre final, code de sortie lu directement.
+Quatre commentaires qui énonçaient encore la croyance « la reprise a abouti, l'argent est parti »
+pour les quatre écrivains ont été corrigés — c'est d'eux que la phrase fausse renaissait.
+
+---
+
+## 14. AUDIT ROND 8 (2026-09-11) — sur `66d6950`
+
+Run complet (le script sépare désormais « non vérifié » de « réfuté » : aucun réfutateur perdu).
+5 auditeurs, 22 constats, **17 confirmés / 5 réfutés. P0 = 0, P1 = 5, P2 = 5, P3 = 7.**
+
+**Les P1.** Le verrou rail était décrit comme levable « tant que la reprise manuelle Stripe n'a
+pas été faite » : aucun code ne sort une ligne `Refund` de `failed`, le verrou est définitif — et
+« Approuver & rembourser » restait offert sur ces réclamations, voué à l'échec. « Envoyé à la
+banque » s'affichait pour NOTRE ligne en attente sans identifiant Stripe (la fenêtre de crash),
+et la réconciliation la faisait sortir de la population « preuve » en la déclarant
+`still_pending`. Un échec moteur survenu APRÈS la création de la ligne de la réclamation
+(« Remboursement émis, reprise de la royalty… ») écrasait le marqueur de crash et rendait la
+réclamation clôturable par assertion. Et (deux constats, un défaut) ma garde du rond 8 « une ligne
+porte déjà l'identité de cette réclamation » n'avait pas sa désactivation console — la Classe 3
+pour la TROISIÈME fois, avec un test qui épinglait l'expression incomplète.
+
+**Les P2.** La route de réconciliation admettait une réclamation SAINE approuvée-non-payée —
+exactement l'état d'une approbation Mode A — et pouvait la garer. L'arbitrage autorisait
+l'approbation sur les claims JWT (jamais rafraîchis) au lieu de `resolveAdmin`. La copie CLIENT
+disait « remboursement en cours » pour une réclamation seulement approuvée (en/es/it/ar, et
+l'aide ×5), et `financial_verification` affirmait une « transaction existante ». La forme héritée
+non liée était étiquetée « sans aucun remboursement Stripe » (assertion Stripe négative non
+vérifiée). La légende « Rien n'a été écrit » s'affichait sur des refus postérieurs à l'écriture
+de la ligne miroir.
+
+### Corrigé (rond 9) — en audit
+
+- **Fin de la Classe 3 pour l'attribution** : une règle pure unique
+  (`lib/claim-attribution-rules.ts`, 5 refus) appliquée par `attributeClaimRefund` ET par la
+  liste que lit la console ; la console désactive sur le verdict serveur. **Test de PARITÉ** :
+  sur deux jeux couvrant les 5 codes, verdict console === refus serveur avant toute écriture.
+- Verrou rail : copie « DÉFINITIVEMENT » nommant la seule sortie réelle ; approbation refusée par
+  `arbitrateClaim` et désactivée en console (`railLocked`) ; libellé « Approuver » ×5 locales.
+- Ligne en attente sans identifiant Stripe : état `local_pending_unconfirmed`, « Statut de notre
+  ligne », réconciliation → `pending_unconfirmed` SANS écriture (la réclamation garde son bucket
+  et son bouton), attribution refusée.
+- Échec moteur avec la ligne de la réclamation présente et non échouée : reste `refunding` avec
+  le marqueur d'origine (texte moteur ajouté) ; `engine_failed` seulement si rien n'a été créé ou
+  si la ligne a échoué (alors liée).
+- Garde de réconciliation : n'admet que FV, marqueur, ou forme héritée — la population du bouton.
+- Arbitrage : `resolveAdmin`. Copie client/admin ×5 locales, mappage d'aide refunding/approved,
+  file nommée « Remboursements à traiter » telle que l'écran l'affiche. `wrote` sur chaque refus
+  d'adoption ; branches Zod strictes ; toast « Lier » selon la source ; « déjà garée » retiré ;
+  FR « s'est arrêté sur ».
+- Instrument : épingles sûres en CRLF ; `matchWhere` évalue un `id` opérateur ; épingle de classe
+  étendue à es/it/ar (constat réfuté en P3 mais exact, retenu) et rapportant TOUS les hits ;
+  épingles négatives lues hors commentaires ; contrôles-lambda supprimés.
+
+**Vérification du rond 9, avant commit.** Contrôles négatifs différentiels : **17/17 PROUVÉS**, en
+deux passes, consignées telles quelles. La première a donné 14/17 : deux contrôles n'ont pas pu
+s'appliquer — aiguille introuvable (`lib/claims.ts` est en CRLF sur disque, l'aiguille multi-ligne
+était en LF) et aiguille non unique (`"approve": "Approuver"` apparaît trois fois dans `fr.json`) —
+et un contrôle est ressorti **NON PROUVÉ** : revenir sur l'évaluation de `id` dans `matchWhere`
+laissait toute la suite verte, ce changement d'instrument n'était épinglé par rien. Corrections :
+aiguilles sûres en CRLF, mutation JSON par chemin, et un test unitaire direct de `matchWhere`.
+Seconde passe : 3/3 prouvés. Empreinte du `git diff` des chemins de code identique avant/après
+(`7b7ab71c01761ca8`) — **limite dite** : `git diff` ignore les fichiers NON SUIVIS, donc cette
+empreinte ne couvre ni `lib/claim-attribution-rules.ts` ni le test du rond 9 ; les contrôles ne
+mutent que des fichiers suivis et vérifient chacun leur restauration octet pour octet.
+Typecheck : 41 = base, 0 hors `tests/`. `check:i18n` : OK. Suite complète sur l'arbre final :
+**401 fichiers / 4301 tests verts**.
+
+---
+
+## 15. AUDIT ROND 9 (2026-09-11) — sur `7c459eb`
+
+Run complet. 17 constats, 34 vérifications (28 maintenues, 6 réfutations) : **15 confirmés / 2
+réfutés. P0 = 0, P1 = 9, P2 = 5, P3 = 1.**
+
+**Les P1 — cinq défauts, dont le plus grave est créé par le rond 9.**
+1. **Un état absorbant (4 constats ; l'un déposé P0, ramené P1).** Le rond 9 gardait en
+   `refunding` + marqueur une réclamation dont le moteur échouait APRÈS avoir créé sa ligne, et la
+   réconciliation répondait alors `pending_unconfirmed` sans rien écrire ni lire Stripe. Toutes les
+   sorties refusaient : attribution (ligne en attente sans identifiant), clôture par déclaration
+   (marqueur), arbitrage (déjà arbitrée). Une erreur Stripe ORDINAIRE, clôturable avant le rond 9,
+   devenait permanente — et au-delà de la fenêtre moteur de 20 h, la ligne bloquait aussi tout
+   remboursement de la commande. Le test du rond 9 épinglait cet état comme un succès (« garde son
+   bucket et son bouton »).
+2. **Une promesse de mécanisme (2 constats).** « son webhook l'appliquera » et « le moteur de
+   remboursement la reprend », dans la règle d'attribution, le toast de réconciliation et le
+   paragraphe de la console d'arbitrage. Un remboursement abouti immédiatement n'émet aucun
+   `refund.updated` ; ouvrir la fenêtre remboursements ne relance rien par soi-même.
+3. **Copie client, préexistante.** en/es/it/ar annonçaient un remboursement « sous 3–5 jours après
+   examen » ; seul le français avait été corrigé au lot 2.
+4. **Copie client, créée par le rond 9.** Le client d'une réclamation dont le moteur avait échoué
+   lisait « Remboursement en cours ».
+5. **Classe 3, quatrième fois.** Sur une réclamation verrouillée, « Approuver » était désactivé et
+   « Refuser définitivement » restait actif — ce que le serveur refuse toujours.
+
+**Les P2.** Une approbation en Mode A laisse une réclamation que seules une fenêtre CLAIMS et une
+fenêtre REFUNDS ouvertes ENSEMBLE peuvent payer, ce qu'aucun des deux opérateurs n'ouvre (déposé P1,
+ramené P2 : **décision fondateur**, portée dans le bloc du gate). Le recensement comptait
+`nonTerminal = active`, en omettant `refused`, que la bibliothèque tient pour non terminal. La copie
+du verrou renvoyait à « Remboursements à traiter », absent de l'écran quand les réclamations sont
+fermées. « Confirmer le refus » restait le seul bouton actif sur la carte verrouillée. La condition
+du paragraphe `local_pending_unconfirmed` n'était épinglée par rien.
+
+**P3.** Les tests d'échec moteur ne voyaient ni la clause `where` du CAS du marqueur, ni l'ordre de
+la requête de la ligne propre.
+
+**Réfutés, consignés.** « Le test de parité est aveugle au `where` de la requête serveur » et « les
+épingles de locale sont des listes noires » (motif du second : dette de qualité de test, sans effet
+sur ce qui est affiché). Une épingle de locale plus large est ajoutée quand même.
+
+**Le constat de méthode.** P1 confirmés sur cinq rondes : 1 → 7 → 9 → 5 → 9. Chaque rond corrigeait
+le constat précis en ajoutant une branche ou une phrase, et le suivant trouvait les mêmes classes
+dans l'ajout. Le rond 10 change de méthode plutôt que de corriger une dixième fois.
+
+### Corrigé (rond 10) — en audit
+
+- **Une règle par action humaine** (`lib/claim-action-rules.ts`, pur, sans I/O) :
+  `arbitrationRefusal` (mêmes vérifications, même ordre, mêmes messages ; `arbitrateClaim` n'en a
+  plus d'autres), `reconcileRefusal` (la garde de `reconcileClaimEvidence`), `customerClaimStatus`,
+  `moneyStateGuidance`. La file d'arbitrage émet `approveRefusal` / `refuseFinalRefusal`, la liste des
+  remboursements `reconcilable` ; les deux consoles désactivent sur ces verdicts. **Tests de PARITÉ** :
+  pour chaque état et chaque décision, le verdict listé est la réponse du serveur.
+- **Table des sorties** (test) : 19 états, chacun avec l'action que le serveur accepte ou un chemin
+  nommé (délai du restaurant → arbitrage ; « attend le rail » ; état de décision non financier).
+  **Elle a trouvé un état sans sortie dans mon propre code du rond 10** : une approbation dont la
+  tentative a été prise sans rien d'enregistré (ni liaison, ni erreur). Réconciliable désormais, et
+  classée `reconcile_required` au lieu de « jamais payée ».
+- **L'état absorbant est supprimé : la preuve décide.** Une ligne en attente est lue chez Stripe —
+  PAR son identifiant s'il est enregistré (comme la reprise du moteur), sinon dans la liste complète
+  des remboursements du paiement (paginée ; au-delà de 10 pages = illisible), par le tag
+  `metadata.grubano_refund_row`. Issues : **abouti** → réclamation remboursée, liée, commande libérée ;
+  **échoué / annulé** → `approved` + `stripe_failed` (clôturable) ; **en attente** → liée, marqueur
+  retiré, re-réconciliable ; **illisible** → rien d'écrit, relancer ; **introuvable avant la fenêtre
+  moteur (20 h) + 1 h de marge** (une création en vol peut arriver juste après la fenêtre) → rien
+  d'écrit, avec la date à partir de laquelle conclure ; **introuvable après** → `engine_row_dead:`
+  (clôturable par déclaration, jamais ré-approuvable ; la copie dit qu'aucun paiement Grubano n'est
+  possible) ; **contradiction** (identifiant inconnu de Stripe, autre paiement, statut inconnu) →
+  vérification financière, avec la vérification à faire. Même lecture dans la branche « aucune ligne
+  n'est à nous » : une ligne morte n'empêche plus la preuve d'absence, et le verrou qu'elle cause est
+  nommé. Une ligne `canceled` de notre table est traitée comme n'ayant rien versé.
+- **Réclamation liée, sans erreur** : la réconciliation applique la vérité de SA ligne (sans webhook,
+  elle n'avait aucune sortie humaine) ; ligne absente de la commande → vérification financière.
+- **Copie** : les promesses webhook / moteur / balayage sont retirées ; le paragraphe d'arbitrage et
+  la carte FV affichent la même ligne de guidance (fait + action acceptée). Épingle de promesses sur
+  les consoles et les deux modules de règles, avec contrôle négatif sur les phrases du rond 9.
+- **Client** : statut dérivé (« en cours » seulement pour une ligne liée qui porte un identifiant
+  Stripe), appliqué à l'éligibilité et à la liste ; page d'aide `financial_verification` → « en
+  examen » ; `refundEstimate` en/es/it/ar au sens du français. **Trouvé en cours de rond 10, hors
+  audit** : la liste client (`GET /api/claims`) renvoyait les lignes brutes, dont `refundError` (texte
+  moteur et identifiants Stripe écrits pour l'opérateur). Ces champs ne sont plus renvoyés ; aucune
+  interface ne les lisait.
+- **Console FV (non gatée)** : clôture par déclaration sur les lignes que la trappe accepte, bouton de
+  réconciliation où la garde l'admet, ligne de guidance sinon. La copie du verrou pointe vers
+  « Clôturer ce dossier… », présent sur cette carte.
+- **Recensement** : `nonTerminal = total − TERMINAL_STATUSES` (désormais exporté). **Opérateur** : le
+  résidu « APPROUVÉE et NON PAYÉE » est nommé, avec la décision fondateur requise.
+- **P3** : test de lecture périmée du marqueur ; requête de la ligne propre évaluée sur `where` et
+  `orderBy`.
+
+**Vérification du rond 10, avant commit.** Contrôles négatifs différentiels : **27/27 PROUVÉS** en
+une passe — casser le code livré → rouge ; restaurer depuis la copie → identique octet pour octet →
+vert. Dont un contrôle d'INSTRUMENT sur la table des sorties elle-même (15 rouges quand elle cesse
+d'interroger la garde de réconciliation). Deux défauts de mon propre travail trouvés en route,
+consignés : l'extracteur des écrivains `refundError` de `tests/claim-money-line.test.ts` a perdu la
+chaîne du verrou parce qu'une apostrophe dans MON commentaire (« claim's ») ouvrait une fausse
+chaîne — commentaire reformulé, test inchangé ; et une décomposition `...matchAll` non compilable
+dans le nouveau test (typecheck 42 → corrigé à 41). Suites touchées : 15 fichiers / 417 verts.
+Typecheck : 41 = base. `check:i18n` : OK. Suite complète sur l'arbre final : **402 fichiers / 4370
+tests verts** (code de sortie lu directement). Empreintes : `git diff` des chemins de code
+`1d6fbb85431102c2` ; les deux fichiers NON SUIVIS (`lib/claim-action-rules.ts`,
+`tests/claims-t49-round10.test.ts`) hachés à part, `28ef64cc7993477d`. Aucun changement de schéma ;
+aucun flag, gate, appel Stripe ou remboursement.
+
+Staging mesuré sur `ec1a534` : `version.json` = `ec1a534`, gates 403 `gated:true` ×2, recensement
+7 réclamations / 0 active / 0 `refunding` / 0 `financial_verification` / 0 marquée / 0 forme T-49 ;
+`nonTerminal` = 3 (les trois `refused` contestables, que l'ancienne formule taisait — aucune donnée n'a
+changé).
+
+---
+
+## 16. AUDIT ROND 10 (2026-09-11) — sur `ec1a534`
+
+Run complet (49 agents, aucun perdu). 22 constats : **16 confirmés / 6 réfutés. P0 = 0, P1 = 4, P2 = 6,
+P3 = 6.** P1 : 9 → 4, et ces quatre ne sont que DEUX défauts, dont aucun dans les règles partagées ni
+dans la table des sorties. Quatre des six réfutations visaient justement ces nouveautés.
+
+**Les P1.**
+1. **Un remboursement ÉCHOUÉ chez Stripe compté comme absence (3 auditeurs, un défaut).** Une ligne
+   encore « en attente » chez nous, dont le remboursement Stripe a échoué ou a été annulé (webhook
+   perdu), sortait des « lignes pouvant déplacer de l'argent ». La réconciliation écrivait alors la
+   preuve d'absence SIMPLE (« elle devra être approuvée à nouveau ») et laissait « Approuver » actif.
+   L'approbation relance le moteur, qui reprend cette ligne, lit l'échec et la marque échouée avec son
+   identifiant Stripe — le verrou définitif de la commande — puis la réclamation passe en
+   `engine_failed`, et la route d'arbitrage a déjà écrit « approuvée » au client.
+2. **« Remboursement en cours » sur une ligne liée déjà ÉCHOUÉE.** Le statut client ne regardait que
+   l'identifiant Stripe de la ligne, pas son statut.
+
+**Les P2.** La guidance disait « en attente chez Stripe » d'après NOTRE ligne, jamais relue. Une
+réclamation écrite « remboursée » d'après Stripe laissait sa ligne en attente : le travail du moteur
+côté ligne (ledger, reprise de royalty) perdait son dernier signal visible (déposé P1, ramené P2), et la
+réclamation suivante sur la commande libérée serait reprise sur l'ancienne ligne. La branche « aucune
+ligne n'est à nous » garait en « Des remboursements existent » quand Stripe rapporte 0 / 0, y compris
+sur une erreur de lecture passagère. La ligne d'argent « liée » renvoyait à « Remboursements à
+traiter », absent de l'écran quand les réclamations sont fermées. Et la fenêtre de grâce du §7 était
+défaite : la carte FV non gatée offrait « Réconcilier » sur une tentative en vol.
+
+**Les P3.** Copie de ligne morte : fin de fenêtre décalée de la marge, et « définitivement » dans le
+refus d'approbation alors que le journal du moteur indique d'annuler la ligne. Parité d'arbitrage qui ne
+voyait jamais une décision permise RÉUSSIR. Épingle de promesses qui ne lisait ni `lib/claims.ts`, ni la
+ligne d'argent, ni les locales. Fixture du recensement incapable de distinguer `total − TERMINAL` d'une
+autre formule. `groupBy` en échec présenté comme une population mesurée vide. Note libre de l'opérateur
+(clôture) renvoyée au client comme `arbitrationReason`.
+
+**Réfutés, consignés.** Approbation « tentative prise, rien d'enregistré » lue par le client comme « en
+attente de traitement » (P2) ; `stripe_refund_contradiction` sans sortie (P1, deux constats — état
+atteignable par une clé Stripe erronée, dont la sortie existe : corriger la clé puis relancer, ou par
+des données qu'aucun écrivain ne produit) ; verrou de ligne morte dit permanent (P2) ; parité et table
+aveugles au `select` (P1) ; « en cours » de la page d'aide non épinglé (P1). Les deux derniers sont
+traités quand même : les lectures de ligne derrière le statut client sont simulées SENSIBLES au `select`
+dans le test du rond 11.
+
+### Corrigé (rond 11) — en audit
+
+- **Ligne échouée chez Stripe = cause de verrou.** `failedAtStripeRows` : une ligne en attente dont le
+  remboursement Stripe (lu par identifiant ou par étiquette) est `failed` ou `canceled` écrit
+  `no_refund_proven_rail_locked` avec sa propre copie (ligne nommée ; la prochaine reprise la marquera
+  en échec, verrou définitif ; une nouvelle approbation ne pourrait rien payer ; sur un paiement routé,
+  transfert du restaurant possiblement inversé). L'approbation est refusée, la clôture offerte.
+- **Statut client** : `boundRowShowsInProgress` — ligne liée EN ATTENTE et portant un identifiant
+  Stripe — lu avec `status` sélectionné dans les deux appelants.
+- **Stripe 0 / 0** : ligne illisible → relancer ; contradiction → garée avec son détail ; toutes dans la
+  fenêtre → la date ; sinon « les deux sources se contredisent ». « Des remboursements existent »
+  seulement quand Stripe rapporte de l'argent.
+- **Réclamation soldée d'après Stripe, ligne en attente** : alerte de revue argent nommant la ligne, et
+  liste durable non gatée `listUnfinalizedClaimRefundRows` (lignes en attente dont la réclamation n'est
+  plus « en remboursement »), affichée en faits seuls sur la carte FV. La réconciliation ne finalise
+  toujours rien : aucun appel moteur, aucune écriture Stripe.
+- **Grâce dans la GARDE** : `RECONCILE_GRACE_MS` et `reconcileMarkerAge` déplacés dans
+  `lib/claim-action-rules.ts` ; `reconcileRefusal` refuse une tentative de moins de 5 minutes — liste et
+  route d'accord par construction ; la guidance le dit.
+- **Copie** : ligne d'argent « liée » sans renvoi ; guidance « statut enregistré d'après Stripe » ; fin
+  de fenêtre du moteur imprimée, marge dite à part, « annulation manuelle hors application » ; refus
+  d'approbation sans permanence affirmée ; toasts et textes de verrou sans « rien n'est parti ».
+- **Recensement** : `groupBy` en échec → `byStatusMeasured: false`, comptes nuls. **Clôture par
+  déclaration** : la note va dans l'audit admin, plus dans `arbitrationReason`.
+- **Instrument** : parité d'arbitrage sur les SUCCÈS (CAS libre, réclamation déplacée, aucun moteur) ;
+  table des sorties avec l'état « tentative en vol » ; épingle de promesses étendue à `lib/claims.ts`, à
+  la ligne d'argent et aux cinq locales ; recensement évalué sur une fixture (statut hors listes
+  compris) ; `matchWhere` modélise `startsWith`.
+
+**Vérification du rond 11, avant commit.** Contrôles négatifs différentiels : **19/19 PROUVÉS** en
+une passe, dont deux contrôles d'INSTRUMENT (la parité d'arbitrage attrape un CAS qui ne correspond
+plus ; le recensement distingue `total − TERMINAL` d'une autre formule). Trois échecs de mes propres
+tests en route, consignés : le mock du nouveau test ne modélisait pas `refund.aggregate` (portée de la
+réclamation) ; la fixture client du rond 10 lisait des lignes sans `status`, que la règle du rond 11
+lit à juste titre comme « pas en cours » ; et le test d'instrument de `matchWhere` prenait
+`startsWith` comme exemple d'opérateur NON modélisé — il l'est désormais, l'exemple est `endsWith`.
+Une écriture refusée par l'outil (fichier réécrit par la restauration des contrôles du rond 10) a été
+refaite après relecture. Suites touchées : 16 fichiers / 443 verts. Typecheck : 41 = base.
+`check:i18n` : OK. Suite complète sur l'arbre final : **403 fichiers / 4396 tests verts** (code de
+sortie lu directement). Empreintes : `git diff` des chemins de code `ccfca974fde87a96` ; le fichier NON
+SUIVI `tests/claims-t49-round11.test.ts` haché à part, `b69ec88510a67750`. Aucun changement de schéma ;
+aucun flag, gate, appel Stripe ou remboursement.
+
+Staging mesuré sur `76d2086` : `version.json` = `76d2086`, gates 403 `gated:true` ×2, recensement
+7 réclamations / 0 active / `nonTerminal` 3 (les `refused`) / `byStatusMeasured: true` / 0 `refunding` /
+0 `financial_verification` / 0 marquée / 0 forme T-49.
+
+---
+
+## 17. AUDIT ROND 11 (2026-09-11) — sur `76d2086`
+
+Run complet (43 agents, aucun perdu). 19 constats : **16 confirmés / 3 réfutés. P0 = 0, P1 = 2, P2 = 5,
+P3 = 9.** P1 sur les trois derniers rondes : 9 → 4 → 2.
+
+**Les P1.**
+1. **« Refus confirmé » sur une réclamation que personne n'a refusée.** Une réclamation APPROUVÉE que
+   l'application n'a pas pu payer (verrou du moteur, échec), puis close « sans paiement » sur déclaration
+   de l'opérateur, était lue par le client comme « Refus confirmé » / « Réclamation refusée », dans les
+   cinq langues — alors que la règle même du système dit qu'une réclamation approuvée ne peut plus être
+   refusée. Préexistant (lot 2) ; le rond 11 y envoyait davantage de réclamations. Un vérificateur l'a
+   classé P2, l'autre P1 : retenu au plus sévère.
+2. **Une réclamation garée sans sortie.** La commande est remboursée par une ligne du moteur hors
+   réclamation, encore « en attente » chez nous sans identifiant Stripe, dont le remboursement Stripe a
+   ABOUTI. Réconciliation → garée « non attribuée » ; attribution → ligne refusée
+   (`pending_unconfirmed`) ; adoption → remboursement moteur refusé, avec renvoi à « Attribuer ». Aucune
+   sortie.
+
+**Les P2.** La copie de ligne morte offrait l'annulation manuelle de la ligne comme remède, alors que la
+clé de reprise demeure. Le retour anticipé de la carte FV qui garde visible la liste des lignes non
+finalisées n'était épinglé par rien (déposé P1). Les toasts du verrou renvoyaient au « détail de la
+réclamation », qu'aucune carte n'affichait. La ligne d'argent « liée » renvoyait à une ligne suivante qui
+ne disait pas l'état de la ligne liée. Et la branche Stripe 0 / 0 garait sans sortie une réclamation
+quand la ligne contradictoire (aboutie ici, échouée ensuite chez Stripe — transition que le webhook laisse
+de côté) appartenait à une AUTRE réclamation.
+
+**Les P3.** Des lignes restent listées indéfiniment, et la ligne nommée par la copie de verrou n'est dans
+aucune liste (documenté ici). Lecture de réclamation de l'éligibilité non sensible au `select` (déposé
+P2). Épingle de promesses en regex françaises appliquée aux locales en/es/it/ar. Fixture du recensement
+encore incapable de discriminer trois formules. Précédence épinglée avec des lignes isolées seulement.
+`groupBy` en échec affiché « no rows » par le précheck de l'opérateur (deux constats). Note de clôture
+conservée dans un audit au mieux-effort seulement. Table des sorties accordant « attribuer / adopter »
+sur le seul statut.
+
+**Réfutés, consignés.** Ligne liée ni en attente ni échouée étiquetée « réussie » (P2) ; « la prochaine
+reprise la marquera » faux quand une ligne morte plus ancienne existe (P3) ; ligne PROPRE échouée chez
+Stripe sans énoncé de verrou (P2).
+
+### Corrigé (rond 12) — en audit
+
+- **Statut client `closed_by_support`.** `refused_final` n'a que deux écrivains, et seul le refus
+  d'`arbitrateClaim` enregistre `arbitrationDecision = 'refused_final'`. Toute autre `refused_final` —
+  la clôture sur déclaration — se lit « Dossier clôturé par notre équipe — contactez le support pour
+  toute question », dans les cinq langues (statut et page d'aide), sans motif de refus affiché.
+  L'éligibilité sélectionne `arbitrationDecision`.
+- **Attribution d'une ligne en attente = preuve.** Le refus `pending_unconfirmed` est retiré de la règle
+  partagée ; `attributeClaimRefund` lie la ligne choisie par l'opérateur puis lit Stripe pour elle
+  (`reconcileBoundClaim` → `applyRowTruth`) : abouti → remboursée ; échoué → clôturable ; pas encore →
+  la date ; illisible → relancer ; contradiction → vérification financière. Les toasts d'attribution
+  disent chaque issue.
+- **Stripe 0 / 0 et lignes d'AUTRES réclamations.** Une ligne marquée aboutie ici, estampillée pour une
+  autre réclamation ou liée à une autre, n'a pas pu payer celle-ci : elle ne bloque plus sa preuve
+  d'absence, avec une copie dédiée.
+- **Copie de ligne morte** : plus de remède affirmé (« aucune procédure documentée ne lève ce refus »).
+- **Carte FV** : prédicat de visibilité pur (`financialVerificationCardVisible`) épinglé ; « Détail
+  enregistré » et « Statut de notre ligne liée » affichés ; guidance sur toute ligne non soldée ; la
+  liste des lignes non finalisées dit qu'une ligne y reste tant qu'elle est « en attente ».
+- **Clôture par déclaration** : la route renvoie `noteRecorded` ; les deux consoles avertissent si la
+  note n'a pas pu être conservée. **Précheck de l'opérateur** : `groupBy` en échec → « NOT MEASURED » et
+  une anomalie.
+- **Instrument** : lecture de réclamation sensible au `select` (dont le cas `resume_mismatch`) ;
+  précédence en lignes MÊLÉES ; recensement dont chaque clause change un nombre ; épingle de promesses
+  par langue, avec un contrôle négatif par langue ; toasts d'attribution épinglés dans leur propre
+  gestionnaire.
+
+**Vérification du rond 12, avant commit.** Contrôles négatifs différentiels : **18/18 PROUVÉS, en deux
+passes consignées telles quelles.** La première a donné 17/18 : le contrôle E13 (retirer une branche des
+toasts d'attribution) est ressorti **NON PROUVÉ** — mon propre test cherchait
+`outcome === 'financial_verification'`, chaîne que la condition de ton du même gestionnaire contient aussi
+(Classe 2). Le test exige désormais chaque issue comme BRANCHE de la chaîne des toasts ; E13 relancé
+seul : prouvé. Quatre ajustements de tests en route, consignés : un test de reprise attendait « toujours
+en attente » sans lecture Stripe ; une fixture du rond 10 lisait `refused_final` sans la décision
+d'arbitrage ; deux épingles de console visaient l'ancien import et l'ancienne condition de ton.
+Typecheck : **41 = base, ensemble d'erreurs IDENTIQUE à celui de `76d2086` (0 nouvelle, 0 disparue)**,
+toutes dans des fichiers de test antérieurs au T-49. `check:i18n` : OK. Suites touchées : 17 fichiers /
+468 verts. Suite complète sur l'arbre final : **404 fichiers / 4421 tests verts** (code de sortie lu
+directement). Empreintes : `git diff` des chemins de code `34f27013eb2f1d70` ; le fichier NON SUIVI
+`tests/claims-t49-round12.test.ts` haché à part, `36814f4fa3566efb`. Aucun changement de schéma ; aucun
+flag, gate, appel Stripe ou remboursement.
+
+## 18. AUDIT ROND 12 (2026-09-11) — sur `40da45e`
+
+**Côté déploiement, mesuré d'abord** (règle de certification du fondateur) : run Deploy → Staging
+34558904898, jobs `test` ✓ et `deploy` ✓ ; `version.json` = `40da45ef1ad26ddeca49c208c756a37158ec93f5` ;
+Claims 403 (gated) ; Refunds 403 (gated) ; recensement lecture seule (run 34560513065) : 7 réclamations /
+0 active / 3 non terminales (`refused`) / répartition par statut mesurée / 0 en remboursement / 0 FV /
+0 marquée / 0 forme T-49 / gate Claims FERMÉ (flag off) / remboursements fermés.
+
+Run d'audit complet (90 agents, critique de complétude exécutée). 38 constats : **35 confirmés /
+3 réfutés. P0 = 0, P1 = 7, P2 = 11, P3 = 17. → `40da45e` N'EST PAS certifiable.** P1 sur les quatre
+derniers rondes : 9 → 4 → 2 → 7.
+
+**Les P1 — quatre viennent de mon propre correctif P2 du rond 12 (`otherClaimRows`).**
+1. **Stripe 0 / 0 + une ligne « aboutie » ici pour une AUTRE réclamation** (par exemple aboutie puis
+   échouée chez Stripe) → `no_refund_proven` : toast, guidance et badge disent qu'aucun remboursement n'a
+   jamais déplacé d'argent. Faux : l'argent a bougé puis est revenu ; sur un paiement routé, le transfert
+   du restaurant a été renversé et Stripe ne le restaure pas.
+2. **Lecture d'identité en échec écrite comme « n'appartient PAS ».** `refundRowBelongsToClaim` renvoie
+   `false` quand sa lecture lève ; `triggerClaimRefund` écrit alors « De l'argent A bougé, mais pas au
+   titre de cette réclamation » — faux quand la ligne peut être la sienne.
+3. **Vérification financière sans sortie** quand l'argent parti sur la commande (Stripe > 0) appartient
+   entièrement au remboursement moteur d'une AUTRE réclamation : la réconciliation regare, l'attribution
+   refuse la ligne estampillée pour l'autre, l'adoption refuse un remboursement moteur.
+4. **« Ré-approuvable » alors que le moteur refusera.** La preuve d'absence `otherClaimRows` annonce
+   qu'une ré-approbation peut payer ; la clé suivante du moteur `refund:<commande>:<amount_refunded>` est
+   encore tenue par la ligne « aboutie » → P2002 → jamais.
+5. **(instrument)** Le chemin d'attribution par identifiant Stripe enregistré (lecture directe) n'est pas
+   épinglé : l'ancien retour anticipé reste vert.
+6. **(instrument, 2 sur 3)** La garde `id: { not: claim.id }` de la requête « liée ailleurs » n'est
+   jamais exercée.
+7. **(2 sur 3)** La même branche traite un remboursement échoué après avoir abouti comme payable :
+   l'approbation est offerte, mais le moteur refuse (collision de clé) ou, là où il pourrait créer, un
+   nouveau `reverse_transfer` débiterait le restaurant une seconde fois.
+
+**Les P2.** Toast d'attribution ignorant `result.reason` (quatre constats : `already_parked_or_moved` lu
+comme une contradiction Stripe) ; `noteRecorded` toujours vrai (`recordAdminAudit` ne lève jamais) ; refus
+final de Grubano sur une réclamation que le restaurant a ACCEPTÉE, laissée sans réponse ou que le système
+a ouverte, lu « a confirmé le refus » ; aucun e-mail au client quand l'équipe clôt le dossier ou quand la
+réconciliation le solde ; attribution d'une ligne en attente qui lie avant la preuve ; lignes FV sans leur
+détail enregistré ; signal anti-abus comptant une clôture support comme un refus ; rapport de résidu du
+précheck Mode A qui ne compare que des identifiants.
+
+**Les P3.** Guidance `stripe_pending` promettant un statut terminal ; parité de re-dépôt entre page d'aide
+et suivi ; motif du restaurant affiché sous le refus de Grubano ; « relèvent d'AUTRES réclamations » sur
+une liaison que le moteur a désavouée ; table des sorties accordant « attribuer / adopter » sur le seul
+statut ; écrivains de `refused_final` non conduits jusqu'au statut client ; anomalie `groupBy` du précheck
+non épinglée ; fixture du recensement (échéance du silence non discriminée) ; motifs de promesses
+es / it / ar / en trop étroits ; épingles d'interface sur des libellés et non sur des conditions de rendu ;
+audit d'attribution écrit avant la lecture Stripe (deux constats) ; `GET /api/admin/claims` autorisé par
+les rôles du JWT ; audit d'arbitrage `refunded: true` sur toute approbation ; clé de toast inatteignable
+« remboursement déclenché » ; avertissement check-flags renvoyant à une section non rendue une fois le
+bail fermé.
+
+**Réfutés, consignés.** « relèvent d'AUTRES réclamations » sur liaison désavouée (P2) ; copie de ligne
+morte « aucune procédure documentée » (P3) ; promesse de contestation dans un e-mail envoyé pendant une
+fenêtre Mode A (P2).
+
+**Leçon.** Un correctif qui ajoute une branche de vérité d'argent doit être modélisé contre l'ordre complet
+des refus du moteur (`executeRefund` : commande impayée → verrou de ligne échouée → REPRISE D'ABORD →
+remboursable ≤ 0 → montant > remboursable → clé cumulée P2002) AVANT d'être codé.
+
+### Rond 13 — la conception d'abord (en cours)
+
+**Décision du fondateur** : aucune implémentation de la refonte « vérité d'argent » (piste A) avant une
+synthèse revue et ancrée dans le code, qui donne pour chaque état : VÉRITÉ STRIPE, VÉRITÉ DE NOS LIGNES,
+VÉRITÉ DE LA RÉCLAMATION, LE MOTEUR ACCEPTERAIT UN NOUVEAU REMBOURSEMENT (OUI / NON), LE MOTEUR
+REPRENDRAIT (OUI / NON), SORTIE SÛRE, NOUVEL ARGENT PERMIS (OUI / NON), COPIE CLIENT, COPIE ADMIN, ACTION DE
+RÉCONCILIATION — et, faute de sortie sûre, FERMÉ PAR DÉFAUT + VISIBLE. Piste B : provenance du statut client
+et sémantique des e-mails de clôture.
+
+- **Passe 1** (workflow `wf_8978ed03-964`, 21 agents : 5 concepteurs, 4 juges, 2 synthétiseurs,
+  5 réfutateurs, 2 réviseurs, 2 vérificateurs, 1 unificateur) : **pas prête** (`ready_to_implement =
+  false`). Vérificateur A : un P1 restant — une réclamation `refunded` dont la ligne liée est encore EN
+  ATTENTE quand Stripe échoue ou annule ensuite le remboursement : le webhook marque la ligne échouée,
+  `reconcileClaimForRefund` répond `already_final`, la reprise ne balaie pas les réclamations terminales →
+  « Remboursée » à jamais — et cinq réponses moteur inexactes. Vérificateur B : deux P1 — « Aucun
+  remboursement n'a été versé » sur des préfixes `engine_failed` qui couvrent aussi « Paiement déjà
+  intégralement remboursé » ; `resume_mismatch` hérité sur la ligne PROPRE de la réclamation, clôturable
+  seulement par assertion. L'unificateur a trouvé une contradiction entre les pistes.
+- **Passe 2** : chaque piste réémise depuis la passe 1 (écrite telle quelle sur disque ; une reprise du
+  workflow rejouait la passe 1 en direct et a été arrêtée), avec les décisions ouvertes tranchées — (D2)
+  les mots du fondateur « If no safe exit exists: FAIL CLOSED + FAIL VISIBLE » (registre : surface,
+  public, alerte, raison pour laquelle aucun argent ne bouge) ; les autres par des défauts fermés retenus
+  par l'implémenteur, à valider par le fondateur : garde moteur `exclusiveReason` opt-in (tout appelant
+  autre que la réclamation strictement inchangé), aucun e-mail client sur renversement, aucune phrase
+  « aucun remboursement versé », pas de pouvoir « annuler l'approbation », aucun appel Stripe depuis un
+  script (recensement DB seulement), ni arriéré ni balayage automatique des avis de clôture, e-mails de
+  réclamation suspendus tant que `CLAIMS_ENABLED` est fermé, aucun changement CI / cron, traductions en
+  brouillon, aucun schéma. Puis réfutateurs neufs (par piste et entre pistes), réviseurs, vérificateurs
+  indépendants, unificateur.
+- Les correctifs indépendants déjà présents dans l'arbre (`recordAdminAudit` → booléen et `noteRecorded`
+  réel ; résidu du précheck par statut ; `claimTableReport` ; `GET /api/admin/claims` via `resolveAdmin` ;
+  fixture du recensement ; motifs de promesses par langue avec anticipation Unicode ; avertissement
+  check-flags) restent non commités et **ne complètent pas le rond 13**.
+
+### Rond 13 — spécification d'implémentation GELÉE (2026-09-12)
+
+Sur ordre du fondateur (mode CONVERGENCE), la passe de conception en cours a été terminée sans nouveau panel. Elle est gelée sous le nom **ROUND 13 IMPLEMENTATION SPEC v1** (`docs/ops/CLAIMS-T49-ROUND13-SPEC-v1.md`) : 315 règles réparties en sections A–J :
+- A — table d'états ;
+- B — identité Refund ↔ Claim ;
+- C — CAS et concurrence ;
+- D — sorties exactes ;
+- E — états fermés par défaut ;
+- F — contrat de copie ;
+- G — réconciliation ;
+- H — e-mails de clôture ;
+- I — alertes et registre ;
+- J — matrice de tests.
+
+**Revue d'architecture indépendante.**
+- Architecture invalidée : **NON**. Changement de schéma : **NON**. Changement du moteur de remboursement : **NON**.
+- La garde `exclusiveReason` dans `lib/refund.ts` est RETIRÉE. La course de la tentative bloquée est traitée côté Claims :
+  - jeton de tentative, avec un CAS sur chaque écriture faite après le moteur ;
+  - instant de quiescence avant toute preuve payable ;
+  - revalidation Stripe fraîche juste avant l'appel d'argent.
+- Un Refund ne solde qu'une seule réclamation : l'attribution et le miroir d'adoption passent par une transaction Prisma Serializable.
+
+**Registre des constats.** Chaque P0/P1 de la passe 2 est rattaché à des règles et à des tests existants, et ce rattachement a été vérifié : 5 P0, 23 P1, plus 3 P1 nouveaux trouvés par les vérificateurs de gel. **P0 non comptés = 0 ; P1 non comptés = 0.**
+
+Le rapport du workflow affichait 3 P1 « sans entrée de registre ». Mon script ne convertissait pas les réponses du correctif en entrées. Le recalcul a été fait sur les mêmes données, avec le même code.
+
+**Amendements de gel.**
+- **AMF-1** — re-vérification bornée, en lecture seule, des remboursements soldés. Elle ferme l'état « non visible » d'un échec Stripe dont l'événement a été perdu.
+- **AMF-2** — l'éligibilité d'un avis de clôture repose sur l'enregistrement `claim_closure_record` écrit par cette version, jamais sur le journal d'audit.
+
+**Résiduel déclaré.** E-08 : si l'écriture en base échoue, une fenêtre reste ouverte jusqu'à la relivraison Stripe.
+
+**Errata.** 32 errata P2/P3 sont à résoudre pendant l'implémentation.
+
+**Base mesurée avant implémentation.**
+- Suite complète : 404 fichiers, 4424 tests verts.
+- Typecheck : ramené à 41 erreurs, ensemble IDENTIQUE. Les motifs de promesse `u` du rond 13 avaient introduit 11 erreurs TS1501, désormais corrigées.
+
+### Rond 13 — implémentation de la spécification gelée (2026-09-12 → 13)
+
+La spécification gelée (`docs/ops/CLAIMS-T49-ROUND13-SPEC-v1.md`) a été implémentée en huit tranches.
+
+**Méthode par tranche.** Un agent implémente les règles de la tranche et leurs tests. Deux relecteurs indépendants passent ensuite : l'un sur la fidélité à la spécification, l'autre sur l'argent, la véracité et les régressions. Suivent au plus deux tours de correction, chacun vérifié par un vérificateur neuf. Avant chaque commit local, l'orchestrateur relance lui-même la suite complète, la comparaison du typecheck et les fichiers interdits.
+
+Tout écart à la spécification est consigné en « IMPLEMENTATION NOTE (Wn) » sous la règle concernée.
+
+| Tranche | Commit | Contenu |
+|---|---|---|
+| W1 | `31b573c` | Règles pures : miroir du moteur (ordre de refus d'`executeRefund`), retenues et verdict, instant de quiescence, table des sorties, portail de réconciliation, statut client, verrou de publication. |
+| W2 | `7588419` | Chargeur d'argent unique et côté approbation : jeton de tentative T1, revalidation fraîche T2 avant `executeRefund`, identité à trois valeurs T3, CAS sur le jeton pour toute écriture après le moteur T4. |
+| W3 | `d89cc5b` | Aiguillage de réconciliation : l'échelle du rond 12 est supprimée, rédacteur N8 par CAS, parité avec le vrai `executeRefund` sur 95 états. |
+| W4 | `d555f6f` | Identité et concurrence : preuve Stripe avant toute écriture, liaison dans une transaction Serializable, miroir d'adoption dans une transaction Serializable. |
+| W5 | `1829aeb` | Rail de renversement, marquage de la réclamation par le webhook après les écritures d'argent inchangées, reprise avec re-vérification AMF-1, recensement. |
+| W6 | `ad26dac` | Enregistrement de clôture et e-mails de clôture : éligibilité par l'enregistrement de cette version seulement, renvoi par réclamation, saut claims_disabled. |
+| W7 | `4d3e442` | Consoles et parcours client : section « Avis client non envoyés », bouton AMF-1, contrôles alignés sur le serveur. |
+| W8 | `32a7651` | Résiduels (contrat §24 R1–R5, §25), J-M28 par le vrai `executeRefund` sur les 95 états × 13 pré-images avec lecture de tous les textes rendus, H17 (clause « pendant la bêta » retirée de l'e-mail d'annulation payée, 5 locales), précheck opérateur rendu vérifiable (Étape 0 condition de version, Étape 2 sens de `truncated`, Étape 3 répétition réelle), carte de couverture des 315 règles (`docs/ops/CLAIMS-R13-RULE-COVERAGE.md`). |
+
+**Invariants tenus.**
+- Moteur fermé : `lib/refund.ts` est identique à `40da45e`, et les écritures d'argent du webhook gardent leur ordre.
+- Aucun changement de schéma.
+- Une tentative tardive ne réécrit jamais une réclamation liée ou réconciliée depuis : CAS sur le jeton.
+- Une preuve payable est revalidée juste avant l'appel d'argent.
+- Aucune sortie refusée par le moteur n'est proposée : J-M28 le vérifie par le vrai moteur sur chaque état.
+
+**Couverture.** `docs/ops/CLAIMS-R13-RULE-COVERAGE.md` donne, pour chaque règle des sections A–J (315), son site d'implémentation du rond 13 et ses fichiers de test, ou l'endroit où son résiduel est déclaré. Deux lignes n'ont pas de test propre : H18 (couverte par les tests J de chacun de ses points) et J-C19 (garde build / i18n). Le balayage `tests/claims-r13-residuals.test.ts` vérifie chaque cellule.
+
+**Un Refund ne solde qu'une réclamation — répétition réelle.** Répétition sur MariaDB 12.3.2 locale et jetable, sur `d555f6f`, isolation par défaut REPEATABLE-READ, deux connexions :
+- 20 itérations sur 20 : exactement une réclamation soldée, l'autre inchangée, et le perdant reçoit toujours un 409 propre ;
+- contrôle négatif sans niveau d'isolation : 20 itérations sur 20 lient le Refund aux deux réclamations.
+
+Elle est refaite sur la SHA candidate certifiée avant toute fenêtre Claims (précheck Étape 3), jamais contre staging ni la production.
+
+**Mesures au dernier commit d'implémentation.**
+- Suite complète : `452` fichiers / `5890` tests verts (11 ignorés, 17 à faire), sortie 0.
+- Typecheck : 39 erreurs, 0 nouvelle. Deux erreurs TS2353 préexistantes de `tests/claim-emails-routes.test.ts` ont disparu avec l'élargissement du type d'un mock.
+- `check:i18n` : OK.
+
+**Résiduels déclarés (non masqués).**
+- **R1–R5** (contrat §24) : dont **C11**, double remboursement d'une même réclamation si une tentative reste suspendue au-delà de `ATTEMPT_QUIESCENCE_MS`. La garde moteur (`exclusiveReason`) reste une décision fondateur d'un rond ultérieur.
+- **E-08** : fenêtre bornée par la relivraison Stripe si l'écriture en base échoue.
+- **AMF-1** : un échec Stripe signalé plus de 35 jours après le règlement, dont l'événement a été perdu ; au-delà des 100 plus anciennes réclamations d'un passage tronqué, la vérification se fait dans le Dashboard Stripe (pas de curseur).
+- **ER-M01 / E-04** : la première approbation sur une commande portant un remboursement que rien n'explique reste en vérification financière. Pas de clôture par déclaration : c'est un état FERMÉ PAR DÉFAUT et VISIBLE.
+- **E-10** : en Mode A, une réclamation approuvée reste impayée tant que les remboursements sont fermés.
+- **J-M23** : deux attributions de lignes différentes peuvent s'interbloquer ; le perdant n'écrit rien.
+- **§25** : lectures du recensement non paginées (volume bêta), une réclamation sautée pour un chargement par le curseur de la liste H10.
+
+**Certification.** La SHA candidate portant ce paragraphe fait l'objet de la suite de certification :
+- contrôles différentiels de rupture et restauration sur les invariants ;
+- nouvelle répétition réelle ;
+- build à froid ;
+- déploiement staging à SHA exacte, portails Claims et Refunds à 403 ;
+- recensement ;
+- un audit adversarial complet de cette SHA.
+
+Les résultats sont consignés dans le rapport Notion et la mémoire, pas dans un commit ultérieur : la SHA vérifiée est la SHA déployée et auditée.
+
+### Rond 13 — audit de certification de `c32d8d3` et correctifs (2026-09-13)
+
+**Audit complet de la SHA déployée `c32d8d3`.** 97 agents, 7 dimensions, critique de complétude, 3 réfutateurs par P0/P1 et 2 par P2/P3. Résultat : **P0 0, P1 5, P2 10, P3 22**, et 5 constats réfutés. Cette SHA n'est **pas certifiée** et Mode A n'est **pas sûr** sur elle.
+
+Avant l'audit, la SHA avait passé toute la suite de certification : 19 contrôles sur 19, répétition MariaDB (20/20, contrôle négatif 20/20), build à froid, suite complète, déploiement à SHA exacte, portails 403, recensement propre. Aucun de ces contrôles ne couvrait les cinq défauts ci-dessous.
+
+**Les cinq P1, corrigés dans le commit qui suit ce paragraphe.**
+- **Un renversement effacé** (G13, A-S24-1). Un renversement marque la réclamation seulement et laisse notre ligne « aboutie », par conception. Une livraison « succeeded » en retard, en double ou dans le désordre soldait donc une réclamation marquée STRIPE_REVERTED, et le client relisait « Remboursée ». Un passage de reprise dont la lecture Stripe précédait le renversement faisait de même (P2 jumeau). `reconcileClaimForRefund` refuse désormais toute réclamation portant un marqueur de renversement : raison `stripe_reverted`, aucune écriture, journal MONEY REVIEW.
+- **Le titre de l'alerte I-01.** « Réclamation non payée par le rail » partait aussi après un appel au moteur qui a pu payer. Ce titre n'est gardé que là où aucun paiement du rail pour cette réclamation n'a pu avoir lieu. Après l'appel au moteur, ou quand une ligne à l'identité de la réclamation existe déjà, le titre devient « Tentative de remboursement sans issue établie — preuve requise avant toute décision ».
+- **Trois instruments sans épingle.**
+  - le 503 du webhook sur la relivraison d'une ligne échouée (J-C43 (b)) ;
+  - la moitié « jeton » de la dernière lecture avant `executeRefund` (C3 (f)) ;
+  - le montage inconditionnel de la carte « Vérification financière requise » (D0).
+
+  Chacun a désormais son test et son contrôle négatif.
+
+Chaque correctif porte une IMPLEMENTATION NOTE dans la spécification gelée et un contrôle de rupture/restauration (R20–R24). Aucun changement de schéma ; `lib/refund.ts` et la route webhook sont inchangés.
+
+**P2 restants : 9 constats, regroupés en 8 points (le premier en couvre deux), déclarés comme dette et non bloquants pour la certification.**
+- La sortie « Clôturer ce dossier… » est affichée sur le resume_mismatch de la ligne propre, par les deux consoles et par la guidance `refund_error_recorded`, alors que le serveur refuse la déclaration.
+- Un crash entre l'écriture de liaison et l'application dans `applyRowTruth` laisse deux formes de réclamation absentes du registre.
+- Le toast `refund_failed` annonce un détail (le moteur refuse-t-il désormais la commande ?) qu'aucun de ses rédacteurs n'enregistre.
+- Les toasts de la carte FV disent « Attribution refusée. » ou « Échec … » quand aucune réponse n'a été lue.
+- Le « Montant demandé » de la page d'aide est calculé sur les prix catalogue, pas sur la base de prix du serveur.
+- Le contrôle photo n'a pas de chemin serveur.
+- L'e-mail d'annulation payée dit qu'une réclamation existante « porte déjà la question du remboursement » même quand elle ne couvre qu'une partie de la commande.
+- Le seuil « reverted = 0 » de l'Étape 2 du précheck est atteint par toute relance, que les réclamations marquées aient été traitées ou non.
+
+Les 22 P3 et le détail de chaque constat sont dans le rapport Notion.
+
+**Re-certification.** La nouvelle SHA candidate porte ce paragraphe et repasse toute la suite : contrôles R1–R24, répétition réelle, build à froid, suite complète, déploiement à SHA exacte, portails 403 et recensement. Suivent un re-audit ciblé des zones modifiées et une vérification globale finale.
+
+### Rond 13 — re-audit ciblé de `2466e03` et correctifs (2026-09-13)
+
+**Re-audit ciblé de la SHA déployée `2466e03`.** 47 agents : un vérificateur par P1 corrigé, deux auditeurs de voisinage, les réfutateurs et une critique de complétude. Résultat : **P0 0, P1 2, P2 3, P3 8**, et 5 constats réfutés.
+
+Trois correctifs tiennent par tous les chemins : le renversement effacé, le 503 de relivraison et la moitié « jeton » de (f). Deux ne tiennent pas encore.
+
+- **Le titre de l'alerte I-01.** L'écriture de `ownRowExists` pouvait échouer après la lecture d'une ligne à l'identité de la réclamation. L'alerte `attempt_crashed` (moteur non appelé) portait alors encore « Réclamation non payée par le rail » (P1). Même chose quand la lecture de ces lignes échouait, avec `safety_check_unreadable` (P2). Désormais, le titre figé exige en plus que la tentative ait LU qu'aucune ligne à l'identité de la réclamation n'existe.
+- **La carte « Vérification financière requise ».** L'épingle de forme du source ne voyait ni une garde du drapeau sur un ancêtre de la carte, ni une sortie anticipée écrite autrement (P1 et P2). Le montage inconditionnel est maintenant épinglé par le comportement : le composant serveur de la page est appelé drapeau fermé puis ouvert, et son arbre d'éléments est parcouru.
+
+Deux défauts voisins sont corrigés aussi. Les tests du titre prennent le titre attendu dans la déclaration de chaque cas, jamais dans les faits de l'alerte. La moitié « statut » de (f) a son épingle.
+
+Chaque correctif porte une IMPLEMENTATION NOTE et un contrôle de rupture/restauration (R25–R30). Aucun changement de schéma ; `lib/refund.ts` et la route webhook sont inchangés.
+
+**Dette déclarée à l'issue du re-audit ciblé.**
+- **P2.** Un marquage de renversement perdu contre un solde concurrent est acquitté 200. La réclamation reste lue « Remboursée » jusqu'au passage AMF-1 suivant.
+- **P3.**
+  - Un marqueur de renversement écrit après la lecture de la réclamation par le réconciliateur ne l'arrête pas.
+  - Une réclamation héritée en resume_mismatch sur sa propre ligne n'est jamais marquée.
+  - La clé de déduplication par cause peut masquer le second e-mail d'alerte d'une réclamation.
+  - Le corps de cet e-mail dit « Aucune action automatique n'a été prise » sous le titre neutre.
+  - Le compteur AMF-1 d'un marquage en échec n'a pas d'épingle.
+
+Le détail de chaque constat est dans le rapport Notion.
+
+### Rond 13 — re-audit ciblé 2 de `d9fb194` et correctifs (2026-09-13)
+
+**Re-audit ciblé de la SHA déployée `d9fb194`.** 29 agents : deux vérificateurs de correctifs, deux auditeurs de voisinage, les réfutateurs et une critique de complétude. Résultat : **P0 0, P1 2, P2 2, P3 5**, et 2 constats réfutés.
+
+**Les deux P1 sont un seul défaut.** La lecture des lignes de la commande par le chargeur ne comptait pas comme une lecture des lignes à l'identité de la réclamation. Une ligne de ce type vue seulement par le chargeur (l'insertion d'une tentative bloquée, ou un décalage de lecture) laissait encore partir « Réclamation non payée par le rail ». Cela arrivait sur une retenue, sur un retour à la pré-image dans la fenêtre de confirmation et sur une preuve de verrou ; la retenue écrivait en plus « aucun remboursement n'a été lancé ». Désormais, une ligne à l'identité de la réclamation vue par le chargeur invalide la tentative exactement comme l'étape (a) : issue `own_row_exists`, titre neutre, texte de la ligne propre.
+
+**La carte « Vérification financière requise » n'a plus de P1.** L'épingle de comportement rend maintenant l'arbre de la page. Un composant enveloppe qui ne rend rien, ou un ancêtre caché par l'attribut `hidden`, par `display:none` / `visibility:hidden` ou par la classe `hidden` (liste élargie au re-audit ciblé 3), la fait échouer. Ses contrôles négatifs sont construits à partir de l'arbre réel de la page, sauf celui de la sortie anticipée, un arbre nul synthétique.
+
+Trois textes sont aussi corrigés :
+- le commentaire d'en-tête de la page, qui décrivait encore l'ancien renvoi ;
+- la docstring du titre, qui prêtait une preuve Stripe à tous les appelants hors tentative ;
+- les notes qui décrivaient trop largement ce que vérifiaient les épingles.
+
+Contrôles de rupture/restauration : R31 (la lecture du chargeur) et R32 (la section cachée selon le drapeau). Aucun changement de schéma ; `lib/refund.ts` et la route webhook sont inchangés.
+
+**Dette déclarée à l'issue du re-audit ciblé 2.**
+- **P2.** La fiche d'un établissement affiche « Réclamations ouvertes » = 0 quand les réclamations sont fermées, y compris pour des réclamations dont l'argent est en cours.
+- Les P2 et P3 des audits précédents restent déclarés comme ci-dessus.
+
+### Rond 13 — re-audit ciblé 3 de `75f1601` et correctif de classe (2026-09-13)
+
+**Re-audit ciblé de la SHA déployée `75f1601`.** 24 agents : un vérificateur de correctif, deux auditeurs de voisinage, les réfutateurs et une critique de complétude. Résultat : **P0 0, P1 1, P2 1, P3 6**, et 1 constat réfuté.
+
+**Le P1 est le quatrième du même défaut.** Le chargeur lit les lignes de la commande, puis peut encore échouer : lecture de la redevance, du PaymentIntent, de la liste des remboursements (en échec ou au-delà de son plafond de pages), de la vérité Stripe d'une ligne, ou d'un lien. Il rend alors une variante sans lignes, et la ligne à l'identité de la réclamation qu'il avait lue était perdue. Le retour à la pré-image ou la retenue repartait sous « Réclamation non payée par le rail », ou écrivait « aucun remboursement n'a été lancé ». Le P2 est le même constat.
+
+**Correctif de classe, pas de chemin.** Chaque sortie hors moteur de la tentative relit les lignes à l'identité de la réclamation juste avant sa propre écriture : le retour à la pré-image, la retenue et la preuve de verrou (la mise en vérification financière manquait ; ajoutée au re-audit ciblé 4). Selon le résultat de cette lecture :
+- **une ligne trouvée** invalide la tentative comme l'étape (a) ;
+- **une lecture en échec** n'écrit aucun texte de retenue ni de preuve : la tentative revient à la pré-image, et c'est la relecture de ce retour qui décide du titre (neutre si elle échoue aussi, « non payée par le rail » si elle ne trouve aucune ligne ; correction du re-audit ciblé 4) ;
+- **une lecture vide** prouve l'absence, les lignes de remboursement n'étant jamais supprimées.
+
+Le seul résidu est l'insertion d'une ligne entre cette lecture et l'écriture ; il est déjà déclaré (C11 / A-S33).
+
+**Aussi corrigés (P3).**
+- L'épingle rendue de la carte FV rejette aussi `aria-hidden`, `inert`, l'opacité nulle, les tailles nulles et les éléments qui masquent leur contenu.
+- Le commentaire d'en-tête de la route FV ne décrit plus l'ancien renvoi.
+- Le branchement `no_charge` de la vérification du chargeur a son épingle.
+- Le test de la lecture décalée porte le nom de la vérification qui le rattrape.
+- La branche (e') `changed_during_read`, que la vérification du chargeur domine, est documentée comme inatteignable et gardée en garde-fou.
+- Les notes de la spec, le paragraphe du re-audit 2 et la docstring du test des routes ne prétendent plus que la vérification du chargeur couvrait « chaque branche », ni que l'épingle rendue attrapait tout masquage par attribut, style ou classe.
+
+Contrôles de rupture/restauration R33 (retour), R34 (retenue), R35 (preuve) et R36 (branchement `no_charge`). Aucun changement de schéma ; `lib/refund.ts` et la route webhook sont inchangés.
+
+**Dette déclarée à l'issue du re-audit ciblé 3.**
+- **P3.** Deux tests « drapeau fermé » de `tests/claims-t49-routes.test.ts` laissent la fonction du drapeau simulée ouverte. La vraie épingle de la porte fermée reste `tests/claims-registry-visibility.test.ts`.
+
+### Rond 13 — re-audit ciblé 4 de `68621aa` et correctifs (2026-09-13)
+
+**Re-audit ciblé de la SHA déployée `68621aa`.** 25 agents : un vérificateur de correctif, deux auditeurs de voisinage, les réfutateurs et une critique de complétude. Résultat : **P0 0, P1 2, P2 1, P3 4**, et 2 constats réfutés. Le vérificateur confirme le correctif de classe : aucun chemin ne reproduit le défaut.
+
+**Les deux P1 sont une seule lacune d'épingle.** Aucun test n'exerçait la branche « lecture en échec » de la retenue ni celle de la preuve de verrou. Un mutant qui laissait passer une lecture en échec jusqu'à l'écriture restait vert, et aurait réécrit « aucun remboursement n'a été lancé » sans lecture pour l'établir. Les contrôles R34 et R35 retiraient la lecture entière, jamais cette seule branche.
+
+**Le P2 : la mise en vérification financière n'avait pas sa propre lecture.** Son détail attribue les remboursements de la commande d'après les lignes lues par le chargeur. Prenons une ligne à l'identité de la réclamation, insérée après cette lecture, dont le remboursement Stripe porte déjà l'étiquette : elle était décrite comme « rattachée ni à l'identité de cette réclamation ». Désormais, cette sortie relit aussi ces lignes juste avant d'écrire :
+- **ligne trouvée** → issue `own_row_exists` ;
+- **lecture en échec** → retour à la pré-image ;
+- **lecture vide** → mise en vérification.
+
+Toutes les sorties hors moteur de la tentative relisent donc avant d'écrire.
+
+**Épingles et contrôles.**
+- Cinq sorties dont la lecture propre échoue : la retenue sans charge, la retenue sur plafond de liste, la retenue (c), la preuve de verrou et la mise en vérification. Chacune revient à la pré-image sans texte. Le titre est « non payée par le rail » si la relecture du retour ne trouve aucune ligne, et neutre si elle échoue aussi.
+- Une ligne insérée après le chargeur, avant la mise en vérification.
+- Contrôles R37 à R42 :
+  - la branche « lecture en échec » de la retenue et de la preuve, chacune sous deux formes (passage à l'écriture, ligne supprimée) ;
+  - la lecture propre de la mise en vérification, retirée ;
+  - sa branche « lecture en échec », qui passe à l'écriture.
+
+**Aussi corrigés (P3).**
+- La note C3 et le paragraphe précédent disaient qu'une lecture en échec garde le titre neutre. En réalité, c'est la relecture du retour qui décide du titre.
+- Le scan J-M09 vérifie aussi qu'aucune ligne de remboursement n'est jamais supprimée : ni par appel direct, ni par accès dynamique au modèle, ni en SQL brut. C'est sur cette garantie que repose une absence lue.
+- L'épingle rendue de la carte FV reconnaît désormais :
+  - l'opacité nulle et les tailles nulles sous toutes leurs écritures ;
+  - `clip-path` et `visibility: collapse` ;
+  - les décalages négatifs en `calc()` et les transformations qui effacent.
+
+  Le contrôle de hauteur nulle masque aussi le débordement.
+
+Aucun changement de schéma ; `lib/refund.ts` et la route webhook sont inchangés.
+
+**Dette déclarée à l'issue du re-audit ciblé 4.** Aucune nouvelle ; les P2 et P3 des audits précédents restent déclarés.

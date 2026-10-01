@@ -1,0 +1,9 @@
+{
+  "id": "ADMIN_STALE_CLAIM",
+  "from": "\"Grubano\" <contact@grubano.com>",
+  "to": "admin-alerts@example.invalid",
+  "subject": "[Grubano] Réclamation sans réponse du restaurant — délai dépassé",
+  "hasText": false,
+  "hasImages": false,
+  "hasTable": false
+}

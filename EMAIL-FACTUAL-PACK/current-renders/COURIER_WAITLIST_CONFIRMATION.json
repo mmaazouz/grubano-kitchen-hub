@@ -1,0 +1,9 @@
+{
+  "id": "COURIER_WAITLIST_CONFIRMATION",
+  "from": "\"Grubano\" <contact@grubano.com>",
+  "to": "sami.courier@example.invalid",
+  "subject": "Votre demande Grubano Livreur est bien enregistrée",
+  "hasText": false,
+  "hasImages": false,
+  "hasTable": false
+}

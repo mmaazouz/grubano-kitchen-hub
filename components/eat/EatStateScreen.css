@@ -1,0 +1,64 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+ * EatStateScreen — CONSUMER « États d'erreur » (offline / 404 / zone).
+ * VERBATIM reproduction of the FROZEN CD ref (Notion 38efd2c9-…-98ed, file
+ * eat/error-states.html). The CD `:root`/`[data-theme]` tokens already live in the
+ * gb-foundation (gb-tokens.css) — they are inherited via the `.gb` ancestor (the
+ * EatShell root carries `.gb`), so ONLY the component CSS lives here, scoped under
+ * `.gb-errstate`. The CD's foundation-colliding `.btn`/`.btn--primary`/`.btn--line`
+ * are renamed `.es-btn*` (the foundation already defines `.gb .btn`); the CD `.card`
+ * (unused here) is likewise reserved as `.es-card`. All other class names are kept
+ * verbatim. The 3 variants toggle via the root's `data-err="offline|404|zone"`.
+ * Dark rules mirror the foundation's ancestor selector `[data-theme="dark"] …`.
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+/* root carries data-err; centred full-height column (renders inside the shell .content) */
+.gb-errstate{min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:40px 26px}
+
+/* art bubble + icon */
+.gb-errstate .err__art{position:relative;width:128px;height:128px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin-bottom:26px}
+.gb-errstate .err__art.orange{background:#FFF1E7}
+.gb-errstate .err__art.blue{background:#E7F0FE}
+.gb-errstate .err__art.green{background:#EAF7EF}
+[data-theme="dark"] .gb-errstate .err__art.orange{background:rgba(255,124,57,.16)}
+[data-theme="dark"] .gb-errstate .err__art.blue{background:rgba(46,120,240,.18)}
+[data-theme="dark"] .gb-errstate .err__art.green{background:rgba(65,189,120,.16)}
+.gb-errstate .err__art .ms{font-size:64px}
+.gb-errstate .err__art.orange .ms{color:var(--gb-zest-600)}
+[data-theme="dark"] .gb-errstate .err__art.orange .ms{color:var(--gb-zest)}
+.gb-errstate .err__art.blue .ms{color:#2E78F0}
+[data-theme="dark"] .gb-errstate .err__art.blue .ms{color:#6FB6F5}
+.gb-errstate .err__art.green .ms{color:#1E8C4B}
+[data-theme="dark"] .gb-errstate .err__art.green .ms{color:#41BD78}
+.gb-errstate .err__art .badge{position:absolute;bottom:6px;right:6px;width:42px;height:42px;border-radius:50%;background:var(--gb-surface);border:3px solid var(--gb-bg);display:flex;align-items:center;justify-content:center}
+.gb-errstate .err__art .badge .ms{font-size:24px;color:var(--gb-zest-600)}
+[data-theme="dark"] .gb-errstate .err__art .badge .ms{color:var(--gb-zest)}
+
+/* 404 numeral */
+.gb-errstate .err__code{font-family:var(--gb-font-display);font-weight:900;font-size:64px;letter-spacing:-.04em;line-height:1;color:var(--gb-text);margin-bottom:8px}
+
+/* titles + body */
+.gb-errstate h1{margin:0;font-family:var(--gb-font-display);font-weight:800;font-size:clamp(22px,3.4vw,28px);letter-spacing:-.02em;color:var(--gb-text)}
+.gb-errstate p{margin:11px 0 26px;font-size:15px;line-height:1.6;color:var(--gb-muted);max-width:40ch}
+
+/* CTA stack */
+.gb-errstate .err__cta{display:flex;flex-direction:column;gap:10px;width:100%;max-width:320px}
+
+/* buttons (CD `.btn*` → `.es-btn*` to avoid the foundation's `.gb .btn`) */
+.gb-errstate .es-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-family:var(--gb-font-ui);font-weight:700;font-size:15px;cursor:pointer;border-radius:var(--gb-r-md);padding:14px;border:none;text-decoration:none}
+.gb-errstate .es-btn--primary{color:#fff;background:var(--gb-grad);box-shadow:var(--gb-shadow-btn)}
+.gb-errstate .es-btn--line{color:var(--gb-text);background:var(--gb-surface);border:1px solid var(--gb-border-strong)}
+.gb-errstate .es-btn .ms{font-size:19px}
+
+/* zone — address field + reassurance note */
+.gb-errstate .zone-field{display:flex;align-items:center;gap:10px;background:var(--gb-field-bg);border:1.5px solid var(--gb-focus-border);border-radius:var(--gb-r-md);padding:13px 15px;width:100%;max-width:340px;box-shadow:0 0 0 3px rgba(255,106,31,.14);margin-bottom:14px}
+[data-theme="dark"] .gb-errstate .zone-field{box-shadow:0 0 0 3px rgba(255,124,57,.18)}
+.gb-errstate .zone-field .ms{font-size:19px;color:var(--gb-zest-600)}
+[data-theme="dark"] .gb-errstate .zone-field .ms{color:var(--gb-zest)}
+.gb-errstate .zone-field input{flex:1;border:none;outline:none;background:none;font-size:14px;color:var(--gb-text)}
+.gb-errstate .zone-note{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--gb-muted);margin-bottom:22px}
+.gb-errstate .zone-note .ms{font-size:16px;color:var(--gb-basil-600)}
+
+/* offline — "no connection" pill */
+.gb-errstate .off-pill{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:700;color:var(--gb-zest-600);background:rgba(255,138,40,.14);border-radius:var(--gb-r-pill);padding:7px 14px;margin-bottom:20px}
+[data-theme="dark"] .gb-errstate .off-pill{color:var(--gb-zest)}
+.gb-errstate .off-pill i{width:8px;height:8px;border-radius:50%;background:currentColor}

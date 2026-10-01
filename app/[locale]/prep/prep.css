@@ -1,0 +1,166 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+ * /prep — operator CUISINE (KDS) content — VERBATIM CD v1
+ * (Notion 390fd2c9-8146-8177-a47b-c287e023c0a6 — LOT 5, écran 5).
+ * Content-only : the navy shell (op-side / op-top / op-bottomnav / op-content) and
+ * all --op-* tokens live in components/operator/operator-shell.css — NOT redefined
+ * here. The CD's data-state / data-scale CSS display-toggles are dropped — React
+ * renders the correct variant (loading / error / empty / loaded) and switches the
+ * kitchen filter + per-ticket ready/undo with React state (no CSS display-toggle).
+ *
+ * ⚠️ APERÇU HONNÊTE (phase 3). No backend / no state machine on this screen : the
+ * real-time kitchen feed (accepted-order tickets → per-item bump → routing) is a
+ * phase-3 build. The « bientôt » preview banner is KEPT in the empty AND loaded state.
+ * Tickets / timers are ILLUSTRATIVE demo strings (« exemple ») ; the « Prêt » bump and
+ * « Remettre en cours » undo mutate LOCAL React state only — NO fetch, NO wiring to
+ * the Orders state machine. No money on this screen (it's the kitchen).
+ *
+ * Self-sufficient: recopies the shared content components used here (op-card, op-dash__head,
+ * preview-banner, stat-strip, op-emptyline, op-error, op-onb*, op-center, op-sk, op-btn-primary)
+ * from the CD — like tables.css / finance.css — plus the kitchen-specific classes
+ * (kit-filters, tickets-grid, kt-card & co). Does NOT redefine :root / --op-* tokens /
+ * .op-side / .op-top / .op-bottomnav / .op-content. Responsive aligned on the shell's
+ * viewport pattern (the CD used container-queries → real @media here).
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+/* ⭐ RTL-safe figures (pure numeric — no strong-direction char): mono spans stay LTR */
+.gb-op .mono,
+.gb-op .stat-strip b,
+.gb-op .kt-timer,
+.gb-op .kt-item .qty,
+.gb-op .kit-filters .cnt{direction:ltr;unicode-bidi:isolate}
+
+/* ── page head (shared with dashboard) ── */
+.gb-op .op-dash__head{margin-bottom:14px}
+.gb-op .op-dash__title{margin:0;font-family:var(--op-font-display);font-weight:800;font-size:25px;letter-spacing:-.02em}
+.gb-op .op-dash__sub{margin:5px 0 0;font-size:12.5px;color:var(--op-muted)}
+.gb-op .op-agg-label{display:none}
+.gb-op[data-scale="multi"] .op-agg-label{display:inline}
+
+/* ── shared card shell ── */
+.gb-op .op-card{background:var(--op-surface);border:1px solid var(--op-border);border-radius:var(--op-r-lg);box-shadow:var(--op-shadow-card);min-width:0}
+
+/* ── honest « bientôt » preview banner ── */
+.gb-op .preview-banner{display:flex;align-items:flex-start;gap:12px;background:var(--op-info-bg);border:1px solid var(--op-info-bd);border-radius:var(--op-r-lg);padding:14px 16px;margin-bottom:18px}
+.gb-op .preview-banner .ms{font-size:21px;color:var(--op-info);flex-shrink:0;margin-top:1px}
+.gb-op .preview-banner .m b{display:block;font-size:13px;font-weight:800;color:var(--op-text);margin-bottom:2px}
+.gb-op .preview-banner .m p{margin:0;font-size:12px;line-height:1.5;color:var(--op-muted)}
+.gb-op .preview-banner .tag{flex-shrink:0;font-size:9.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--op-info);background:var(--op-surface);border:1px solid var(--op-info-bd);border-radius:6px;padding:4px 9px;white-space:nowrap;align-self:flex-start}
+
+/* ── onboarding (N=0) ── */
+.gb-op .op-center{display:flex;align-items:center;justify-content:center;min-height:600px}
+.gb-op .op-onb__card{max-width:520px;text-align:center;background:var(--op-surface);border:1px solid var(--op-border);border-radius:var(--op-r-xl);padding:44px 40px;box-shadow:var(--op-shadow-card)}
+.gb-op .op-onb__card img{height:52px;margin-bottom:20px}
+.gb-op .op-onb__card h1{margin:0;font-family:var(--op-font-display);font-weight:800;font-size:24px;letter-spacing:-.02em}
+.gb-op .op-onb__card p{margin:11px 0 24px;font-size:13.5px;line-height:1.6;color:var(--op-muted)}
+.gb-op .op-onb__cta{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#FF8A3D,#F2570E);color:#fff;border:none;border-radius:var(--op-r-md);padding:13px 22px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 10px 22px -10px rgba(242,87,14,.5);margin-bottom:28px;font-family:inherit}
+.gb-op .op-onb__cta .ms{font-size:19px}
+.gb-op .op-onb__steps{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;text-align:start}
+.gb-op .op-onb__steps .step{background:var(--op-surface-2);border:1px solid var(--op-border);border-radius:var(--op-r-md);padding:13px}
+.gb-op .op-onb__steps .n{display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--op-text);color:var(--op-surface);font-size:11px;font-weight:800;margin-bottom:8px}
+.gb-op .op-onb__steps b{display:block;font-size:12px;font-weight:700;margin-bottom:2px}
+.gb-op .op-onb__steps span{font-size:10.5px;color:var(--op-muted)}
+
+/* ── error ── */
+.gb-op .op-error__card{max-width:400px;text-align:center}
+.gb-op .op-error__card .ms{font-size:44px;color:var(--op-muted-2);margin-bottom:16px}
+.gb-op .op-error__card h2{margin:0;font-family:var(--op-font-display);font-weight:800;font-size:18px}
+.gb-op .op-error__card p{margin:9px 0 22px;font-size:13px;line-height:1.55;color:var(--op-muted)}
+.gb-op .op-btn-primary{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#FF8A3D,#F2570E);color:#fff;border:none;border-radius:var(--op-r-md);padding:12px 20px;font-size:13.5px;font-weight:700;cursor:pointer;font-family:inherit}
+.gb-op .op-btn-primary .ms{font-size:18px}
+
+/* ── skeleton ── */
+@keyframes op-sk{100%{background-position:-200% 0}}
+.gb-op .op-sk{background:linear-gradient(90deg,var(--op-border) 25%,var(--op-surface-2) 37%,var(--op-border) 63%);background-size:200% 100%;background-position:200% 0;animation:op-sk 1.4s ease-in-out infinite;border-radius:6px;display:block}
+
+/* ── empty line ── */
+.gb-op .op-emptyline{display:flex;flex-direction:column;align-items:center;text-align:center;padding:60px 20px}
+.gb-op .op-emptyline .ms{font-size:34px;color:var(--op-muted-2);margin-bottom:10px}
+.gb-op .op-emptyline b{font-size:15px;font-weight:700}
+.gb-op .op-emptyline span{font-size:12.5px;color:var(--op-muted);margin-top:5px;max-width:360px}
+
+/* ── stat strip (mono figures) ── */
+.gb-op .stat-strip{display:flex;padding:10px 4px;flex-wrap:wrap}
+.gb-op .stat-strip .stat{flex:1;min-width:170px;padding:16px 22px;display:flex;flex-direction:column;gap:6px;border-inline-start:1px solid var(--op-border)}
+.gb-op .stat-strip .stat:first-child{border-inline-start:none}
+.gb-op .stat-strip .stat .lbl{font-size:12px;font-weight:700;color:var(--op-muted)}
+.gb-op .stat-strip .stat b{font-family:var(--op-font-mono);font-weight:800;font-size:26px}
+.gb-op .stat-strip .stat b.alert{color:var(--op-danger)}
+
+/* ── kitchen filters ── */
+.gb-op .kit-filters{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0 18px}
+.gb-op .kit-filters button{border:1px solid var(--op-border-strong);background:var(--op-surface);border-radius:999px;padding:9px 18px;font-size:13.5px;font-weight:700;color:var(--op-text);cursor:pointer;display:inline-flex;align-items:center;gap:7px;font-family:inherit}
+.gb-op .kit-filters button.is-active{background:var(--op-text);color:var(--op-surface);border-color:transparent}
+[data-theme="dark"] .gb-op .kit-filters button.is-active{background:var(--op-zest);color:#1a0d05}
+.gb-op .kit-filters .cnt{font-family:var(--op-font-mono);font-size:11.5px;font-weight:700;opacity:.75}
+
+/* ── ticket board ── */
+.gb-op .tickets-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+.gb-op .kt-card{display:flex;flex-direction:column;background:var(--op-surface);border:2px solid var(--op-border-strong);border-radius:var(--op-r-lg);overflow:hidden;box-shadow:var(--op-shadow-card)}
+.gb-op .kt-card.fresh{border-color:var(--op-success)}
+.gb-op .kt-card.warn{border-color:var(--op-warning)}
+.gb-op .kt-card.late{border-color:var(--op-danger);animation:kt-pulse 1.8s ease-in-out infinite}
+@keyframes kt-pulse{0%,100%{box-shadow:0 0 0 0 rgba(213,55,42,.35)}50%{box-shadow:0 0 0 5px rgba(213,55,42,0)}}
+.gb-op .kt-card.ready{border-color:var(--op-success);opacity:.92}
+.gb-op .kt-top{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:2px solid var(--op-border)}
+.gb-op .kt-num{font-family:var(--op-font-display);font-weight:800;font-size:21px}
+.gb-op .kt-channel{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:800;border-radius:999px;padding:4px 10px 4px 8px;white-space:nowrap}
+.gb-op .kt-channel .ms{font-size:15px}
+.gb-op .kt-channel.delivery{background:var(--op-info-bg);color:var(--op-info)}
+.gb-op .kt-channel.pickup{background:var(--op-zest-bg);color:var(--op-zest-600)}
+[data-theme="dark"] .gb-op .kt-channel.pickup{color:var(--op-zest)}
+.gb-op .kt-channel.dinein{background:var(--op-success-bg);color:var(--op-success)}
+.gb-op .kt-timer{margin-inline-start:auto;display:flex;align-items:center;gap:6px;font-family:var(--op-font-mono);font-weight:800;font-size:19px;padding:4px 10px;border-radius:var(--op-r-md)}
+.gb-op .kt-timer .ms{font-size:18px}
+.gb-op .kt-card.fresh .kt-timer{color:var(--op-success);background:var(--op-success-bg)}
+.gb-op .kt-card.warn .kt-timer{color:var(--op-warning);background:var(--op-warning-bg)}
+.gb-op .kt-card.late .kt-timer{color:var(--op-danger);background:var(--op-danger-bg)}
+.gb-op .kt-card.ready .kt-timer{color:var(--op-success);background:var(--op-success-bg)}
+.gb-op .kt-items{padding:14px 16px;display:flex;flex-direction:column;gap:11px;flex:1}
+.gb-op .kt-item{display:flex;gap:10px}
+.gb-op .kt-item .qty{font-family:var(--op-font-mono);font-weight:800;font-size:16px;color:var(--op-text);flex-shrink:0;width:26px}
+.gb-op .kt-item .m{flex:1;min-width:0}
+.gb-op .kt-item .m b{font-size:15px;font-weight:700;display:block;line-height:1.35}
+.gb-op .kt-item .note{display:inline-flex;align-items:center;gap:4px;margin-top:4px;font-size:12px;font-weight:800;color:var(--op-danger);background:var(--op-danger-bg);border-radius:6px;padding:2px 8px}
+.gb-op .kt-item .note .ms{font-size:13px}
+.gb-op .kt-foot{padding:14px 16px;border-top:2px solid var(--op-border)}
+.gb-op .kt-bump{width:100%;display:flex;align-items:center;justify-content:center;gap:8px;background:linear-gradient(135deg,#FF8A3D,#F2570E);color:#fff;border:none;border-radius:var(--op-r-md);padding:14px;font-size:15px;font-weight:800;cursor:pointer;box-shadow:0 10px 22px -10px rgba(242,87,14,.5);font-family:inherit}
+.gb-op .kt-bump .ms{font-size:20px}
+.gb-op .kt-ready-tag{width:100%;display:flex;align-items:center;justify-content:center;gap:8px;background:var(--op-success-bg);color:var(--op-success);border:1.5px solid var(--op-success-bd);border-radius:var(--op-r-md);padding:12px;font-size:14px;font-weight:800}
+.gb-op .kt-ready-tag .ms{font-size:20px;font-variation-settings:'FILL' 1}
+.gb-op .kt-undo{width:100%;margin-top:8px;background:none;border:1px solid var(--op-border-strong);border-radius:var(--op-r-md);padding:9px;font-size:12px;font-weight:700;color:var(--op-muted);cursor:pointer;font-family:inherit}
+
+/* ── responsive (viewport media; CD demo used container queries) ── */
+@media (max-width:1360px){ .gb-op .tickets-grid{grid-template-columns:repeat(3,1fr)} }
+@media (max-width:1080px){ .gb-op .tickets-grid{grid-template-columns:repeat(2,1fr)} }
+@media (max-width:880px){
+  .gb-op .stat-strip{flex-direction:column;padding:4px}
+  .gb-op .stat-strip .stat{border-inline-start:none;border-top:1px solid var(--op-border);padding:13px 16px}
+  .gb-op .stat-strip .stat:first-child{border-top:none}
+  .gb-op .tickets-grid{grid-template-columns:1fr}
+  .gb-op .preview-banner{flex-direction:column}
+  .gb-op .preview-banner .tag{align-self:flex-start}
+  .gb-op .op-onb__steps{grid-template-columns:1fr}
+}
+
+/* ── Phase 3 — REAL KDS: 3 status columns (New / In prep / Ready), live badge, toast ── */
+.gb-op .kt-live{display:inline-flex;align-items:center;gap:6px;margin-inline-start:12px;vertical-align:middle;font-family:var(--op-font-ui);font-size:11px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:var(--op-success);background:var(--op-success-bg);border:1px solid var(--op-success-bd);border-radius:999px;padding:3px 10px 3px 8px}
+.gb-op .kt-live .dot{width:7px;height:7px;border-radius:50%;background:var(--op-success);box-shadow:0 0 0 3px rgba(30,158,87,.18);animation:kt-live-pulse 1.6s ease-in-out infinite}
+@keyframes kt-live-pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+.gb-op .kt-toast{margin-bottom:16px}
+.gb-op .op-callout{display:flex;align-items:flex-start;gap:10px;border-radius:var(--op-r-md);padding:12px 14px}
+.gb-op .op-callout.warn{background:var(--op-warning-bg);border:1px solid var(--op-warning-bd)}
+.gb-op .op-callout.warn .ms{font-size:18px;color:var(--op-warning);flex-shrink:0;margin-top:1px}
+.gb-op .op-callout p{margin:0;font-size:12.5px;line-height:1.5;color:var(--op-text)}
+
+.gb-op .kt-board{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;align-items:start}
+.gb-op .kt-col{display:flex;flex-direction:column;min-width:0}
+.gb-op .kt-col__head{display:flex;align-items:center;gap:8px;padding:2px 4px 12px}
+.gb-op .kt-col__head b{font-family:var(--op-font-display);font-weight:800;font-size:15px}
+.gb-op .kt-col__head .cnt{margin-inline-start:auto;font-family:var(--op-font-mono);font-weight:700;font-size:12.5px;color:var(--op-muted);background:var(--op-surface-2);border:1px solid var(--op-border);border-radius:999px;min-width:24px;text-align:center;padding:2px 8px}
+.gb-op .kt-col__cards{display:flex;flex-direction:column;gap:14px}
+.gb-op .kt-col__empty{border:1.5px dashed var(--op-border);border-radius:var(--op-r-lg);padding:26px 14px;text-align:center;font-size:12.5px;color:var(--op-muted-2)}
+.gb-op .kt-bump:disabled{opacity:.55;cursor:default;box-shadow:none}
+.gb-op .kt-item .note.add{color:var(--op-muted);background:var(--op-surface-2);border:1px solid var(--op-border)}
+
+@media (max-width:880px){ .gb-op .kt-board{grid-template-columns:1fr} }

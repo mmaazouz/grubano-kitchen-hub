@@ -1,0 +1,196 @@
+name: Grubano — Cron scheduler (staging)
+
+# WP-OPS-01 — wires the periodic go-live jobs. TARGET = the repo VARIABLE
+# vars.CRON_TARGET_BASE_URL (set it to the STAGING base, e.g. https://app.grubano.com).
+# B2 — the guard job does not merely require the variable to be NON-EMPTY any more: it
+# requires it to be POSITIVELY STAGING (scripts/cron/cron-target-guard.js). Production is
+# reachable only by setting vars.CRON_ALLOW_PRODUCTION to its exact attestation sentence —
+# a named decision, not a typo. Everything else, production and unknown hosts alike, is
+# REFUSED and the whole workflow stops at `guard`.
+#
+# Every job is IDEMPOTENT and NO-OP when its feature flag is OFF (the flag-gated routes
+# return 403 { gated: true } and do no work), so extra runs are harmless. Secrets
+# (INTERNAL_CRON_TOKEN, CRON_SECRET, SMTP_*, ALERT_EMAIL) are passed via env → masked by
+# GitHub Actions and NEVER echoed (curl prints only the HTTP status, never the body/headers).
+#
+# NB: GitHub only fires `schedule` from the DEFAULT branch — this file becomes active when
+# merged to main (go-live). Until then, run on demand via "Run workflow" (workflow_dispatch).
+#
+# Required repo config: variable CRON_TARGET_BASE_URL ; secrets INTERNAL_CRON_TOKEN,
+# CRON_SECRET, ALERT_EMAIL, SMTP_HOST, SMTP_USER, SMTP_PASS.
+
+on:
+  workflow_dispatch:
+    inputs:
+      group:
+        description: Which group to run
+        type: choice
+        default: all
+        options: [all, daily, monthly, sweep]
+  schedule:
+    # P0-07 — the hourly `frequent` group (email agent) was REMOVED by founder
+    # decision: it is an automation with an external effect (LLM-written emails
+    # sent to real customers/creators/restaurateurs) and no human validation.
+    - cron: '*/20 * * * *' # sweep     — every 20 min (geoloc position retention — no-op when flag OFF)
+    - cron: '20 3 * * *'   # daily     — 03:20 UTC batch
+    - cron: '0 7 1 * *'    # monthly   — 1st, 07:00 UTC
+
+concurrency:
+  group: grubano-cron
+  cancel-in-progress: false
+
+jobs:
+  guard:
+    # Only ACT on a real schedule tick or a manual dispatch. GitHub can attribute a
+    # run to a push of this file (before it is on the default branch main, where the
+    # `schedule` actually activates) — this gate makes such push-runs a clean no-op
+    # (all jobs skipped) instead of a spurious guard failure.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    outputs:
+      base: ${{ steps.check.outputs.base }}
+    steps:
+      # B2 (founder arbitration 2026-09-29) — the guard used to check ONE thing: that the
+      # variable was not EMPTY. It then handed whatever it contained to every job, so the
+      # protection was a CONFIGURATION (« we set it to staging »), not a CONSTRAINT: one
+      # mistaken edit would have sent the e-mail catch-up and the onboarding nudges at
+      # production on the next 20-minute tick, and the invoice batch on the 1st.
+      # The decision now lives in ONE testable place — scripts/cron/cron-target-guard.js —
+      # which REFUSES anything that is not positively staging (a whitelist, because a
+      # blocklist of production hostnames would let a mistyped domain through), requires
+      # https (the cron token travels in a header), refuses a base carrying a path, and
+      # reaches production only through the exact attestation sentence in
+      # CRON_ALLOW_PRODUCTION — same doctrine as T-123 and staging-backup.js: refuse, do
+      # not merely watch. The checkout is what this step gained; no schedule, no job, no
+      # secret, and nothing new RUNS against staging or production.
+      - uses: actions/checkout@v4
+      - id: check
+        env:
+          BASE: ${{ vars.CRON_TARGET_BASE_URL }}
+          CRON_ALLOW_PRODUCTION: ${{ vars.CRON_ALLOW_PRODUCTION }}
+        run: |
+          set -euo pipefail
+          BASE_OK="$(node scripts/cron/cron-target-guard.js "$BASE")"
+          echo "base=$BASE_OK" >> "$GITHUB_OUTPUT"
+
+  # P0-07 — job `frequent` (hourly `POST /api/email-agent`) REMOVED.
+  # The route itself is untouched and still reachable with CRON_SECRET; only
+  # this scheduler entry is gone, so nothing fires it automatically at go-live.
+
+  sweep-positions:
+    # Géoloc ÉTAPE 5 retention sweep — erases stale/orphaned CourierPosition rows past their TTL +
+    # anonymises old terminal-order delivery coords. Each half is flag-gated → a NO-OP (zero counts)
+    # while LOGISTICS_TRACKING_ENABLED / LOGISTICS_DISTANCE_FEE_ENABLED are OFF, so scheduling this
+    # before activation is harmless. CRON_SECRET is masked by Actions; curl prints only the status.
+    needs: guard
+    if: >-
+      github.event.schedule == '*/20 * * * *' ||
+      (github.event_name == 'workflow_dispatch' && (inputs.group == 'all' || inputs.group == 'sweep'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sweep courier positions (no-op if LOGISTICS_TRACKING_ENABLED off)
+        env:
+          BASE: ${{ needs.guard.outputs.base }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          curl -sS -X POST "$BASE/api/logistics/positions/sweep" -H "Authorization: Bearer $CRON_SECRET" -o /dev/null -w "positions-sweep → HTTP %{http_code}\n"
+
+  sweep-order-emails:
+    # P0-42 (vague 2) — rattrapage SERVEUR des confirmations de commande : les emails
+    # order_confirmation / resto_order_received ne partaient que via le POLL navigateur
+    # (onglet fermé avant le webhook ⇒ resto jamais notifié d'une commande payée).
+    # Idempotent de bout en bout (sendOnce, mêmes triggers+dedupeKey que /confirm) →
+    # rejouable sans doublon ; contenus transactionnels FIXES du rail B1/B2 (rien à
+    # voir avec l'email-agent LLM retiré par P0-07). Délai borné = cadence sweep (20 min).
+    needs: guard
+    if: >-
+      github.event.schedule == '*/20 * * * *' ||
+      (github.event_name == 'workflow_dispatch' && (inputs.group == 'all' || inputs.group == 'sweep'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Order confirmation catch-up sweep (idempotent — no-op when nothing is missing)
+        env:
+          BASE: ${{ needs.guard.outputs.base }}
+          TOK: ${{ secrets.INTERNAL_CRON_TOKEN }}
+        run: |
+          curl -sS -X POST "$BASE/api/admin/orders/confirm-sweep" -H "X-Internal-Token: $TOK" -o /dev/null -w "orders-confirm-sweep → HTTP %{http_code}\n"
+
+  daily:
+    needs: guard
+    if: >-
+      github.event.schedule == '20 3 * * *' ||
+      (github.event_name == 'workflow_dispatch' && (inputs.group == 'all' || inputs.group == 'daily'))
+    runs-on: ubuntu-latest
+    env:
+      BASE: ${{ needs.guard.outputs.base }}
+      TOK: ${{ secrets.INTERNAL_CRON_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Ledger consistency probe (read-only) + creator earnings maturation
+        env:
+          SITE_URL: ${{ needs.guard.outputs.base }}
+          INTERNAL_CRON_TOKEN: ${{ secrets.INTERNAL_CRON_TOKEN }}
+          ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+        run: |
+          node scripts/cron/ledger-check-probe.js || echo "ledger probe reported issues (see log)"
+          node scripts/cron/creator-earnings-mature.js || echo "earnings maturation non-zero exit (see log)"
+      # P0-07 — step "Claims auto-approve" REMOVED by founder decision.
+      # runClaimAutoApproval() auto-approves 24h-timeout claims AND refunds them
+      # (lib/claims.ts:309-316 → approveClaim('auto_timeout') → triggerClaimRefund),
+      # i.e. money leaving without any admin in the loop. The route and the lib
+      # are untouched — an admin can still trigger it deliberately; it is simply
+      # no longer scheduled.
+      - name: Creator payouts (no-op if CREATOR_PAYOUT_ENABLED off)
+        run: |
+          curl -sS -X POST "$BASE/api/admin/creator-payouts/run" -H "X-Internal-Token: $TOK" -o /dev/null -w "creator-payouts → HTTP %{http_code}\n"
+      - name: Onboarding nudges (no-op if ONBOARDING_NUDGE_ENABLED off)
+        run: |
+          curl -sS -X POST "$BASE/api/admin/onboarding-nudges/run" -H "X-Internal-Token: $TOK" -o /dev/null -w "onboarding-nudges → HTTP %{http_code}\n"
+      - name: Ghost-order reconciliation sweep (READ-ONLY — list + admin digest, no money action)
+        run: |
+          curl -sS "$BASE/api/admin/reconcile-ghost-orders" -H "X-Internal-Token: $TOK" -o /dev/null -w "reconcile-ghost-orders → HTTP %{http_code}\n"
+      - name: Stale-claims heads-up (P0-39 — READ-ONLY, one idempotent alert per claim, NO auto action)
+        run: |
+          curl -sS "$BASE/api/admin/claims/stale-alerts" -H "X-Internal-Token: $TOK" -o /dev/null -w "claims-stale-alerts → HTTP %{http_code}\n"
+      # ── CLAIMS BATCH 2 — STRANDED-RECONCILIATION RECOVERY ─────────────────────────
+      # Stripe does not guarantee webhook delivery. Without a caller, a claim whose refund
+      # webhook was lost stays 'refunding' for ever while its Refund row is long terminal.
+      # This MOVES NO MONEY and never retries a refund: no engine call, no Stripe write —
+      # it applies the same idempotent CAS the webhook applies, from the Refund row that
+      # already exists. (Contrast the P0-07 step removed above, which DID pay out.)
+      - name: Claims refund reconciliation recovery (NO money action — replays a lost webhook only)
+        run: |
+          curl -sS -X POST "$BASE/api/admin/claims/reconcile-refunds" -H "X-Internal-Token: $TOK" -o /dev/null -w "claims-reconcile-refunds → HTTP %{http_code}\n"
+
+  monthly:
+    needs: guard
+    if: >-
+      github.event.schedule == '0 7 1 * *' ||
+      (github.event_name == 'workflow_dispatch' && (inputs.group == 'all' || inputs.group == 'monthly'))
+    runs-on: ubuntu-latest
+    env:
+      BASE: ${{ needs.guard.outputs.base }}
+      TOK: ${{ secrets.INTERNAL_CRON_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Monthly commission invoices (previous month)
+        env:
+          SITE_URL: ${{ needs.guard.outputs.base }}
+          INTERNAL_CRON_TOKEN: ${{ secrets.INTERNAL_CRON_TOKEN }}
+          ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+        run: node scripts/cron/monthly-invoices.js || echo "monthly invoices non-zero exit (see log)"
+      - name: Franchise settlement (no-op if FRANCHISE_SETTLEMENT_ENABLED off)
+        run: |
+          curl -sS -X POST "$BASE/api/admin/franchise-settlements/run" -H "X-Internal-Token: $TOK" -o /dev/null -w "franchise-settlement → HTTP %{http_code}\n"

@@ -1,0 +1,9 @@
+{
+  "id": "CREATOR_DISH_ADOPTED",
+  "from": "\"Grubano\" <contact@grubano.com>",
+  "to": "chef@example.invalid",
+  "subject": "Nouvelle adoption — Gnocchi Bar sert « Gnocchi au pesto rosso »",
+  "hasText": false,
+  "hasImages": false,
+  "hasTable": false
+}

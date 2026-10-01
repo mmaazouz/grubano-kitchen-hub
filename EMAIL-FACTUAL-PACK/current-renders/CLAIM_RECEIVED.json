@@ -1,0 +1,9 @@
+{
+  "id": "CLAIM_RECEIVED",
+  "from": "\"Grubano\" <contact@grubano.com>",
+  "to": "lea.martin@example.invalid",
+  "subject": "Votre réclamation GR-ABC123 est bien enregistrée",
+  "hasText": false,
+  "hasImages": false,
+  "hasTable": false
+}

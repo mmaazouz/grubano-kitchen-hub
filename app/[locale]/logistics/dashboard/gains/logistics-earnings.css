@@ -1,0 +1,68 @@
+/* LO6 · Mes gains — screen-specific styles (P4.3 ÉTAPE 5, CD verbatim). The op-* chrome
+   + card/dash/skeleton/error/empty/ro-badge live in logistics-shell.css; this file adds only
+   the earnings-screen classes. --op-lo amber tokens are defined by the shell. */
+
+/* honesty banner */
+.op-content .ro-banner{display:flex;align-items:flex-start;gap:12px;background:var(--op-lo-bg);border:1px solid var(--op-lo-bd);border-radius:var(--op-r-lg);padding:14px 18px;margin-bottom:18px}
+.op-content .ro-banner .ms{font-size:21px;color:var(--op-lo);flex-shrink:0}
+[data-theme="dark"] .op-content .ro-banner .ms{color:var(--op-lo-2)}
+.op-content .ro-banner .m b{display:block;font-family:var(--op-font-display);font-weight:800;font-size:14px;color:var(--op-lo-text)}
+[data-theme="dark"] .op-content .ro-banner .m b{color:var(--op-lo-2)}
+.op-content .ro-banner .m p{margin:3px 0 0;font-size:12px;line-height:1.5;color:var(--op-muted)}
+
+/* balance grid */
+.bal-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:16px}
+.bal{padding:18px;position:relative;overflow:hidden}
+.bal.avail{background:linear-gradient(135deg,var(--op-lo-bg),transparent)}
+.bal__l{font-size:11.5px;font-weight:700;color:var(--op-muted);display:flex;align-items:center;gap:6px}
+.bal__l .ms{font-size:16px}
+.bal__v{font-family:var(--op-font-mono);font-weight:800;font-size:28px;letter-spacing:-.02em;margin-top:8px;direction:ltr;unicode-bidi:isolate}
+.bal.avail .bal__v{color:var(--op-lo-text)}
+[data-theme="dark"] .bal.avail .bal__v{color:var(--op-lo-2)}
+.bal__s{font-size:10.5px;color:var(--op-muted-2);margin-top:4px}
+.bal__cta{margin-top:14px}
+.bal__cta .op-btn-primary{width:100%}
+
+/* section head */
+.sec-hd{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 4px}
+.sec-hd h3{margin:0;font-family:var(--op-font-display);font-weight:800;font-size:15px}
+.card-pad{padding:18px;margin-bottom:16px}
+.card-pad .hint{font-size:11.5px;color:var(--op-muted);margin-bottom:14px}
+
+/* earning rows */
+.ea-row{display:flex;align-items:center;gap:13px;padding:14px 0;border-bottom:1px solid var(--op-border)}
+.ea-row:last-child{border-bottom:none}
+.ea-ic{width:38px;height:38px;border-radius:var(--op-r-md);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.ea-ic.course{background:var(--op-lo-bg);color:var(--op-lo)}
+[data-theme="dark"] .ea-ic.course{color:var(--op-lo-2)}
+.ea-ic.tip{background:var(--op-success-bg);color:var(--op-success)}
+.ea-ic .ms{font-size:19px}
+.ea-m{flex:1;min-width:0}
+.ea-m b{display:block;font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ea-m .sub{display:flex;align-items:center;gap:8px;margin-top:2px;font-size:11px;color:var(--op-muted);flex-wrap:wrap}
+.ea-m .sub .ref{font-family:var(--op-font-mono);direction:ltr;unicode-bidi:isolate}
+.ea-calc{display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;flex-wrap:wrap}
+.ea-calc .mono{font-family:var(--op-font-mono);direction:ltr;unicode-bidi:isolate}
+.ea-calc .gross{color:var(--op-muted)}
+.ea-calc .comm{color:var(--op-danger)}
+.ea-calc .op{color:var(--op-muted-2)}
+.ea-calc .eq{color:var(--op-muted-2)}
+.ea-calc .net{font-weight:700}
+.ea-calc .tipfull{color:var(--op-success);font-weight:700}
+.ea-r{text-align:end;flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;gap:5px}
+.ea-amt{font-family:var(--op-font-mono);font-weight:800;font-size:15px;direction:ltr;unicode-bidi:isolate}
+.ea-status{display:inline-flex;align-items:center;gap:5px;font-size:9.5px;font-weight:800;border-radius:999px;padding:3px 8px;white-space:nowrap;text-transform:uppercase;letter-spacing:.03em}
+.ea-status.pending{background:var(--op-warning-bg);color:var(--op-warning)}
+.ea-status.avail{background:var(--op-lo-bg);color:var(--op-lo-text)}
+[data-theme="dark"] .ea-status.avail{color:var(--op-lo-2)}
+.ea-status.paid{background:var(--op-success-bg);color:var(--op-success)}
+.ea-status .ms{font-size:11px}
+.eh-empty{text-align:center;color:var(--op-muted);font-size:13px;padding:28px 0}
+
+.info-note{display:flex;align-items:flex-start;gap:8px;font-size:11px;color:var(--op-muted-2);margin-top:14px;line-height:1.5}
+.info-note .ms{font-size:14px;flex-shrink:0}
+
+@container gbop (max-width: 760px){ .bal-grid{grid-template-columns:1fr} }
+@container gbop (max-width: 620px){
+  .ea-calc{display:none}
+}

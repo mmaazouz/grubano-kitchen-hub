@@ -1,0 +1,116 @@
+# Crons — état de référence (S0-4, documenté sans modification)
+
+Trois couches distinctes. Rien n'a été modifié pendant le Sprint 0.
+
+## 1. Scripts cron versionnés (`scripts/cron/`) ✅
+
+Déployés sur le serveur par les workflows de deploy (seul `scripts/cron/*.js`
+est shippé — jamais le reste de `scripts/`, cf. `deploy-staging.yml`).
+
+| Script | Rôle | Cible |
+|---|---|---|
+| `scripts/cron/ledger-check-probe.js` | Sonde de cohérence du ledger (lecture seule) + alerte email si écart | `/api/admin/ledger/check` |
+| `scripts/cron/monthly-invoices.js` | Factures de commission du mois précédent | `/api/admin/invoices/generate` |
+| `scripts/cron/creator-earnings-mature.js` | Maturation des gains créateurs | `/api/admin/creator-earnings/mature` |
+
+Env requis par ces scripts : `SITE_URL`, `INTERNAL_CRON_TOKEN`, `ALERT_EMAIL`,
+`SMTP_HOST/USER/PASS` (noms seulement — valeurs dans `.env.local` serveur /
+GitHub Secrets).
+
+## 2. Crontab cPanel (serveur o2switch) ✅ RELEVÉ SERVEUR 26-27/07/2026
+
+**Source : relevé `crontab -l` effectué par Mohammed en cPanel Terminal les
+26-27/07/2026** (clôture M7). C'est la référence versionnée du seul morceau
+d'ops qui ne vivait pas dans le repo. 3 jobs actifs, sorties dans `~/logs/` :
+
+```cron
+# Relevé serveur 26-27/07/2026 — 3 jobs actifs, logs dans ~/logs/
+30 6 * * * node scripts/cron/creator-earnings-mature.js   # quotidien 06:30
+0  7 * * * node scripts/cron/ledger-check-probe.js        # quotidien 07:00
+0  8 1 * * node scripts/cron/monthly-invoices.js          # mensuel, le 1er 08:00
+```
+
+> ℹ️ V4-3 — Le bloc ci-dessus est la PHOTO du crontab serveur (il fonctionne tel
+> quel dans l'environnement cron de cPanel). En revanche, pour toute commande
+> `node` tapée À LA MAIN dans le Terminal cPanel, `node` n'est PAS dans le PATH :
+> utilisez le chemin complet `/home/deyi0010/nodevenv/app.grubano.com/24/bin/node`
+> (production : `/home/deyi0010/nodevenv/grubano.com/24/bin/node`).
+
+Écarts vs les hypothèses documentées précédemment (modèle indicatif retiré) :
+- Horaires réels ≠ modèle deviné (le modèle supposait 03:20/03:25/07:00) —
+  **le relevé fait foi**.
+- ⚠️ **Doublon programmé au go-live** : le groupe `daily` de `cron.yml`
+  (GitHub, `20 3 * * *` UTC) exécute AUSSI `ledger-check-probe.js` +
+  `creator-earnings-mature.js`, et son groupe `monthly` (`0 7 1 * *` UTC)
+  exécute AUSSI `monthly-invoices.js`. Tant que `cron.yml` n'est pas sur
+  `main`, seul le crontab cPanel tourne. Le jour où `cron.yml` s'active,
+  ces 3 jobs tourneront DEUX fois par période (idempotents par conception,
+  mais bruit d'alertes/emails doublé) → décision go-live : couper l'un des
+  deux schedulers pour ces 3 jobs.
+
+## 3. Workflow GitHub `cron.yml` ✅ (inerte en schedule tant que pas sur `main`)
+
+`.github/workflows/cron.yml` (WP-OPS-01) orchestre les jobs périodiques via la
+variable de repo `CRON_TARGET_BASE_URL` (jamais de défaut prod ; guard qui
+échoue si absente). **GitHub ne déclenche `schedule` que depuis la branche par
+défaut (`main`)** → tant que le fichier n'y est pas, seul `workflow_dispatch`
+fonctionne. Chaque job est idempotent et no-op quand son flag est OFF.
+
+| Groupe | Cadence | Actions |
+|---|---|---|
+| ~~frequent~~ | — | **RETIRÉ (P0-07)** — le groupe horaire `POST /api/email-agent` a été supprimé de `cron.yml` par décision fondateur : automatisation à effet externe (emails rédigés par LLM envoyés à de vrais clients/créateurs/restaurateurs) sans validation humaine. |
+| sweep | `*/20 * * * *` | `POST /api/logistics/positions/sweep` (rétention géoloc, no-op flags OFF) + `POST /api/admin/orders/confirm-sweep` (P0-42 — rattrapage serveur des confirmations de commande payée : idempotent via sendOnce, mêmes triggers+dedupeKey que /confirm ; contenus transactionnels FIXES B1/B2, pas l'email-agent LLM de P0-07) |
+| daily | `20 3 * * *` | `ledger-check-probe.js` + `creator-earnings-mature.js` + `POST /api/admin/creator-payouts/run` + `POST /api/admin/onboarding-nudges/run` + `GET /api/admin/reconcile-ghost-orders` (read-only) + `GET /api/admin/claims/stale-alerts` (P0-39 — read-only, UNE alerte idempotente par réclamation en retard, aucune action auto : remplace la VISIBILITÉ que l'auto-approbation retirée assurait, jamais sa décision) — **`POST /api/admin/claims/auto-approve` RETIRÉ (P0-07)** : auto-approbation des réclamations en timeout 24 h **et remboursement**, sans admin dans la boucle. |
+| monthly | `0 7 1 * *` | `monthly-invoices.js` + `POST /api/admin/franchise-settlements/run` |
+
+## 4. Routes cron-appelables SANS scheduler actif ✅ (le « trou » constaté)
+
+13 routes lisent `CRON_SECRET` ou `INTERNAL_CRON_TOKEN` (les 11 du relevé Sprint 0 + `confirm-sweep` P0-42 + `claims/stale-alerts` P0-39). Couverture :
+
+| Route | Scheduler |
+|---|---|
+| `/api/email-agent` | **AUCUN scheduler (P0-07)** — job `frequent` retiré de cron.yml. La route existe toujours et reste appelable avec `CRON_SECRET`, mais plus rien ne la déclenche automatiquement. |
+| `/api/logistics/positions/sweep` | cron.yml (sweep) — inerte hors `main` |
+| `/api/admin/orders/confirm-sweep` | cron.yml (sweep, P0-42) — inerte hors `main` ; appelable aussi en session ADMIN |
+| `/api/admin/claims/stale-alerts` | cron.yml (daily, P0-39) — inerte hors `main` ; appelable aussi en session ADMIN |
+| `/api/admin/ledger/check` | script + cPanel crontab ✅ actif |
+| `/api/admin/creator-earnings/mature` | script + cPanel crontab ✅ actif |
+| `/api/admin/invoices/generate` | script + cPanel crontab ✅ actif |
+| `/api/admin/claims/auto-approve` | **AUCUN scheduler (P0-07)** — step retiré du groupe `daily`. Route et lib intactes : un admin peut encore la déclencher délibérément, mais elle n'est plus planifiée. |
+| `/api/admin/creator-payouts/run` | cron.yml (daily) — inerte hors `main` |
+| `/api/admin/onboarding-nudges/run` | cron.yml (daily) — inerte hors `main` |
+| `/api/admin/reconcile-ghost-orders` | cron.yml (daily) — inerte hors `main` |
+| `/api/admin/franchise-settlements/run` | cron.yml (monthly) — inerte hors `main` |
+| `/api/admin/refunds/run` | **AUCUN scheduler nulle part** (moteur refunds, flag OFF) |
+
+Conséquence opérationnelle : aujourd'hui seuls les 3 crontabs cPanel tournent
+réellement. Le reste ne s'exécute que si quelqu'un dispatch `cron.yml` à la
+main. La mise sur `main` de `cron.yml` (au go-live) activera les schedules —
+c'est une **décision volontaire**, pas un effet de bord.
+
+> Décision hors périmètre Sprint 0 : brancher un scheduler sur
+> `/api/admin/refunds/run` n'a de sens qu'après l'arbitrage REFUNDS.
+
+## 5. Note pré-production — préflight final Phase 2 (2026-09-05, faits)
+
+- **Où tourne quoi.** `cron.yml` n'existe **que sur `develop`** (`git diff origin/main develop -- .github/workflows/cron.yml` = +172 lignes) → aucun `schedule` GitHub ne tourne (les 3 runs listés sont des pushes `develop` sortis en no-op/failure 0 s par le garde). **Seul le crontab cPanel tourne** (relevé §2) : `ledger-check-probe.js` 07:00, `creator-earnings-mature.js` 06:30, `monthly-invoices.js` le 1er 08:00. Ces scripts chargent `../../.env.local` (lecteur **laxiste** maison : trim, dernière occurrence) et appellent `SITE_URL` (**défaut `https://www.grubano.com` = PRODUCTION** si `SITE_URL` n'est pas défini dans l'env de l'app d'où ils tournent) avec `X-Internal-Token`. → **NOT MEASURED** : depuis quel répertoire (`~/app.grubano.com` ou `~/grubano.com`) le crontab lance ces scripts et vers quelle base ; l'opérateur v4 lit la queue de `~/logs/*ledger*` (statuts seuls).
+- **Compatibilité develop/staging.** Les routes appelées existent sur develop et sur main ; le contrat d'auth (`X-Internal-Token` brut, comparaison constante, lecture `process.env` à la requête) est identique. Aucun code `main` n'est exécuté contre la base staging par ce préflight.
+- **Jobs argent en bêta.** `creator-payouts/run`, `franchise-settlements/run`, `claims/*`, `refunds/run` : tous **gatés par flag OFF** (403 `{gated:true}` avant toute écriture) et, sauf `creator-earnings/mature` + `ledger-check-probe` + `monthly-invoices` (crontab cPanel), **aucun scheduler actif**. `refunds/run` n'a **aucun** scheduler nulle part.
+- **Doublon au go-live** (inchangé) : la mise de `cron.yml` sur `main` doublerait les 3 jobs cPanel → couper l'un des deux schedulers (décision fondateur).
+- **Token.** Le 401 du ledger-check (préflight v3) frappe aussi le probe cPanel quotidien s'il vise `app.grubano.com` → alerte e-mail `[LEDGER PROBE] HTTP 401` attendue dans `~/logs` (à lire, pas à supposer). Contrat cible : `RUNTIME-SECRET-SOURCE-MATRIX.md`.
+
+## 5. P0 OPÉRATIONNEL 2026-09-05 — notification restaurant « nouvelle commande » SANS navigateur ✅
+
+Constat : `order_confirmation` + `resto_order_received` ne partaient que via le POLL du navigateur client
+(`POST /api/orders/[id]/confirm`) ; le rattrapage serveur `confirm-sweep` n'avait AUCUN scheduler actif
+(`cron.yml` inerte : la branche par défaut distante `main` = arbre Lovable sans workflows ; crontab cPanel sans
+job commande ; un cron HTTP tomberait sur la divergence `INTERNAL_CRON_TOKEN` fichier ≠ runtime, 401 mesuré v3).
+
+Correctif : **scheduler IN-PROCESS** (`lib/order-notification-scheduler.ts`, démarré par `instrumentation.ts` →
+`register()` à chaque démarrage de processus Next, `experimental.instrumentationHook`) qui appelle
+`sweepUnconfirmedPaidOrders()` directement (sans HTTP, sans token) 10 s après le démarrage puis toutes les 60 s.
+Production seulement ; kill-switch `ORDER_NOTIFY_SWEEP_DISABLED=true` ; idempotence = claim `EmailDispatch @@unique` ;
+retry borné (backoff 1→2→5→10→20→30 min, abandon après 8 échecs + marqueur durable + 1 alerte admin
+`admin_email_giveup`) ; battement `~/.grubano/order-notify-heartbeat.json`. Contrat complet :
+`docs/ops/ORDER-NOTIFICATION-RELIABILITY.md`. Le job `sweep-order-emails` de `cron.yml` et la route admin restent
+utilisables (redondance idempotente) mais ne sont plus le mécanisme de fiabilité.

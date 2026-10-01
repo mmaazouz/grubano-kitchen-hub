@@ -1,0 +1,9 @@
+{
+  "id": "CLOSURE_REFUND_RECORDED__ar",
+  "from": "\"Grubano\" <contact@grubano.com>",
+  "to": "lea.martin@example.invalid",
+  "subject": "الشكوى GR-ABC123: تم ربط الاسترداد",
+  "hasText": false,
+  "hasImages": false,
+  "hasTable": false
+}

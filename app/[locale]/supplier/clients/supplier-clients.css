@@ -1,0 +1,76 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+ * /supplier/clients — CD v1 Lot 4a content (VERBATIM-adapted). READ-ONLY; amounts are
+ * CENTS server-side, shown via formatMoney (mono). Chrome + tokens live in
+ * supplier-shell.css. Scoped under `.sup-cl`. List ↔ detail is React state.
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+.gb-op .sup-cl .op-dash__head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:18px;flex-wrap:wrap}
+.gb-op .sup-cl .back-link{display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:700;color:var(--op-muted);margin-bottom:16px;cursor:pointer;background:none;border:none;font-family:inherit}
+.gb-op .sup-cl .back-link .ms{font-size:18px}
+.gb-op .sup-cl .back-link:hover{color:var(--op-text)}
+
+.gb-op .sup-cl .op-search{display:flex;align-items:center;gap:9px;background:var(--op-surface);border:1px solid var(--op-border-strong);border-radius:var(--op-r-md);padding:10px 14px;max-width:300px;flex:1}
+.gb-op .sup-cl .op-search .ms{font-size:19px;color:var(--op-muted-2);flex-shrink:0}
+.gb-op .sup-cl .op-search input{border:none;background:none;outline:none;font-size:13.5px;color:var(--op-text);width:100%;font-family:inherit}
+
+/* directory rows */
+.gb-op .sup-cl .cl-row{display:flex;align-items:center;gap:14px;padding:14px 18px;border-bottom:1px solid var(--op-border);cursor:pointer}
+.gb-op .sup-cl .cl-row:last-child{border-bottom:none}
+.gb-op .sup-cl .cl-row:hover{background:var(--op-surface-2)}
+.gb-op .sup-cl .cl-av{width:40px;height:40px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-family:var(--op-font-display);font-weight:800;font-size:13px;color:#fff}
+.gb-op .sup-cl .cl-m{flex:1;min-width:0}
+.gb-op .sup-cl .cl-m b{display:block;font-size:14px;font-weight:700}
+.gb-op .sup-cl .cl-m span{font-size:11.5px;color:var(--op-muted)}
+.gb-op .sup-cl .cl-row .col{flex-shrink:0;text-align:end;width:100px}
+.gb-op .sup-cl .cl-row .col .lbl{display:block;font-size:9.5px;font-weight:700;color:var(--op-muted-2);text-transform:uppercase;letter-spacing:.02em}
+.gb-op .sup-cl .cl-row .col .val{font-family:var(--op-font-mono);font-weight:700;font-size:13.5px;direction:ltr;unicode-bidi:isolate}
+.gb-op .sup-cl .cl-view-btn{flex-shrink:0;display:flex;align-items:center;gap:6px;border:1px solid var(--op-border-strong);background:var(--op-surface);border-radius:var(--op-r-md);padding:8px 14px;font-size:12px;font-weight:700;color:var(--op-text);cursor:pointer}
+
+/* detail */
+.gb-op .sup-cl .det-head{display:flex;align-items:center;gap:16px;padding:20px;flex-wrap:wrap;margin-bottom:18px}
+.gb-op .sup-cl .det-head__av{width:52px;height:52px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--op-font-display);font-weight:800;font-size:17px;color:#fff;flex-shrink:0}
+.gb-op .sup-cl .det-head__m{flex:1;min-width:0}
+.gb-op .sup-cl .det-head__m h1{margin:0;font-family:var(--op-font-display);font-weight:800;font-size:19px;letter-spacing:-.01em}
+.gb-op .sup-cl .det-head__m span{font-size:12.5px;color:var(--op-muted);margin-top:3px;display:block}
+
+.gb-op .sup-cl .kpi-strip{display:flex;padding:8px 4px;flex-wrap:wrap;margin-bottom:18px}
+.gb-op .sup-cl .kpi-strip .stat{flex:1;min-width:150px;padding:14px 20px;display:flex;flex-direction:column;gap:6px;border-inline-start:1px solid var(--op-border)}
+.gb-op .sup-cl .kpi-strip .stat:first-child{border-inline-start:none}
+.gb-op .sup-cl .kpi-strip .stat .lbl{font-size:11px;font-weight:700;color:var(--op-muted)}
+.gb-op .sup-cl .kpi-strip .stat b{font-family:var(--op-font-mono);font-weight:700;font-size:20px;direction:ltr;unicode-bidi:isolate}
+
+.gb-op .sup-cl .det-grid{display:grid;grid-template-columns:1fr 2fr;gap:18px;align-items:start}
+.gb-op .sup-cl .contact-block{padding:16px 18px;display:flex;flex-direction:column;gap:10px}
+.gb-op .sup-cl .contact-row{display:flex;align-items:flex-start;gap:11px}
+.gb-op .sup-cl .contact-row .ms{font-size:19px;color:var(--op-muted-2);flex-shrink:0;margin-top:1px}
+.gb-op .sup-cl .contact-row .m b{display:block;font-size:13px;font-weight:700}
+.gb-op .sup-cl .contact-row .m span{font-size:12px;color:var(--op-muted);line-height:1.5}
+.gb-op .sup-cl .hist-head{padding:15px 18px;border-bottom:1px solid var(--op-border);font-family:var(--op-font-display);font-weight:800;font-size:14.5px}
+
+.gb-op .sup-cl .hist-row{display:flex;align-items:center;gap:13px;padding:13px 18px;border-bottom:1px solid var(--op-border)}
+.gb-op .sup-cl .hist-row:last-child{border-bottom:none}
+.gb-op .sup-cl .hist-row .m{flex:1;min-width:0}
+.gb-op .sup-cl .hist-row .m b{display:block;font-size:13px;font-weight:700}
+.gb-op .sup-cl .hist-row .m span{font-size:11.5px;color:var(--op-muted)}
+.gb-op .sup-cl .hist-row .amt{font-family:var(--op-font-mono);font-weight:800;font-size:13.5px;flex-shrink:0;direction:ltr;unicode-bidi:isolate}
+.gb-op .sup-cl .ord-status{flex-shrink:0;display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:800;border-radius:999px;padding:4px 9px;white-space:nowrap}
+.gb-op .sup-cl .ord-status .dot{width:6px;height:6px;border-radius:50%;background:currentColor}
+.gb-op .sup-cl .ord-status.confirm{background:var(--op-warning-bg);color:var(--op-warning)}
+.gb-op .sup-cl .ord-status.prep{background:var(--op-info-bg);color:var(--op-info)}
+.gb-op .sup-cl .ord-status.shipped{background:var(--op-success-bg);color:var(--op-success)}
+.gb-op .sup-cl .ord-status.delivered{background:var(--op-surface-2);color:var(--op-muted-2)}
+.gb-op .sup-cl .ord-status.declined{background:var(--op-danger-bg);color:var(--op-danger)}
+.gb-op .sup-cl .ord-status.cancelled{background:var(--op-surface-2);color:var(--op-muted-2)}
+
+@container gbop (max-width: 900px){ .gb-op .sup-cl .det-grid{grid-template-columns:1fr} }
+@container gbop (max-width: 780px){
+  .gb-op .sup-cl .cl-row{flex-wrap:wrap}
+  .gb-op .sup-cl .cl-row .col{text-align:start;width:auto}
+}
+@container gbop (max-width: 880px){
+  .gb-op .sup-cl .op-dash__head{flex-direction:column;align-items:flex-start}
+  .gb-op .sup-cl .op-search{max-width:100%}
+  .gb-op .sup-cl .kpi-strip{flex-direction:column;padding:4px}
+  .gb-op .sup-cl .kpi-strip .stat{border-inline-start:none;border-top:1px solid var(--op-border);padding:12px 16px}
+  .gb-op .sup-cl .kpi-strip .stat:first-child{border-top:none}
+}

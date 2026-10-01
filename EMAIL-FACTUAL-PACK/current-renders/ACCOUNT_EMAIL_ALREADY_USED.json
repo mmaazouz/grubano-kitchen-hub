@@ -1,0 +1,9 @@
+{
+  "id": "ACCOUNT_EMAIL_ALREADY_USED",
+  "from": "\"Grubano\" <contact@grubano.com>",
+  "to": "lea.new@example.invalid",
+  "subject": "À propos de votre adresse e-mail — Grubano",
+  "hasText": false,
+  "hasImages": false,
+  "hasTable": false
+}

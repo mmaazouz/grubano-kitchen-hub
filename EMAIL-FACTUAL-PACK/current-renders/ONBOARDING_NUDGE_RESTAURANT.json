@@ -1,0 +1,9 @@
+{
+  "id": "ONBOARDING_NUDGE_RESTAURANT",
+  "from": "\"Grubano\" <contact@grubano.com>",
+  "to": "gnocchi.bar@example.invalid",
+  "subject": "Il vous reste 5 étapes pour activer votre restaurant",
+  "hasText": false,
+  "hasImages": false,
+  "hasTable": false
+}

@@ -1,0 +1,9 @@
+{
+  "id": "ADMIN_MONEY_REVIEW",
+  "from": "\"Grubano\" <contact@grubano.com>",
+  "to": "admin-alerts@example.invalid",
+  "subject": "[Grubano] MONEY REVIEW — Remboursement Stripe en échec — commande verrouillée",
+  "hasText": false,
+  "hasImages": false,
+  "hasTable": true
+}
