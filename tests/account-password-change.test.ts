@@ -36,12 +36,29 @@ import { __resetRateLimit } from '@/lib/rate-limit'
 // cryptography faked.
 vi.setConfig({ testTimeout: 30_000 })
 
-const { getSession, findUnique, update, tokenDeleteMany, sendMail } = vi.hoisted(() => ({
-  getSession:      vi.fn(),
-  findUnique:      vi.fn(),
-  update:          vi.fn(),
-  tokenDeleteMany: vi.fn(),
-  sendMail:        vi.fn(),
+// TWO SETS OF WRITE SPIES, on purpose. `txUpdate` / `txTokenDeleteMany` are reached
+// only through the transaction client; `update` / `tokenDeleteMany` sit on the
+// top-level client and must stay at ZERO calls for the whole file. Moving either
+// write out of the transaction therefore fails a test instead of passing silently —
+// a single shared spy could not tell the two placements apart.
+// `committed` is the fake store's commit log: the transaction fake flushes the
+// statements it recorded ONLY if the callback resolves, so a rollback is observable
+// here. Real atomicity is Prisma's and MySQL's job; what this file proves is that
+// both writes are INSIDE one transaction and that a failure yields 500 with no
+// e-mail and nothing reported as changed.
+const {
+  getSession, findUnique, update, tokenDeleteMany, sendMail,
+  txUpdate, txTokenDeleteMany, transaction, committed,
+} = vi.hoisted(() => ({
+  getSession:        vi.fn(),
+  findUnique:        vi.fn(),
+  update:            vi.fn(),
+  tokenDeleteMany:   vi.fn(),
+  sendMail:          vi.fn(),
+  txUpdate:          vi.fn(),
+  txTokenDeleteMany: vi.fn(),
+  transaction:       vi.fn(),
+  committed:         [] as string[],
 }))
 vi.mock('@/lib/auth', () => ({ authOptions: {} }))
 vi.mock('next-auth', () => ({ getServerSession: getSession }))
@@ -49,6 +66,7 @@ vi.mock('@/lib/prisma', () => ({
   prisma: {
     operator:          { findUnique, update },
     verificationToken: { deleteMany: tokenDeleteMany },
+    $transaction:      transaction,
   },
 }))
 vi.mock('@/lib/transactional-emails', () => ({ sendPasswordChangedEmail: sendMail }))
@@ -84,6 +102,32 @@ beforeEach(() => {
   update.mockResolvedValue({ id: OP.id })
   tokenDeleteMany.mockResolvedValue({ count: 1 })
   sendMail.mockResolvedValue(undefined)
+
+  // The transaction fake: ALL-OR-NOTHING. Statements are recorded as they run and
+  // flushed to `committed` only once the callback has resolved, so a throw anywhere
+  // inside leaves `committed` empty (rollback) and propagates to the route's catch.
+  committed.length = 0
+  txUpdate.mockResolvedValue({ id: OP.id })
+  txTokenDeleteMany.mockResolvedValue({ count: 1 })
+  transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>, opts?: unknown) => {
+    // The fake asserts its OWN contract: it models only the interactive form with
+    // no options, so a future `$transaction(fn, { timeout: 1 })` — or a switch to
+    // the array form — cannot slip past 49 green tests on a fake that ignored it.
+    expect(typeof fn, 'the interactive (callback) form is what this fake models').toBe('function')
+    expect(opts, 'this route passes no transaction options; update the fake if it ever does').toBeUndefined()
+    const pending: string[] = []
+    const tx = {
+      operator: {
+        update: (...a: unknown[]) => { pending.push('operator.update'); return txUpdate(...a) },
+      },
+      verificationToken: {
+        deleteMany: (...a: unknown[]) => { pending.push('token.deleteMany'); return txTokenDeleteMany(...a) },
+      },
+    }
+    const result = await fn(tx)   // a rejection here never reaches the flush below
+    committed.push(...pending)    // COMMIT
+    return result
+  })
 })
 afterEach(() => {
   delete process.env.RATE_LIMIT_ENABLED
@@ -91,8 +135,21 @@ afterEach(() => {
   __resetRateLimit()
 })
 
-/** The password written by the single prisma.operator.update call. */
-const writtenHash = (): string => update.mock.calls[0][0].data.password as string
+/** The password written by the single operator.update INSIDE the transaction. */
+const writtenHash = (): string => txUpdate.mock.calls[0][0].data.password as string
+
+/** Nothing was written, anywhere: no transaction opened, no statement inside one,
+ *  and no write on the top-level client either. Replaces the former
+ *  `expectNoWrite()`, which became vacuous the moment the
+ *  write moved into the transaction — a refusal test that cannot fail is not a test. */
+function expectNoWrite(label = ''): void {
+  expect(transaction, label).not.toHaveBeenCalled()
+  expect(txUpdate, label).not.toHaveBeenCalled()
+  expect(txTokenDeleteMany, label).not.toHaveBeenCalled()
+  expect(update, label).not.toHaveBeenCalled()
+  expect(tokenDeleteMany, label).not.toHaveBeenCalled()
+  expect(committed, label).toEqual([])
+}
 
 describe('POST /api/account/password — auth, policy, refusals', () => {
   it('(1) UNAUTHENTICATED → 401, and nothing is read or written', async () => {
@@ -100,14 +157,14 @@ describe('POST /api/account/password — auth, policy, refusals', () => {
     const res = await post(good())
     expect(res.status).toBe(401)
     expect(findUnique).not.toHaveBeenCalled()
-    expect(update).not.toHaveBeenCalled()
+    expectNoWrite()
     expect(sendMail).not.toHaveBeenCalled()
   })
 
   it('(1b) a session WITHOUT an id is not a session → 401', async () => {
     getSession.mockResolvedValue({ user: { email: OP.email } }) // email only, no id
     expect((await post(good())).status).toBe(401)
-    expect(update).not.toHaveBeenCalled()
+    expectNoWrite()
   })
 
   it('(1c) the account changed is the SESSION id — a body-supplied id is ignored', async () => {
@@ -115,7 +172,7 @@ describe('POST /api/account/password — auth, policy, refusals', () => {
     expect(res.status).toBe(200)
     // Read AND write are both keyed on the session id, never on the body.
     expect(findUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { id: OP.id } }))
-    expect(update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: OP.id } }))
+    expect(txUpdate).toHaveBeenCalledWith(expect.objectContaining({ where: { id: OP.id } }))
   })
 
   it('(2) RATE LIMIT — the 6th attempt in the window is 429 with Retry-After, and writes nothing', async () => {
@@ -132,7 +189,7 @@ describe('POST /api/account/password — auth, policy, refusals', () => {
     const res = await post({ currentPassword: OLD, newPassword: NEW }, ip)
     expect(res.status).toBe(429)
     expect(res.headers.get('Retry-After')).toBeTruthy()
-    expect(update).not.toHaveBeenCalled()
+    expectNoWrite()
 
     // The bucket is keyed on the operator id too: another account from the same IP
     // is unaffected by this one's exhausted window (400 on shape ≠ 429 on quota).
@@ -151,7 +208,7 @@ describe('POST /api/account/password — auth, policy, refusals', () => {
     }
     const res = await post({ currentPassword: 'guess-3', newPassword: NEW }, ip)
     expect(res.status).toBe(429)
-    expect(update).not.toHaveBeenCalled()
+    expectNoWrite()
   })
 
   it('(2b) the limiter runs AFTER authentication — an unauthenticated flood still gets 401, not 429', async () => {
@@ -166,7 +223,7 @@ describe('POST /api/account/password — auth, policy, refusals', () => {
     const res = await post({ currentPassword: 'not-my-password', newPassword: NEW })
     expect(res.status).toBe(400)
     expect((await res.json()).code).toBe('invalid_current')
-    expect(update).not.toHaveBeenCalled()
+    expectNoWrite()
     expect(sendMail).not.toHaveBeenCalled()
     expect(tokenDeleteMany).not.toHaveBeenCalled()
   })
@@ -176,14 +233,14 @@ describe('POST /api/account/password — auth, policy, refusals', () => {
     expect(res.status).toBe(400)
     expect((await res.json()).code).toBe('weak_new')
     expect(findUnique).not.toHaveBeenCalled()
-    expect(update).not.toHaveBeenCalled()
+    expectNoWrite()
   })
 
   it('(5) new password LONGER than 100 → refused', async () => {
     const res = await post({ currentPassword: OLD, newPassword: 'a'.repeat(101) })
     expect(res.status).toBe(400)
     expect((await res.json()).code).toBe('weak_new')
-    expect(update).not.toHaveBeenCalled()
+    expectNoWrite()
     // 100 exactly is the documented maximum and must still pass.
     expect((await post({ currentPassword: OLD, newPassword: 'b'.repeat(100) })).status).toBe(200)
   })
@@ -195,14 +252,14 @@ describe('POST /api/account/password — auth, policy, refusals', () => {
     // A missing field reports the same code — zod's own "Required" message must not
     // be mistaken for a new-password problem.
     expect((await (await post({ newPassword: NEW })).json()).code).toBe('current_required')
-    expect(update).not.toHaveBeenCalled()
+    expectNoWrite()
   })
 
   it('(6) new === current → refused (no write, no e-mail about a non-event)', async () => {
     const res = await post({ currentPassword: OLD, newPassword: OLD })
     expect(res.status).toBe(400)
     expect((await res.json()).code).toBe('same_as_current')
-    expect(update).not.toHaveBeenCalled()
+    expectNoWrite()
     expect(sendMail).not.toHaveBeenCalled()
   })
 
@@ -213,7 +270,7 @@ describe('POST /api/account/password — auth, policy, refusals', () => {
     expect(res.status).toBe(403)
     expect(body.code).toBe('no_password')
     expect(body.code).not.toBe('invalid_current')
-    expect(update).not.toHaveBeenCalled()
+    expectNoWrite()
     // The copy must not send the user to a flow that cannot help them:
     // /api/auth/forgot-password only mails a link when operator.password is non-null.
     expect(body.error).not.toMatch(/oubli/i)
@@ -227,14 +284,14 @@ describe('POST /api/account/password — auth, policy, refusals', () => {
       const res = await post(good())
       expect(res.status, status).toBe(403)
       expect((await res.json()).code).toBe('account_locked')
-      expect(update, status).not.toHaveBeenCalled()
+      expectNoWrite(status)
     }
   })
 
   it('(8b) an account that no longer exists → 401, never a crash', async () => {
     findUnique.mockResolvedValue(null)
     expect((await post(good())).status).toBe(401)
-    expect(update).not.toHaveBeenCalled()
+    expectNoWrite()
   })
 })
 
@@ -268,17 +325,20 @@ describe('POST /api/account/password — the successful change', () => {
 
   it('(13) exactly ONE update, on the session operator, touching ONLY the password', async () => {
     await post(good())
-    expect(update).toHaveBeenCalledTimes(1)
-    const arg = update.mock.calls[0][0]
+    expect(txUpdate).toHaveBeenCalledTimes(1)
+    const arg = txUpdate.mock.calls[0][0]
     expect(arg.where).toEqual({ id: OP.id })
     expect(Object.keys(arg.data)).toEqual(['password'])
+    // …and it went through the transaction client, never around it.
+    expect(update).not.toHaveBeenCalled()
   })
 
   it('(14) every pending pwreset token of THIS account is consumed', async () => {
     await post(good())
-    expect(tokenDeleteMany).toHaveBeenCalledWith({ where: { identifier: `pwreset:${OP.email}` } })
+    expect(txTokenDeleteMany).toHaveBeenCalledWith({ where: { identifier: `pwreset:${OP.email}` } })
     // The identifier comes from the DB row, not from the session/JWT.
-    expect(tokenDeleteMany.mock.calls[0][0].where.identifier).toContain(OP.email)
+    expect(txTokenDeleteMany.mock.calls[0][0].where.identifier).toContain(OP.email)
+    expect(tokenDeleteMany).not.toHaveBeenCalled()
   })
 
   it('(15) the security e-mail is sent exactly once, to the account address', async () => {
@@ -287,27 +347,25 @@ describe('POST /api/account/password — the successful change', () => {
     expect(sendMail).toHaveBeenCalledWith({ to: OP.email, name: OP.name })
   })
 
-  it('(16) an e-mail FAILURE does not turn a committed change into an error', async () => {
+  it('(16) [case 6] an e-mail FAILURE after a COMMITTED transaction stays 200', async () => {
     sendMail.mockRejectedValue(new Error('SMTP unreachable'))
     const res = await post(good())
     expect(res.status).toBe(200)
     expect((await res.json()).ok).toBe(true)
-    expect(update).toHaveBeenCalledTimes(1)
+    // The transaction committed before the e-mail was attempted…
+    expect(committed).toEqual(['operator.update', 'token.deleteMany'])
+    expect(txUpdate).toHaveBeenCalledTimes(1)
     expect(await bcrypt.compare(NEW, writtenHash())).toBe(true)
+    // …and the e-mail really was attempted and really did fail.
+    expect(sendMail).toHaveBeenCalledTimes(1)
   })
 
-  it('(16b) a token-purge failure likewise does not misreport a committed change', async () => {
-    tokenDeleteMany.mockRejectedValue(new Error('deadlock'))
-    expect((await post(good())).status).toBe(200)
-    expect(update).toHaveBeenCalledTimes(1)
-  })
-
-  it('(16c) SECRETS ARE NEVER LOGGED — not even inside an error message', async () => {
+  it('(16c) [case 7] SECRETS ARE NEVER LOGGED — not even inside an error message', async () => {
     // A Prisma failure on the update embeds the invocation arguments in its
     // message, and on this route those arguments are `data: { password: <hash> }`.
     // Logging err.message (the house pattern elsewhere) would print the hash.
     const leaky = new Error(`Invalid \`prisma.operator.update()\` invocation: data: { password: "${storedHash}" }`)
-    update.mockRejectedValue(leaky)
+    txUpdate.mockRejectedValue(leaky)
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const res = await post(good())
     expect(res.status).toBe(500)
@@ -316,8 +374,11 @@ describe('POST /api/account/password — the successful change', () => {
     for (const secret of [OLD, NEW, storedHash, leaky.message]) {
       expect(logged, 'console.error must not carry secrets').not.toContain(secret)
     }
-    // …and the client is told nothing about the internals either.
+    // …the client is told nothing about the internals either…
     expect(JSON.stringify(await res.json())).not.toContain(storedHash)
+    // …and the failed transaction committed NOTHING and sent NO e-mail.
+    expect(committed).toEqual([])
+    expect(sendMail).not.toHaveBeenCalled()
   })
 
   it('a malformed stored hash reads as NOT VERIFIED (bcrypt throws → refusal, never success)', async () => {
@@ -325,12 +386,286 @@ describe('POST /api/account/password — the successful change', () => {
     const res = await post(good())
     expect(res.status).toBe(400)
     expect((await res.json()).code).toBe('invalid_current')
-    expect(update).not.toHaveBeenCalled()
+    expectNoWrite()
   })
 
   it('a non-JSON body is refused, not crashed', async () => {
     expect((await post('{ not json')).status).toBe(400)
+    expectNoWrite()
+  })
+})
+
+// ── ATOMICITY of the password write and the pwreset purge ──────────────────────
+//
+// WHY THIS BLOCK EXISTS. The first version of this route wrote the new hash, then
+// purged the pending `pwreset:<email>` tokens BEST-EFFORT (`.catch(() => {})`), then
+// answered 200. The purge is a SECURITY property, not housekeeping: a reset link
+// e-mailed before the change would have outlived it, and whoever held that e-mail
+// could then overwrite the password the owner had just chosen — a 200 would have
+// announced a change that was only half made. The two writes are now one
+// transaction. The test that used to assert the old behaviour
+// («  a token-purge failure likewise does not misreport a committed change ») was
+// conceptually wrong and is deleted, not weakened.
+
+describe('the password write and the pwreset purge are ATOMIC', () => {
+  it('[case 1] both writes happen inside ONE transaction, and none outside it', async () => {
+    const res = await post(good())
+    expect(res.status).toBe(200)
+    // Exactly one transaction, opened with the interactive (callback) form.
+    expect(transaction).toHaveBeenCalledTimes(1)
+    expect(typeof transaction.mock.calls[0][0]).toBe('function')
+    // Both statements ran on the TRANSACTION client…
+    expect(txUpdate).toHaveBeenCalledTimes(1)
+    expect(txTokenDeleteMany).toHaveBeenCalledTimes(1)
+    // …and neither ran on the top-level client, which is what "inside" means here.
     expect(update).not.toHaveBeenCalled()
+    expect(tokenDeleteMany).not.toHaveBeenCalled()
+    // Order inside the transaction: the hash first, then the purge.
+    expect(committed).toEqual(['operator.update', 'token.deleteMany'])
+  })
+
+  it('the purge identifier is NORMALISED like the minting routes — a mixed-case stored e-mail still purges', async () => {
+    // Nothing lowercases Operator.email at registration, while BOTH routes that
+    // mint a pwreset token key it on `email.trim().toLowerCase()`. Purging the raw
+    // column would match zero rows, NOT throw, and still commit and answer 200 — a
+    // silent purge failure, i.e. the exact hole this transaction exists to close,
+    // reachable without any error at all. The round-1 fixture was already lowercase,
+    // so no test could see it.
+    findUnique.mockResolvedValue({
+      ...OP, email: '  Alex@Example.COM ', password: storedHash, status: 'active',
+    })
+    const res = await post(good())
+    expect(res.status).toBe(200)
+    expect(txTokenDeleteMany).toHaveBeenCalledWith({ where: { identifier: 'pwreset:alex@example.com' } })
+    const sent = txTokenDeleteMany.mock.calls[0][0].where.identifier as string
+    expect(sent).toBe(sent.toLowerCase())
+    expect(sent).not.toContain('Alex')
+    expect(sent).not.toMatch(/\s/)
+    // Exactly what /api/auth/forgot-password would have stored for that address.
+    const forgot = readFileSync('app/api/auth/forgot-password/route.ts', 'utf8')
+    expect(forgot).toContain("const email = parsed.data.email.trim().toLowerCase()")
+    expect(forgot).toContain('const identifier = `pwreset:${email}`')
+  })
+
+  it('[case 2] purge OK → 200, and the commit contains both statements', async () => {
+    txTokenDeleteMany.mockResolvedValue({ count: 3 }) // three stale links destroyed
+    const res = await post(good())
+    expect(res.status).toBe(200)
+    expect((await res.json()).ok).toBe(true)
+    expect(committed).toEqual(['operator.update', 'token.deleteMany'])
+    expect(await bcrypt.compare(NEW, writtenHash())).toBe(true)
+  })
+
+  it('[cases 3 + 5] purge FAILS → 500, never 200, and NOTHING is committed', async () => {
+    txTokenDeleteMany.mockRejectedValue(new Error('deadlock'))
+    const res = await post(good())
+    expect(res.status).toBe(500)
+    expect(res.status).not.toBe(200)
+    const body = await res.json()
+    expect(body.ok).toBeUndefined()      // no success shape on a failed change
+    expect(body.error).toBeTruthy()
+    // The update was ATTEMPTED inside the transaction and then rolled back: the
+    // fake store flushes only on a resolved callback, so an empty commit log is
+    // the rollback. (The rollback itself is Prisma's and MySQL's guarantee; what
+    // is proven here is that the route puts the write where that guarantee applies
+    // and reports the failure instead of a 200.)
+    expect(txUpdate).toHaveBeenCalledTimes(1)
+    expect(committed).toEqual([])
+  })
+
+  it('[case 4] a FAILED transaction sends NO security e-mail, whichever statement failed', async () => {
+    // ⚠️ The third arm used to be `transaction.mockRejectedValue(...)`, which REPLACES
+    // the fake: the callback never ran, so it proved only that a transaction which
+    // never opened sends no e-mail. It now fails at the FLUSH point, after both
+    // statements have run — the real « both statements succeeded, the COMMIT then
+    // failed » case, which is the one the founder's requirement 4 cares about.
+    for (const [label, arm] of [
+      ['purge fails', () => txTokenDeleteMany.mockRejectedValue(new Error('deadlock'))],
+      ['update fails', () => txUpdate.mockRejectedValue(new Error('lock wait timeout'))],
+      ['commit fails', () => transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+        const tx = {
+          operator:          { update: (...a: unknown[]) => txUpdate(...a) },
+          verificationToken: { deleteMany: (...a: unknown[]) => txTokenDeleteMany(...a) },
+        }
+        await fn(tx)                                  // both statements land…
+        throw new Error('commit failed: connection reset') // …and the COMMIT fails
+      })],
+    ] as [string, () => void][]) {
+      vi.clearAllMocks()
+      committed.length = 0
+      getSession.mockResolvedValue({ user: { id: OP.id } })
+      findUnique.mockResolvedValue({ ...OP, password: storedHash, status: 'active' })
+      txUpdate.mockResolvedValue({ id: OP.id })
+      txTokenDeleteMany.mockResolvedValue({ count: 1 })
+      transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+        const pending: string[] = []
+        const tx = {
+          operator:          { update: (...a: unknown[]) => { pending.push('operator.update'); return txUpdate(...a) } },
+          verificationToken: { deleteMany: (...a: unknown[]) => { pending.push('token.deleteMany'); return txTokenDeleteMany(...a) } },
+        }
+        const r = await fn(tx)
+        committed.push(...pending)
+        return r
+      })
+      sendMail.mockResolvedValue(undefined)
+      arm()
+
+      const res = await post(good())
+      expect(res.status, label).toBe(500)
+      expect(sendMail, label).not.toHaveBeenCalled()
+      expect(committed, label).toEqual([])
+      // POSITIVE CONTROL for the third arm: it must really have reached the commit,
+      // i.e. both statements ran and were then thrown away — otherwise the arm
+      // would be proving something easier than it claims.
+      if (label === 'commit fails') {
+        expect(txUpdate, label).toHaveBeenCalledTimes(1)
+        expect(txTokenDeleteMany, label).toHaveBeenCalledTimes(1)
+      }
+    }
+  })
+
+  it('a COMMITTED change is never reported as a failure, whatever the sender does', async () => {
+    // `.catch()` alone only survives a REJECTED promise. These three shapes are the
+    // ones that would otherwise reach the handler's catch and answer 500 on a
+    // change that DID happen — the misreport of this lot, in the opposite direction.
+    const shapes: [string, () => void][] = [
+      ['rejects',            () => sendMail.mockRejectedValue(new Error('SMTP unreachable'))],
+      ['throws synchronously', () => sendMail.mockImplementation(() => { throw new Error('transport missing') })],
+      ['returns a non-thenable', () => sendMail.mockImplementation(() => undefined as unknown as Promise<void>)],
+    ]
+    for (const [label, arm] of shapes) {
+      vi.clearAllMocks()
+      committed.length = 0
+      getSession.mockResolvedValue({ user: { id: OP.id } })
+      findUnique.mockResolvedValue({ ...OP, password: storedHash, status: 'active' })
+      txUpdate.mockResolvedValue({ id: OP.id })
+      txTokenDeleteMany.mockResolvedValue({ count: 1 })
+      transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+        const tx = {
+          operator:          { update: (...a: unknown[]) => txUpdate(...a) },
+          verificationToken: { deleteMany: (...a: unknown[]) => txTokenDeleteMany(...a) },
+        }
+        const r = await fn(tx)
+        committed.push('operator.update', 'token.deleteMany')
+        return r
+      })
+      arm()
+
+      const res = await post(good())
+      expect(res.status, label).toBe(200)
+      expect((await res.json()).ok, label).toBe(true)
+      expect(txUpdate, label).toHaveBeenCalledTimes(1)
+      expect(sendMail, label).toHaveBeenCalledTimes(1)
+    }
+  })
+
+  it('a sender that NEVER settles does not hold the response (the transport sets no socket timeout)', async () => {
+    // A relay that accepts the socket and stalls is a routine shared-hosting
+    // symptom, and lib/transactional-emails.ts declares no connection/greeting/
+    // socket timeout. Awaiting it after the commit would block until the request is
+    // cut and the user would be told their committed change failed.
+    //
+    // NO WALL-CLOCK RACE HERE, deliberately. The first version raced the handler
+    // against a 2 s timer; under a saturated full-suite run the real cost-12 hash
+    // alone exceeded that, so the case failed for the wrong reason AND abandoned a
+    // still-running handler whose mock calls then landed in the NEXT test's
+    // assertions. The timing-independent form is simply to await: if the route ever
+    // awaited this never-settling promise, this `await` could not resolve and the
+    // case would die on its timeout. Resolving at all IS the property.
+    sendMail.mockImplementation(() => new Promise<void>(() => { /* never settles */ }))
+    const res = await post(good())
+    expect(res.status).toBe(200)
+    expect((await res.json()).ok).toBe(true)
+    expect(sendMail).toHaveBeenCalledTimes(1) // it was started, just not awaited
+    expect(committed).toEqual(['operator.update', 'token.deleteMany'])
+  })
+
+  it('the e-mail is OUTSIDE the transaction — it is attempted only after the commit', async () => {
+    const order: string[] = []
+    txTokenDeleteMany.mockImplementation(async () => { order.push('purge'); return { count: 1 } })
+    transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+      order.push('tx:begin')
+      const tx = {
+        operator:          { update: (...a: unknown[]) => txUpdate(...a) },
+        verificationToken: { deleteMany: (...a: unknown[]) => txTokenDeleteMany(...a) },
+      }
+      const r = await fn(tx)
+      order.push('tx:commit')
+      committed.push('operator.update', 'token.deleteMany')
+      return r
+    })
+    sendMail.mockImplementation(async () => { order.push('email') })
+
+    expect((await post(good())).status).toBe(200)
+    expect(order).toEqual(['tx:begin', 'purge', 'tx:commit', 'email'])
+    // An e-mail cannot be rolled back, so it must never be inside the transaction.
+    expect(order.indexOf('email')).toBeGreaterThan(order.indexOf('tx:commit'))
+  })
+
+  it('the bcrypt hash is computed BEFORE the transaction opens (a cost-12 hash must not hold it)', async () => {
+    const src = readFileSync('app/api/account/password/route.ts', 'utf8').replace(/\r\n/g, '\n')
+    const code = src.split('\n').map((l) => (/^\s*\/\//.test(l) ? '' : l)).join('\n')
+      .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+    expect(code.indexOf('bcrypt.hash')).toBeGreaterThan(-1)
+    expect(code.indexOf('prisma.$transaction')).toBeGreaterThan(-1)
+    expect(code.indexOf('bcrypt.hash')).toBeLessThan(code.indexOf('prisma.$transaction'))
+  })
+
+  it('SOURCE — the two statements are textually inside the $transaction callback, and the best-effort purge is gone', async () => {
+    const src = readFileSync('app/api/account/password/route.ts', 'utf8').replace(/\r\n/g, '\n')
+    const code = src.split('\n').map((l) => (/^\s*\/\//.test(l) ? '' : l)).join('\n')
+      .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+
+    const open = code.indexOf('await prisma.$transaction(async (tx) => {')
+    expect(open, 'the interactive transaction must be there').toBeGreaterThan(-1)
+    const close = code.indexOf('\n    })', open)
+    expect(close).toBeGreaterThan(open)
+    const block = code.slice(open, close)
+    expect(block.length, 'the extracted block must be the callback, not the file').toBeLessThan(400)
+    expect(block).toContain('tx.operator.update({ where: { id: operator.id }, data: { password: hashed } })')
+    expect(block).toContain('tx.verificationToken.deleteMany({ where: { identifier: resetIdentifier } })')
+
+    // Nothing writes around the transaction…
+    expect(code).not.toContain('prisma.operator.update')
+    expect(code).not.toContain('prisma.verificationToken')
+    // …and NOTHING inside it swallows a failure. The earlier version of this test
+    // banned only the `.catch` SHAPE, so a `try { purge } catch {}` moved inside the
+    // callback would have passed every source assertion here.
+    expect(block).not.toMatch(/\.catch/)
+    expect(block).not.toMatch(/try\s*\{/)
+    expect(code).not.toMatch(/deleteMany\([\s\S]{0,120}\)\s*\n?\s*\.catch/)
+
+    // The security e-mail is the ONLY swallowed call left, and it is after the
+    // transaction. `emailAt` is anchored first: indexOf returns -1 when the call is
+    // absent, and `> -1` is true for almost any index — the trap this file has
+    // already paid for once.
+    const emailAt = code.indexOf('sendPasswordChangedEmail({')
+    expect(emailAt, 'the security notice must still be sent').toBeGreaterThan(-1)
+    expect(emailAt).toBeGreaterThan(open)
+    const swallows = code.match(/\.catch\(\(\) => \{\}\)/g) ?? []
+    expect(swallows).toHaveLength(1)
+    expect(code.indexOf('.catch(() => {})')).toBeGreaterThan(emailAt)
+    // It is fire-and-forget: an un-timeout-ed SMTP socket must not be awaited after
+    // the commit (a stall would report a committed change as a failure).
+    expect(code).toMatch(/void sendPasswordChangedEmail\(/)
+    expect(code).not.toMatch(/await sendPasswordChangedEmail\(/)
+  })
+
+  it('NEGATIVE CONTROL — a purge moved back out of the transaction is caught', async () => {
+    const regressed = `
+      await prisma.$transaction(async (tx) => {
+        await tx.operator.update({ where: { id: operator.id }, data: { password: hashed } })
+      })
+      await prisma.verificationToken
+        .deleteMany({ where: { identifier: \`pwreset:\${operator.email}\` } })
+        .catch(() => {})
+    `
+    // The two bans this file relies on both fire on that shape.
+    expect(regressed).toContain('prisma.verificationToken')
+    expect(regressed).toMatch(/deleteMany\([\s\S]{0,120}\)\s*\n?\s*\.catch/)
+    // And the runtime assertion would fail too: the purge would not be in the tx.
+    const block = regressed.slice(regressed.indexOf('$transaction'), regressed.indexOf('\n      })'))
+    expect(block).not.toContain('tx.verificationToken.deleteMany')
   })
 })
 
@@ -376,7 +711,20 @@ describe('the password screen', () => {
     }
     // Every refusal the server can raise is pre-checked, so a request that cannot
     // succeed is never sent — including the differing-confirmation case.
-    const canSave = code.slice(code.indexOf('const canSave'), code.indexOf('// Server refusal codes'))
+    //
+    // ⚠️ The marker used to be `'// Server refusal codes'`, a WHOLE-LINE comment —
+    // which `executable()` blanks, so indexOf returned -1, `slice(start, -1)` ran to
+    // the end of the file and the five assertions below were scoped to the entire
+    // page instead of to this one expression. They would have survived moving
+    // `cfm === nxt` out of `canSave` entirely. Slice to a marker that SURVIVES the
+    // stripper, prove the marker was found, and bound the slice so a future
+    // mis-anchoring is loud instead of silent.
+    const canSaveAt = code.indexOf('const canSave')
+    const endAt = code.indexOf('function messageFor(')
+    expect(canSaveAt, 'canSave must exist').toBeGreaterThan(-1)
+    expect(endAt, 'the slice marker must survive comment-stripping').toBeGreaterThan(canSaveAt)
+    const canSave = code.slice(canSaveAt, endAt)
+    expect(canSave.length, 'the slice must be the expression, not the rest of the file').toBeLessThan(300)
     expect(canSave).toContain('cur.length > 0')
     expect(canSave).toContain('nxt.length >= 8')
     expect(canSave).toContain('nxt.length <= 100')
@@ -494,10 +842,12 @@ describe('the new endpoint keeps its order and its secrecy rules', () => {
     expect(at('bodySchema.safeParse')).toBeLessThan(at('prisma.operator.findUnique'))
     expect(at('prisma.operator.findUnique')).toBeLessThan(at('bcrypt.compare'))
     expect(at('bcrypt.compare')).toBeLessThan(at('bcrypt.hash'))
-    expect(at('bcrypt.hash')).toBeLessThan(at('prisma.operator.update'))
+    expect(at('bcrypt.hash')).toBeLessThan(at('prisma.$transaction'))
+    expect(at('prisma.$transaction')).toBeLessThan(at('tx.operator.update'))
+    expect(at('tx.operator.update')).toBeLessThan(at('tx.verificationToken.deleteMany'))
     // The CALL, not the import line — `sendPasswordChangedEmail` also appears at the
     // top of the file, which would make this comparison compare nothing.
-    expect(at('prisma.operator.update')).toBeLessThan(at('sendPasswordChangedEmail({'))
+    expect(at('tx.verificationToken.deleteMany')).toBeLessThan(at('sendPasswordChangedEmail({'))
   })
 
   it('POSITIVE CONTROL — the stripper leaves real code and only removes comments', () => {

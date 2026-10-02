@@ -38,6 +38,30 @@ import { rateLimit } from '@/lib/rate-limit'
 // stays behind it. An UNAUTHENTICATED flood is answered 401 before the limiter —
 // that path costs one JWT decode and no DB access, so it is not the hot surface.
 //
+// ATOMIC. The new hash and the purge of every pending `pwreset:<email>` token are
+// ONE transaction: a change that left a pre-change reset link alive would hand its
+// holder the power to overwrite the password the owner just chose, so the purge is
+// a security property and may not fail silently. Either both writes commit, or
+// neither does and the caller gets a 500 with no security e-mail. The bcrypt hash
+// and the e-mail stay OUTSIDE it (slow work, and un-rollbackable work).
+//
+// WHAT THE TRANSACTION DOES *NOT* BUY — stated so the guarantee is not read wider
+// than it is:
+//   • It cannot revoke a reset that is ALREADY IN FLIGHT. /api/auth/reset-password
+//     validates the token and then spends a cost-12 hash before writing, all
+//     outside any transaction, so a consumption that passed validation microseconds
+//     before this commit still lands afterwards. Closing that needs a change to
+//     that route, which this lot is forbidden to touch.
+//   • It assumes both tables are transactional (InnoDB). Nothing in this repository
+//     proves the engine — there is no migrations directory and the datasource
+//     declares none — so that remains an unverified production fact.
+//   • A rejection raised AT COMMIT (connection dropped mid-COMMIT) is reported as a
+//     failure although the write may have landed. The founder's rule for this route
+//     is explicit — on 500 the password is "not considered changed" — so the handler
+//     does NOT try to re-read and re-interpret; it reports the failure it saw.
+//   • Only `pwreset:` rows are purged. Magic-link credentials on the Operator row
+//     are untouched by a password change (a separate, recorded follow-up).
+//
 // SESSIONS ARE NOT REVOKED. lib/auth.ts uses `session: { strategy: 'jwt' }`: no
 // server-side session row exists to delete, so a token already issued stays valid
 // until it expires. The response says so, and the screen repeats it — the one thing
@@ -47,6 +71,10 @@ import { rateLimit } from '@/lib/rate-limit'
 // token — not even inside an error. That includes NOT logging `err.message`: a
 // Prisma validation error embeds the failing invocation's arguments, which on this
 // route is `data: { password: <hash> }`. Only the error's class/code is logged.
+// SCOPE OF THAT RULE: it binds THIS handler. The Prisma client is separately built
+// with `log: ['error']` (lib/prisma.ts), so the engine may print its own full error
+// — including those arguments — to the process log. Narrowing that is a change to a
+// shared file and belongs to its own lot; it is recorded, not silently assumed away.
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -152,24 +180,62 @@ export async function POST(req: Request) {
       return refuse(400, 'same_as_current', "Le nouveau mot de passe doit être différent de l'actuel.")
     }
 
-    // (11) + (12) Hash at the app-wide cost (12) and write. Only the hash is stored.
+    // (11) Hash at the app-wide cost (12). Only the hash is ever stored. Computed
+    // BEFORE the transaction on purpose: bcrypt at cost 12 takes ~0.3 s and a
+    // transaction must not be held open for work that does not need to be in it.
     const hashed = await bcrypt.hash(newPassword, 12)
-    await prisma.operator.update({ where: { id: operator.id }, data: { password: hashed } })
 
-    // (13) Any pending reset link for this account is now stale: the holder of an
-    // e-mail from before the change must not be able to overwrite the password the
-    // owner just chose. Consume every token of the identifier, exactly as
-    // /api/auth/reset-password does on success. Best-effort: the password IS already
-    // changed, and failing the request here would misreport a completed change.
-    await prisma.verificationToken
-      .deleteMany({ where: { identifier: `pwreset:${operator.email}` } })
-      .catch(() => {})
+    // (12) + (13) ONE ATOMIC WRITE. The new hash and the destruction of every
+    // pending `pwreset:<email>` token are a single security fact, so they commit
+    // together or not at all.
+    //
+    // The purge used to be best-effort (`.catch(() => {})`) and that was WRONG: a
+    // reset link issued BEFORE the change would have survived it, and its holder
+    // could then overwrite the password the owner had just chosen. A silent failure
+    // of a security property is not a tolerable failure. If either statement fails,
+    // Prisma rolls BOTH back, the catch below answers 500, and no security e-mail is
+    // sent — so nothing is reported as changed that did not change. The generic
+    // « Impossible de mettre à jour le mot de passe — réessayez. » the screen shows
+    // on a 500 is therefore true, which it would not have been before.
+    //
+    // ⭐ The identifier is NORMALISED exactly as the routes that MINT the token do
+    // (`/api/auth/forgot-password` and `/api/auth/reset-password` both key it on
+    // `email.trim().toLowerCase()`), NOT on the raw DB column. Nothing lowercases
+    // `Operator.email` at registration, so an account stored as `Alex@Example.com`
+    // has its tokens under `pwreset:alex@example.com`: purging the raw value would
+    // match zero rows, NOT throw, and still commit and answer 200 — a silent purge
+    // failure of exactly the kind this transaction exists to prevent. Whether that
+    // bite is real depends on the column collation, which this repository cannot
+    // settle; normalising is correct under either collation.
+    const resetIdentifier = `pwreset:${operator.email.trim().toLowerCase()}`
+    await prisma.$transaction(async (tx) => {
+      await tx.operator.update({ where: { id: operator.id }, data: { password: hashed } })
+      await tx.verificationToken.deleteMany({ where: { identifier: resetIdentifier } })
+    })
 
-    // (14) Security notice — BEST-EFFORT. The change is committed; an SMTP fault
-    // must not turn a successful change into an error the user would retry.
-    // (operator.name is non-null in the schema but may be empty.)
-    await sendPasswordChangedEmail({ to: operator.email, name: operator.name || 'client' })
-      .catch(() => {})
+    // (14) Security notice — BEST-EFFORT, OUTSIDE the transaction, and NOT AWAITED.
+    // The change is committed, so nothing here may turn it into an error the user
+    // would retry; an e-mail cannot be rolled back either.
+    //   • not awaited: the SMTP transport declares no connection/greeting/socket
+    //     timeout (lib/transactional-emails.ts), so a relay that accepts the socket
+    //     and then stalls would block this handler AFTER the commit until the
+    //     request is cut — reporting a committed change as a failure, which is the
+    //     very misreport this lot exists to remove, just in the other direction.
+    //     A `.catch` survives a rejection; it does not survive a hang.
+    //   • wrapped in try/catch as well: `.catch` is only reachable if the sender
+    //     returns a thenable. Were it ever to stop being `async` (a file this lot
+    //     must not touch), a synchronous throw — or a non-thenable return, which
+    //     makes `.catch` itself a TypeError — would land in the handler's catch and
+    //     answer 500 on EVERY successful password change.
+    // The send still starts before the response, and the sender records its own
+    // outcome in EmailLog (trigger `password_changed`), which is where a missing
+    // notice has to be looked for. (operator.name is non-null but may be empty.)
+    try {
+      void sendPasswordChangedEmail({ to: operator.email, name: operator.name || 'client' })
+        .catch(() => {})
+    } catch {
+      /* swallowed on purpose: the password IS changed */
+    }
 
     // (15) Done. `sessionsRevoked: false` is the honest machine form of what the
     // screen tells the user: this build cannot sign other devices out.
