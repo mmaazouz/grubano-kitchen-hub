@@ -135,10 +135,8 @@ export default function ProfileScreen() {
   const deliveredCount = orders.filter((o) => o.status === 'delivered').length
   const pointsFmt = points.toLocaleString('fr-FR')
 
-  // « Devenir partenaire » — pre-fill the creator-application email (multi-role cumul).
-  const becomePartnerRoute = session?.user?.email
-    ? `/creators/apply?email=${encodeURIComponent(session.user.email)}`
-    : '/creators/apply'
+  // Generic partner entry → the /business landing, never one role's funnel (locale added by @/navigation).
+  const becomePartnerRoute = '/business'
 
   return (
     <main className="gb gb-account">
