@@ -6,6 +6,7 @@ import { useRouter } from '@/navigation'
 import { useGeolocation } from '@/lib/use-geolocation'
 import {
   readAddresses,
+  currentAddressStamp,
   setDefaultAddress,
   formatAddress,
   ADDRESS_EVENT,
@@ -54,7 +55,16 @@ function Highlight({ text, query }: { text: string; query: string }) {
   )
 }
 
-export default function GeolocSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+/**
+ * `sessionStamp` is the FIRST-FRAME GUARD, passed down rather than re-derived here: the
+ * owner is declared in an effect in EatShell, and effects run after the render that
+ * introduced a new session, so this sheet would keep showing the previous account's saved
+ * list — and the `picked` address it RENDERS on the map card — for one committed frame on
+ * an A → B switch. Comparing it with the stamp the list was read under closes that frame.
+ */
+export default function GeolocSheet(
+  { open, onClose, sessionStamp }: { open: boolean; onClose: () => void; sessionStamp: string | null },
+) {
   const t = useTranslations('eat.geoloc')
   // Reuse the existing « Par défaut » label from the addresses namespace (already in all
   // 5 locales) rather than introducing a duplicate key.
@@ -67,15 +77,29 @@ export default function GeolocSheet({ open, onClose }: { open: boolean; onClose:
   const [addresses, setAddresses] = useState<EatAddress[]>([])
   // The address chosen on the SEARCH step (a real saved address) → confirmed on MAP.
   const [picked, setPicked] = useState<EatAddress | null>(null)
+  /** The identity the saved list and `picked` were read under (first-frame guard). */
+  const [addrStamp, setAddrStamp] = useState<string | null>(null)
   // Set when the user toggles geo ON from this overlay, so a successful grant advances.
   const awaitingGrant = useRef(false)
 
   const geoOn = status === 'granted' && !!coords
 
   // Refresh saved addresses while open (live via ADDRESS_EVENT).
+  //
+  // ⚠️ `picked` is dropped with them when it is no longer in the list. It is not just a
+  // selection: the map step RENDERS its street / postcode / city (mapTitle / mapSub
+  // below). The saved list is owner-scoped now, but a `picked` held in React state is
+  // not — so after an identity change in this tab the sheet went on displaying the
+  // PREVIOUS ACCOUNT's address on the map card, and « Confirmer » would have tried to
+  // set it as the new account's default.
   useEffect(() => {
     if (!open) return
-    const refresh = () => setAddresses(readAddresses())
+    const refresh = () => {
+      const list = readAddresses()
+      setAddresses(list)
+      setAddrStamp(currentAddressStamp())
+      setPicked((cur) => (cur && list.some((a) => a.id === cur.id) ? cur : null))
+    }
     refresh()
     window.addEventListener(ADDRESS_EVENT, refresh)
     window.addEventListener('storage', refresh)
@@ -140,15 +164,23 @@ export default function GeolocSheet({ open, onClose }: { open: boolean; onClose:
     setStep('map')
   }, [])
 
+  // FIRST-FRAME GUARD (see the prop doc above): nothing cache-derived is rendered while
+  // the stamp the data was read under is not the one this render's session implies.
+  const stampOk = addrStamp !== null && addrStamp === sessionStamp
+  const visibleAddrs = stampOk ? addresses : []
+  const shownPicked = stampOk ? picked : null
+
+  // « Confirmer » commits the picked address as the default — through the GATED value, so
+  // it can never promote an address belonging to the previous identity.
   const confirmAddress = useCallback(() => {
-    if (picked) setDefaultAddress(picked.id)
+    if (shownPicked) setDefaultAddress(shownPicked.id)
     onClose()
-  }, [picked, onClose])
+  }, [shownPicked, onClose])
 
   // The map step's address card mirrors the picked saved address (real) when present.
-  const mapTitle = picked ? picked.street || picked.label : t('mapPlaceholderTitle')
-  const mapSub = picked
-    ? `${[picked.postalCode, picked.city].filter(Boolean).join(' ')} · ${t('mapAdjustHint')}`
+  const mapTitle = shownPicked ? shownPicked.street || shownPicked.label : t('mapPlaceholderTitle')
+  const mapSub = shownPicked
+    ? `${[shownPicked.postalCode, shownPicked.city].filter(Boolean).join(' ')} · ${t('mapAdjustHint')}`
     : t('mapPlaceholderSub')
 
   if (!open) return null
@@ -277,13 +309,13 @@ export default function GeolocSheet({ open, onClose }: { open: boolean; onClose:
 
               {/* Récents — the user's REAL saved addresses (lib/eat-addresses). */}
               <div className="geo-section-label">{t('recents')}</div>
-              {addresses.length === 0 ? (
+              {visibleAddrs.length === 0 ? (
                 <div className="geo-recents-empty">
                   <span className="ms" aria-hidden="true">location_off</span>
                   <p>{t('recentsEmpty')}</p>
                 </div>
               ) : (
-                addresses.map((a) => (
+                visibleAddrs.map((a) => (
                   <button
                     key={a.id}
                     type="button"

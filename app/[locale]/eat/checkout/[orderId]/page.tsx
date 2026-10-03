@@ -8,7 +8,7 @@ import { Link, useRouter } from '@/navigation'
 import { useTranslations, useLocale } from 'next-intl'
 import StripeTicketPayment from '@/components/payments/StripeTicketPayment'
 import WalletPaymentButton from '@/components/eat/WalletPaymentButton'
-import { readAddresses, formatAddress, type EatAddress } from '@/lib/eat-addresses'
+import { readAddresses, formatAddress, currentAddressStamp, sessionAddressStamp, ADDRESS_EVENT, type EatAddress } from '@/lib/eat-addresses'
 import './checkout.css'
 import './confirmed.css'
 import '@/app/gb-foundation/gb-tokens.css'
@@ -82,7 +82,7 @@ export default function CheckoutPage() {
   const tc = useTranslations('eat.confirmed')
   const locale = useLocale()
   const router = useRouter()
-  const { data: session } = useSession()
+  const { data: session, status } = useSession()
   const params = useParams<{ orderId: string }>()
   const orderId = params?.orderId ?? ''
 
@@ -97,6 +97,8 @@ export default function CheckoutPage() {
   // display-only (the order's delivery details were frozen at creation).
   const [addresses, setAddresses] = useState<EatAddress[]>([])
   const [addrId, setAddrId]       = useState<string>('')
+  /** The identity the saved list was read under (first-frame guard, see below). */
+  const [addrStamp, setAddrStamp] = useState<string | null>(null)
 
   // ── Load the recap ──────────────────────────────────────────────────────────
   const loadOrder = useCallback(async () => {
@@ -117,12 +119,31 @@ export default function CheckoutPage() {
 
   useEffect(() => { if (orderId) loadOrder() }, [orderId, loadOrder])
 
-  // Load the user's real saved addresses (visual delivery selector).
+  // Load the user's real saved addresses (visual delivery selector) — and KEEP THEM LIVE.
+  //
+  // ⚠️ This used to read once on mount with no listener, so the list stayed in React state
+  // after the signed-in identity changed in this tab: the previous account's whole address
+  // book, and its selected address, remained on screen on the NEW account's payment page.
+  // The address cache is owner-scoped now, but only a re-read sees that — hence the same
+  // ADDRESS_EVENT / storage subscription every other consumer has. The selection is
+  // dropped whenever the refreshed list no longer contains it.
   useEffect(() => {
-    const list = readAddresses()
-    setAddresses(list)
-    const def = list.find((a) => a.isDefault) ?? list[0]
-    if (def) setAddrId(def.id)
+    const sync = () => {
+      const list = readAddresses()
+      setAddresses(list)
+      setAddrStamp(currentAddressStamp())
+      setAddrId((cur) => {
+        if (list.some((a) => a.id === cur)) return cur
+        return (list.find((a) => a.isDefault) ?? list[0])?.id ?? ''
+      })
+    }
+    sync()
+    window.addEventListener(ADDRESS_EVENT, sync)
+    window.addEventListener('storage', sync)
+    return () => {
+      window.removeEventListener(ADDRESS_EVENT, sync)
+      window.removeEventListener('storage', sync)
+    }
   }, [])
 
   // ── Start the payment (C1 route — called, never modified) ───────────────────
@@ -208,7 +229,14 @@ export default function CheckoutPage() {
         : Math.max(0, order.subtotal + order.deliveryFee - order.total - loyaltyCredit))
     : 0
   const ref = order ? orderRefOf(order.id) : ''
-  const selAddr = addresses.find((a) => a.id === addrId) ?? null
+  // FIRST-FRAME GUARD. The identity is declared in an effect, and effects run after the
+  // render that introduced a new session: this page would paint the PREVIOUS account's
+  // address book for one committed frame on an A -> B switch in the same tab, which no
+  // ADDRESS_EVENT can prevent (the effect that emits it has not run yet). The stamp the
+  // list was read under is compared with the stamp this render's session implies.
+  const sessionStamp = sessionAddressStamp(status, (session?.user as { id?: string } | undefined)?.id)
+  const visibleAddrs = addrStamp !== null && addrStamp === sessionStamp ? addresses : []
+  const selAddr = visibleAddrs.find((a) => a.id === addrId) ?? null
 
   // ── « Commande confirmée » derived view-data (REAL order fields, read-only) ───
   // The customer first name for the greeting (« Merci Sofia ! ») — from the real
@@ -321,12 +349,12 @@ export default function CheckoutPage() {
                     <b>{t('addressTitle')}</b>
                     <button type="button" className="edit" onClick={() => router.push('/eat/account/addresses')}>{t('change')}</button>
                   </div>
-                  {addresses.length === 0 ? (
+                  {visibleAddrs.length === 0 ? (
                     <button type="button" className="opt" onClick={() => router.push('/eat/account/addresses')}>
                       <span className="ico"><span className="ms" aria-hidden="true">add_location_alt</span></span>
                       <div className="main"><b>{t('addAddress')}</b><span>{t('addAddressHint')}</span></div>
                     </button>
-                  ) : addresses.map((a) => (
+                  ) : visibleAddrs.map((a) => (
                     <button
                       key={a.id}
                       type="button"

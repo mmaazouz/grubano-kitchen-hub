@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
 import { useSession } from 'next-auth/react'
 import { useRouter } from '@/navigation'
 import CheckoutAuthSheet from '@/components/eat/CheckoutAuthSheet'
 import { readCart, writeCart, showToast, type EatCartData } from '@/lib/eat-cart'
-import { readAddresses, getDefaultAddress, formatAddress, ADDRESS_EVENT, type EatAddress } from '@/lib/eat-addresses'
+import { readAddresses, getDefaultAddress, formatAddress, currentAddressStamp, sessionAddressStamp, ADDRESS_EVENT, type EatAddress } from '@/lib/eat-addresses'
 import { formatEuros, formatAmount } from '@/lib/format-money'
 import './cart.css'
 import './cart-address.css'
@@ -31,7 +31,7 @@ export default function CartScreen() {
   const ta = useTranslations('eat.addresses')
   const locale = useLocale()
   const router = useRouter()
-  const { status: authStatus } = useSession()
+  const { data: authSession, status: authStatus } = useSession()
   const [cart, setCart] = useState<EatCartData | null>(null)
   const [hydrated, setHydrated] = useState(false)
   // V5-2 — the delivery tab only renders when the SERVER says it would accept a
@@ -47,6 +47,10 @@ export default function CartScreen() {
   // place-order / payment flow is byte-identical.
   const [savedAddrs, setSavedAddrs] = useState<EatAddress[]>([])
   const [selectedAddrId, setSelectedAddrId] = useState('')
+  // The identity the saved list was read under, and whether `address` came FROM it.
+  const [addrStamp, setAddrStamp] = useState<string | null>(null)
+  const [addressFromSaved, setAddressFromSaved] = useState(false)
+  const fromSavedRef = useRef(false)
   // P0-30 (vague 2 — Q2 fondateur) : le paiement en espèces est HORS PILOTE — le
   // choix est RETIRÉ de l'interface (le serveur le refuse déjà : P0-02 à la
   // création, P0-29 au paiement). La capacité peut revenir après le pilote :
@@ -175,6 +179,7 @@ export default function CartScreen() {
     const sync = () => {
       const list = readAddresses()
       setSavedAddrs(list)
+      setAddrStamp(currentAddressStamp())
       setSelectedAddrId((cur) => (list.find((a) => a.id === cur) ?? getDefaultAddress())?.id ?? '')
     }
     sync()
@@ -186,11 +191,50 @@ export default function CartScreen() {
     }
   }, [])
 
+  // FIRST-FRAME GUARD — see the comment at the top of this block. `addrStamp` is the
+  // identity the list was read under; `sessionStamp` is the identity this render is FOR,
+  // and it changes in the same render as the session (an effect cannot, it runs after).
+  // Mismatch, or an identity that cannot be named ⇒ nothing cache-derived is shown or sent.
+  const sessionStamp = sessionAddressStamp(authStatus, (authSession?.user as { id?: string } | undefined)?.id)
+  const stampOk = addrStamp !== null && addrStamp === sessionStamp
+  // useMemo so the gated list keeps a STABLE reference: it is a dependency of the effect
+  // that fills the delivery string, and a fresh `[]` every render would re-run that effect
+  // on every render.
+  const visibleAddrs = useMemo(() => (stampOk ? savedAddrs : []), [stampOk, savedAddrs])
+  // A hand-typed address is the typist's own and is never hidden; only a value filled
+  // FROM the cache is withheld when the identity it belonged to is not this one.
+  const addressForUse = addressFromSaved && !stampOk ? '' : address
+
   // The selected saved address fills the delivery `address` string (the place-order input).
+  //
+  // ⚠️ THE ELSE-BRANCH IS A PRIVACY FIX, NOT A TIDY-UP. `address` is what becomes
+  // Order.deliveryAddress (see placeOrder below). It used to be SET but never CLEARED, so
+  // when the signed-in identity changed in this tab the owner-scoped list above emptied,
+  // `selectedAddrId` reset to '' — and this field kept the PREVIOUS ACCOUNT's formatted
+  // street address, pre-filled and ready to be POSTed as the new account's delivery
+  // address. That is the production cross-account leak, surviving in a string.
+  // Nothing is lost by clearing: the selection that produced it no longer exists.
+  //
+  // IT ONLY CLEARS WHAT CAME FROM THE CACHE. A hand-typed address belongs to whoever typed
+  // it in this tab — including someone who types it as a guest and then signs in from the
+  // checkout sheet, which changes the identity on this very component. Wiping it there
+  // would be a money-path regression, so the provenance is tracked: `fromSavedRef` mirrors
+  // `addressFromSaved` purely so this effect can read it without listing it as a
+  // dependency (which would make the effect clear the field it had just filled).
   useEffect(() => {
-    const chosen = savedAddrs.find((a) => a.id === selectedAddrId)
-    if (chosen) setAddress(formatAddress(chosen))
-  }, [selectedAddrId, savedAddrs])
+    const chosen = visibleAddrs.find((a) => a.id === selectedAddrId)
+    if (chosen) {
+      setAddress(formatAddress(chosen))
+      fromSavedRef.current = true
+      setAddressFromSaved(true)
+      return
+    }
+    if (fromSavedRef.current) {
+      setAddress('')
+      fromSavedRef.current = false
+      setAddressFromSaved(false)
+    }
+  }, [selectedAddrId, visibleAddrs])
 
   // If the cart has no restaurant.address (older cart shape), fetch it once on pickup.
   useEffect(() => {
@@ -226,12 +270,12 @@ export default function CartScreen() {
   // authoritative at order time (POST /api/orders recomputes + charges the real fee).
   const previewRestaurantId = cart?.restaurantId
   useEffect(() => {
-    if (fulfillment === 'pickup' || !previewRestaurantId || !address) { setDistanceFee(null); return }
+    if (fulfillment === 'pickup' || !previewRestaurantId || !addressForUse) { setDistanceFee(null); return }
     let cancelled = false
     fetch('/api/logistics/fee-preview', {
       method:  'POST',
       headers: { 'content-type': 'application/json' },
-      body:    JSON.stringify({ restaurantId: previewRestaurantId, address }),
+      body:    JSON.stringify({ restaurantId: previewRestaurantId, address: addressForUse }),
     })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
@@ -241,7 +285,7 @@ export default function CartScreen() {
       })
       .catch(() => { if (!cancelled) setDistanceFee(null) })
     return () => { cancelled = true }
-  }, [fulfillment, previewRestaurantId, address])
+  }, [fulfillment, previewRestaurantId, addressForUse])
 
   function update(next: EatCartData | null) {
     setCart(next)
@@ -466,11 +510,11 @@ export default function CartScreen() {
         ? t('pickupAt', { address: restoAddr })
         : t('pickupLabel')
     } else {
-      if (!address.trim() || address.trim().length < 5) {
+      if (!addressForUse.trim() || addressForUse.trim().length < 5) {
         setError(t('errorAddressRequired'))
         return
       }
-      deliveryAddress = address
+      deliveryAddress = addressForUse
     }
 
     setError('')
@@ -702,7 +746,7 @@ export default function CartScreen() {
 
               {/* Address (delivery) OR pickup card */}
               {fulfillment === 'delivery' ? (
-                savedAddrs.length > 0 ? (
+                visibleAddrs.length > 0 ? (
                   <div className="gb-addr-sel" data-err="0" style={{ marginTop: 14 }}>
                     <div className="sel-card">
                       <div className="sel-card__head">
@@ -710,7 +754,7 @@ export default function CartScreen() {
                         <button type="button" className="change" onClick={() => router.push('/eat/account/addresses')}>{ta('selChange')}</button>
                       </div>
                       <div className="sel-list">
-                        {savedAddrs.map((a) => (
+                        {visibleAddrs.map((a) => (
                           <button type="button" key={a.id} className={`opt${a.id === selectedAddrId ? ' sel' : ''}`} onClick={() => setSelectedAddrId(a.id)} aria-pressed={a.id === selectedAddrId}>
                             <span className="radio" />
                             <span className="opt__ico"><span className="ms" aria-hidden="true">{a.kind === 'home' ? 'home' : a.kind === 'work' ? 'work' : 'location_on'}</span></span>
@@ -732,8 +776,8 @@ export default function CartScreen() {
                     <div className="f">
                       <b>{t('deliveryAddress')}</b>
                       <input
-                        value={address}
-                        onChange={(e) => setAddress(e.target.value)}
+                        value={addressForUse}
+                        onChange={(e) => { setAddress(e.target.value); fromSavedRef.current = false; setAddressFromSaved(false) }}
                         placeholder={t('addressPlaceholder')}
                       />
                     </div>
