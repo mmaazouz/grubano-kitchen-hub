@@ -48,7 +48,8 @@ const fetchMock = vi.fn()
 import {
   readAddresses, addAddress, updateAddress, removeAddress, setDefaultAddress,
   getDefaultAddress, syncFromServer, setAddressOwner, getAddressOwner, clearAddressOwner,
-  __resetAddressOwner, formatAddress, ADDRESS_EVENT, type EatAddress,
+  __resetAddressOwner, formatAddress, currentAddressStamp, sessionAddressStamp,
+  ADDRESS_EVENT, type EatAddress,
 } from '@/lib/eat-addresses'
 import { syncGeoCacheOwner } from '@/lib/use-geolocation'
 
@@ -570,7 +571,9 @@ describe('J — the shell declares the identity, and only from the session', () 
   })
 
   it('the « Livrer à » banner reads through the owner-scoped getter and refreshes on the event', () => {
-    expect(code).toMatch(/setDefaultAddr\(getDefaultAddress\(\)\)/)
+    // The value is stored WITH the stamp of the identity it was read under (the render-time
+    // gate lives in the first-frame block below).
+    expect(code).toMatch(/setDefaultAddr\(\{ stamp: currentAddressStamp\(\), addr: getDefaultAddress\(\) \}\)/)
     expect(code).toContain('window.addEventListener(ADDRESS_EVENT, sync)')
   })
 })
@@ -628,15 +631,17 @@ describe('the library can no longer migrate a cache into an account', () => {
 describe('the two money screens cannot keep the previous account’s address', () => {
   it('cart — the delivery string is CLEARED when no saved address is selected (it becomes Order.deliveryAddress)', () => {
     const cart = executable(read('app/[locale]/eat/cart/page.tsx'))
-    // The defect: `if (chosen) setAddress(...)` set the field and never cleared it, so the
-    // previous account's formatted address stayed pre-filled and would be POSTed.
-    expect(cart).not.toMatch(/if \(chosen\) setAddress\(formatAddress\(chosen\)\)/)
-    expect(cart).toContain("setAddress(chosen ? formatAddress(chosen) : '')")
-    // The effect still re-runs on both the list and the selection, which is what makes an
-    // identity change reach it (the list empties → no chosen → cleared).
-    expect(cart).toMatch(/\}, \[selectedAddrId, savedAddrs\]\)/)
-    // And it is still the value the order carries.
-    expect(cart).toMatch(/deliveryAddress = address/)
+    // The defect: the effect SET the field and never cleared it, so the previous account's
+    // formatted address stayed pre-filled and would be POSTed. It now clears — but only
+    // what came from the cache, never a hand-typed value (see the first-frame block).
+    expect(cart).not.toMatch(/setAddress\(chosen \? formatAddress\(chosen\) : ''\)/)
+    expect(cart).toMatch(/if \(chosen\) \{\s*\n\s*setAddress\(formatAddress\(chosen\)\)/)
+    expect(cart).toMatch(/if \(fromSavedRef\.current\) \{\s*\n\s*setAddress\(''\)/)
+    // The effect re-runs on both the (gated) list and the selection, which is what makes
+    // an identity change reach it: the list empties → no chosen → the cache value goes.
+    expect(cart).toMatch(/\}, \[selectedAddrId, visibleAddrs\]\)/)
+    // And the order carries the GATED value.
+    expect(cart).toContain('deliveryAddress = addressForUse')
     // The list itself is still owner-scoped and live.
     expect(cart).toContain('window.addEventListener(ADDRESS_EVENT, sync)')
   })
@@ -655,18 +660,115 @@ describe('the two money screens cannot keep the previous account’s address', (
   it('GeolocSheet — the picked address is dropped with the list (the map card renders it)', () => {
     const geo = executable(read('components/eat/GeolocSheet.tsx'))
     expect(geo).toMatch(/setPicked\(\(cur\) => \(cur && list\.some\(\(a\) => a\.id === cur\.id\) \? cur : null\)\)/)
-    // It really is rendered, which is why a stale value mattered.
-    expect(geo).toMatch(/const mapTitle = picked \? picked\.street \|\| picked\.label/)
+    // It really is rendered, which is why a stale value mattered — through the gated
+    // value now (the un-gated `picked` must not reach the card).
+    expect(geo).toMatch(/const mapTitle = shownPicked \? shownPicked\.street \|\| shownPicked\.label/)
     expect(geo).toContain('window.addEventListener(ADDRESS_EVENT, refresh)')
   })
 
   it('NEGATIVE CONTROL — both regressions would be caught', () => {
     const cart = executable(read('app/[locale]/eat/cart/page.tsx'))
-      .replace("setAddress(chosen ? formatAddress(chosen) : '')", 'if (chosen) setAddress(formatAddress(chosen))')
-    expect(cart).toMatch(/if \(chosen\) setAddress\(formatAddress\(chosen\)\)/)
+      .replace('deliveryAddress = addressForUse', 'deliveryAddress = address')
+    expect(cart).toMatch(/deliveryAddress = address$/m)
     const co = executable(read('app/[locale]/eat/checkout/[orderId]/page.tsx'))
       .replace('window.addEventListener(ADDRESS_EVENT, sync)', '/* removed */')
     expect(co).not.toContain('window.addEventListener(ADDRESS_EVENT, sync)')
+  })
+})
+
+// ── THE FIRST FRAME of an A → B switch inside the SPA ─────────────────────────
+//
+// The identity is declared in an effect. Effects run AFTER the render that introduced the
+// new session, so every consumer that keeps address data in React state re-renders ONCE
+// with B's session and A's data still in state. ADDRESS_EVENT cannot prevent it — the
+// effect that emits it has not run yet; saying otherwise would be exactly the kind of
+// claim this repository has paid for before. The guard is a stamp comparison evaluated
+// DURING render: the stamp the data was captured under versus the stamp the session
+// implies, the latter changing in the same render as the session.
+
+describe('the first frame of an identity change renders nothing cache-derived', () => {
+  it('sessionAddressStamp is fail-closed: null while loading and for an unnameable session', () => {
+    expect(sessionAddressStamp('authenticated', 'A')).toBe('u:A')
+    expect(sessionAddressStamp('unauthenticated', undefined)).toBe('guest')
+    expect(sessionAddressStamp('loading', undefined), 'identity unknown ⇒ no match').toBeNull()
+    expect(sessionAddressStamp('loading', 'A'), 'still loading ⇒ no match').toBeNull()
+    expect(sessionAddressStamp('authenticated', undefined), 'authenticated but unnameable').toBeNull()
+    expect(sessionAddressStamp('authenticated', null)).toBeNull()
+  })
+
+  it('the captured stamp and the session stamp disagree exactly during the stale frame', () => {
+    // The library is still on A (the effect has not run)…
+    setAddressOwner({ kind: 'user', id: 'A' })
+    seedBucket('A', [ADDR_A])
+    const captured = currentAddressStamp()
+    expect(captured).toBe('u:A')
+    expect(readAddresses(), 'the data a consumer would be holding').toEqual([ADDR_A])
+
+    // …while the render is already for B. This is the frame.
+    const sessionStamp = sessionAddressStamp('authenticated', 'B')
+    expect(sessionStamp).toBe('u:B')
+    expect(captured === sessionStamp, 'the gate must be CLOSED in this frame').toBe(false)
+
+    // After the effect declares B, the gate opens for B's own (empty) data.
+    setAddressOwner({ kind: 'user', id: 'B' })
+    expect(currentAddressStamp()).toBe('u:B')
+    expect(currentAddressStamp() === sessionStamp).toBe(true)
+    expect(readAddresses()).toEqual([])
+  })
+
+  it('every consumer that holds address data gates its RENDER on that comparison', () => {
+    // The shell's « Livrer à ».
+    const shell = executable(read('components/eat/EatShell.tsx'))
+    expect(shell).toMatch(/const sessionStamp = sessionAddressStamp\(status, addressOwnerId\)/)
+    expect(shell).toMatch(/const shownAddr = defaultAddr\.stamp !== null && defaultAddr\.stamp === sessionStamp \? defaultAddr\.addr : null/)
+    expect(shell).toMatch(/\{shownAddr \? shownAddr\.label : t\('deliverToValue'\)\}/)
+    expect(shell, 'the raw state must not be rendered').not.toMatch(/\{defaultAddr \? defaultAddr\.label/)
+    expect(shell).toMatch(/stamp: currentAddressStamp\(\)/)
+
+    // The cart: the list, the selector and the string that becomes Order.deliveryAddress.
+    const cart = executable(read('app/[locale]/eat/cart/page.tsx'))
+    expect(cart).toMatch(/const sessionStamp = sessionAddressStamp\(authStatus,/)
+    expect(cart).toMatch(/const stampOk = addrStamp !== null && addrStamp === sessionStamp/)
+    // useMemo'd so the reference is stable (it is an effect dependency).
+    expect(cart).toMatch(/const visibleAddrs = useMemo\(\(\) => \(stampOk \? savedAddrs : \[\]\), \[stampOk, savedAddrs\]\)/)
+    expect(cart).toMatch(/const addressForUse = addressFromSaved && !stampOk \? '' : address/)
+    for (const site of ['visibleAddrs.length > 0', 'visibleAddrs.map(', 'value={addressForUse}']) {
+      expect(cart, site).toContain(site)
+    }
+    // …and the ORDER uses the gated value, not the raw state.
+    expect(cart).toContain('deliveryAddress = addressForUse')
+    expect(cart).not.toMatch(/deliveryAddress = address$/m)
+    expect(cart).toMatch(/if \(!addressForUse\.trim\(\)/)
+    // A hand-typed address is NOT gated away (it belongs to whoever typed it here).
+    expect(cart).toMatch(/if \(fromSavedRef\.current\) \{/)
+
+    // The checkout screen.
+    const co = executable(read('app/[locale]/eat/checkout/[orderId]/page.tsx'))
+    expect(co).toMatch(/const sessionStamp = sessionAddressStamp\(status,/)
+    expect(co).toMatch(/const visibleAddrs = addrStamp !== null && addrStamp === sessionStamp \? addresses : \[\]/)
+    expect(co).toMatch(/const selAddr = visibleAddrs\.find/)
+    expect(co).toContain('{visibleAddrs.length === 0 ? (')
+    expect(co).not.toMatch(/const selAddr = addresses\.find/)
+
+    // GeolocSheet, which renders the picked address on its map card.
+    const geo = executable(read('components/eat/GeolocSheet.tsx'))
+    expect(geo).toMatch(/sessionStamp \}: \{ open: boolean; onClose: \(\) => void; sessionStamp: string \| null \}/)
+    expect(geo).toMatch(/const stampOk = addrStamp !== null && addrStamp === sessionStamp/)
+    expect(geo).toMatch(/const shownPicked = stampOk \? picked : null/)
+    expect(geo).toMatch(/const mapTitle = shownPicked \?/)
+    expect(geo).toMatch(/if \(shownPicked\) setDefaultAddress\(shownPicked\.id\)/)
+    expect(geo, 'the raw picked must not reach the card').not.toMatch(/\[picked\.postalCode/)
+    // The shell supplies it, so the sheet cannot be rendered without a stamp.
+    expect(shell).toMatch(/<GeolocSheet open=\{geoOpen\} onClose=\{\(\) => setGeoOpen\(false\)\} sessionStamp=\{sessionStamp\} \/>/)
+  })
+
+  it('NEGATIVE CONTROL — removing any one gate is detectable', () => {
+    const shell = executable(read('components/eat/EatShell.tsx'))
+      .replace('{shownAddr ? shownAddr.label', '{defaultAddr ? defaultAddr.label')
+    expect(shell).toMatch(/\{defaultAddr \? defaultAddr\.label/)
+    const cart = executable(read('app/[locale]/eat/cart/page.tsx'))
+      .replace('deliveryAddress = addressForUse', 'deliveryAddress = address')
+    expect(cart).toMatch(/deliveryAddress = address$/m)
   })
 })
 
@@ -731,7 +833,10 @@ describe('K — the address API stays session-gated and owner-scoped', () => {
 
   it('a WRITE whose sender was acting as another account is refused with 409', () => {
     expect(route).toContain("const claimed = req.headers.get('x-address-owner')")
-    expect(route).toMatch(/if \(!claimed \|\| claimed === userId\) return null/)
+    // FAIL CLOSED: only an exact match passes. Absent is refused like different — the
+    // earlier version accepted an absent header and left a pre-deploy tab able to write.
+    expect(route).toMatch(/if \(claimed === userId\) return null/)
+    expect(route).not.toMatch(/if \(!claimed/)
     expect(route).toContain("return NextResponse.json({ error: 'owner_mismatch' }, { status: 409 })")
     // Wired into all THREE write verbs, after the session resolves the real owner…
     for (const verb of ['POST', 'PATCH', 'DELETE']) {
@@ -741,9 +846,13 @@ describe('K — the address API stays session-gated and owner-scoped', () => {
       expect(body.indexOf('const userId = await ownerId()'), verb).toBeLessThan(body.indexOf('ownerMismatch(req, userId)'))
       expect(body.indexOf('ownerMismatch(req, userId)'), verb).toBeLessThan(body.indexOf('safeParse'))
     }
-    // …and NOT on the read path (a GET has nothing to plant).
+    // …AND on the read path as well. An earlier version gated only the writes, reasoning
+    // that "a GET has nothing to plant" — true of the row, false of the rendering: a
+    // pre-deploy bundle ignores the `owner` field and would display the cookie-holder's
+    // rows in a tab that still believes it is someone else. So the GET is gated too.
     const get = route.slice(route.indexOf('export async function GET('), route.indexOf('export async function POST('))
-    expect(get).not.toContain('ownerMismatch')
+    expect(get).toContain('const mism = ownerMismatch(req, userId)')
+    expect(get).toContain('if (mism) return mism')
     // The header is never used AS the identity — the row is always scoped by the session.
     expect(route).not.toMatch(/userId = .*x-address-owner/)
     expect(route).not.toMatch(/where: \{ userId: claimed/)
@@ -751,6 +860,89 @@ describe('K — the address API stays session-gated and owner-scoped', () => {
     const lib = read('lib/eat-addresses.ts')
     expect(lib).toMatch(/'x-address-owner': at\.id/)
     expect(lib).not.toMatch(/'x-address-owner': [^a]/) // never a value other than `at.…`
+  })
+
+  // ── STALE PRE-DEPLOY CLIENT — the header is MANDATORY (fail closed) ──────────
+  //
+  // A tab loaded BEFORE the deploy runs the OLD bundle: it knows nothing about
+  // `x-address-owner`, may still hold account A's global cache, and now carries account
+  // B's cookie. While an absent header was accepted, that tab could still POST A's rows
+  // into B — the incident, through the "fixed" route — and on the read path it would
+  // ignore the `owner` field and display the cookie-holder's rows in a tab that believes
+  // it is A. So absent is refused, exactly like different.
+  describe('a client that does not declare its identity can neither read nor write', () => {
+    const verbs = ['GET', 'POST', 'PATCH', 'DELETE'] as const
+
+    it('[A–D] every verb refuses a request with NO header', () => {
+      for (const verb of verbs) {
+        const at = route.indexOf(`export async function ${verb}(`)
+        const body = route.slice(at, at + 520)
+        // The guard runs before any parsing or DB work in every verb…
+        expect(body, verb).toContain('const mism = ownerMismatch(req, userId)')
+        expect(body, verb).toContain('if (mism) return mism')
+      }
+      // …and the guard itself treats "absent" as a refusal: only an exact match passes.
+      expect(route).toContain("const claimed = req.headers.get('x-address-owner')")
+      expect(route).toMatch(/if \(claimed === userId\) return null/)
+      expect(route, 'absent must NOT be accepted').not.toMatch(/if \(!claimed \|\| claimed === userId\)/)
+      expect(route).not.toMatch(/if \(!claimed\) return null/)
+    })
+
+    it('[A] the GET refusal carries NO addresses', () => {
+      // The 409 body is an error code only; the rows are never serialised on that path.
+      // On the EXECUTABLE text: the guard's own documentation legitimately names
+      // lib/eat-addresses.ts, and a ban that read comments would refuse its own rationale.
+      const exec = executable(route)
+      const guard = exec.slice(exec.indexOf('function ownerMismatch'), exec.indexOf('const SELECT'))
+      expect(guard.length).toBeGreaterThan(80)
+      expect(guard.length, 'the slice must be the guard, not the file').toBeLessThan(600)
+      expect(guard).toContain("NextResponse.json({ error: 'owner_mismatch' }, { status: 409 })")
+      expect(guard).not.toContain('addresses')
+      expect(guard).not.toContain('toEatAddress')
+      // And the GET's own rows are read only AFTER the guard returned nothing.
+      const get = route.slice(route.indexOf('export async function GET('), route.indexOf('export async function POST('))
+      expect(get.indexOf('if (mism) return mism')).toBeLessThan(get.indexOf('prisma.address.findMany'))
+    })
+
+    it('[B–D] the refusal precedes every write — zero create / update / delete', () => {
+      for (const [verb, write] of [
+        ['POST', 'tx.address.create'],
+        ['PATCH', 'tx.address.update'],
+        ['DELETE', 'tx.address.delete'],
+      ] as [string, string][]) {
+        const at = route.indexOf(`export async function ${verb}(`)
+        const next = route.indexOf('export async function', at + 10)
+        const body = route.slice(at, next === -1 ? undefined : next)
+        expect(body, verb).toContain(write)
+        expect(body.indexOf('if (mism) return mism'), verb).toBeLessThan(body.indexOf(write))
+        // …and before the ownership probe / parsing too, so nothing is even read.
+        expect(body.indexOf('if (mism) return mism'), verb).toBeLessThan(body.indexOf('safeParse'))
+      }
+    })
+
+    it('[E] header A + session B is refused on all four verbs (same single guard)', () => {
+      // One guard, four call sites: a mismatch cannot be refused on some verbs only.
+      expect((route.match(/const mism = ownerMismatch\(req, userId\)/g) ?? [])).toHaveLength(4)
+      expect((route.match(/if \(mism\) return mism/g) ?? [])).toHaveLength(4)
+      // The comparison is against the SESSION-resolved id, never the header.
+      expect(route).toMatch(/function ownerMismatch\(req: Request, userId: string\)/)
+      expect(route).not.toMatch(/userId = claimed/)
+    })
+
+    it('[F] header B + session B passes (the guard returns null and the handler proceeds)', () => {
+      expect(route).toMatch(/if \(claimed === userId\) return null/)
+      const get = route.slice(route.indexOf('export async function GET('), route.indexOf('export async function POST('))
+      expect(get).toContain('return NextResponse.json({ owner: userId, addresses: rows.map(toEatAddress) })')
+    })
+
+    it('[G] the only client of this route sends the header on EVERY call, read included', () => {
+      const lib = executable(read('lib/eat-addresses.ts'))
+      const fetches = Array.from(lib.matchAll(/fetch\(API, \{[\s\S]{0,260}?\}\)/g)).map((m) => m[0])
+      expect(fetches.length, 'both the sync GET and the mutation').toBe(2)
+      for (const f of fetches) expect(f, f.slice(0, 40)).toContain("'x-address-owner': at.id")
+      // A 409 revokes the proof, so no further mutation is attempted either.
+      expect(lib).toMatch(/if \(res\.status === 409\) \{[\s\S]{0,120}verifiedOwner = null/)
+    })
   })
 
   it('the ONLY change this lot made to the route is the owner echo — every guard is intact', () => {

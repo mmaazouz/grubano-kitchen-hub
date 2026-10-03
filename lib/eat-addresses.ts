@@ -128,6 +128,40 @@ export function getAddressOwner(): AddressOwner | null {
   return owner
 }
 
+/** The stamp of an owner (or null for "no identity"). Exported so a consumer can label
+ *  the data it holds with the identity it was read under. */
+export function ownerStamp(o: AddressOwner | null): string | null {
+  return o ? stampFor(o) : null
+}
+
+/** The stamp the data currently in the cache would be read under, i.e. the stamp of the
+ *  DECLARED owner. Captured by a consumer at read time and compared, at render time, with
+ *  the stamp the SESSION implies. */
+export function currentAddressStamp(): string | null {
+  return ownerStamp(owner)
+}
+
+/**
+ * The stamp a next-auth session implies — the identity the component is being rendered
+ * for, available in the SAME render as the new session.
+ *
+ * THIS IS THE FIRST-FRAME GUARD. The owner is declared in an effect, and effects run
+ * AFTER the render that introduced the new session; a consumer holding address data in
+ * React state therefore paints the PREVIOUS owner's data for exactly one committed frame
+ * on an A → B switch inside the SPA. ADDRESS_EVENT cannot help: the effect that emits it
+ * has not run yet. Comparing the stamp the data was CAPTURED under with the stamp the
+ * session implies closes that frame, because the session-derived stamp changes in the very
+ * render where the session does.
+ *
+ * FAIL CLOSED: null while the session is loading, and null for an authenticated session
+ * with no usable id. A null stamp matches nothing, so nothing cache-derived is rendered.
+ */
+export function sessionAddressStamp(status: string, userId?: string | null): string | null {
+  if (status === 'authenticated') return userId ? `u:${userId}` : null
+  if (status === 'unauthenticated') return 'guest'
+  return null // 'loading' — identity unknown
+}
+
 /**
  * Forget the identity: reads go back to empty and writes are refused until a new owner is
  * declared. For the case where the session says "authenticated" but carries no usable id —
@@ -245,11 +279,20 @@ export async function syncFromServer(): Promise<boolean> {
   const at = owner // the identity this sync is FOR
   let res: Response
   try {
-    res = await fetch(API, { headers: { accept: 'application/json' } })
+    // The READ declares its identity too, and the route refuses a request that does not
+    // (409). A pre-deploy bundle sends no header and is therefore served nothing, instead
+    // of being handed the cookie-holder's rows while it still believes it is someone else.
+    res = await fetch(API, { headers: { accept: 'application/json', 'x-address-owner': at.id } })
   } catch {
     return false
   }
   if (res.status === 401) {
+    verifiedOwner = null
+    return false
+  }
+  // 409 = the server says the identity we declared is not the one its cookie resolves to.
+  // Nothing may be written, and whatever was proven before is no longer true.
+  if (res.status === 409) {
     verifiedOwner = null
     return false
   }

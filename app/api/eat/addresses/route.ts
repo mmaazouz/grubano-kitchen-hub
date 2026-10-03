@@ -60,23 +60,32 @@ async function ownerId(): Promise<string | null> {
 }
 
 /**
- * A write whose sender believed it was acting for ANOTHER account is refused.
+ * FAIL CLOSED. Every request must DECLARE the identity it believes it is acting for, and
+ * it must be the one the session resolved. Absent header → 409. Different → 409.
  *
  * The owner is always the cookie's — this header grants nothing and is never trusted as
  * identity. It exists because the client cache is keyed by the identity the BROWSER TAB
  * believes it has, and that belief goes stale: after a sign-in in another tab the cookie
  * is already the new account's while the tab still holds the old session object. A
  * mutation sent in that window created the previous account's address INSIDE the new
- * account — the production incident. The client now declares the identity it is acting
- * for (lib/eat-addresses.ts), so the server can decline instead of silently obeying.
+ * account — the production incident.
  *
- * Absent header → proceed, unchanged: this is a confused-client guard, not an access
- * control (the row is owner-scoped by the session either way), so an older client or any
- * other caller keeps working.
+ * WHY ABSENT IS REFUSED, not accepted. Accepting it kept the whole hole open for exactly
+ * the population that matters: a tab loaded BEFORE the deploy runs the OLD bundle, which
+ * knows nothing about this header, may still hold account A's global cache, and now
+ * carries account B's cookie. It would have sent header-less POSTs that the server
+ * accepted — A's rows created inside B, the incident, through the "fixed" route. The same
+ * applies on the read path: an old bundle ignores the `owner` field this route returns
+ * and would display the cookie-holder's rows in a tab that still believes it is A.
+ * So a pre-deploy tab can no longer read or write until the page is refreshed. That is
+ * the intended cost, and it is bounded: `lib/eat-addresses.ts` is the ONLY client of this
+ * private internal route (verified by grep over the whole repository — the other mentions
+ * are documentation), so no legitimate external caller is being locked out.
  */
 function ownerMismatch(req: Request, userId: string): NextResponse | null {
   const claimed = req.headers.get('x-address-owner')
-  if (!claimed || claimed === userId) return null
+  if (claimed === userId) return null
+  // No addresses in the body: a refusal must not leak the very rows it is protecting.
   return NextResponse.json({ error: 'owner_mismatch' }, { status: 409 })
 }
 
@@ -95,9 +104,14 @@ const SELECT = {
 // as the old account's — defeating both of its locks from the inside, which is the
 // production leak re-entering through the fixed path. lib/eat-addresses discards any
 // response whose `owner` is not the identity it asked for. Purely additive.
-export async function GET() {
+export async function GET(req: Request) {
   const userId = await ownerId()
   if (!userId) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+  // The READ path is gated too: a caller that cannot name the identity it is reading for
+  // gets nothing. Echoing the owner only helps a client that checks it; a pre-deploy
+  // bundle does not, so it must not receive rows at all.
+  const mism = ownerMismatch(req, userId)
+  if (mism) return mism
   const rows = await prisma.address.findMany({
     where: { userId },
     orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],

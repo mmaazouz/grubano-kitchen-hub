@@ -5,7 +5,7 @@ import { Link, usePathname, useRouter } from '@/navigation'
 import { useSession } from 'next-auth/react'
 import { useTranslations, useLocale } from 'next-intl'
 import { readCart, cartCount, CART_EVENT } from '@/lib/eat-cart'
-import { getDefaultAddress, syncFromServer, setAddressOwner, clearAddressOwner, ADDRESS_EVENT, type EatAddress } from '@/lib/eat-addresses'
+import { getDefaultAddress, syncFromServer, setAddressOwner, clearAddressOwner, currentAddressStamp, sessionAddressStamp, ADDRESS_EVENT, type EatAddress } from '@/lib/eat-addresses'
 import { syncGeoCacheOwner } from '@/lib/use-geolocation'
 import { formatEuros } from '@/lib/format-money'
 import GeolocSheet from '@/components/eat/GeolocSheet'
@@ -67,12 +67,15 @@ export default function EatShell({ children }: { children: React.ReactNode }) {
   const [points, setPoints] = useState<number | null>(null)
   const [activeOrders, setActiveOrders] = useState(0)
   const [query, setQuery] = useState('')
-  const [defaultAddr, setDefaultAddr] = useState<EatAddress | null>(null)
+  // The « Livrer à » value is stored WITH the stamp of the identity it was read under.
+  const [defaultAddr, setDefaultAddr] = useState<{ stamp: string | null; addr: EatAddress | null }>(
+    { stamp: null, addr: null },
+  )
   const [geoOpen, setGeoOpen] = useState(false)
 
   // « Livrer à » = the user's REAL default saved address (lib/eat-addresses), live.
   useEffect(() => {
-    const sync = () => setDefaultAddr(getDefaultAddress())
+    const sync = () => setDefaultAddr({ stamp: currentAddressStamp(), addr: getDefaultAddress() })
     sync()
     window.addEventListener(ADDRESS_EVENT, sync)
     window.addEventListener('storage', sync)
@@ -98,6 +101,16 @@ export default function EatShell({ children }: { children: React.ReactNode }) {
   // REVERSE-GEOCODED POSTAL ADDRESS of the position under one global key, so the next
   // identity was shown the previous one's address line as its own « position active ».
   const addressOwnerId = (session?.user as { id?: string } | undefined)?.id
+
+  // FIRST-FRAME GUARD. The effect below declares the identity, and effects run AFTER the
+  // render that introduced a new session: on an A → B switch inside the SPA this component
+  // re-renders with B's session while `defaultAddr` still holds A's address, and would
+  // paint A's label for one committed frame. ADDRESS_EVENT cannot prevent it — the effect
+  // that emits it has not run yet. So the render compares the stamp the value was read
+  // under with the stamp the SESSION implies, which changes in the same render as the
+  // session. Mismatch (or unknown identity) ⇒ the generic label, never the other account's.
+  const sessionStamp = sessionAddressStamp(status, addressOwnerId)
+  const shownAddr = defaultAddr.stamp !== null && defaultAddr.stamp === sessionStamp ? defaultAddr.addr : null
   useEffect(() => {
     if (status === 'loading') return
     if (status === 'authenticated') {
@@ -247,7 +260,7 @@ export default function EatShell({ children }: { children: React.ReactNode }) {
             <div className="topbar">
               <button type="button" className="loc" onClick={() => setGeoOpen(true)}>
                 <div className="l">{t('deliverTo')}</div>
-                <div className="v">{defaultAddr ? defaultAddr.label : t('deliverToValue')}<span className="ms" aria-hidden="true">expand_more</span></div>
+                <div className="v">{shownAddr ? shownAddr.label : t('deliverToValue')}<span className="ms" aria-hidden="true">expand_more</span></div>
               </button>
               <form className="search" onSubmit={submitSearch}>
                 <span className="ms ai" aria-hidden="true">auto_awesome</span>
@@ -289,7 +302,7 @@ export default function EatShell({ children }: { children: React.ReactNode }) {
           </nav>
         </>
       )}
-      <GeolocSheet open={geoOpen} onClose={() => setGeoOpen(false)} />
+      <GeolocSheet open={geoOpen} onClose={() => setGeoOpen(false)} sessionStamp={sessionStamp} />
     </div>
   )
 }
