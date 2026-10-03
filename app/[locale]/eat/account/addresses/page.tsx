@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import { useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
 import { useRouter } from '@/navigation'
 import {
@@ -10,6 +11,8 @@ import {
   removeAddress,
   setDefaultAddress,
   formatAddress,
+  currentAddressStamp,
+  sessionAddressStamp,
   ADDRESS_EVENT,
   type EatAddress,
   type AddrKind,
@@ -35,11 +38,17 @@ type FormState = { mode: 'add' } | { mode: 'edit'; address: EatAddress }
 export default function AddressesPage() {
   const t = useTranslations('eat.addresses')
   const router = useRouter()
+  const { data: session, status } = useSession()
 
   const [addresses, setAddresses] = useState<EatAddress[]>([])
+  /** The identity the list above was read under (see the FIRST-FRAME GUARD below). */
+  const [addrStamp, setAddrStamp] = useState<string | null>(null)
   const [form, setForm] = useState<FormState | null>(null)
 
-  const refresh = useCallback(() => setAddresses(readAddresses()), [])
+  const refresh = useCallback(() => {
+    setAddresses(readAddresses())
+    setAddrStamp(currentAddressStamp())
+  }, [])
 
   useEffect(() => {
     refresh()
@@ -47,11 +56,40 @@ export default function AddressesPage() {
     return () => window.removeEventListener(ADDRESS_EVENT, refresh)
   }, [refresh])
 
+  // ── FIRST-FRAME GUARD ────────────────────────────────────────────────────────
+  // This screen is the one that exists to show the address book, and it kept the list in
+  // React state with no notion of whose it was. The identity is declared by an effect in
+  // EatShell, and effects run AFTER the render that introduced a new session — in fact
+  // AFTER this page's own effects, since React runs child effects before the parent's. So
+  // on an A → B switch in another tab, this page re-rendered once with B's session and A's
+  // addresses still in state and PAINTED THEM. ADDRESS_EVENT cannot prevent that: the
+  // effect that emits it has not run yet.
+  //
+  // The gate is therefore evaluated DURING render: the stamp the list was read under
+  // against the stamp the SESSION implies, the latter changing in the very render the
+  // session does. It is fail-closed — `sessionAddressStamp` is null while the session is
+  // loading or when an authenticated session carries no usable id, and `addrStamp` is null
+  // until the owner has been declared at all, so neither matches anything.
+  const sessionStamp = sessionAddressStamp(status, (session?.user as { id?: string } | undefined)?.id)
+  const stampOk = addrStamp !== null && addrStamp === sessionStamp
+  const visibleAddresses = stampOk ? addresses : []
+  // Every mutation entry point is closed while the two disagree. A guest is a normal
+  // identity here: 'guest' === 'guest' passes and the local book keeps working.
+  const canMutate = stampOk
+  // The edit form holds a captured EatAddress, which may be the previous owner's. It is
+  // not merely hidden: it is CLOSED, so a stale edit target cannot come back when the
+  // stamps agree again, and Save/Delete have nothing to act on.
+  const visibleForm = stampOk ? form : null
+  useEffect(() => {
+    if (!stampOk && form) setForm(null)
+  }, [stampOk, form])
+
   const onDelete = (a: EatAddress) => {
+    if (!canMutate) return
     if (window.confirm(t('confirmDelete'))) removeAddress(a.id)
   }
 
-  const state = addresses.length === 0 ? 'empty' : 'list'
+  const state = visibleAddresses.length === 0 ? 'empty' : 'list'
 
   return (
     <div className="gb gb-addr-page" data-state={state}>
@@ -60,7 +98,7 @@ export default function AddressesPage() {
           <span className="ms" aria-hidden="true">arrow_back</span>
         </button>
         <h1>{t('title')}</h1>
-        <button type="button" className="ad-btn ad-btn--primary" onClick={() => setForm({ mode: 'add' })}>
+        <button type="button" className="ad-btn ad-btn--primary" disabled={!canMutate} onClick={() => { if (canMutate) setForm({ mode: 'add' }) }}>
           <span className="ms" style={{ fontSize: 18 }} aria-hidden="true">add</span>{t('add')}
         </button>
       </div>
@@ -68,7 +106,7 @@ export default function AddressesPage() {
       <div className="page__body">
         {/* LISTE REMPLIE */}
         <div className="addr-list">
-          {addresses.map((a) => (
+          {visibleAddresses.map((a) => (
             <div key={a.id} className={`addr-row${a.isDefault ? ' is-default' : ''}`}>
               <div className="addr-ico"><span className="ms" aria-hidden="true">{KIND_ICON[a.kind]}</span></div>
               <div className="addr-row__main">
@@ -87,11 +125,11 @@ export default function AddressesPage() {
               </div>
               <div className="row-actions">
                 {!a.isDefault && (
-                  <button type="button" className="icon-btn" title={t('setDefault')} aria-label={t('setDefault')} onClick={() => setDefaultAddress(a.id)}>
+                  <button type="button" className="icon-btn" title={t('setDefault')} aria-label={t('setDefault')} onClick={() => { if (canMutate) setDefaultAddress(a.id) }}>
                     <span className="ms" aria-hidden="true">star</span>
                   </button>
                 )}
-                <button type="button" className="icon-btn" title={t('edit')} aria-label={t('edit')} onClick={() => setForm({ mode: 'edit', address: a })}>
+                <button type="button" className="icon-btn" title={t('edit')} aria-label={t('edit')} onClick={() => { if (canMutate) setForm({ mode: 'edit', address: a }) }}>
                   <span className="ms" aria-hidden="true">edit</span>
                 </button>
                 <button type="button" className="icon-btn danger" title={t('delete')} aria-label={t('delete')} onClick={() => onDelete(a)}>
@@ -101,7 +139,7 @@ export default function AddressesPage() {
             </div>
           ))}
         </div>
-        <button type="button" className="page__add" onClick={() => setForm({ mode: 'add' })}>
+        <button type="button" className="page__add" disabled={!canMutate} onClick={() => { if (canMutate) setForm({ mode: 'add' }) }}>
           <span className="ms" aria-hidden="true">add_location_alt</span>{t('addAddress')}
         </button>
 
@@ -110,13 +148,13 @@ export default function AddressesPage() {
           <div className="empty__ico"><span className="ms" aria-hidden="true">location_off</span></div>
           <h2>{t('emptyTitle')}</h2>
           <p>{t('emptyBody')}</p>
-          <button type="button" className="ad-btn ad-btn--primary" onClick={() => setForm({ mode: 'add' })}>
+          <button type="button" className="ad-btn ad-btn--primary" disabled={!canMutate} onClick={() => { if (canMutate) setForm({ mode: 'add' }) }}>
             <span className="ms" style={{ fontSize: 18 }} aria-hidden="true">add_location_alt</span>{t('emptyCta')}
           </button>
         </div>
       </div>
 
-      {form && <AddressForm state={form} onClose={() => setForm(null)} />}
+      {visibleForm && <AddressForm state={visibleForm} canMutate={canMutate} onClose={() => setForm(null)} />}
     </div>
   )
 }
@@ -124,7 +162,12 @@ export default function AddressesPage() {
 // ── Screen 2 — add/edit form (desktop modal / mobile full-screen sheet) ────────
 const COUNTRIES = ['France', 'Belgique', 'Suisse', 'Espagne', 'Italie'] as const
 
-function AddressForm({ state, onClose }: { state: FormState; onClose: () => void }) {
+// `canMutate` is the page's first-frame gate. A form can only ever act on an address
+// captured under the identity the session currently resolves to; the page also CLOSES it
+// on a divergence, so this is the second lock rather than the only one.
+function AddressForm(
+  { state, canMutate, onClose }: { state: FormState; canMutate: boolean; onClose: () => void },
+) {
   const t = useTranslations('eat.addresses')
   const editing = state.mode === 'edit' ? state.address : null
 
@@ -148,6 +191,7 @@ function AddressForm({ state, onClose }: { state: FormState; onClose: () => void
   const labelFor = (k: AddrKind) => (k === 'home' ? t('chipHome') : k === 'work' ? t('chipWork') : t('chipOther'))
 
   const onSave = () => {
+    if (!canMutate) return
     const postalOk = /^\d{5}$/.test(postalCode.trim())
     const streetOk = street.trim().length > 0
     const cityOk = city.trim().length > 0
@@ -175,6 +219,7 @@ function AddressForm({ state, onClose }: { state: FormState; onClose: () => void
   }
 
   const onDelete = () => {
+    if (!canMutate) return
     if (editing && window.confirm(t('confirmDelete'))) {
       removeAddress(editing.id)
       onClose()
@@ -294,7 +339,7 @@ function AddressForm({ state, onClose }: { state: FormState; onClose: () => void
           </div>
 
           <div className="sheet__foot">
-            <button type="button" className="ad-btn ad-btn--primary" onClick={onSave}>
+            <button type="button" className="ad-btn ad-btn--primary" disabled={!canMutate} onClick={onSave}>
               <span className="show-add">{t('save')}</span>
               <span className="show-edit">{t('saveEdit')}</span>
             </button>

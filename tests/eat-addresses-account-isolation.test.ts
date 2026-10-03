@@ -762,6 +762,129 @@ describe('the first frame of an identity change renders nothing cache-derived', 
     expect(shell).toMatch(/<GeolocSheet open=\{geoOpen\} onClose=\{\(\) => setGeoOpen\(false\)\} sessionStamp=\{sessionStamp\} \/>/)
   })
 
+  // ── THE ADDRESSES SCREEN ITSELF ───────────────────────────────────────────────
+  //
+  // The page whose whole purpose is to show the address book. It kept the list in React
+  // state, rendered `addresses.map(...)` directly, and used neither the session nor a
+  // stamp — so on an A → B switch in another tab it painted A's addresses under B's
+  // session for one frame, and its edit form held one of A's address OBJECTS. It had been
+  // pinned byte-identical in this file, which proved it unchanged and hid that it was
+  // wrong. A/D/E/F are asserted on source because there is no DOM harness here; what they
+  // compose — the stamp semantics — is proven behaviourally above.
+  describe('the addresses screen is first-frame safe', () => {
+    const page = executable(read('app/[locale]/eat/account/addresses/page.tsx'))
+
+    it('POSITIVE CONTROL — the stripper left the code being judged', () => {
+      expect(page).toContain('export default function AddressesPage()')
+      expect(page).toContain('function AddressForm(')
+      expect(read('app/[locale]/eat/account/addresses/page.tsx')).toContain('// ── FIRST-FRAME GUARD')
+      expect(page).not.toContain('// ── FIRST-FRAME GUARD')
+    })
+
+    it('[A] it reads the session and gates the list on the stamp comparison', () => {
+      expect(page).toContain("import { useSession } from 'next-auth/react'")
+      expect(page).toMatch(/const \{ data: session, status \} = useSession\(\)/)
+      expect(page).toMatch(/setAddrStamp\(currentAddressStamp\(\)\)/)
+      expect(page).toMatch(/const sessionStamp = sessionAddressStamp\(status, \(session\?\.user as \{ id\?: string \} \| undefined\)\?\.id\)/)
+      expect(page).toMatch(/const stampOk = addrStamp !== null && addrStamp === sessionStamp/)
+      expect(page).toMatch(/const visibleAddresses = stampOk \? addresses : \[\]/)
+      // The stamp is captured in the SAME callback that reads the list, so the two can
+      // never describe different moments.
+      const refresh = page.slice(page.indexOf('const refresh = useCallback'), page.indexOf('useEffect(() => {'))
+      expect(refresh).toContain('setAddresses(readAddresses())')
+      expect(refresh).toContain('setAddrStamp(currentAddressStamp())')
+    })
+
+    it('[B] the empty/list state is computed from the GATED list', () => {
+      expect(page).toMatch(/const state = visibleAddresses\.length === 0 \? 'empty' : 'list'/)
+      expect(page).not.toMatch(/const state = addresses\.length === 0/)
+    })
+
+    it('[C] no raw addresses.map in the render', () => {
+      expect(page).toContain('{visibleAddresses.map((a) => (')
+      expect(page).not.toMatch(/\{addresses\.map/)
+      // The raw state survives ONLY as its declaration and inside the gate. (Lines with a
+      // quote are excluded: the i18n namespace, the stylesheet and the library path all
+      // legitimately contain the word — the first version of this assertion counted those
+      // and measured nothing.)
+      const rawLines = page
+        .split('\n')
+        .map((l) => l.trim())
+        .filter((l) => /(^|[^A-Za-z.])addresses\b/.test(l) && !l.includes("'") && !l.includes('"'))
+      expect(rawLines).toEqual([
+        'const [addresses, setAddresses] = useState<EatAddress[]>([])',
+        'const visibleAddresses = stampOk ? addresses : []',
+      ])
+    })
+
+    it('[D] an edit form captured under another identity is CLOSED, not merely hidden', () => {
+      expect(page).toMatch(/const visibleForm = stampOk \? form : null/)
+      expect(page).toMatch(/\{visibleForm && <AddressForm state=\{visibleForm\} canMutate=\{canMutate\} onClose=\{\(\) => setForm\(null\)\} \/>\}/)
+      expect(page).not.toMatch(/\{form && <AddressForm state=\{form\}/)
+      // …and really closed, so a stale edit target cannot return when the stamps agree.
+      expect(page).toMatch(/if \(!stampOk && form\) setForm\(null\)/)
+    })
+
+    it('[E] edit / delete / set-default are unreachable for a masked address', () => {
+      // The row actions live inside the GATED map, so a masked address has no row at all…
+      const list = page.slice(page.indexOf('{visibleAddresses.map((a) => ('), page.indexOf('className="page__add"'))
+      expect(list.length).toBeGreaterThan(400)
+      expect(list).toContain('onClick={() => { if (canMutate) setDefaultAddress(a.id) }}')
+      expect(list).toContain("onClick={() => { if (canMutate) setForm({ mode: 'edit', address: a }) }}")
+      expect(list).toContain('onClick={() => onDelete(a)}')
+      // …and the handlers refuse anyway.
+      expect(page).toMatch(/const onDelete = \(a: EatAddress\) => \{\s*\n\s*if \(!canMutate\) return/)
+      expect(page).not.toMatch(/onClick=\{\(\) => setDefaultAddress\(a\.id\)\}/)
+    })
+
+    it('[F] every add / save entry point is refused during a stamp mismatch', () => {
+      // Three « add » buttons (header, list footer, empty state) + the form's Save.
+      expect((page.match(/disabled=\{!canMutate\}/g) ?? []).length, 'three adds + save').toBe(4)
+      expect((page.match(/if \(canMutate\) setForm\(\{ mode: 'add' \}\)/g) ?? []).length).toBe(3)
+      expect(page).not.toMatch(/onClick=\{\(\) => setForm\(\{ mode: 'add' \}\)\}/)
+      // The form cannot write either, whatever a caller passes.
+      expect(page).toMatch(/const onSave = \(\) => \{\s*\n\s*if \(!canMutate\) return/)
+      expect(page).toMatch(/const onDelete = \(\) => \{\s*\n\s*if \(!canMutate\) return/)
+      expect(page).toMatch(/const canMutate = stampOk/)
+    })
+
+    it('[G/H/I] what the gate composes with: B sees only B, an empty B is truly empty, a guest works', async () => {
+      // The page's gate is `addrStamp === sessionStamp`; these are the three outcomes it
+      // composes with, proven on the library the page reads from.
+      setAddressOwner({ kind: 'user', id: 'A' })
+      seedBucket('A', [ADDR_A])
+      setAddressOwner({ kind: 'user', id: 'B' })
+      seedBucket('B', [ADDR_B])
+      // G — stamps agree on B: B's own rows, and only those.
+      expect(currentAddressStamp()).toBe(sessionAddressStamp('authenticated', 'B'))
+      expect(readAddresses()).toEqual([ADDR_B])
+      expect(JSON.stringify(readAddresses())).not.toContain('Rue Test')
+      // H — B with nothing: a true empty state, not a fallback to anyone else's book.
+      fetchMock.mockResolvedValueOnce(gotFor('B'))
+      await syncFromServer()
+      expect(readAddresses()).toEqual([])
+      // I — guest: 'guest' === 'guest', so the local book keeps working.
+      setAddressOwner({ kind: 'guest' })
+      expect(currentAddressStamp()).toBe(sessionAddressStamp('unauthenticated', undefined))
+      const made = addAddress({
+        label: 'Chez moi', kind: 'home', street: '3 Rue Guest', postalCode: '13001',
+        city: 'Marseille', country: 'France', isDefault: true,
+      })
+      expect(readAddresses()).toEqual([made])
+    })
+
+    it('[J] NEGATIVE CONTROL — removing the page’s guard is caught', () => {
+      const regressed = page
+        .replace('const visibleAddresses = stampOk ? addresses : []', 'const visibleAddresses = addresses')
+        .replace('{visibleAddresses.map((a) => (', '{addresses.map((a) => (')
+      expect(regressed).toMatch(/\{addresses\.map/)
+      expect(regressed).not.toMatch(/const visibleAddresses = stampOk \? addresses : \[\]/)
+      // …and the form gate likewise.
+      const noForm = page.replace('const visibleForm = stampOk ? form : null', 'const visibleForm = form')
+      expect(noForm).not.toMatch(/const visibleForm = stampOk \? form : null/)
+    })
+  })
+
   it('NEGATIVE CONTROL — removing any one gate is detectable', () => {
     const shell = executable(read('components/eat/EatShell.tsx'))
       .replace('{shownAddr ? shownAddr.label', '{defaultAddr ? defaultAddr.label')
@@ -975,9 +1098,12 @@ describe('L — no schema, no money path, and the consumer API is unchanged', ()
   // autre compte"), so the exception is the requirement, not a widening of scope. Both
   // changes are asserted line-by-line above, with negative controls. No total, fee,
   // discount, payment call or placeOrder argument is touched by either.
+  // The addresses SCREEN is no longer pinned here. Pinning it proved it had not changed —
+  // and that is precisely how it went unexamined through two rounds while it held the
+  // address book in React state with no notion of whose it was. It is now covered by the
+  // behavioural and source proofs in the first-frame block instead.
   const PINNED: Record<string, string> = {
-    'prisma/schema.prisma':                        '162155c0b15dc96ee3bd088e5a6c3566553c51b03f2dedd1ab9832d073f2e734',
-    'app/[locale]/eat/account/addresses/page.tsx': '4f8636755b6fce7d080869d0963c99b3a35dad60f4e9e2899506288c33217753',
+    'prisma/schema.prisma': '162155c0b15dc96ee3bd088e5a6c3566553c51b03f2dedd1ab9832d073f2e734',
   }
 
   for (const [file, digest] of Object.entries(PINNED)) {
