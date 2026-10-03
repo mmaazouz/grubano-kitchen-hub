@@ -59,12 +59,42 @@ async function ownerId(): Promise<string | null> {
   return (session?.user as { id?: string } | undefined)?.id ?? null
 }
 
+/**
+ * A write whose sender believed it was acting for ANOTHER account is refused.
+ *
+ * The owner is always the cookie's — this header grants nothing and is never trusted as
+ * identity. It exists because the client cache is keyed by the identity the BROWSER TAB
+ * believes it has, and that belief goes stale: after a sign-in in another tab the cookie
+ * is already the new account's while the tab still holds the old session object. A
+ * mutation sent in that window created the previous account's address INSIDE the new
+ * account — the production incident. The client now declares the identity it is acting
+ * for (lib/eat-addresses.ts), so the server can decline instead of silently obeying.
+ *
+ * Absent header → proceed, unchanged: this is a confused-client guard, not an access
+ * control (the row is owner-scoped by the session either way), so an older client or any
+ * other caller keeps working.
+ */
+function ownerMismatch(req: Request, userId: string): NextResponse | null {
+  const claimed = req.headers.get('x-address-owner')
+  if (!claimed || claimed === userId) return null
+  return NextResponse.json({ error: 'owner_mismatch' }, { status: 409 })
+}
+
 const SELECT = {
   id: true, label: true, kind: true, street: true, complement: true,
   postalCode: true, city: true, country: true, note: true, isDefault: true,
 } as const
 
 // GET — list the user's addresses (default first, then oldest first).
+//
+// The response NAMES THE OWNER the server resolved from the session cookie. The client
+// cache is keyed and stamped by the identity the CLIENT believes it has; those two can
+// diverge (a tab left open across a sign-out/sign-in in another tab still holds the old
+// session object while the cookie is already the new account's). Without this field the
+// client would mirror the new account's rows into the old account's bucket and stamp them
+// as the old account's — defeating both of its locks from the inside, which is the
+// production leak re-entering through the fixed path. lib/eat-addresses discards any
+// response whose `owner` is not the identity it asked for. Purely additive.
 export async function GET() {
   const userId = await ownerId()
   if (!userId) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
@@ -73,13 +103,15 @@ export async function GET() {
     orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
     select: SELECT,
   })
-  return NextResponse.json({ addresses: rows.map(toEatAddress) })
+  return NextResponse.json({ owner: userId, addresses: rows.map(toEatAddress) })
 }
 
 // POST — create. Becomes the default if flagged OR if it's the first address.
 export async function POST(req: Request) {
   const userId = await ownerId()
   if (!userId) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+  const mism = ownerMismatch(req, userId)
+  if (mism) return mism
   const parsed = AddressInput.safeParse(await req.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ error: 'invalid' }, { status: 400 })
   const { isDefault, ...data } = parsed.data
@@ -97,6 +129,8 @@ export async function POST(req: Request) {
 export async function PATCH(req: Request) {
   const userId = await ownerId()
   if (!userId) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+  const mism = ownerMismatch(req, userId)
+  if (mism) return mism
   const parsed = z.object({ id: z.string().min(1) }).and(AddressPatch).safeParse(
     await req.json().catch(() => null),
   )
@@ -127,6 +161,8 @@ export async function PATCH(req: Request) {
 export async function DELETE(req: Request) {
   const userId = await ownerId()
   if (!userId) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+  const mism = ownerMismatch(req, userId)
+  if (mism) return mism
   const parsed = z.object({ id: z.string().min(1) }).safeParse(await req.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ error: 'invalid' }, { status: 400 })
   const { id } = parsed.data

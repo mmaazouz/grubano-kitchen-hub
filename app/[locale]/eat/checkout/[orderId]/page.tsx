@@ -8,7 +8,7 @@ import { Link, useRouter } from '@/navigation'
 import { useTranslations, useLocale } from 'next-intl'
 import StripeTicketPayment from '@/components/payments/StripeTicketPayment'
 import WalletPaymentButton from '@/components/eat/WalletPaymentButton'
-import { readAddresses, formatAddress, type EatAddress } from '@/lib/eat-addresses'
+import { readAddresses, formatAddress, ADDRESS_EVENT, type EatAddress } from '@/lib/eat-addresses'
 import './checkout.css'
 import './confirmed.css'
 import '@/app/gb-foundation/gb-tokens.css'
@@ -117,12 +117,30 @@ export default function CheckoutPage() {
 
   useEffect(() => { if (orderId) loadOrder() }, [orderId, loadOrder])
 
-  // Load the user's real saved addresses (visual delivery selector).
+  // Load the user's real saved addresses (visual delivery selector) — and KEEP THEM LIVE.
+  //
+  // ⚠️ This used to read once on mount with no listener, so the list stayed in React state
+  // after the signed-in identity changed in this tab: the previous account's whole address
+  // book, and its selected address, remained on screen on the NEW account's payment page.
+  // The address cache is owner-scoped now, but only a re-read sees that — hence the same
+  // ADDRESS_EVENT / storage subscription every other consumer has. The selection is
+  // dropped whenever the refreshed list no longer contains it.
   useEffect(() => {
-    const list = readAddresses()
-    setAddresses(list)
-    const def = list.find((a) => a.isDefault) ?? list[0]
-    if (def) setAddrId(def.id)
+    const sync = () => {
+      const list = readAddresses()
+      setAddresses(list)
+      setAddrId((cur) => {
+        if (list.some((a) => a.id === cur)) return cur
+        return (list.find((a) => a.isDefault) ?? list[0])?.id ?? ''
+      })
+    }
+    sync()
+    window.addEventListener(ADDRESS_EVENT, sync)
+    window.addEventListener('storage', sync)
+    return () => {
+      window.removeEventListener(ADDRESS_EVENT, sync)
+      window.removeEventListener('storage', sync)
+    }
   }, [])
 
   // ── Start the payment (C1 route — called, never modified) ───────────────────

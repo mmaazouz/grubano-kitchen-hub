@@ -5,7 +5,8 @@ import { Link, usePathname, useRouter } from '@/navigation'
 import { useSession } from 'next-auth/react'
 import { useTranslations, useLocale } from 'next-intl'
 import { readCart, cartCount, CART_EVENT } from '@/lib/eat-cart'
-import { getDefaultAddress, syncFromServer, ADDRESS_EVENT, type EatAddress } from '@/lib/eat-addresses'
+import { getDefaultAddress, syncFromServer, setAddressOwner, clearAddressOwner, ADDRESS_EVENT, type EatAddress } from '@/lib/eat-addresses'
+import { syncGeoCacheOwner } from '@/lib/use-geolocation'
 import { formatEuros } from '@/lib/format-money'
 import GeolocSheet from '@/components/eat/GeolocSheet'
 import '@/app/[locale]/eat/nav-shell.css'
@@ -81,12 +82,38 @@ export default function EatShell({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
-  // P0-DATA-1 — once authenticated, pull the server address book into the local cache
-  // (cross-device persistence). Best-effort: a guest (401) / offline device keeps the
-  // localStorage store only. The ADDRESS_EVENT the sync fires refreshes « Livrer à ».
+  // P0-DATA-1 — the address cache's IDENTITY, then the server pull.
+  //
+  // This is the ONLY place the address cache learns who it belongs to, and it must run on
+  // every identity change (sign-in, sign-out, account switch). Until it does, the cache
+  // serves nothing: that is what stops a signed-out account's cached addresses from being
+  // shown — or POSTed — to the next account to sign in on this browser (the production
+  // cross-account leak). setAddressOwner emits ADDRESS_EVENT when the identity changes, so
+  // « Livrer à » and every open address list drop the previous owner's view at once.
+  //
+  // Authenticated WITHOUT a resolvable id → declare NOTHING: an identity we cannot name is
+  // an identity we cannot attribute data to, and the guest bucket is not a safe fallback.
+  // The server pull then MIRRORS the account's own rows (no local → account migration).
+  // The cached geolocation fix is dropped alongside it: /api/geo/reverse stores the
+  // REVERSE-GEOCODED POSTAL ADDRESS of the position under one global key, so the next
+  // identity was shown the previous one's address line as its own « position active ».
+  const addressOwnerId = (session?.user as { id?: string } | undefined)?.id
   useEffect(() => {
-    if (authed) void syncFromServer()
-  }, [authed])
+    if (status === 'loading') return
+    if (status === 'authenticated') {
+      // Authenticated but unnameable (never seen in practice: the session callback in
+      // lib/auth.ts always sets user.id). UNDECLARE rather than return: an early return
+      // would leave the PREVIOUS owner declared and keep serving their addresses.
+      if (!addressOwnerId) { clearAddressOwner(); return }
+      const me = { kind: 'user' as const, id: addressOwnerId }
+      setAddressOwner(me)
+      syncGeoCacheOwner(me)
+      void syncFromServer()
+      return
+    }
+    setAddressOwner({ kind: 'guest' })
+    syncGeoCacheOwner({ kind: 'guest' })
+  }, [status, addressOwnerId])
 
   // Cart (lib/eat-cart, byte-identical) — count + subtotal, live via CART_EVENT.
   useEffect(() => {

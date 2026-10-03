@@ -187,9 +187,19 @@ export default function CartScreen() {
   }, [])
 
   // The selected saved address fills the delivery `address` string (the place-order input).
+  //
+  // ⚠️ THE ELSE-BRANCH IS A PRIVACY FIX, NOT A TIDY-UP. `address` is what becomes
+  // Order.deliveryAddress (see placeOrder below). It used to be SET but never CLEARED, so
+  // when the signed-in identity changed in this tab the owner-scoped list above emptied,
+  // `selectedAddrId` reset to '' — and this field kept the PREVIOUS ACCOUNT's formatted
+  // street address, pre-filled and ready to be POSTed as the new account's delivery
+  // address. That is the production cross-account leak, surviving in a string.
+  // Nothing is lost by clearing: the selection that produced it no longer exists, and a
+  // hand-typed address is unaffected (this effect only re-runs when the saved list or the
+  // selection changes, not while the user types).
   useEffect(() => {
     const chosen = savedAddrs.find((a) => a.id === selectedAddrId)
-    if (chosen) setAddress(formatAddress(chosen))
+    setAddress(chosen ? formatAddress(chosen) : '')
   }, [selectedAddrId, savedAddrs])
 
   // If the cart has no restaurant.address (older cart shape), fetch it once on pickup.

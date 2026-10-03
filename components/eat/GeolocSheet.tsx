@@ -73,9 +73,20 @@ export default function GeolocSheet({ open, onClose }: { open: boolean; onClose:
   const geoOn = status === 'granted' && !!coords
 
   // Refresh saved addresses while open (live via ADDRESS_EVENT).
+  //
+  // ⚠️ `picked` is dropped with them when it is no longer in the list. It is not just a
+  // selection: the map step RENDERS its street / postcode / city (mapTitle / mapSub
+  // below). The saved list is owner-scoped now, but a `picked` held in React state is
+  // not — so after an identity change in this tab the sheet went on displaying the
+  // PREVIOUS ACCOUNT's address on the map card, and « Confirmer » would have tried to
+  // set it as the new account's default.
   useEffect(() => {
     if (!open) return
-    const refresh = () => setAddresses(readAddresses())
+    const refresh = () => {
+      const list = readAddresses()
+      setAddresses(list)
+      setPicked((cur) => (cur && list.some((a) => a.id === cur.id) ? cur : null))
+    }
     refresh()
     window.addEventListener(ADDRESS_EVENT, refresh)
     window.addEventListener('storage', refresh)

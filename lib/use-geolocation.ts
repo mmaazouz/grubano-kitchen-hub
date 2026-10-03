@@ -37,6 +37,41 @@ export interface UseGeolocation {
 const STORAGE_KEY = 'grubano_geo'
 const MAX_AGE_MS = 1000 * 60 * 60 * 24 * 7 // 1 week
 
+/** Remembers WHICH identity the cached fix was captured under. */
+const OWNER_KEY = 'grubano_geo.owner'
+
+/**
+ * Bind the cached fix to an identity, dropping it when the identity is not the one it was
+ * captured under. Called from the EatShell identity effect (mount + every sign-in /
+ * sign-out / account switch).
+ *
+ * WHY THIS IS A PRIVACY FIX. The cached value is not only coordinates: /api/geo/reverse
+ * fills `label` / `city` / `postcode`, i.e. the REVERSE-GEOCODED POSTAL ADDRESS of where
+ * the signed-in user was. It lived under ONE global key with nothing recording whose it
+ * was, so the next account to sign in on this browser was shown the previous account's
+ * address line as its own « position active » — the same exposure as the saved-address
+ * cache, in a different key.
+ *
+ * WHY A STAMP AND NOT « CLEAR ON EVERY DECLARATION ». Module state is empty on every page
+ * load, so a fresh load cannot tell « first declaration » from « the identity changed »;
+ * clearing on both would re-ask for permission on every visit, which is exactly what the
+ * cache exists to avoid. The stamp lives next to the cache, so it survives reloads: same
+ * identity → the cache is kept, different identity → it goes. Nothing the user authored is
+ * lost either way (re-granting is one tap).
+ */
+export function syncGeoCacheOwner(owner: { kind: 'user'; id: string } | { kind: 'guest' }): void {
+  if (typeof window === 'undefined') return
+  const stamp = owner.kind === 'user' ? `u:${owner.id}` : 'guest'
+  try {
+    if (localStorage.getItem(OWNER_KEY) !== stamp) {
+      localStorage.removeItem(STORAGE_KEY)
+      localStorage.setItem(OWNER_KEY, stamp)
+    }
+  } catch {
+    /* ignore quota / disabled storage */
+  }
+}
+
 function readCached(): GeoCoords | null {
   if (typeof window === 'undefined') return null
   try {

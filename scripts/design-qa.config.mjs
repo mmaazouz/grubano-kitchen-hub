@@ -247,10 +247,10 @@ export const screens = [
           // Skip the once-per-session splash (home redirects to /eat/splash on first
           // visit when this flag is absent → would never reach the .loc button).
           `sessionStorage.setItem('grubano_splash_seen','1');` +
-          `localStorage.setItem('grubano_addresses',JSON.stringify([` +
+          `localStorage.setItem('grubano_addresses.v2.guest',JSON.stringify({owner:'guest',list:[` +
           `{id:'a1',label:'Domicile',kind:'home',street:'14 Rue des Oliviers',postalCode:'75011',city:'Paris',country:'France',isDefault:true},` +
           `{id:'a2',label:'Travail',kind:'work',street:'8 Bd Haussmann',postalCode:'75009',city:'Paris',country:'France',isDefault:false}` +
-          `]))}catch(e){}})()`,
+          `]}))}catch(e){}})()`,
         // Open the « Livrer à » overlay (desktop topbar .loc button → setGeoOpen(true)).
         action: `document.querySelector('.loc') && document.querySelector('.loc').click()`,
         // Match the app's headless OFF geo-state on the ref.
@@ -331,7 +331,7 @@ export const screens = [
           `(function(){` +
           `try{localStorage.setItem('grubano_favs',JSON.stringify(['r1','r3','r5']))}catch(e){}` +
           `var of=window.fetch;window.fetch=function(u,o){var s=String(u);` +
-          `if(s.indexOf('/api/auth/session')>-1){return Promise.resolve(new Response(JSON.stringify({user:{email:'sofia@email.com',name:'Sofia Marchetti',role:'consumer'},expires:'2099-01-01T00:00:00.000Z'}),{headers:{'content-type':'application/json'}}))}` +
+          `if(s.indexOf('/api/auth/session')>-1){return Promise.resolve(new Response(JSON.stringify({user:{id:'qa-user',email:'sofia@email.com',name:'Sofia Marchetti',role:'consumer'},expires:'2099-01-01T00:00:00.000Z'}),{headers:{'content-type':'application/json'}}))}` +
           `if(s.indexOf('/api/loyalty/wallet')>-1){return Promise.resolve(new Response(JSON.stringify({pointsBalance:1240,centsPerPoint:5,tier:'gold'}),{headers:{'content-type':'application/json'}}))}` +
           `if(s.indexOf('/api/orders')>-1){return Promise.resolve(new Response(JSON.stringify({orders:[{id:'o1',status:'delivered'},{id:'o2',status:'delivered'},{id:'o3',status:'preparing'}]}),{headers:{'content-type':'application/json'}}))}` +
           `return of.call(this,u,o)}})()`,
@@ -419,10 +419,10 @@ export const screens = [
           `{item:{id:'d2',name:'Cacio e pepe',price:15.0,photos:[]},qty:1,options:{note:'bien poivré'}},` +
           `{item:{id:'d3',name:'Tiramisu maison',price:8.0,photos:[]},qty:2,options:{}}` +
           `]}));` +
-          `localStorage.setItem('grubano_addresses',JSON.stringify([` +
+          `localStorage.setItem('grubano_addresses.v2.guest',JSON.stringify({owner:'guest',list:[` +
           `{id:'a1',label:'Domicile',kind:'home',street:'14 Rue des Oliviers',postalCode:'75011',city:'Paris',country:'France',isDefault:true},` +
           `{id:'a2',label:'Travail',kind:'work',street:'8 Bd Haussmann',postalCode:'75009',city:'Paris',country:'France',isDefault:false}` +
-          `]))}catch(e){}` +
+          `]}))}catch(e){}` +
           `var of=window.fetch;window.fetch=function(u,o){var s=String(u);` +
           `if(s.indexOf('/api/restaurants/')>-1){return Promise.resolve(new Response(JSON.stringify({promotions:[],menu:[],smallOrder:null}),{headers:{'content-type':'application/json'}}))}` +
           `if(s.indexOf('/api/referral/preview')>-1){return Promise.resolve(new Response(JSON.stringify({eligible:false,discountPct:0,discountCap:0}),{headers:{'content-type':'application/json'}}))}` +
@@ -453,12 +453,12 @@ export const screens = [
         // bounces to /eat/auth on 401). Seed addresses for the delivery selector. The CD pourboire
         // 15 %/7,35 € + Visa •4242 are placeholders (no saved-cards backend) → residual diff.
         before:
-          `(function(){try{localStorage.setItem('grubano_addresses',JSON.stringify([` +
+          `(function(){try{localStorage.setItem('grubano_addresses.v2.u.qa-user',JSON.stringify({owner:'u:qa-user',list:[` +
           `{id:'a1',label:'Domicile',kind:'home',street:'14 Rue des Oliviers',complement:'Apt 3',postalCode:'75011',city:'Paris',country:'France',isDefault:true},` +
           `{id:'a2',label:'Travail',kind:'work',street:'8 Bd Haussmann',postalCode:'75009',city:'Paris',country:'France',isDefault:false}` +
-          `]))}catch(e){}` +
+          `]}))}catch(e){}` +
           `var of=window.fetch;window.fetch=function(u,o){var s=String(u);` +
-          `if(s.indexOf('/api/auth/session')>-1){return Promise.resolve(new Response(JSON.stringify({user:{email:'sofia@email.com',name:'Sofia Marchetti',role:'consumer'},expires:'2099-01-01T00:00:00.000Z'}),{headers:{'content-type':'application/json'}}))}` +
+          `if(s.indexOf('/api/auth/session')>-1){return Promise.resolve(new Response(JSON.stringify({user:{id:'qa-user',email:'sofia@email.com',name:'Sofia Marchetti',role:'consumer'},expires:'2099-01-01T00:00:00.000Z'}),{headers:{'content-type':'application/json'}}))}` +
           `if(s.indexOf('/api/orders/')>-1){return Promise.resolve(new Response(JSON.stringify({order:{id:'demo',status:'awaiting_payment',fulfillmentType:'delivery',paymentStatus:null,subtotal:49.0,deliveryFee:2.99,total:43.69,discount:9.8,promotion:{id:'p1',name:'Tuesday Treat'},restaurant:{id:'demo',name:'Mama Trattoria'},items:[{itemId:'d1',name:'Tagliatelles à la truffe',qty:1,price:18.0},{itemId:'d2',name:'Cacio e pepe',qty:1,price:15.0},{itemId:'d3',name:'Tiramisu maison',qty:2,price:8.0}]}}),{headers:{'content-type':'application/json'}}))}` +
           `return of.call(this,u,o)}})()`,
       },
@@ -645,7 +645,7 @@ export const screens = [
         refClip: '.screen',
         before:
           `(function(){var of=window.fetch;window.fetch=function(u,o){var s=String(u);` +
-          `if(s.indexOf('/api/auth/session')>-1){return Promise.resolve(new Response(JSON.stringify({user:{email:'sofia@email.com',name:'Sofia Marchetti',role:'consumer'},expires:'2099-01-01T00:00:00.000Z'}),{headers:{'content-type':'application/json'}}))}` +
+          `if(s.indexOf('/api/auth/session')>-1){return Promise.resolve(new Response(JSON.stringify({user:{id:'qa-user',email:'sofia@email.com',name:'Sofia Marchetti',role:'consumer'},expires:'2099-01-01T00:00:00.000Z'}),{headers:{'content-type':'application/json'}}))}` +
           `return of.call(this,u,o)}})()`,
       },
     ],
@@ -670,7 +670,7 @@ export const screens = [
         refClip: '.screen',
         before:
           `(function(){var of=window.fetch;window.fetch=function(u,o){var s=String(u);` +
-          `if(s.indexOf('/api/auth/session')>-1){return Promise.resolve(new Response(JSON.stringify({user:{email:'sofia@email.com',name:'Sofia Marchetti',role:'consumer'},expires:'2099-01-01T00:00:00.000Z'}),{headers:{'content-type':'application/json'}}))}` +
+          `if(s.indexOf('/api/auth/session')>-1){return Promise.resolve(new Response(JSON.stringify({user:{id:'qa-user',email:'sofia@email.com',name:'Sofia Marchetti',role:'consumer'},expires:'2099-01-01T00:00:00.000Z'}),{headers:{'content-type':'application/json'}}))}` +
           `return of.call(this,u,o)}})()`,
       },
     ],
@@ -696,7 +696,7 @@ export const screens = [
         refClip: '.screen',
         before:
           `(function(){var of=window.fetch;window.fetch=function(u,o){var s=String(u);` +
-          `if(s.indexOf('/api/auth/session')>-1){return Promise.resolve(new Response(JSON.stringify({user:{email:'sofia@email.com',name:'Sofia Marchetti',role:'consumer'},expires:'2099-01-01T00:00:00.000Z'}),{headers:{'content-type':'application/json'}}))}` +
+          `if(s.indexOf('/api/auth/session')>-1){return Promise.resolve(new Response(JSON.stringify({user:{id:'qa-user',email:'sofia@email.com',name:'Sofia Marchetti',role:'consumer'},expires:'2099-01-01T00:00:00.000Z'}),{headers:{'content-type':'application/json'}}))}` +
           `if(s.indexOf('/api/orders/')>-1){return Promise.resolve(new Response(JSON.stringify({order:{id:'GR2841',status:'preparing',total:34.34,restaurant:{name:'Mama Trattoria'},items:[{name:'Tagliatelles à la truffe',qty:1,price:18},{name:'Margherita DOP',qty:1,price:14}]}}),{headers:{'content-type':'application/json'}}))}` +
           `return of.call(this,u,o)}})()`,
       },
@@ -771,11 +771,11 @@ export const screens = [
         clip: '.gb-checkout',
         refClip: '.screen',
         before:
-          `(function(){try{localStorage.setItem('grubano_addresses',JSON.stringify([` +
+          `(function(){try{localStorage.setItem('grubano_addresses.v2.u.qa-user',JSON.stringify({owner:'u:qa-user',list:[` +
           `{id:'a1',label:'Domicile',kind:'home',street:'14 Rue des Oliviers',postalCode:'75011',city:'Paris',country:'France',isDefault:true}` +
-          `]))}catch(e){}` +
+          `]}))}catch(e){}` +
           `var of=window.fetch;window.fetch=function(u,o){var s=String(u);` +
-          `if(s.indexOf('/api/auth/session')>-1){return Promise.resolve(new Response(JSON.stringify({user:{email:'sofia@email.com',name:'Sofia Marchetti',role:'consumer'},expires:'2099-01-01T00:00:00.000Z'}),{headers:{'content-type':'application/json'}}))}` +
+          `if(s.indexOf('/api/auth/session')>-1){return Promise.resolve(new Response(JSON.stringify({user:{id:'qa-user',email:'sofia@email.com',name:'Sofia Marchetti',role:'consumer'},expires:'2099-01-01T00:00:00.000Z'}),{headers:{'content-type':'application/json'}}))}` +
           `if(s.indexOf('/api/orders/')>-1){return Promise.resolve(new Response(JSON.stringify({order:{id:'demo',status:'awaiting_payment',fulfillmentType:'delivery',paymentStatus:null,subtotal:32,deliveryFee:2.34,total:34.34,items:[{itemId:'d1',name:'Tagliatelles à la truffe',qty:1,price:18},{itemId:'d2',name:'Margherita DOP',qty:1,price:14}],restaurant:{id:'demo',name:'Mama Trattoria'}}}),{headers:{'content-type':'application/json'}}))}` +
           `return of.call(this,u,o)}})()`,
       },
@@ -901,7 +901,7 @@ export const screens = [
         refClip: '.screen',
         before:
           `(function(){var of=window.fetch;window.fetch=function(u,o){var s=String(u);` +
-          `if(s.indexOf('/api/auth/session')>-1){return Promise.resolve(new Response(JSON.stringify({user:{email:'sofia@email.com',name:'Sofia Marchetti',role:'consumer'},expires:'2099-01-01T00:00:00.000Z'}),{headers:{'content-type':'application/json'}}))}` +
+          `if(s.indexOf('/api/auth/session')>-1){return Promise.resolve(new Response(JSON.stringify({user:{id:'qa-user',email:'sofia@email.com',name:'Sofia Marchetti',role:'consumer'},expires:'2099-01-01T00:00:00.000Z'}),{headers:{'content-type':'application/json'}}))}` +
           `if(s.indexOf('/api/orders/')>-1){return Promise.resolve(new Response(JSON.stringify({order:{id:'GR2841DEMO',status:'ready',fulfillmentType:'pickup',total:33.0,estimatedTime:20,createdAt:'2026-06-29T19:00:00.000Z',restaurant:{name:'Mama Trattoria',address:'14 Rue des Oliviers',city:'75011 Paris'},items:[{name:'Tagliatelles à la truffe',qty:1,price:18.0},{name:'Cacio e pepe',qty:1,price:15.0}]}}),{headers:{'content-type':'application/json'}}))}` +
           `return of.call(this,u,o)}})()`,
       },
