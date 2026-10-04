@@ -80,7 +80,10 @@ const orderReq = (body: Record<string, unknown>) =>
   new NextRequest('https://app.grubano.com/api/orders', {
     method:  'POST',
     body:    JSON.stringify(body),
-    headers: { 'content-type': 'application/json' },
+    // POST /api/orders now requires the cart-owner claim (P0 cross-account cart): it must
+    // equal the mocked token's sub, or the route answers 409 before any of this file's
+    // behaviour is reached.
+    headers: { 'content-type': 'application/json', 'x-cart-owner': 'cust1' },
   })
 
 const orderBody = (over: Record<string, unknown> = {}) => ({

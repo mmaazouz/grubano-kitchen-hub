@@ -6,6 +6,7 @@ import { useLocale, useTranslations } from 'next-intl'
 import { useRouter } from '@/navigation'
 import { Mail, X, Loader2, AlertCircle, Sparkles } from 'lucide-react'
 import { requestMagicLink } from '@/lib/magic-link-client'
+import { markGuestCartPromotionIntent } from '@/lib/eat-cart'
 
 // ── <CheckoutAuthSheet /> — passwordless account-AT-payment for the LIVE /eat checkout (Agent 138) ──
 //
@@ -65,6 +66,9 @@ export default function CheckoutAuthSheet({
         setError(t(res.reason === 'rate_limited' ? 'sendErrorRate' : 'sendErrorDown'))
         return
       }
+      // The e-mailed LINK lands on /eat/magic, away from this page, so authorise the
+      // promotion now: the visitor started the checkout parcours here with this basket.
+      if (!res.otpEnabled) markGuestCartPromotionIntent()
       setStep(res.otpEnabled ? 'code' : 'linkSent')
     } finally {
       setSending(false)
@@ -170,7 +174,11 @@ export default function CheckoutAuthSheet({
         )}
 
         {/* Password fallback — the existing /eat/auth sign-in is untouched and still reachable. */}
-        <button type="button" onClick={() => router.push('/eat/auth')} className="mt-5 block w-full text-center text-[13px] font-semibold text-gb-accent">
+        <button
+          type="button"
+          onClick={() => { markGuestCartPromotionIntent(); router.push('/eat/auth') }}
+          className="mt-5 block w-full text-center text-[13px] font-semibold text-gb-accent"
+        >
           {t('usePassword')}
         </button>
       </div>

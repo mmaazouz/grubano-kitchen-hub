@@ -49,7 +49,7 @@ const RESTO = {
 function post(body: Record<string, unknown>) {
   return POST(new Request('http://x/api/orders', {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', 'x-cart-owner': 'c1' },
     body: JSON.stringify(body),
   }) as never)
 }

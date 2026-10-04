@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { useTranslations, useLocale } from 'next-intl'
 import { Link, useRouter } from '@/navigation'
-import { writeCart, type EatCartLineItem } from '@/lib/eat-cart'
+import { writeCart, sessionCartStamp, currentCartStamp, type EatCartLineItem } from '@/lib/eat-cart'
 import { formatEuros } from '@/lib/format-money'
 import './orders.css'
 import '@/app/gb-foundation/gb-tokens.css'
@@ -166,12 +166,14 @@ function ReservationCard({ c, i, onCancelled }: { c: Card; i: number; onCancelle
 }
 
 export default function OrdersPage() {
-  const { status } = useSession()
+  const { data: session, status } = useSession()
   const t = useTranslations('eat.orders')
   const locale = useLocale()
   const router = useRouter()
 
-  const [data, setData] = useState<{ current: Card[]; past: Card[] } | null>(null)
+  // The order list carries the identity it was FETCHED under: « Recommander » writes a
+  // basket, and a card left on screen from the previous account must not be able to.
+  const [data, setData] = useState<{ stamp: string | null; current: Card[]; past: Card[] } | null>(null)
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<'current' | 'past'>('current')
   const [query, setQuery] = useState('')
@@ -181,13 +183,17 @@ export default function OrdersPage() {
   useEffect(() => {
     if (status !== 'authenticated') return
     let alive = true
+    // Captured BEFORE the request, so the list is labelled with the identity it was asked
+    // for — not with whatever the session has become by the time it resolves.
+    const ownStamp = sessionCartStamp(status, (session?.user as { id?: string } | undefined)?.id)
     setLoading(true)
     fetch('/api/eat/orders')
       .then((r) => (r.ok ? r.json() : { current: [], past: [] }))
-      .then((d) => { if (alive) setData({ current: d.current ?? [], past: d.past ?? [] }) })
-      .catch(() => { if (alive) setData({ current: [], past: [] }) })
+      .then((d) => { if (alive) setData({ stamp: ownStamp, current: d.current ?? [], past: d.past ?? [] }) })
+      .catch(() => { if (alive) setData({ stamp: ownStamp, current: [], past: [] }) })
       .finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, reloadTick])
 
   const fmtDate = (iso: string) =>
@@ -202,7 +208,15 @@ export default function OrdersPage() {
     return (data?.past ?? []).filter((c) => c.restaurantName.toLowerCase().includes(q))
   }, [data, query])
 
+  // The identity this render is for; compared with the stamp the list was loaded under.
+  const ordersStampOk =
+    data?.stamp != null &&
+    data.stamp === sessionCartStamp(status, (session?.user as { id?: string } | undefined)?.id)
+
   async function reorder(c: Card) {
+    // FAIL CLOSED: a past order loaded under another identity may not seed this basket.
+    if (!ordersStampOk) return
+    const loadedFor = data.stamp // the identity this history belongs to
     if (c.kind === 'dinein' || !c.trackingId) { if (c.restaurantId) router.push(`/eat/r/${c.restaurantId}`); return }
     try {
       const r = await fetch(`/api/orders/${c.trackingId}`)
@@ -215,6 +229,10 @@ export default function OrdersPage() {
         options: it.options as EatCartLineItem['options'],
       }))
       if (!o || !items.length) { if (c.restaurantId) router.push(`/eat/r/${c.restaurantId}`); return }
+      // RE-CHECK AFTER THE AWAIT. The guard above ran before the network round trip; if the
+      // identity changed during it, writeCart() would put this history into the NEW owner's
+      // bucket. Compare what the history belongs to with the owner the cache now serves.
+      if (currentCartStamp() !== loadedFor) return
       writeCart({
         restaurantId: o.restaurant?.id ?? c.restaurantId ?? '',
         items,

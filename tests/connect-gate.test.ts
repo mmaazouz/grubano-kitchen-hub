@@ -51,7 +51,7 @@ const NOT_READY = { ...CONNECT_READY, stripeAccountId: null, stripeAccountStatus
 function post() {
   return POST(new Request('http://x/api/orders', {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', 'x-cart-owner': 'c1' },
     body: JSON.stringify({
       restaurantId: 'r1',
       items: [{ itemId: 'i1', name: 'Gnocchi', qty: 1, price: 12 }],
