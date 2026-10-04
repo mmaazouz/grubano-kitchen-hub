@@ -626,15 +626,22 @@ describe('G/H/S/T — the first frame, and the money guard', () => {
   })
 
   it('[T] « Recommander » needs the history and the session to be the same identity', () => {
+    // The live identity is now read ONCE into `liveUserId` and used for the request, the
+    // gate and the effect's dependencies, so those three cannot disagree — see the
+    // /eat/orders stale-history lot and tests/eat-orders-account-isolation.test.ts, which
+    // owns the rest of that screen's proof. What this case still asserts is what it always
+    // asserted: the request is LABELLED with the identity it was asked for, and the basket
+    // write is refused unless the history and the session agree, before AND after the await.
     const orders = executable(read('app/[locale]/eat/orders/page.tsx'))
-    expect(orders).toMatch(/const ownStamp = sessionCartStamp\(status, \(session\?\.user as \{ id\?: string \} \| undefined\)\?\.id\)/)
+    expect(orders).toMatch(/const liveUserId = \(session\?\.user as \{ id\?: string \} \| undefined\)\?\.id/)
+    expect(orders).toMatch(/const ownStamp = sessionCartStamp\(status, liveUserId\)/)
     expect(orders).toMatch(/setData\(\{ stamp: ownStamp, current:/)
-    expect(orders).toMatch(/const ordersStampOk =/)
-    expect(orders).toMatch(/async function reorder\(c: Card\) \{\s*\n\s*if \(!ordersStampOk\) return/)
+    expect(orders).toMatch(/const ordersOwned =/)
+    expect(orders).toMatch(/async function reorder\(c: Card\) \{\s*\n\s*if \(!ordersOwned \|\| !visibleData\) return/)
     // …and the check is REPEATED after the network round trip: the first one ran before an
     // await, so an identity change during it would otherwise have written this history into
     // the new owner's bucket.
-    expect(orders).toMatch(/const loadedFor = data\.stamp/)
+    expect(orders).toMatch(/const loadedFor = visibleData\.stamp/)
     expect(orders).toMatch(/if \(currentCartStamp\(\) !== loadedFor\) return\s*\n\s*writeCart\(\{/)
   })
 

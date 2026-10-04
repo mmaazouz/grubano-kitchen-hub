@@ -56,6 +56,10 @@ interface Card {
   isPartial?: boolean
 }
 
+/** Stable identity for the fail-closed empty lists: a fresh [] per render would churn the
+ *  search memos below. Frozen, because it is shared by every gated render. */
+const NO_CARDS: Card[] = Object.freeze([]) as unknown as Card[]
+
 const TYPE_ICON: Record<Kind, string> = { delivery: 'two_wheeler', pickup: 'storefront', dinein: 'table_restaurant', reservation: 'event' }
 const THUMBS = ['t1', 't2', 't3', 't4']
 
@@ -180,12 +184,18 @@ export default function OrdersPage() {
   // V5-1 — bumped after a successful reservation cancel so the list refetches.
   const [reloadTick, setReloadTick] = useState(0)
 
+  // ── THE LIVE IDENTITY ──────────────────────────────────────────────────────────
+  // Read once, used for the fetch, for the gate and for the dependency array, so the three
+  // cannot disagree with one another.
+  const liveUserId = (session?.user as { id?: string } | undefined)?.id
+  const liveStamp = sessionCartStamp(status, liveUserId)
+
   useEffect(() => {
     if (status !== 'authenticated') return
     let alive = true
     // Captured BEFORE the request, so the list is labelled with the identity it was asked
     // for — not with whatever the session has become by the time it resolves.
-    const ownStamp = sessionCartStamp(status, (session?.user as { id?: string } | undefined)?.id)
+    const ownStamp = sessionCartStamp(status, liveUserId)
     setLoading(true)
     fetch('/api/eat/orders')
       .then((r) => (r.ok ? r.json() : { current: [], past: [] }))
@@ -193,30 +203,51 @@ export default function OrdersPage() {
       .catch(() => { if (alive) setData({ stamp: ownStamp, current: [], past: [] }) })
       .finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
+    // liveUserId IS A DEPENDENCY, and that is the fix for the refetch half of this defect.
+    // `status` alone cannot see A -> logout -> B login: it ends where it started, at
+    // 'authenticated', so no new request was guaranteed and `data` kept holding A's cards.
+    // Keying on the identity also makes `alive` load-bearing rather than decorative: React
+    // runs this cleanup when the id changes, so a request issued for A is disowned before
+    // it can resolve, whichever order the two responses arrive in.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, reloadTick])
+  }, [status, liveUserId, reloadTick])
 
   const fmtDate = (iso: string) =>
     new Intl.DateTimeFormat(locale === 'ar' ? 'ar-MA' : locale, { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(iso))
 
+  // ── OWNERSHIP, EVALUATED DURING RENDER ─────────────────────────────────────────
+  // The stamp the list was LOADED under against the stamp the LIVE session implies. It has
+  // to be a render-time derivation: an effect runs after the frame that has already painted
+  // the previous account's cards, so nothing an effect does can un-show them.
+  // Fail closed on every uncertainty — `liveStamp` is null while the session resolves and
+  // null for an authenticated session with no usable id — and there is no orders list for a
+  // guest, so 'guest' can never match either.
+  const ordersOwned = liveStamp !== null && liveStamp !== 'guest' && data?.stamp === liveStamp
+  /** The ONLY shape the rest of this component may read. */
+  const visibleData = ordersOwned ? data : null
+  /** …and the only two lists. Every card, counter, filter and empty/list decision below is
+   *  derived from these, never from `data`, which may belong to someone else. */
+  const safeCurrent = visibleData?.current ?? NO_CARDS
+  const safePast = visibleData?.past ?? NO_CARDS
+
   const current = useMemo(() => {
     const q = query.trim().toLowerCase()
-    return (data?.current ?? []).filter((c) => c.restaurantName.toLowerCase().includes(q))
-  }, [data, query])
+    return safeCurrent.filter((c) => c.restaurantName.toLowerCase().includes(q))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [safeCurrent, query])
   const past = useMemo(() => {
     const q = query.trim().toLowerCase()
-    return (data?.past ?? []).filter((c) => c.restaurantName.toLowerCase().includes(q))
-  }, [data, query])
-
-  // The identity this render is for; compared with the stamp the list was loaded under.
-  const ordersStampOk =
-    data?.stamp != null &&
-    data.stamp === sessionCartStamp(status, (session?.user as { id?: string } | undefined)?.id)
+    return safePast.filter((c) => c.restaurantName.toLowerCase().includes(q))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [safePast, query])
 
   async function reorder(c: Card) {
     // FAIL CLOSED: a past order loaded under another identity may not seed this basket.
-    if (!ordersStampOk) return
-    const loadedFor = data.stamp // the identity this history belongs to
+    // A stale card no longer renders at all, so no handler for one should exist — but a
+    // handler captured in the frame before the change would still be callable, and the
+    // write must refuse then too.
+    if (!ordersOwned || !visibleData) return
+    const loadedFor = visibleData.stamp // the identity this history belongs to
     if (c.kind === 'dinein' || !c.trackingId) { if (c.restaurantId) router.push(`/eat/r/${c.restaurantId}`); return }
     try {
       const r = await fetch(`/api/orders/${c.trackingId}`)
@@ -258,7 +289,12 @@ export default function OrdersPage() {
   }
 
   const activeCards = tab === 'current' ? current : past
-  const isEmpty = !loading && activeCards.length === 0
+  // FIRST FRAME, FAIL CLOSED. « Aucune commande » is a statement about THIS account, so it
+  // may only be made once a response stamped for this account has actually arrived. Until
+  // then — session resolving, request in flight, nothing loaded yet, or a list belonging to
+  // another identity — the existing skeleton stands: we do not know whether B has orders.
+  const showLoading = status === 'loading' || loading || !ordersOwned
+  const isEmpty = !showLoading && activeCards.length === 0
   const state = isEmpty ? 'empty' : 'list'
 
   // ── stepper (4 steps) mapping — verbatim CD step states per type+status ─────
@@ -423,15 +459,18 @@ export default function OrdersPage() {
       </div>
 
       <div className="tabs" role="tablist">
-        <button role="tab" aria-selected={tab === 'current'} onClick={() => setTab('current')}>{t('tabCurrent')} <span className="count">{(data?.current ?? []).length}</span></button>
-        <button role="tab" aria-selected={tab === 'past'} onClick={() => setTab('past')}>{t('tabPast')} <span className="count">{(data?.past ?? []).length}</span></button>
+        {/* The counters are the account's totals, so they stay unfiltered by the search —
+            but they come from the GATED lists: a count is data too, and « 7 » tells B how
+            many orders A has. */}
+        <button role="tab" aria-selected={tab === 'current'} onClick={() => setTab('current')}>{t('tabCurrent')} <span className="count">{safeCurrent.length}</span></button>
+        <button role="tab" aria-selected={tab === 'past'} onClick={() => setTab('past')}>{t('tabPast')} <span className="count">{safePast.length}</span></button>
       </div>
 
       {/* Revue V5 — the food cards keep their OWN thumb index (fIdx counts food
           cards only): inserting reservation cards must not reshuffle the
           existing food thumbnails. */}
       <div className="list tab-current">
-        {loading ? [0, 1, 2].map((i) => <div key={i} className="o-skel" />) : (() => {
+        {showLoading ? [0, 1, 2].map((i) => <div key={i} className="o-skel" />) : (() => {
           let fIdx = 0
           return current.map((c, i) =>
             c.kind === 'reservation'
@@ -440,7 +479,7 @@ export default function OrdersPage() {
         })()}
       </div>
       <div className="list tab-past">
-        {loading ? [0, 1].map((i) => <div key={i} className="o-skel" />) : (() => {
+        {showLoading ? [0, 1].map((i) => <div key={i} className="o-skel" />) : (() => {
           let fIdx = 0
           return past.map((c, i) =>
             c.kind === 'reservation'
