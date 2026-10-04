@@ -3203,6 +3203,8 @@
       "guest": "Ospite"
     },
     "orders": {
+      "loadError": "Non è stato possibile caricare i Suoi ordini.",
+      "loadRetry": "Riprovare",
       "title": "I miei ordini",
       "searchPlaceholder": "Cerchi un ristorante, un piatto…",
       "tabCurrent": "In corso",

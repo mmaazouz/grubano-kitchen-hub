@@ -123,9 +123,11 @@ function makePage() {
   let loading = true
   let deps: string | null = null
   let alive: { v: boolean } | null = null
+  let failed = false
   const requests: Array<{
     forStamp: string | null
     resolve: (d: { current: Card[]; past: Card[] }) => void
+    fail: () => void
   }> = []
 
   function render(status: string, liveUserId: string | undefined, reloadTick = 0, query = '') {
@@ -139,11 +141,21 @@ function makePage() {
         alive = mine
         loading = true
         const forStamp = sessionCartStamp(status, liveUserId)
+        failed = false
         requests.push({
           forStamp,
           resolve: (d) => {
             if (!mine.v) return // disowned by the cleanup
             data = { stamp: forStamp, current: d.current, past: d.past }
+            loading = false
+          },
+          // the page's .catch: a non-2xx or a transport error. It commits an EMPTY list
+          // stamped for this identity — which is exactly why the empty state has to
+          // exclude it, or the screen denies a history it simply could not read.
+          fail: () => {
+            if (!mine.v) return
+            failed = true
+            data = { stamp: forStamp, current: [], past: [] }
             loading = false
           },
         })
@@ -154,10 +166,11 @@ function makePage() {
     const current = g.safeCurrent.filter((c) => String(c.restaurantName).toLowerCase().includes(q))
     const past = g.safePast.filter((c) => String(c.restaurantName).toLowerCase().includes(q))
     const showLoading = status === 'loading' || loading || !g.ordersOwned
+    const loadFailed = g.ordersOwned && failed && !showLoading
     const activeCards = current
     return {
-      ...g, current, past, loading, showLoading,
-      isEmpty: !showLoading && activeCards.length === 0,
+      ...g, current, past, loading, showLoading, loadFailed,
+      isEmpty: !showLoading && !loadFailed && activeCards.length === 0,
       counters: { current: g.safeCurrent.length, past: g.safePast.length },
       requests,
     }
@@ -469,7 +482,7 @@ describe('T/U/V — the page derives everything from the gated source, and only 
     // deleting `if (alive)` from the page left cases M and N green, which would have made
     // them proofs about the model rather than about the page.
     expect(src).toMatch(/\.then\(\(d\) => \{ if \(alive\) setData\(/)
-    expect(src).toMatch(/\.catch\(\(\) => \{ if \(alive\) setData\(/)
+    expect(src).toMatch(/\.catch\(\(\) => \{ if \(alive\) \{ setFailed\(true\); setData\(/)
     expect(src).toMatch(/\.finally\(\(\) => \{ if \(alive\) setLoading\(false\) \}\)/)
     expect((src.match(/if \(alive\)/g) ?? []).length, 'commit sites guarded').toBe(3)
   })
@@ -505,7 +518,9 @@ describe('T/U/V — the page derives everything from the gated source, and only 
 
   it('the loading state covers every case in which the identity cannot be vouched for', () => {
     expect(src).toMatch(/const showLoading = status === 'loading' \|\| loading \|\| !ordersOwned/)
-    expect(src).toMatch(/const isEmpty = !showLoading && activeCards\.length === 0/)
+    // …and a failed load is excluded from it too (case W): the empty state is reachable
+    // only after this account's orders have actually been READ.
+    expect(src).toMatch(/const isEmpty = !showLoading && !loadFailed && activeCards\.length === 0/)
     // the skeletons follow it, and `loading` alone no longer decides anything rendered
     expect((src.match(/showLoading \? \[0, 1/g) ?? []).length).toBe(2)
     expect(src).not.toMatch(/\{loading \? \[0, 1/)
@@ -515,9 +530,22 @@ describe('T/U/V — the page derives everything from the gated source, and only 
     expect(src).toMatch(/if \(!ordersOwned \|\| !visibleData\) return/)
     expect(src).toMatch(/const loadedFor = visibleData\.stamp/)
     expect(src).toMatch(/if \(currentCartStamp\(\) !== loadedFor\) return\s*\n\s*writeCart\(\{/)
-    // the post-await re-check sits between the fetch and the write, not before the fetch
-    expect(src.indexOf("await fetch(`/api/orders/${c.trackingId}`)"))
-      .toBeLessThan(src.indexOf('if (currentCartStamp() !== loadedFor) return'))
+    // The post-await re-check sits between the fetch and the write, not before the fetch.
+    // ANCHORED, and tolerant of the call's FORM: the previous version used a bare
+    // src.indexOf on a template-literal needle, so rewriting the call as string
+    // concatenation — an ordinary refactor — made it -1 < n, i.e. true while proving
+    // nothing. The adversarial review did exactly that, then deleted the live guard and
+    // left a dead copy behind, and both suites stayed green.
+    const at = (re: RegExp) => {
+      const m = re.exec(src)
+      expect(m, String(re)).not.toBeNull()
+      return (m as RegExpExecArray).index
+    }
+    // …and exactly ONE basket write exists, so the adjacency pinned above is about THAT
+    // write and cannot be satisfied by a second, unreachable copy of the guard.
+    expect((src.match(/writeCart\(\{/g) ?? []).length, 'writeCart sites').toBe(1)
+    expect(at(/await fetch\([`'"]\/api\/orders\//))
+      .toBeLessThan(at(/if \(currentCartStamp\(\) !== loadedFor\) return/))
   })
 
   it('V — CLOSED ENUMERATION: every occurrence of the raw `data` identifier', () => {
@@ -550,5 +578,125 @@ describe('T/U/V — the page derives everything from the gated source, and only 
     expect(api).toMatch(/token\.sub/)
     // and the page still sends no identity of its own to it
     expect(src).toMatch(/fetch\('\/api\/eat\/orders'\)/)
+  })
+})
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ROUND 2 — what the adversarial review confirmed
+// ══════════════════════════════════════════════════════════════════════════════
+
+describe('W — a request that did not answer is not an answer', () => {
+  it('a failed load does NOT make the screen say « aucune commande »', () => {
+    // Both failure paths used to fabricate `{ current: [], past: [] }` and stamp it with
+    // the LIVE identity, so the gate held and the screen asserted emptiness — to a buyer
+    // with a full history, with no error and no retry, until a remount. The real sources
+    // are ordinary: the route's catch-all 500, and the 401 a tab gets once its cookie has
+    // expired while useSession still reports 'authenticated' from memory.
+    const p = makePage()
+    p.render('authenticated', B)
+    p.requests[0].fail()
+    const after = p.render('authenticated', B)
+    expect(after.ordersOwned).toBe(true)      // the stamp IS this account's
+    expect(after.safeCurrent).toEqual([])     // …and the list is empty
+    expect(after.loadFailed).toBe(true)       // …but we could not read it
+    expect(after.isEmpty).toBe(false)         // so the screen does NOT claim emptiness
+  })
+
+  it('a genuinely empty answer still produces the honest empty state', () => {
+    const p = makePage()
+    p.render('authenticated', B)
+    p.requests[0].resolve({ current: [], past: [] })
+    const after = p.render('authenticated', B)
+    expect(after.loadFailed).toBe(false)
+    expect(after.isEmpty).toBe(true)
+  })
+
+  it('the retry re-issues the request for the CURRENT identity, and clears the failure', () => {
+    const p = makePage()
+    p.render('authenticated', B)
+    p.requests[0].fail()
+    expect(p.render('authenticated', B).loadFailed).toBe(true)
+    // the button bumps reloadTick, which the effect already depends on
+    p.render('authenticated', B, 1)
+    expect(p.requests).toHaveLength(2)
+    expect(p.requests[1].forStamp).toBe(`u:${B}`)
+    expect(p.render('authenticated', B, 1).loadFailed).toBe(false)   // reset at effect start
+    p.requests[1].resolve({ current: B_CURRENT, past: [] })
+    const ok = p.render('authenticated', B, 1)
+    expect(ok.safeCurrent).toHaveLength(1)
+    expect(ok.loadFailed).toBe(false)
+  })
+
+  it('a failure under a MISMATCHED identity still shows nothing and claims nothing', () => {
+    const p = makePage()
+    p.render('authenticated', A)
+    p.requests[0].resolve({ current: A_CURRENT, past: A_PAST })
+    p.render('authenticated', B)        // the identity changes
+    p.requests[1].fail()                // and B's own load fails
+    const after = p.render('authenticated', B)
+    expect(after.safeCurrent).toEqual([])
+    expect(JSON.stringify(after)).not.toContain(A_RESTAURANT)
+    expect(after.isEmpty).toBe(false)
+    expect(after.loadFailed).toBe(true)
+  })
+
+  it('the page states the failure, and states nothing about the history', () => {
+    const src = executable(read(PAGE))
+    // a non-2xx is a failure, not an empty history
+    expect(src).toMatch(/if \(!r\.ok\) throw new Error\('eat_orders_http'\); return r\.json\(\)/)
+    expect(src).toMatch(/const loadFailed = ordersOwned && failed && !showLoading/)
+    expect(src).toMatch(/const isEmpty = !showLoading && !loadFailed && activeCards\.length === 0/)
+    // reported, with a retry that bumps the tick the effect depends on — not a permanent
+    // skeleton, which would trade a lie for a stuck screen
+    expect(src).toMatch(/\{loadFailed && \(/)
+    expect(src).toMatch(/onClick=\{\(\) => setReloadTick\(\(n\) => n \+ 1\)\}/)
+    expect(src).toMatch(/role="alert"/)
+    // the copy exists in five locales and never speaks about the history
+    for (const loc of ['fr', 'en', 'es', 'it', 'ar']) {
+      const ns = JSON.parse(readFileSync(`messages/${loc}.json`, 'utf8')).eat.orders
+      expect(ns.loadError, `${loc}/loadError`).toBeTruthy()
+      expect(ns.loadRetry, `${loc}/loadRetry`).toBeTruthy()
+      expect(ns.loadError.toLowerCase(), loc).not.toMatch(/aucune commande|no orders|ningún pedido|nessun ordine|vide|empty/)
+    }
+  })
+})
+
+describe('X — the \'guest\' term of the gate, EXECUTED', () => {
+  // The review deleted `liveStamp !== 'guest' &&` from the suite's own gate and all 26
+  // cases stayed green: the term was held by one regex and one enumeration literal, with
+  // zero executed coverage. Case Q looked like it covered it but its data was stamped
+  // u:user-A, so the term never participated — a title promising what the case did not
+  // test. These two cases make it load-bearing.
+  it('a guest-stamped list can never be owned, even by a signed-out viewer', () => {
+    const g = gate('unauthenticated', undefined, { stamp: 'guest', current: A_CURRENT, past: A_PAST })
+    expect(g.liveStamp).toBe('guest')
+    expect(g.ordersOwned).toBe(false)
+    expect(g.visibleData).toBeNull()
+    expect(g.safeCurrent).toEqual([])
+    expect(g.safePast).toEqual([])
+  })
+
+  it('and it cannot seed a basket even when the guest cart owner IS declared', () => {
+    // NOT clearCartOwner(): with no declared owner, currentCartStamp() is null and the
+    // POST-await guard absorbs the refusal — which is precisely why the existing guest case
+    // proved nothing about the gate. Declaring the guest owner makes currentCartStamp()
+    // equal to the loaded stamp, so the PRE-await gate is the only thing left standing
+    // between A's history and a write.
+    setCartOwner({ kind: 'guest' })
+    expect(currentCartStamp()).toBe('guest')
+    const g = gate('unauthenticated', undefined, { stamp: 'guest', current: A_CURRENT, past: [] })
+    let wrote = false
+    if (g.ordersOwned && g.visibleData) {
+      if (currentCartStamp() === g.visibleData.stamp) {
+        writeCart({
+          restaurantId: 'r-A',
+          items: [{ item: { id: 'd1', name: 'Plat A', price: 12, photos: [] }, qty: 1 }],
+          restaurant: { name: A_RESTAURANT, deliveryFee: 0, minOrder: 0 },
+        } as EatCartData)
+        wrote = true
+      }
+    }
+    expect(wrote).toBe(false)
+    expect(readCart()).toBeNull()
   })
 })

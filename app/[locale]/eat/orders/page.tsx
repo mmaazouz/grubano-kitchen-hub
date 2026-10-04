@@ -179,6 +179,9 @@ export default function OrdersPage() {
   // basket, and a card left on screen from the previous account must not be able to.
   const [data, setData] = useState<{ stamp: string | null; current: Card[]; past: Card[] } | null>(null)
   const [loading, setLoading] = useState(true)
+  /** The last load for the CURRENT identity did not answer. Distinct from an empty answer:
+   *  one is « we do not know », the other is « you have none ». */
+  const [failed, setFailed] = useState(false)
   const [tab, setTab] = useState<'current' | 'past'>('current')
   const [query, setQuery] = useState('')
   // V5-1 — bumped after a successful reservation cancel so the list refetches.
@@ -197,10 +200,15 @@ export default function OrdersPage() {
     // for — not with whatever the session has become by the time it resolves.
     const ownStamp = sessionCartStamp(status, liveUserId)
     setLoading(true)
+    setFailed(false)
     fetch('/api/eat/orders')
-      .then((r) => (r.ok ? r.json() : { current: [], past: [] }))
+      // A non-2xx is a FAILURE, not an empty history. Fabricating `{ current: [], past: [] }`
+      // here made a 500 — or the 401 a tab gets once its cookie has expired while
+      // useSession still reports 'authenticated' from memory — indistinguishable from a
+      // genuinely empty list: same shape, same stamp.
+      .then((r) => { if (!r.ok) throw new Error('eat_orders_http'); return r.json() })
       .then((d) => { if (alive) setData({ stamp: ownStamp, current: d.current ?? [], past: d.past ?? [] }) })
-      .catch(() => { if (alive) setData({ stamp: ownStamp, current: [], past: [] }) })
+      .catch(() => { if (alive) { setFailed(true); setData({ stamp: ownStamp, current: [], past: [] }) } })
       .finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
     // liveUserId IS A DEPENDENCY, and that is the fix for the refetch half of this defect.
@@ -290,11 +298,16 @@ export default function OrdersPage() {
 
   const activeCards = tab === 'current' ? current : past
   // FIRST FRAME, FAIL CLOSED. « Aucune commande » is a statement about THIS account, so it
-  // may only be made once a response stamped for this account has actually arrived. Until
-  // then — session resolving, request in flight, nothing loaded yet, or a list belonging to
-  // another identity — the existing skeleton stands: we do not know whether B has orders.
+  // may only be made once this account's orders have actually been READ. Until then —
+  // session resolving, request in flight, nothing loaded yet, or a list belonging to another
+  // identity — the existing skeleton stands: we do not know whether B has orders.
   const showLoading = status === 'loading' || loading || !ordersOwned
-  const isEmpty = !showLoading && activeCards.length === 0
+  // …and a request that did not answer is not an answer. Without this the screen told a
+  // buyer with twelve orders that they had none, because the failure path committed an
+  // empty list stamped for them. A failure says nothing about the history: it is reported,
+  // with a retry, and the empty state is left unspoken.
+  const loadFailed = ordersOwned && failed && !showLoading
+  const isEmpty = !showLoading && !loadFailed && activeCards.length === 0
   const state = isEmpty ? 'empty' : 'list'
 
   // ── stepper (4 steps) mapping — verbatim CD step states per type+status ─────
@@ -465,6 +478,19 @@ export default function OrdersPage() {
         <button role="tab" aria-selected={tab === 'current'} onClick={() => setTab('current')}>{t('tabCurrent')} <span className="count">{safeCurrent.length}</span></button>
         <button role="tab" aria-selected={tab === 'past'} onClick={() => setTab('past')}>{t('tabPast')} <span className="count">{safePast.length}</span></button>
       </div>
+
+      {/* The load did not answer. Not « aucune commande » (which would be a claim about
+          this account's history) and not a permanent skeleton either — that trades a lie
+          for a stuck screen. One line, and a retry that bumps the tick the effect already
+          depends on, so pressing it re-issues the request for the CURRENT identity. */}
+      {loadFailed && (
+        <div className="res-cancel-err" role="alert">
+          {t('loadError')}{' '}
+          <button type="button" className="btn-sm btn-sm--line" onClick={() => setReloadTick((n) => n + 1)}>
+            <span className="ms" aria-hidden="true">refresh</span>{t('loadRetry')}
+          </button>
+        </div>
+      )}
 
       {/* Revue V5 — the food cards keep their OWN thumb index (fIdx counts food
           cards only): inserting reservation cards must not reshuffle the

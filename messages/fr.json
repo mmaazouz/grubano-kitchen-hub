@@ -3203,6 +3203,8 @@
       "guest": "Invité"
     },
     "orders": {
+      "loadError": "Vos commandes n’ont pas pu être chargées.",
+      "loadRetry": "Réessayer",
       "title": "Mes commandes",
       "searchPlaceholder": "Rechercher un restaurant, un plat…",
       "tabCurrent": "En cours",
