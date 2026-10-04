@@ -459,6 +459,21 @@ describe('the catalogue, the cart and the history each gate on the render\'s ide
     expect(executable(read(ROUTE))).toContain('const operator = await callerOperator()')
     expect(executable(read(ROUTE))).not.toMatch(/operatorId:\s*claimedOwner/)
   })
+
+  it('THE LOAD-BEARING PREMISE: session.user.id IS the Operator id', () => {
+    // Every gate in this lot compares `session.user.id` (client) with the `operator.id`
+    // the server resolved. If those were ever different values the gate would not be
+    // safe-but-closed — it would silently close for the legitimate buyer and the supply
+    // cart would stop working, which is how a security guard gets deleted later. So the
+    // chain is pinned: authorize returns the Operator row's id → token.sub → session.
+    const auth = executable(read('lib/auth.ts'))
+    expect(auth).toMatch(/id:\s*operator\.id/)                       // authorize → user.id
+    expect(auth).toMatch(/\(session\.user as \{ id\?: string \}\)\.id\s*=\s*token\.sub/)
+    // callerOperator resolves the SAME row, by the session e-mail
+    const resolver = executable(read('lib/operator-session.ts'))
+    expect(resolver).toMatch(/prisma\.operator\s*\n?\s*\.findUnique\(\{ where: \{ email: session\.user\.email \}/)
+    expect(resolver).toMatch(/select: \{ id: true, role: true \}/)
+  })
 })
 
 describe('the server guard is first, and the flag was not touched', () => {
