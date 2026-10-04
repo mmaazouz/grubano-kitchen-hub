@@ -90,5 +90,8 @@ export default async function MarketplaceOrdersPage(props: { params: { locale: s
     )
   }
 
-  return <OrdersClient orders={orders} />
+  /* operatorId = the buyer from callerOperator() above. The supply cart is partitioned by
+     it and this screen writes that cart (« Recommander »), so the client is told whose
+     history it holds. Server authority still comes from the session, never from this. */
+  return <OrdersClient orders={orders} operatorId={operator!.id} />
 }

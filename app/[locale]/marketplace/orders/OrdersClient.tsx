@@ -5,7 +5,11 @@ import { useTranslations, useLocale } from 'next-intl'
 import { Link, useRouter } from '@/navigation'
 import { formatMoney } from '@/lib/format-money'
 import { canRestoCancel } from '@/lib/marketplace'
-import { writeSupplyCart, type SupplyCart } from '@/lib/supply-cart'
+import { useSession } from 'next-auth/react'
+import {
+  writeSupplyCart, setSupplyCartOwner, currentSupplyCartStamp, sessionSupplyCartStamp,
+  type SupplyCart,
+} from '@/lib/supply-cart'
 
 // ── My supplier orders — list + detail + timeline (flux acheteur, Lot F) ─────────
 // CLIENT half of /marketplace/orders. The server passed the resto's real SupplyOrders
@@ -54,16 +58,30 @@ function avatarFor(name: string): { initials: string; gradient: string } {
   return { initials, gradient: AV_GRADIENTS[h % AV_GRADIENTS.length] }
 }
 
+/** Stable identity for the fail-closed empty history (a fresh [] each render would
+ *  needlessly churn the useMemos below). */
+const NO_ORDERS: MyOrder[] = []
+
 type Tab = 'all' | 'placed' | 'confirmed' | 'preparing' | 'delivered'
 type Period = '30' | '90' | 'year'
 
-export default function OrdersClient({ orders: initial }: { orders: MyOrder[] }) {
+export default function OrdersClient(
+  { orders: initial, operatorId }: {
+    orders: MyOrder[]
+    /** The buyer the SERVER resolved with callerOperator() — whose SupplyOrders `initial`
+     *  is. Frozen at render; cross-checked against the live session below. */
+    operatorId: string
+  },
+) {
   const t  = useTranslations('marketplaceOrders')
   const ts = useTranslations('supplier')
   const locale = useLocale()
   const router = useRouter()
 
+  const { data: session, status } = useSession()
+
   const [mounted, setMounted] = useState(false)
+  // RAW state — read only through `visibleOrders` below.
   const [orders, setOrders] = useState<MyOrder[]>(initial)
   const [tab, setTab] = useState<Tab>('all')
   const [period, setPeriod] = useState<Period>('30')
@@ -71,6 +89,25 @@ export default function OrdersClient({ orders: initial }: { orders: MyOrder[] })
   const [busyId, setBusyId] = useState<string | null>(null)
 
   useEffect(() => { setMounted(true) }, [])
+
+  // ── HISTORY OWNERSHIP, EVALUATED DURING RENDER ─────────────────────────────────
+  // « Recommander » turns a past order into a basket, so this screen WRITES the supply
+  // cart: the identity this history belongs to and the identity of this render must agree.
+  // The server prop is authoritative when it is rendered but frozen afterwards; the live
+  // session is what moves. A disagreement — or an identity that cannot be named — means
+  // this history is not this buyer's, so it is neither shown nor allowed to seed a basket.
+  // An effect cannot do this: it runs AFTER the render that introduced the new session.
+  const sessionStamp = sessionSupplyCartStamp(status, (session?.user as { id?: string } | undefined)?.id)
+  const historyStampOk = sessionStamp !== null && sessionStamp === `u:${operatorId}`
+  /** The ONLY list the rest of this component may read. */
+  const visibleOrders = historyStampOk ? orders : NO_ORDERS
+
+  // Declare the buyer from the SERVER-resolved id, so « Recommander » writes into that
+  // bucket and nowhere else.
+  useEffect(() => {
+    if (status !== 'authenticated' || !operatorId) return
+    setSupplyCartOwner(operatorId)
+  }, [operatorId, status])
 
   const fmt = useMemo(() => ({
     date: new Intl.DateTimeFormat(locale, { day: '2-digit', month: '2-digit', year: 'numeric' }),
@@ -105,7 +142,7 @@ export default function OrdersClient({ orders: initial }: { orders: MyOrder[] })
   const inPeriod = (o: MyOrder) => !mounted || new Date(o.createdAt).getTime() >= periodCutoff
 
   const counts = useMemo(() => {
-    const base = orders.filter(inPeriod)
+    const base = visibleOrders.filter(inPeriod)
     return {
       all: base.length,
       placed: base.filter((o) => o.status === 'placed').length,
@@ -113,18 +150,26 @@ export default function OrdersClient({ orders: initial }: { orders: MyOrder[] })
       preparing: base.filter((o) => o.status === 'preparing').length,
       delivered: base.filter((o) => o.status === 'delivered').length,
     }
-  }, [orders, mounted, periodCutoff]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [visibleOrders, mounted, periodCutoff]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const shown = useMemo(
-    () => orders.filter(inPeriod).filter((o) => tab === 'all' || o.status === tab),
-    [orders, tab, mounted, periodCutoff], // eslint-disable-line react-hooks/exhaustive-deps
+    () => visibleOrders.filter(inPeriod).filter((o) => tab === 'all' || o.status === tab),
+    [visibleOrders, tab, mounted, periodCutoff], // eslint-disable-line react-hooks/exhaustive-deps
   )
 
-  const detail = selectedId ? orders.find((o) => o.id === selectedId) ?? null : null
+  const detail = selectedId ? visibleOrders.find((o) => o.id === selectedId) ?? null : null
 
   function reorder(o: MyOrder) {
+    // FAIL CLOSED: a history loaded under one identity may not seed another's basket.
+    // Re-derived here rather than trusted from the closure, and checked again immediately
+    // before the write below — a guard before an await is not a guard on what follows it,
+    // and this must hold even once this function grows one.
+    if (!historyStampOk) return
     const cart: SupplyCart = {}
     for (const l of o.lines) if (l.catalogItemId) cart[l.catalogItemId] = (cart[l.catalogItemId] ?? 0) + l.quantity
+    // The bucket written must be the one the DECLARED owner names: this cannot write
+    // through a module owner that has since moved to another account.
+    if (!historyStampOk || currentSupplyCartStamp() !== `u:${operatorId}`) return
     writeSupplyCart(o.supplierProfileId, cart)
     router.push(`/marketplace/suppliers/${o.supplierProfileId}/panier`)
   }
@@ -164,7 +209,9 @@ export default function OrdersClient({ orders: initial }: { orders: MyOrder[] })
   }
 
   // ── loading (hydration gate) ─────────────────────────────────────────────────
-  if (!mounted) {
+  // Also while the session is still resolving: until the buyer is named we do not know
+  // whose this history is, and a loader is honest where « aucune commande » would not be.
+  if (!mounted || status === 'loading') {
     return (
       <section className="mkt-orders" aria-busy="true">
         <span className="op-sk" style={{ width: 260, height: 26, marginBottom: 18, display: 'block' }} />
@@ -177,7 +224,7 @@ export default function OrdersClient({ orders: initial }: { orders: MyOrder[] })
   }
 
   // ── empty ─────────────────────────────────────────────────────────────────────
-  if (orders.length === 0) {
+  if (visibleOrders.length === 0) {
     return (
       <section className="mkt-orders">
         <div className="op-dash__head"><h1 className="op-dash__title">{t('title')}</h1></div>

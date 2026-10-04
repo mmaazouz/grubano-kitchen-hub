@@ -6270,6 +6270,8 @@
     "cancelConfirm": "Annuler cette commande ? Cette action est irréversible."
   },
   "marketplaceCart": {
+    "errOrderOwner": "Ce panier n'est plus associé à ce compte — rechargez la page.",
+    "errOrderOtherAccount": "Votre commande a bien été envoyée, mais le compte connecté a changé — retrouvez-la dans « Mes commandes ».",
     "backToMarketplace": "Retour au marketplace",
     "supplierGoneTitle": "Fournisseur indisponible",
     "supplierGoneBody": "Ce fournisseur n'est plus disponible. Votre panier n'a pas pu être ouvert.",

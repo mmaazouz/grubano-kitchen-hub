@@ -174,6 +174,9 @@ export default async function SupplierCatalogPage(props: { params: { locale: str
       ) : (
         <SupplierCatalogClient
           supplierId={supplier.id}
+          /* The buyer, from the callerOperator() resolved above — never a client-supplied
+             id. The supply cart is partitioned by it (P0 cross-account supply cart). */
+          operatorId={operator!.id}
           minimumOrderCents={supplier.minimumOrderCents}
           items={items}
         />

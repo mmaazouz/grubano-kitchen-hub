@@ -6270,6 +6270,8 @@
     "cancelConfirm": "Annullare questo ordine? L'azione è irreversibile."
   },
   "marketplaceCart": {
+    "errOrderOwner": "Questo carrello non è più associato a questo account: ricarichi la pagina.",
+    "errOrderOtherAccount": "Il Suo ordine è stato inviato, ma l'account connesso è cambiato: lo ritrova in « I miei ordini ».",
     "backToMarketplace": "Torna al marketplace",
     "supplierGoneTitle": "Fornitore non disponibile",
     "supplierGoneBody": "Questo fornitore non è più disponibile. Impossibile aprire il carrello.",

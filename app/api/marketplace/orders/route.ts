@@ -51,6 +51,19 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
     }
 
+    // ── SUPPLY-CART OWNERSHIP ──────────────────────────────────────────────────
+    // The browser declares the buyer whose basket it is submitting. The header GRANTS
+    // NOTHING — the Operator is and stays the session's — it only lets us REFUSE a basket
+    // built for someone else: a tab from before this deploy still holds the old
+    // supplier-only bucket and may already carry another account's cookie, so an ABSENT
+    // claim is refused exactly like a wrong one. Checked HERE: before the body is parsed,
+    // before the supplier is read, before any price is snapshotted, before any row is
+    // written. The response names no account and echoes nothing back.
+    const claimedOwner = req.headers.get('x-supply-cart-owner')
+    if (claimedOwner !== operator.id) {
+      return NextResponse.json({ error: 'supply_cart_owner_mismatch' }, { status: 409 })
+    }
+
     const data = orderSchema.parse(await req.json())
 
     // The target supplier must exist AND be active (discovery only shows active).

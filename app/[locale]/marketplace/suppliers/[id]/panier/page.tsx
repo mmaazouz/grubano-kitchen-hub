@@ -77,6 +77,8 @@ export default async function SupplierCartPage(props: { params: { locale: string
   return (
     <CartClient
       supplierId={supplier.id}
+      /* The buyer, from the callerOperator() resolved above — never a client id. */
+      operatorId={operator!.id}
       companyName={supplier.companyName}
       city={supplier.city}
       minimumOrderCents={supplier.minimumOrderCents}

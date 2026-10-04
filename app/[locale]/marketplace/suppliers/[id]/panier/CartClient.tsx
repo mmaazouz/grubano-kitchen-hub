@@ -4,7 +4,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
 import { Link, useRouter } from '@/navigation'
 import { formatMoney } from '@/lib/format-money'
-import { readSupplyCart, writeSupplyCart, clearSupplyCart, type SupplyCart } from '@/lib/supply-cart'
+import {
+  readSupplyCart, writeSupplyCart, clearSupplyCartForOwner, setSupplyCartOwner,
+  currentSupplyCartStamp, sessionSupplyCartStamp, type SupplyCart,
+} from '@/lib/supply-cart'
+import { useSession } from 'next-auth/react'
 
 // ── Supplier cart — order validation (flux acheteur, Lot E) ──────────────────────
 // CLIENT half of /marketplace/suppliers/[id]/panier. The server passed the real
@@ -15,6 +19,10 @@ import { readSupplyCart, writeSupplyCart, clearSupplyCart, type SupplyCart } fro
 // the total in CENTS and re-enforces the minimum, so a forged quantity/price is
 // impossible to inject. « Payer en ligne » is a locked, inert button (the /pay flow
 // is untouched). No commission line is shown to the buyer.
+
+/** Stable identity for the fail-closed empty cart: a fresh {} per render would churn
+ *  every useMemo below. Frozen, because it is shared. */
+const NO_CART: SupplyCart = Object.freeze({}) as SupplyCart
 
 interface CartItem {
   id: string
@@ -27,6 +35,7 @@ interface DayChip { iso: string; weekday: string; dm: string }
 
 export default function CartClient({
   supplierId,
+  operatorId,
   companyName,
   city,
   minimumOrderCents,
@@ -34,6 +43,10 @@ export default function CartClient({
   items,
 }: {
   supplierId: string
+  /** The buyer, resolved by the SERVER page with callerOperator(). Authoritative for the
+   *  bucket; still cross-checked against the live session, because a server-rendered prop
+   *  is frozen and an identity change elsewhere would leave it stale. */
+  operatorId: string
   companyName: string
   city: string | null
   minimumOrderCents: number
@@ -45,8 +58,13 @@ export default function CartClient({
   const locale = useLocale()
   const router = useRouter()
 
+  const { data: session, status } = useSession()
+
   const [mounted, setMounted] = useState(false)
-  const [cart, setCart] = useState<SupplyCart>({})
+  // RAW state — read only through the ownership gate below.
+  const [cartState, setCart] = useState<SupplyCart>({})
+  /** The identity the quantities were hydrated under; null until they have been. */
+  const [hydratedFor, setHydratedFor] = useState<string | null>(null)
   const [notes, setNotes] = useState('')
   const [desiredDate, setDesiredDate] = useState<string | null>(null)
   const [days, setDays] = useState<DayChip[]>([])
@@ -61,8 +79,29 @@ export default function CartClient({
   }, [items])
 
   // Mount: hydrate the cart from storage + build the real delivery-day chips.
+  // ── CART OWNERSHIP, EVALUATED DURING RENDER ────────────────────────────────────
+  // The stamp the quantities were hydrated under, the stamp the LIVE session implies (it
+  // changes in the same render as the session; an effect runs after), and the operatorId
+  // the SERVER resolved must all agree. Anything else — including a stale server prop
+  // after an identity change elsewhere — means these lines are not this buyer's.
+  const sessionStamp = sessionSupplyCartStamp(status, (session?.user as { id?: string } | undefined)?.id)
+  const ownedHere =
+    sessionStamp !== null && sessionStamp === `u:${operatorId}` && hydratedFor === sessionStamp
+  const cart = ownedHere ? cartState : NO_CART
+  /** The buyer this basket is PROVEN to belong to — what travels as the claim, and what
+   *  the success path clears BY NAME. Never a React id pasted at the last moment. */
+  const cartOwnerId = ownedHere ? operatorId : ''
+
+  // Declare the owner from the SERVER-resolved id, then hydrate for it. Re-runs on an
+  // identity change, so the lines are re-read instead of frozen at mount.
   useEffect(() => {
+    if (status !== 'authenticated' || !operatorId) return
+    setSupplyCartOwner(operatorId)
     setCart(readSupplyCart(supplierId))
+    setHydratedFor(currentSupplyCartStamp())
+  }, [supplierId, operatorId, status])
+
+  useEffect(() => {
     // Earliest deliverable day = today + the supplier's REAL lead time; then a short
     // run of consecutive calendar days. No day is disabled — we don't model supplier
     // closures, so inventing an unavailable weekday would be dishonest.
@@ -84,7 +123,13 @@ export default function CartClient({
   }, [supplierId, leadTimeDays, locale])
 
   // Keep storage in sync so edits here survive a refresh (until the order is placed).
-  useEffect(() => { if (mounted) writeSupplyCart(supplierId, cart) }, [mounted, supplierId, cart])
+  // Persist only once the lines on screen are this buyer's: otherwise the initial {} of
+  // this effect would remove the bucket before hydration, and after an identity change it
+  // would write a stale state into the new buyer's bucket.
+  useEffect(() => {
+    if (!mounted || !ownedHere) return
+    writeSupplyCart(supplierId, cartState)
+  }, [mounted, ownedHere, supplierId, cartState])
 
   const setQty = (id: string, q: number) =>
     setCart((c) => {
@@ -115,13 +160,33 @@ export default function CartClient({
   const shortfallCents = Math.max(minimumOrderCents - totalCents, 0)
   const canSubmit = !placing && lines.length > 0 && !belowMin
 
+  /** The id the SERVER attributes to this browser right now. */
+  async function confirmedOperatorId(): Promise<string> {
+    try {
+      const s = await fetch('/api/auth/session', { cache: 'no-store' }).then((r) => r.json())
+      return (s?.user as { id?: string } | undefined)?.id ?? ''
+    } catch {
+      return ''
+    }
+  }
+
   async function placeOrder() {
     if (!canSubmit) return
+    // MONEY GUARD. A basket that is not proven to be this identity's never reaches fetch().
+    if (!cartOwnerId) { setPlaceError(t('errOrderOwner')); return }
+    const orderOwner = cartOwnerId
     setPlacing(true); setPlaceError('')
     try {
       const res = await fetch('/api/marketplace/orders', {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          // Declares the buyer this basket belongs to. Grants nothing — the server decides
+          // the Operator from the session — but it lets the server REFUSE a basket sent on
+          // behalf of someone else, including from a pre-deploy bundle that still holds the
+          // old global bucket and now carries another account's cookie.
+          'x-supply-cart-owner': orderOwner,
+        },
         body: JSON.stringify({
           supplierProfileId: supplierId,
           lines: lines.map((l) => ({ catalogItemId: l.it.id, quantity: l.qty })),
@@ -131,7 +196,15 @@ export default function CartClient({
       })
       const d = await res.json().catch(() => null)
       if (!res.ok) { setPlaceError(d?.error || t('errOrder')); return }
-      clearSupplyCart(supplierId)
+      // The order was placed for `orderOwner`. Clear THAT bucket by name: a clear that
+      // resolved its target from the current owner would empty whoever's it is NOW, and the
+      // response can arrive after an identity change (the mistake the consumer-cart lot
+      // made first).
+      clearSupplyCartForOwner(orderOwner, supplierId)
+      // Never show one buyer's confirmation — supplier, total, anything — to another. If
+      // the session is no longer the one that ordered, fail closed with a generic message.
+      const stillMine = await confirmedOperatorId()
+      if (stillMine !== orderOwner) { setPlaceError(t('errOrderOtherAccount')); return }
       setPlaced({ totalCents: d?.order?.totalCents ?? totalCents })
     } catch {
       setPlaceError(t('errOrder'))

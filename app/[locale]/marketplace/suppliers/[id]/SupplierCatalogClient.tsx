@@ -4,7 +4,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
 import { useRouter } from '@/navigation'
 import { formatMoney } from '@/lib/format-money'
-import { readSupplyCart, writeSupplyCart, type SupplyCart } from '@/lib/supply-cart'
+import {
+  readSupplyCart, writeSupplyCart, setSupplyCartOwner, currentSupplyCartStamp,
+  sessionSupplyCartStamp, type SupplyCart,
+} from '@/lib/supply-cart'
+import { useSession } from 'next-auth/react'
 
 // ── Buyer catalogue — interactive rows + sticky cart bar (flux acheteur, Lot D) ──
 // CLIENT half of /marketplace/suppliers/[id]. The parent server page fetched the real
@@ -14,6 +18,10 @@ import { readSupplyCart, writeSupplyCart, type SupplyCart } from '@/lib/supply-c
 // money — « Voir le panier » just persists the chosen quantities (lib/supply-cart,
 // keyed by supplier) and navigates to the cart (Lot E), which recomputes everything
 // server-side. Prices are the server's priceCents, shown via formatMoney.
+
+/** Stable identity for the fail-closed empty cart: a fresh {} per render would churn
+ *  every useMemo below. Frozen, because it is shared. */
+const NO_CART: SupplyCart = Object.freeze({}) as SupplyCart
 
 interface CatalogItem {
   id: string
@@ -27,10 +35,15 @@ interface CatalogItem {
 
 export default function SupplierCatalogClient({
   supplierId,
+  operatorId,
   minimumOrderCents,
   items,
 }: {
   supplierId: string
+  /** The buyer, resolved by the SERVER page with callerOperator(). Authoritative for the
+   *  bucket; still cross-checked against the live session below, because a server-rendered
+   *  prop is frozen and an identity change in another tab would leave it stale. */
+  operatorId: string
   minimumOrderCents: number
   items: CatalogItem[]
 }) {
@@ -39,14 +52,45 @@ export default function SupplierCatalogClient({
   const locale = useLocale()
   const router = useRouter()
 
-  const [cart, setCart] = useState<SupplyCart>({})
+  const { data: session, status } = useSession()
+
+  // RAW state — read only through the ownership gate below.
+  const [cartState, setCart] = useState<SupplyCart>({})
+  /** The identity the quantities were hydrated under; null until they have been. */
+  const [hydratedFor, setHydratedFor] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [catFilter, setCatFilter] = useState('all')
 
-  // Hydrate the cart from storage AFTER mount (avoids SSR/client mismatch), then
-  // keep storage in sync so the cart survives navigation to the cart screen.
-  useEffect(() => { setCart(readSupplyCart(supplierId)) }, [supplierId])
-  useEffect(() => { writeSupplyCart(supplierId, cart) }, [supplierId, cart])
+  // ── CART OWNERSHIP, EVALUATED DURING RENDER ────────────────────────────────────
+  // Three things must agree before a single quantity is shown or written: the stamp the
+  // state was hydrated under, the stamp the LIVE session implies (which changes in the
+  // same render as the session — an effect cannot, it runs after), and the operatorId the
+  // SERVER resolved for this page. Any disagreement — including a stale server prop after
+  // an identity change elsewhere — means these quantities are not this buyer's.
+  const sessionStamp = sessionSupplyCartStamp(status, (session?.user as { id?: string } | undefined)?.id)
+  const ownedHere =
+    sessionStamp !== null &&
+    sessionStamp === `u:${operatorId}` &&
+    hydratedFor === sessionStamp
+  const cart = ownedHere ? cartState : NO_CART
+
+  // Declare the owner from the SERVER-resolved id, then hydrate for it. Re-runs on an
+  // identity change, so the quantities are re-read instead of being frozen at mount.
+  useEffect(() => {
+    if (status !== 'authenticated' || !operatorId) return
+    setSupplyCartOwner(operatorId)
+    setCart(readSupplyCart(supplierId))
+    setHydratedFor(currentSupplyCartStamp())
+  }, [supplierId, operatorId, status])
+
+  // Persist — but ONLY once the quantities on screen are this buyer's. Without the guard,
+  // the initial {} of this effect removed the bucket before hydration had run (effects fire
+  // in order, so the write saw the pre-hydration state), and after an identity change it
+  // would have written a stale state into the new buyer's bucket.
+  useEffect(() => {
+    if (!ownedHere) return
+    writeSupplyCart(supplierId, cartState)
+  }, [ownedHere, supplierId, cartState])
 
   // Only available items are addable; a stored qty for a now-unavailable item is ignored.
   const availableById = useMemo(() => {
