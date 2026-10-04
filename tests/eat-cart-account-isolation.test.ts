@@ -271,12 +271,17 @@ describe('O/P — guest → user is a PROMOTION, and only the checkout flow may 
     expect(store.getItem(bucketOf('guest')), 'and the guest basket is left alone').toContain('truffe')
   })
 
-  it('a promotion never overwrites a basket the user already has', () => {
+  it('the basket ON SCREEN wins over an older one the user left in this tab', () => {
+    // The visitor was looking at the GUEST basket when they tapped « Commander » (the page
+    // reads the current owner), so that is what must be ordered. Keeping an older u.<id>
+    // basket instead would charge them for items they were never shown — worse than losing
+    // a basket they abandoned themselves. Nothing crosses accounts: the source is this
+    // tab's guest bucket, the destination is the server-confirmed identity.
     seed('B', CART_B)
     setCartOwner({ kind: 'guest' })
     writeCart(CART_A)
-    expect(promoteGuestCartToUser('B')).toBe(false)
-    expect(readCart(), 'B’s own basket wins').toEqual(CART_B)
+    expect(promoteGuestCartToUser('B')).toBe(true)
+    expect(readCart(), 'what the screen showed is what gets ordered').toEqual(CART_A)
     expect(store.getItem(bucketOf('guest'))).toBeNull()
   })
 
@@ -493,6 +498,11 @@ describe('G/H/S/T — the first frame, and the money guard', () => {
     expect(orders).toMatch(/setData\(\{ stamp: ownStamp, current:/)
     expect(orders).toMatch(/const ordersStampOk =/)
     expect(orders).toMatch(/async function reorder\(c: Card\) \{\s*\n\s*if \(!ordersStampOk\) return/)
+    // …and the check is REPEATED after the network round trip: the first one ran before an
+    // await, so an identity change during it would otherwise have written this history into
+    // the new owner's bucket.
+    expect(orders).toMatch(/const loadedFor = data\.stamp/)
+    expect(orders).toMatch(/if \(currentCartStamp\(\) !== loadedFor\) return\s*\n\s*writeCart\(\{/)
   })
 
   it('NEGATIVE CONTROLS — each guard, removed, is detectable', () => {

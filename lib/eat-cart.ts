@@ -206,22 +206,25 @@ export function cartCount(): number {
  * the e-mail the visitor typed is not an identity). It declares the user as the owner
  * either way, so a sign-in with an empty guest basket still lands on the right bucket.
  *
- * Refuses to overwrite a basket the user already has: their own cart wins over an
- * anonymous one, and nothing of another identity can be pulled in — the source is only
- * ever `…v2.guest`. Returns true when a basket was actually moved.
+ * The guest basket WINS over one the user may already have in this tab, and that is
+ * deliberate: the page the visitor was looking at when they tapped « Commander » reads the
+ * current owner, which was the guest — so that is the basket they are ordering. Keeping an
+ * older `u.<id>` basket instead would charge them for items they were not shown, which is
+ * worse than losing a basket they themselves abandoned. Nothing can be pulled in across
+ * accounts either way: the source is only ever this tab's `…v2.guest`, and the destination
+ * is the identity the SERVER just confirmed. Returns true when a basket was moved.
  */
 export function promoteGuestCartToUser(userId: string): boolean {
   if (typeof window === 'undefined' || !userId) return false
   const guest: CartOwner = { kind: 'guest' }
   const user: CartOwner = { kind: 'user', id: userId }
   const pending = readFor(guest)
-  const existing = readFor(user)
   let moved = false
-  if (pending && !existing) {
+  if (pending) {
     writeFor(user, pending)
     moved = true
+    writeFor(guest, null) // the anonymous basket does not survive the promotion
   }
-  if (pending) writeFor(guest, null) // the anonymous basket does not survive the promotion
   owner = user
   emitCart()
   return moved

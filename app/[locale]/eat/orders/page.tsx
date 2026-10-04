@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { useTranslations, useLocale } from 'next-intl'
 import { Link, useRouter } from '@/navigation'
-import { writeCart, sessionCartStamp, type EatCartLineItem } from '@/lib/eat-cart'
+import { writeCart, sessionCartStamp, currentCartStamp, type EatCartLineItem } from '@/lib/eat-cart'
 import { formatEuros } from '@/lib/format-money'
 import './orders.css'
 import '@/app/gb-foundation/gb-tokens.css'
@@ -216,6 +216,7 @@ export default function OrdersPage() {
   async function reorder(c: Card) {
     // FAIL CLOSED: a past order loaded under another identity may not seed this basket.
     if (!ordersStampOk) return
+    const loadedFor = data.stamp // the identity this history belongs to
     if (c.kind === 'dinein' || !c.trackingId) { if (c.restaurantId) router.push(`/eat/r/${c.restaurantId}`); return }
     try {
       const r = await fetch(`/api/orders/${c.trackingId}`)
@@ -228,6 +229,10 @@ export default function OrdersPage() {
         options: it.options as EatCartLineItem['options'],
       }))
       if (!o || !items.length) { if (c.restaurantId) router.push(`/eat/r/${c.restaurantId}`); return }
+      // RE-CHECK AFTER THE AWAIT. The guard above ran before the network round trip; if the
+      // identity changed during it, writeCart() would put this history into the NEW owner's
+      // bucket. Compare what the history belongs to with the owner the cache now serves.
+      if (currentCartStamp() !== loadedFor) return
       writeCart({
         restaurantId: o.restaurant?.id ?? c.restaurantId ?? '',
         items,
