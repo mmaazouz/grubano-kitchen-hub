@@ -1,11 +1,16 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
 import { Link, useRouter } from '@/navigation'
 import { formatMoney } from '@/lib/format-money'
 import { canRestoCancel } from '@/lib/marketplace'
-import { writeSupplyCart, type SupplyCart } from '@/lib/supply-cart'
+import { useSession } from 'next-auth/react'
+import {
+  writeSupplyCart, setSupplyCartOwner, clearSupplyCartOwnerIfMine,
+  currentSupplyCartStamp, supplyCartIdentity,
+  type SupplyCart,
+} from '@/lib/supply-cart'
 
 // ── My supplier orders — list + detail + timeline (flux acheteur, Lot F) ─────────
 // CLIENT half of /marketplace/orders. The server passed the resto's real SupplyOrders
@@ -54,23 +59,89 @@ function avatarFor(name: string): { initials: string; gradient: string } {
   return { initials, gradient: AV_GRADIENTS[h % AV_GRADIENTS.length] }
 }
 
+/** Stable identity for the fail-closed empty history (a fresh [] each render would
+ *  needlessly churn the useMemos below). */
+const NO_ORDERS: MyOrder[] = []
+
 type Tab = 'all' | 'placed' | 'confirmed' | 'preparing' | 'delivered'
 type Period = '30' | '90' | 'year'
 
-export default function OrdersClient({ orders: initial }: { orders: MyOrder[] }) {
+export default function OrdersClient(
+  { orders: initial, operatorId }: {
+    orders: MyOrder[]
+    /** The buyer the SERVER resolved with callerOperator() — whose SupplyOrders `initial`
+     *  is. Frozen at render; cross-checked against the live session below. */
+    operatorId: string
+  },
+) {
   const t  = useTranslations('marketplaceOrders')
   const ts = useTranslations('supplier')
   const locale = useLocale()
   const router = useRouter()
 
+  const { data: session, status } = useSession()
+
   const [mounted, setMounted] = useState(false)
+  // RAW state — read only through `visibleOrders` below.
   const [orders, setOrders] = useState<MyOrder[]>(initial)
+  /** The buyer the rows in state were FETCHED for. Not the same thing as the current prop:
+   *  see the re-seed below. */
+  const [loadedFor, setLoadedFor] = useState(operatorId)
   const [tab, setTab] = useState<Tab>('all')
   const [period, setPeriod] = useState<Period>('30')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
 
+  // ── RE-SEED, DURING RENDER ─────────────────────────────────────────────────────
+  // The recovery refresh re-renders the SERVER component without remounting this one —
+  // that is the whole point of it — and useState IGNORES a changed initial value. So the
+  // props can become B's while `orders` still holds the rows fetched for A, and the
+  // identity gate, which compares the live session with the PROP, would then read TRUE
+  // over the previous buyer's history. That is how the recovery re-opened the very leak it
+  // was added to recover from.
+  //
+  // It has to happen during render: the gate below is a render-time derivation, so an
+  // effect would run one committed frame too late. React discards the output of this pass
+  // and re-renders immediately, so nothing reads the stale rows.
+  if (loadedFor !== operatorId) {
+    setLoadedFor(operatorId)
+    setOrders(initial)
+    setSelectedId(null)
+  }
+
   useEffect(() => { setMounted(true) }, [])
+
+  // ── HISTORY OWNERSHIP, EVALUATED DURING RENDER ─────────────────────────────────
+  // « Recommander » turns a past order into a basket, so this screen WRITES the supply
+  // cart: the identity this history belongs to and the identity of this render must agree.
+  // The server prop is authoritative when it is rendered but frozen afterwards; the live
+  // session is what moves. A disagreement — or an identity that cannot be named — means
+  // this history is not this buyer's, so it is neither shown nor allowed to seed a basket.
+  // An effect cannot do this: it runs AFTER the render that introduced the new session.
+  const liveOperatorId = (session?.user as { id?: string } | undefined)?.id ?? ''
+  /** ONE definition of the gate, shared by the three marketplace screens and executed
+   *  directly by the tests — see lib/supply-cart.supplyCartIdentity. */
+  const { identityMatchesServer } = supplyCartIdentity(status, liveOperatorId, operatorId)
+  /** The live session is this page's buyer AND the rows in state are that buyer's. The
+   *  second conjunct is not redundant with the re-seed above: it is what makes a stale
+   *  array unreadable even in a pass where the re-seed has not run, so removing one does
+   *  not silently re-open the other. */
+  const historyOwned = identityMatchesServer && loadedFor === operatorId
+  /** The ONLY list the rest of this component may read. */
+  const visibleOrders = historyOwned ? orders : NO_ORDERS
+
+  // Declare the buyer from the SERVER-resolved id, so « Recommander » writes into that
+  // bucket and nowhere else.
+  useEffect(() => {
+    if (!identityMatchesServer) {
+      // UNDECLARE: `status` alone is not enough. A → logout → B login puts status back to
+      // 'authenticated' while this component still carries operatorId = A, and the effect
+      // would then declare the GLOBAL module owner as A during B's session.
+      clearSupplyCartOwnerIfMine(operatorId)
+      return
+    }
+    setSupplyCartOwner(operatorId)
+  }, [identityMatchesServer, liveOperatorId, operatorId])
 
   const fmt = useMemo(() => ({
     date: new Intl.DateTimeFormat(locale, { day: '2-digit', month: '2-digit', year: 'numeric' }),
@@ -105,7 +176,7 @@ export default function OrdersClient({ orders: initial }: { orders: MyOrder[] })
   const inPeriod = (o: MyOrder) => !mounted || new Date(o.createdAt).getTime() >= periodCutoff
 
   const counts = useMemo(() => {
-    const base = orders.filter(inPeriod)
+    const base = visibleOrders.filter(inPeriod)
     return {
       all: base.length,
       placed: base.filter((o) => o.status === 'placed').length,
@@ -113,30 +184,44 @@ export default function OrdersClient({ orders: initial }: { orders: MyOrder[] })
       preparing: base.filter((o) => o.status === 'preparing').length,
       delivered: base.filter((o) => o.status === 'delivered').length,
     }
-  }, [orders, mounted, periodCutoff]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [visibleOrders, mounted, periodCutoff]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const shown = useMemo(
-    () => orders.filter(inPeriod).filter((o) => tab === 'all' || o.status === tab),
-    [orders, tab, mounted, periodCutoff], // eslint-disable-line react-hooks/exhaustive-deps
+    () => visibleOrders.filter(inPeriod).filter((o) => tab === 'all' || o.status === tab),
+    [visibleOrders, tab, mounted, periodCutoff], // eslint-disable-line react-hooks/exhaustive-deps
   )
 
-  const detail = selectedId ? orders.find((o) => o.id === selectedId) ?? null : null
+  const detail = selectedId ? visibleOrders.find((o) => o.id === selectedId) ?? null : null
 
   function reorder(o: MyOrder) {
+    // FAIL CLOSED: a history loaded under one identity may not seed another's basket.
+    // Re-derived here rather than trusted from the closure, and checked again immediately
+    // before the write below — a guard before an await is not a guard on what follows it,
+    // and this must hold even once this function grows one.
+    if (!historyOwned) return
     const cart: SupplyCart = {}
     for (const l of o.lines) if (l.catalogItemId) cart[l.catalogItemId] = (cart[l.catalogItemId] ?? 0) + l.quantity
+    // The bucket written must be the one the DECLARED owner names: this cannot write
+    // through a module owner that has since moved to another account.
+    if (!historyOwned || currentSupplyCartStamp() !== `u:${operatorId}`) return
     writeSupplyCart(o.supplierProfileId, cart)
     router.push(`/marketplace/suppliers/${o.supplierProfileId}/panier`)
   }
 
   async function cancel(id: string) {
+    // The server scopes the PATCH to the caller's own orders, but this screen must not
+    // offer one buyer's order for cancellation under another's session either. Checked
+    // again after the await, before the state it holds is edited.
+    if (!historyOwned) return
     if (busyId || !window.confirm(t('cancelConfirm'))) return
     setBusyId(id)
     try {
       const res = await fetch(`/api/marketplace/orders/${id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'cancelled' }),
       })
-      if (res.ok) setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, status: 'cancelled' } : o)))
+      if (res.ok && historyOwned) {
+        setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, status: 'cancelled' } : o)))
+      }
     } finally {
       setBusyId(null)
     }
@@ -164,7 +249,26 @@ export default function OrdersClient({ orders: initial }: { orders: MyOrder[] })
   }
 
   // ── loading (hydration gate) ─────────────────────────────────────────────────
-  if (!mounted) {
+  // A page rendered for one buyer, now being viewed by another: ask the SERVER to
+  // re-render it for whoever is signed in. At most ONE refresh per live identity (the ref
+  // is keyed by it), so this cannot loop — if the refresh does not change operatorId the
+  // screen simply stays in its safe loading state and nothing further is attempted. This
+  // is what keeps the fail-closed state RECOVERABLE: a guard that permanently bricks the
+  // screen is a guard someone deletes later.
+  const refreshedFor = useRef('')
+  useEffect(() => {
+    if (identityMatchesServer || status !== 'authenticated' || !liveOperatorId) return
+    if (refreshedFor.current === liveOperatorId) return
+    refreshedFor.current = liveOperatorId
+    router.refresh()
+  }, [identityMatchesServer, status, liveOperatorId, router])
+
+  // Also while the session is still resolving, AND while the live identity disagrees with
+  // the buyer this page was rendered for. « Aucune commande » would be FACTUALLY FALSE
+  // there: it is A's stale page being viewed by B, and B may well have orders. We do not
+  // know yet whose this screen is, so we say nothing — and the effect above has already
+  // asked the server for the right answer.
+  if (!mounted || status === 'loading' || !historyOwned) {
     return (
       <section className="mkt-orders" aria-busy="true">
         <span className="op-sk" style={{ width: 260, height: 26, marginBottom: 18, display: 'block' }} />
@@ -177,7 +281,9 @@ export default function OrdersClient({ orders: initial }: { orders: MyOrder[] })
   }
 
   // ── empty ─────────────────────────────────────────────────────────────────────
-  if (orders.length === 0) {
+  // Reached only when the identity agrees (guard above), so this really does mean
+  // "this buyer has no orders".
+  if (visibleOrders.length === 0) {
     return (
       <section className="mkt-orders">
         <div className="op-dash__head"><h1 className="op-dash__title">{t('title')}</h1></div>

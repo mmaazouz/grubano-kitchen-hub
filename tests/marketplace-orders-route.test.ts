@@ -20,8 +20,16 @@ vi.mock('next-auth', () => ({ getServerSession: getSession }))
 import { POST } from '@/app/api/marketplace/orders/route'
 import { GET as DISCOVER } from '@/app/api/marketplace/suppliers/route'
 
-const post = (body: unknown) =>
-  new Request('http://x/api/marketplace/orders', { method: 'POST', body: JSON.stringify(body) })
+// Every case below mocks the session operator as 'op1'. The route now requires the
+// browser to declare whose supply cart it is submitting (x-supply-cart-owner), so the
+// builder states the honest claim; the guard itself is proven in
+// tests/supply-cart-account-isolation.test.ts.
+const post = (body: unknown, owner = 'op1') =>
+  new Request('http://x/api/marketplace/orders', {
+    method: 'POST',
+    headers: { 'x-supply-cart-owner': owner },
+    body: JSON.stringify(body),
+  })
 
 beforeEach(() => {
   vi.clearAllMocks()

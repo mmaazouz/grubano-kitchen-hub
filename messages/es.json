@@ -6270,6 +6270,9 @@
     "cancelConfirm": "¿Cancelar este pedido? Esta acción no se puede deshacer."
   },
   "marketplaceCart": {
+    "errOrderUnverified": "Tu pedido se ha enviado. No hemos podido confirmar tu sesión: lo encontrarás en «Mis pedidos».",
+    "errOrderOwner": "Este carrito ya no está vinculado a esta cuenta: recarga la página.",
+    "errOrderOtherAccount": "Tu pedido se ha enviado, pero la cuenta conectada ha cambiado: lo encontrarás en «Mis pedidos».",
     "backToMarketplace": "Volver al marketplace",
     "supplierGoneTitle": "Proveedor no disponible",
     "supplierGoneBody": "Este proveedor ya no está disponible. No se pudo abrir tu carrito.",
