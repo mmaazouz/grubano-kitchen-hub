@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
+import { useSession } from 'next-auth/react'
 import { useParams } from 'next/navigation'
 import { useRouter } from '@/navigation'
 import { useTranslations, useLocale } from 'next-intl'
@@ -12,6 +13,8 @@ import CreatorBadge from '@/components/eat/CreatorBadge'
 import {
   readCart,
   writeCart,
+  currentCartStamp,
+  sessionCartStamp,
   showToast,
   isFav,
   toggleFav,
@@ -221,7 +224,10 @@ export default function RestaurantScreen() {
   const [reservable, setReservable] = useState(false)
   const [mode, setMode] = useState<Mode>('takeaway')
   const [fav, setFav] = useState(false)
-  const [cart, setCart] = useState<EatCartData | null>(null)
+  // RAW state — read only through the ownership gate below, never directly.
+  const [cartState, setCart] = useState<EatCartData | null>(null)
+  /** The identity the basket was read under (first-frame guard). */
+  const [cartStamp, setCartStamp] = useState<string | null>(null)
   const [modalDish, setModalDish] = useState<MenuItem | null>(null)
   const [aboutOpen, setAboutOpen] = useState(true)
   // Chantier P2 — server-computed promo display data (never computed here).
@@ -235,6 +241,19 @@ export default function RestaurantScreen() {
   // PASSIVE read of the cached position only — this page NEVER calls request()
   // (geolocation is out of S1.1 scope): no permission prompt, no network call.
   const { coords } = useGeolocation()
+  const { data: session, status: sessionStatus } = useSession()
+
+  // ── CART OWNERSHIP, EVALUATED DURING RENDER ────────────────────────────────────
+  // `cartStamp` is the identity the basket was read under; the session stamp is the
+  // identity this render is FOR, and it changes in the same render as the session (an
+  // effect runs after it). Mismatch, or an identity that cannot be named, means the basket
+  // held here is not this visitor's: nothing of it is shown, and because every mutation
+  // below starts from this value, nothing can be ADDED to another account's basket either.
+  // A guest keeps building a basket normally: 'guest' === 'guest' passes.
+  const cartOwnedHere =
+    cartStamp !== null &&
+    cartStamp === sessionCartStamp(sessionStatus, (session?.user as { id?: string } | undefined)?.id)
+  const cart = cartOwnedHere ? cartState : null
 
   const modeLabel = (m: Mode) =>
     m === 'delivery' ? t('modeDelivery') : m === 'takeaway' ? t('modeTakeaway') : t('modeDineIn')
@@ -276,6 +295,7 @@ export default function RestaurantScreen() {
         // V5-1b — tolerant: absent/odd payload ⇒ booking entry stays hidden.
         if (d.reservable === true) setReservable(true)
         const existing = readCart()
+        setCartStamp(currentCartStamp())
         if (existing && existing.restaurantId === id) setCart(existing)
       })
       .catch(() => {})
@@ -311,6 +331,11 @@ export default function RestaurantScreen() {
 
   function addLine(dish: MenuItem, opts?: EatCartItemOptions, qty = 1) {
     if (!restaurant) return
+    // FAIL CLOSED on ownership. Without this, a click during the one frame where the
+    // session is already B's but the declared owner is still A's would write through
+    // writeCart() into A's bucket — completing the previous account's basket. `cart` being
+    // null is not enough: it would simply start a fresh basket in the WRONG bucket.
+    if (!cartOwnedHere) return
     const fullOpts: EatCartItemOptions | undefined = opts && (opts.size || opts.supplements?.length || opts.exclusions?.length || opts.note)
       ? { ...opts, parentDishId: dish.id }
       : undefined
@@ -358,7 +383,7 @@ export default function RestaurantScreen() {
    *  unit price, which is frozen at add time). delta −1 on a 1-qty line removes it.
    *  Pure quantity mutation; the unit-price + supplements math is untouched. */
   function setLineQty(lineId: string, delta: number) {
-    if (!cart) return
+    if (!cartOwnedHere || !cart) return // never touch a basket that is not this visitor's
     const nextItems = cart.items
       .map((l) => (l.item.id === lineId ? { ...l, qty: l.qty + delta } : l))
       .filter((l) => l.qty > 0)

@@ -3379,6 +3379,7 @@
       "placeOrder": "Realizar pedido",
       "toastItemRemoved": "Artículo eliminado",
       "errorAddressRequired": "Por favor, introduce una dirección de envío",
+      "errorCartOwner": "Tu carrito ya no está vinculado a esta cuenta: recarga la página y vuelve a empezar.",
       "errorOrderFailed": "Error al realizar el pedido",
       "errorNetwork": "Error de red. Por favor, inténtalo de nuevo.",
       "errClosedWithOpening": "El restaurante está cerrado ahora mismo — abre {label}. Podrás pedir entonces.",

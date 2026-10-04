@@ -563,7 +563,10 @@ describe('J — the shell declares the identity, and only from the session', () 
     expect(effect).toContain("if (status === 'loading') return")
     // An identity we cannot name must not keep the PREVIOUS owner declared: a bare
     // `return` here used to leave A's cache being served to an unnameable session.
-    expect(effect).toContain('if (!addressOwnerId) { clearAddressOwner(); return }')
+    // Since the cart-isolation lot the same branch also undeclares the CART owner: an
+    // identity that cannot be named must not keep serving the previous one's data, for
+    // either store.
+    expect(effect).toContain('if (!addressOwnerId) { clearAddressOwner(); clearCartOwner(); return }')
     expect(effect).not.toMatch(/if \(!addressOwnerId\) return\b/)
     // The owner is declared BEFORE the server pull, so the pull can only ever be for a
     // named identity.

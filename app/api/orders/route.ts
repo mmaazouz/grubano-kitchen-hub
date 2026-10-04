@@ -95,6 +95,33 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Authentification requise' }, { status: 401 })
     }
 
+    // ── CART OWNER CLAIM (P0 cross-account cart) ───────────────────────────────
+    // The consumer basket lived in sessionStorage under ONE global key with no owner, and
+    // nothing cleared it on sign-out: account A filled a basket, A signed out, B signed in
+    // IN THE SAME TAB, and B's « Commander » created a REAL order — consumerId below is
+    // B's token.sub — carrying A's items and A's free-text per-line notes.
+    //
+    // The client now declares, per request, the identity the basket it is sending belongs
+    // to. The header GRANTS NOTHING: the account is still the cookie's, every price is
+    // still re-derived server-side, and this check cannot widen anyone's access. It only
+    // lets the server REFUSE a basket sent on behalf of somebody else.
+    //
+    // ABSENT IS REFUSED, not accepted. A tab loaded BEFORE this deploy runs the old bundle:
+    // it knows nothing about this header, may still hold account A's global basket, and now
+    // carries account B's cookie. Accepting a header-less POST would leave exactly that
+    // population able to create A's basket as B's order — the incident, through the fixed
+    // route. So such a tab cannot order until the page is refreshed; that is the intended
+    // cost. /eat is the only client that sends it today: the flag-gated /eat-next checkout
+    // does NOT (its own basket is still unscoped), so it is fail-closed here BY DESIGN
+    // until its cart is secured — see tests/eat-cart-account-isolation.test.ts.
+    //
+    // FIRST, before the body is even parsed, before pricing, before any Prisma call, and
+    // with no data in the refusal.
+    const claimedCartOwner = req.headers.get('x-cart-owner')
+    if (!token.sub || claimedCartOwner !== token.sub) {
+      return NextResponse.json({ error: 'cart_owner_mismatch' }, { status: 409 })
+    }
+
     const body = await req.json()
     const data = createOrderSchema.parse(body)
 

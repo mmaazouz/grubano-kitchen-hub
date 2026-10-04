@@ -93,8 +93,15 @@ describe('(2) session model — signIn → cookie → POST /api/orders passes (n
     const cart = stripComments(read(CART))
     // guest → open sheet (not an immediate redirect)
     expect(/authStatus !== 'authenticated'\s*\)\s*\{\s*setAuthSheet\(true\)/.test(cart)).toBe(true)
-    // sheet success → continue STRAIGHT to placeOrder (the POST carries the just-set cookie)
-    expect(/onConnected=\{\(\)\s*=>\s*\{\s*setAuthSheet\(false\);\s*placeOrder\(\)\s*\}\}/.test(cart)).toBe(true)
+    // sheet success → continue to placeOrder (the POST carries the just-set cookie).
+    // Since the P0 cart-isolation lot there are two steps in between, and they are the
+    // point: the id is read back from the SERVER (the React session can lag a signIn by a
+    // render, and the typed e-mail is not an identity), and the guest basket is then
+    // EXPLICITLY promoted to it — the only promotion in the app.
+    expect(/onConnected=\{async \(\)\s*=>\s*\{/.test(cart)).toBe(true)
+    expect(/const uid = await confirmedUserId\(\)/.test(cart)).toBe(true)
+    expect(/promoteGuestCartToUser\(uid\)/.test(cart)).toBe(true)
+    expect(/await placeOrder\(\{ ownerId: uid, cart: promoted \}\)/.test(cart)).toBe(true)
     // the checkout button now routes through handleCheckout
     expect(/onClick=\{handleCheckout\}/.test(cart)).toBe(true)
   })

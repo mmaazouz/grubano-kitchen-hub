@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { Link, usePathname, useRouter } from '@/navigation'
 import { useSession } from 'next-auth/react'
 import { useTranslations, useLocale } from 'next-intl'
-import { readCart, cartCount, CART_EVENT } from '@/lib/eat-cart'
+import { readCart, cartCount, setCartOwner, clearCartOwner, currentCartStamp, sessionCartStamp, CART_EVENT } from '@/lib/eat-cart'
 import { getDefaultAddress, syncFromServer, setAddressOwner, clearAddressOwner, currentAddressStamp, sessionAddressStamp, ADDRESS_EVENT, type EatAddress } from '@/lib/eat-addresses'
 import { syncGeoCacheOwner } from '@/lib/use-geolocation'
 import { formatEuros } from '@/lib/format-money'
@@ -62,8 +62,10 @@ export default function EatShell({ children }: { children: React.ReactNode }) {
   const { data: session, status } = useSession()
   const authed = status === 'authenticated'
 
-  const [count, setCount] = useState(0)
-  const [subtotal, setSubtotal] = useState(0)
+  // The cart numbers are stored WITH the stamp of the identity they were read under.
+  const [cartView, setCartView] = useState<{ stamp: string | null; count: number; subtotal: number }>(
+    { stamp: null, count: 0, subtotal: 0 },
+  )
   const [points, setPoints] = useState<number | null>(null)
   const [activeOrders, setActiveOrders] = useState(0)
   const [query, setQuery] = useState('')
@@ -110,6 +112,13 @@ export default function EatShell({ children }: { children: React.ReactNode }) {
   // under with the stamp the SESSION implies, which changes in the same render as the
   // session. Mismatch (or unknown identity) ⇒ the generic label, never the other account's.
   const sessionStamp = sessionAddressStamp(status, addressOwnerId)
+  // FIRST-FRAME GUARD for the cart: same reasoning as the address banner below — the
+  // owner is declared in an effect, so on an A → B switch this component renders once
+  // with B's session while `cartView` still holds A's basket. A mismatched (or unknown)
+  // identity shows an EMPTY cart: no badge, no amount, nothing of the previous account.
+  const cartStampOk = cartView.stamp !== null && cartView.stamp === sessionCartStamp(status, addressOwnerId)
+  const count = cartStampOk ? cartView.count : 0
+  const subtotal = cartStampOk ? cartView.subtotal : 0
   const shownAddr = defaultAddr.stamp !== null && defaultAddr.stamp === sessionStamp ? defaultAddr.addr : null
   useEffect(() => {
     if (status === 'loading') return
@@ -117,28 +126,30 @@ export default function EatShell({ children }: { children: React.ReactNode }) {
       // Authenticated but unnameable (never seen in practice: the session callback in
       // lib/auth.ts always sets user.id). UNDECLARE rather than return: an early return
       // would leave the PREVIOUS owner declared and keep serving their addresses.
-      if (!addressOwnerId) { clearAddressOwner(); return }
+      if (!addressOwnerId) { clearAddressOwner(); clearCartOwner(); return }
       const me = { kind: 'user' as const, id: addressOwnerId }
       setAddressOwner(me)
+      setCartOwner(me)
       syncGeoCacheOwner(me)
       void syncFromServer()
       return
     }
     setAddressOwner({ kind: 'guest' })
+    setCartOwner({ kind: 'guest' })
     syncGeoCacheOwner({ kind: 'guest' })
   }, [status, addressOwnerId])
 
   // Cart (lib/eat-cart, byte-identical) — count + subtotal, live via CART_EVENT.
   useEffect(() => {
     const sync = () => {
-      setCount(cartCount())
+      const stamp = currentCartStamp()
       const c = readCart()
       // item.price ALREADY includes the size premium + supplements (baked in by the
       // restaurant page: unitPrice = dish.price + sizePremium + supplementsTotal). So the
       // subtotal is price*qty — byte-identical to the canonical /eat/cart subtotal
       // (cart/page.tsx). Re-adding supplements here would DOUBLE-count them in the bar.
       const s = c ? c.items.reduce((acc, l) => acc + l.item.price * l.qty, 0) : 0
-      setSubtotal(s)
+      setCartView({ stamp, count: cartCount(), subtotal: s })
     }
     sync()
     window.addEventListener(CART_EVENT, sync)

@@ -5,7 +5,10 @@ import { useTranslations, useLocale } from 'next-intl'
 import { useSession } from 'next-auth/react'
 import { useRouter } from '@/navigation'
 import CheckoutAuthSheet from '@/components/eat/CheckoutAuthSheet'
-import { readCart, writeCart, showToast, type EatCartData } from '@/lib/eat-cart'
+import {
+  readCart, writeCart, showToast, currentCartStamp, sessionCartStamp,
+  promoteGuestCartToUser, CART_EVENT, type EatCartData,
+} from '@/lib/eat-cart'
 import { readAddresses, getDefaultAddress, formatAddress, currentAddressStamp, sessionAddressStamp, ADDRESS_EVENT, type EatAddress } from '@/lib/eat-addresses'
 import { formatEuros, formatAmount } from '@/lib/format-money'
 import './cart.css'
@@ -32,7 +35,26 @@ export default function CartScreen() {
   const locale = useLocale()
   const router = useRouter()
   const { data: authSession, status: authStatus } = useSession()
-  const [cart, setCart] = useState<EatCartData | null>(null)
+  // RAW state — never read directly below: `cart` is derived from it through the
+  // ownership gate, so no render, total or mutation can reach a basket that is not this
+  // visitor's. The setter keeps its name, so every existing call site is unchanged.
+  const [cartState, setCart] = useState<EatCartData | null>(null)
+  /** The identity the basket above was read under (first-frame guard, see below). */
+  const [cartStamp, setCartStamp] = useState<string | null>(null)
+
+  // ── CART OWNERSHIP, EVALUATED DURING RENDER ────────────────────────────────────
+  // The money guard of this screen. `cartStamp` is the identity the basket was read
+  // under; `cartSessionStamp` is the identity this render is FOR, and it changes in the
+  // same render as the session (an effect cannot — it runs after). Mismatch, or an
+  // identity that cannot be named, means this basket is NOT this visitor's: nothing is
+  // rendered from it, nothing is mutated, and placeOrder refuses to fetch at all.
+  const cartSessionStamp = sessionCartStamp(authStatus, (authSession?.user as { id?: string } | undefined)?.id)
+  const cartOwnedHere = cartStamp !== null && cartStamp === cartSessionStamp
+  const cart = cartOwnedHere ? cartState : null
+  /** The user id the basket belongs to, or '' when it is a guest basket / not owned here.
+   *  This is what travels as `x-cart-owner`: derived from the CART, never pasted from the
+   *  current React session. */
+  const cartOwnerId = cartOwnedHere && cartStamp.startsWith('u:') ? cartStamp.slice(2) : ''
   const [hydrated, setHydrated] = useState(false)
   // V5-2 — the delivery tab only renders when the SERVER says it would accept a
   // delivery order for this restaurant (GET /api/restaurants/[id].fulfillment,
@@ -110,9 +132,21 @@ export default function CartScreen() {
   // The resto menu (flat) for the 1-click "add an item" nudge to clear the fee.
   const [menuItems, setMenuItems] = useState<Array<{ id: string; name: string; price: number; photos?: string[]; category?: string }>>([])
 
+  // Hydrate from the owner-scoped store, and stay live: an identity change emits
+  // CART_EVENT, so the basket and its stamp are re-read instead of being frozen at mount.
   useEffect(() => {
-    setCart(readCart())
+    const sync = () => {
+      setCart(readCart())
+      setCartStamp(currentCartStamp())
+    }
+    sync()
     setHydrated(true)
+    window.addEventListener(CART_EVENT, sync)
+    window.addEventListener('storage', sync)
+    return () => {
+      window.removeEventListener(CART_EVENT, sync)
+      window.removeEventListener('storage', sync)
+    }
   }, [])
 
   // Chantier P2 — load the resto's active promos once (display only).
@@ -501,11 +535,31 @@ export default function CartScreen() {
   // (Date.now() + deliveryTime ?? 20 EN DUR) — retiré : aucun moteur ne calcule
   // d'heure, et deliveryTime n'est saisi par aucune UI.
 
-  async function placeOrder() {
-    if (!cart) return
+  // `proven` is supplied ONLY by the « compte au paiement » flow, after the server has
+  // confirmed the new identity and the guest basket has been promoted to it: at that
+  // instant the React session provider may still be on the previous render, so the gate
+  // above would refuse a basket that is now legitimately this user's.
+  /** The id the SERVER attributes to this browser right now. Never inferred from a typed
+   *  e-mail, never read from the React session (which can lag a sign-in by a render). */
+  async function confirmedUserId(): Promise<string> {
+    try {
+      const s = await fetch('/api/auth/session', { cache: 'no-store' }).then((r) => r.json())
+      return (s?.user as { id?: string } | undefined)?.id ?? ''
+    } catch {
+      return ''
+    }
+  }
+
+  async function placeOrder(proven?: { ownerId: string; cart: EatCartData }) {
+    const orderCart = proven?.cart ?? cart
+    const ownerId = proven?.ownerId ?? cartOwnerId
+    // MONEY GUARD. No owner, or a basket that is not attributed to this identity ⇒ NOT
+    // ONE fetch. This is what stops a basket built by another account from becoming an
+    // order here even if stale React state survived an identity change.
+    if (!orderCart || !ownerId) { setError(t('errorCartOwner')); return }
     let deliveryAddress = ''
     if (fulfillment === 'pickup') {
-      const restoAddr = [cart.restaurant.address, cart.restaurant.city].filter(Boolean).join(', ')
+      const restoAddr = [orderCart.restaurant.address, orderCart.restaurant.city].filter(Boolean).join(', ')
       deliveryAddress = restoAddr
         ? t('pickupAt', { address: restoAddr })
         : t('pickupLabel')
@@ -522,10 +576,14 @@ export default function CartScreen() {
     try {
       const res = await fetch('/api/orders', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        // `x-cart-owner` DECLARES the identity this basket belongs to. It grants nothing —
+        // the server decides the account from the cookie — but it lets the server REFUSE
+        // (409) a basket sent on behalf of somebody else, including from a tab still
+        // running the pre-hotfix bundle, which sends no header at all.
+        headers: { 'Content-Type': 'application/json', 'x-cart-owner': ownerId },
         body: JSON.stringify({
-          restaurantId: cart.restaurantId,
-          items: cart.items.map((l) => ({
+          restaurantId: orderCart.restaurantId,
+          items: orderCart.items.map((l) => ({
             itemId: l.item.id,
             name: l.item.name,
             qty: l.qty,
@@ -1006,7 +1064,19 @@ export default function CartScreen() {
       {authSheet && (
         <CheckoutAuthSheet
           onClose={() => setAuthSheet(false)}
-          onConnected={() => { setAuthSheet(false); placeOrder() }}
+          onConnected={async () => {
+            setAuthSheet(false)
+            // EXPLICIT guest → user promotion, and the only one in the app. signIn has just
+            // set the cookie, but the React session provider has not necessarily caught up —
+            // and the e-mail the visitor typed is NOT an identity. So the id comes from the
+            // SERVER, and only then is the guest basket moved to it.
+            const uid = await confirmedUserId()
+            if (!uid) { setError(t('errorCartOwner')); return }
+            promoteGuestCartToUser(uid)
+            const promoted = readCart()
+            if (!promoted) { setError(t('errorCartOwner')); return }
+            await placeOrder({ ownerId: uid, cart: promoted })
+          }}
         />
       )}
     </div>

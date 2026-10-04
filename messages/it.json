@@ -3379,6 +3379,7 @@
       "placeOrder": "Invii l'ordine",
       "toastItemRemoved": "Articolo rimosso",
       "errorAddressRequired": "Inserisca un indirizzo di consegna",
+      "errorCartOwner": "Il Suo carrello non è più associato a questo account: ricarichi la pagina e ricominci.",
       "errorOrderFailed": "Errore durante l'ordine",
       "errorNetwork": "Errore di rete. Riprovi.",
       "errClosedWithOpening": "Il ristorante è attualmente chiuso — apre {label}. Potrà ordinare in quel momento.",

@@ -57,7 +57,7 @@ const MENU: Record<string, { id: string; name: string; price: number }> = {
 function post(body: Record<string, unknown>) {
   return POST(new Request('http://x/api/orders', {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', 'x-cart-owner': 'consumer-1' },
     body: JSON.stringify(body),
   }) as never)
 }

@@ -36,7 +36,7 @@ import { POST as createOrder } from '@/app/api/orders/route'
 
 const makeReq = (body: Record<string, unknown>) =>
   new NextRequest('https://app.grubano.com/api/orders', {
-    method: 'POST', body: JSON.stringify(body), headers: { 'content-type': 'application/json' },
+    method: 'POST', body: JSON.stringify(body), headers: { 'content-type': 'application/json', 'x-cart-owner': 'cust1' },
   })
 
 const orderBody = (over: Record<string, unknown> = {}) => ({

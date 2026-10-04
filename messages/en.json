@@ -3379,6 +3379,7 @@
       "placeOrder": "Place order",
       "toastItemRemoved": "Item removed",
       "errorAddressRequired": "Please enter a delivery address",
+      "errorCartOwner": "Your cart is no longer linked to this account — reload the page and start again.",
       "errorOrderFailed": "Order failed",
       "errorNetwork": "Network error. Please try again.",
       "errClosedWithOpening": "The restaurant is currently closed — it opens {label}. You can order then.",
