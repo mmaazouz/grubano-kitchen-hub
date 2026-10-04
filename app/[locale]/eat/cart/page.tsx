@@ -7,7 +7,7 @@ import { useRouter } from '@/navigation'
 import CheckoutAuthSheet from '@/components/eat/CheckoutAuthSheet'
 import {
   readCart, writeCart, showToast, currentCartStamp, sessionCartStamp,
-  promoteGuestCartToUser, CART_EVENT, type EatCartData,
+  promoteGuestCartToUser, clearUserCart, CART_EVENT, type EatCartData,
 } from '@/lib/eat-cart'
 import { readAddresses, getDefaultAddress, formatAddress, currentAddressStamp, sessionAddressStamp, ADDRESS_EVENT, type EatAddress } from '@/lib/eat-addresses'
 import { formatEuros, formatAmount } from '@/lib/format-money'
@@ -634,7 +634,21 @@ export default function CartScreen() {
         setError(data.error ?? t('errorOrderFailed'))
         return
       }
-      writeCart(null)
+      // ── THE SUCCESS PATH IS ALSO A RACE ───────────────────────────────────────
+      // The order was created for `ownerId` — the identity the basket was PROVEN to belong
+      // to and the one the server accepted. Clear THAT bucket by name: writeCart(null)
+      // would clear whatever the module owner is NOW, and if the identity changed while
+      // this POST was in flight (a sign-in in another tab) that is somebody else's basket.
+      clearUserCart(ownerId)
+
+      // And never hand this order to a different identity. If the session is no longer the
+      // one that placed it, do NOT navigate to its checkout: fail closed, and say the
+      // honest thing — the order EXISTS, so « recommencez » would invite a second one.
+      const stillMine = await confirmedUserId()
+      if (stillMine !== ownerId) {
+        setError(t('errorOrderOtherAccount'))
+        return
+      }
       // Checkout C2: orders go through the payment journey (recap → Stripe
       // Elements → confirmation). P0-30 : la carte est le SEUL mode — l'ancienne
       // branche non-carte (direct-to-tracking) est retirée avec le choix espèces.

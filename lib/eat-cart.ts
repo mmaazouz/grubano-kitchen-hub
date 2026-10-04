@@ -230,6 +230,41 @@ export function promoteGuestCartToUser(userId: string): boolean {
   return moved
 }
 
+/**
+ * Empty ONE named user's basket, without consulting — or touching — the mutable current
+ * owner. For the success path of an order: the order was created for a PROVEN identity, so
+ * that is the basket to clear.
+ *
+ * WHY THIS EXISTS. `writeCart(null)` acts on whatever the module owner is AT THAT MOMENT.
+ * After a successful POST the response can arrive late: if the identity changed while the
+ * request was in flight (a sign-in in another tab, EatShell declaring the new owner), the
+ * old code would have emptied the NEW account's basket — a cross-account DESTRUCTION on
+ * the one path that is supposed to be the happy one.
+ *
+ * It verifies the stored stamp before deleting, so it can only ever remove a value that
+ * really is that user's; it leaves the declared owner untouched; and it emits CART_EVENT so
+ * the badge and the screens re-read. There is deliberately NO general "move a basket from
+ * one owner to another" primitive: the only cross-identity move in this module is the
+ * guest-to-user promotion below, which reads one fixed source.
+ */
+export function clearUserCart(userId: string): boolean {
+  if (typeof window === 'undefined' || !userId) return false
+  const target: CartOwner = { kind: 'user', id: userId }
+  try {
+    const raw = sessionStorage.getItem(keyFor(target))
+    if (raw) {
+      const parsed = JSON.parse(raw) as unknown
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return false
+      if ((parsed as Partial<Envelope>).owner !== stampFor(target)) return false
+    }
+    sessionStorage.removeItem(keyFor(target))
+  } catch {
+    return false
+  }
+  emitCart()
+  return true
+}
+
 /** One-shot, tab-scoped authorisation for the promotion below. */
 const PROMOTE_INTENT_KEY = PREFIX + 'promote'
 

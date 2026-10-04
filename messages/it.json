@@ -3380,6 +3380,7 @@
       "toastItemRemoved": "Articolo rimosso",
       "errorAddressRequired": "Inserisca un indirizzo di consegna",
       "errorCartOwner": "Il Suo carrello non è più associato a questo account: ricarichi la pagina e ricominci.",
+      "errorOrderOtherAccount": "Il Suo ordine è stato creato, ma l’account connesso è cambiato: lo ritrova in « Ordini ».",
       "errorOrderFailed": "Errore durante l'ordine",
       "errorNetwork": "Errore di rete. Riprovi.",
       "errClosedWithOpening": "Il ristorante è attualmente chiuso — apre {label}. Potrà ordinare in quel momento.",

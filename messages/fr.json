@@ -3380,6 +3380,7 @@
       "toastItemRemoved": "Article retiré",
       "errorAddressRequired": "Veuillez entrer une adresse de livraison",
       "errorCartOwner": "Votre panier n'est plus associé à ce compte — rechargez la page et recommencez.",
+      "errorOrderOtherAccount": "Votre commande a bien été créée, mais le compte connecté a changé — retrouvez-la dans « Commandes ».",
       "errorOrderFailed": "Erreur lors de la commande",
       "errorNetwork": "Erreur réseau. Veuillez réessayer.",
       "errClosedWithOpening": "Le restaurant est actuellement fermé — il ouvre {label}. Vous pourrez commander à ce moment-là.",

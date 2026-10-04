@@ -71,6 +71,7 @@ import {
   readCart, writeCart, cartCount, setCartOwner, clearCartOwner, getCartOwner,
   currentCartStamp, sessionCartStamp, promoteGuestCartToUser, __resetCartOwner,
   markGuestCartPromotionIntent, consumeGuestCartPromotionIntent,
+  clearUserCart,
   type EatCartData,
 } from '@/lib/eat-cart'
 import { POST as createOrder } from '@/app/api/orders/route'
@@ -179,6 +180,84 @@ describe('A–F — one basket per identity', () => {
     events.length = 0
     expect(setCartOwner({ kind: 'user', id: 'B' }), 'same identity is not a change').toBe(false)
     expect(events).toEqual([])
+  })
+})
+
+// ── THE SUCCESS PATH IS A RACE TOO ────────────────────────────────────────────
+//
+// After a successful POST the response can arrive LATE. If the identity changed while the
+// request was in flight (a sign-in in another tab, EatShell declaring the new owner), then
+// `writeCart(null)` — which acts on the module owner AT THAT MOMENT — emptied the NEW
+// account's basket. A cross-account DESTRUCTION on the happy path, and a direct violation
+// of this lot's own rule: « after a successful creation, empty only the right owner's
+// basket ». The order is created for a PROVEN identity, so that identity is what gets
+// cleared, by name.
+
+describe('the success path empties the basket it ordered, and nothing else', () => {
+  it('order placed as B, identity now C ⇒ B’s bucket goes, C’s is untouched, C stays the owner', () => {
+    seed('B', CART_A)   // the basket B just ordered
+    seed('C', CART_B)   // C's own basket, in this same tab
+    setCartOwner({ kind: 'user', id: 'B' })
+    const orderOwner = 'B'          // what travelled as x-cart-owner
+
+    // …the identity changes while the POST is in flight.
+    setCartOwner({ kind: 'user', id: 'C' })
+    expect(getCartOwner()).toEqual({ kind: 'user', id: 'C' })
+
+    // …and now the response arrives and the success path runs.
+    expect(clearUserCart(orderOwner)).toBe(true)
+
+    expect(store.getItem(bucketOf('B')), 'the ordered basket is gone').toBeNull()
+    expect(store.getItem(bucketOf('C')), 'C’s basket is STRICTLY intact').toContain('Margherita')
+    expect(JSON.parse(store.getItem(bucketOf('C')) as string).cart).toEqual(CART_B)
+    expect(getCartOwner(), 'and the declared owner is not changed by the clear').toEqual({ kind: 'user', id: 'C' })
+    // C still reads its own basket, unharmed.
+    expect(readCart()).toEqual(CART_B)
+  })
+
+  it('it emits, so the badge and the screens re-read after the clear', () => {
+    seed('B', CART_A)
+    setCartOwner({ kind: 'user', id: 'B' })
+    events.length = 0
+    clearUserCart('B')
+    expect(events).toEqual(['cart'])
+  })
+
+  it('it refuses a bucket whose stored stamp is not that user’s, and never touches the guest', () => {
+    // A value that landed under B's key but is stamped for A must not be deleted as B's.
+    store.setItem(bucketOf('B'), JSON.stringify({ owner: 'u:A', cart: CART_A }))
+    expect(clearUserCart('B')).toBe(false)
+    expect(store.getItem(bucketOf('B'))).toContain('truffe')
+    // And there is no way to aim it at the guest bucket.
+    seed('guest', CART_A)
+    expect(clearUserCart('')).toBe(false)
+    expect(store.getItem(bucketOf('guest'))).toContain('truffe')
+  })
+
+  it('the cart page clears BY NAME and no longer uses writeCart(null) on the success path', () => {
+    const cart = executable(read('app/[locale]/eat/cart/page.tsx'))
+    const success = cart.slice(cart.indexOf("setError(data.error ?? t('errorOrderFailed'))"), cart.indexOf('router.push(`/eat/checkout/'))
+    expect(success.length).toBeGreaterThan(60)
+    expect(success).toContain('clearUserCart(ownerId)')
+    expect(success, 'writeCart(null) would empty whoever the owner is NOW').not.toContain('writeCart(null)')
+    // …and the whole file no longer has it anywhere.
+    expect(cart).not.toContain('writeCart(null)')
+  })
+
+  it('and it does not navigate to that order under another identity', () => {
+    const cart = executable(read('app/[locale]/eat/cart/page.tsx'))
+    const success = cart.slice(cart.indexOf('clearUserCart(ownerId)'), cart.indexOf('router.push(`/eat/checkout/'))
+    expect(success).toMatch(/const stillMine = await confirmedUserId\(\)/)
+    expect(success).toMatch(/if \(stillMine !== ownerId\) \{\s*\n\s*setError\(t\('errorOrderOtherAccount'\)\)\s*\n\s*return\s*\n\s*\}/)
+    // The identity proof comes BEFORE the navigation, and the clear BEFORE the proof —
+    // the order exists either way, so its basket must go either way.
+    expect(cart.indexOf('clearUserCart(ownerId)')).toBeLessThan(cart.indexOf('const stillMine'))
+    expect(cart.indexOf('const stillMine')).toBeLessThan(cart.indexOf('router.push(`/eat/checkout/'))
+    // The message must NOT invite a retry: the order was created.
+    const fr = JSON.parse(readFileSync('messages/fr.json', 'utf8')).eat.cart
+    expect(fr.errorOrderOtherAccount).toBeTruthy()
+    expect(fr.errorOrderOtherAccount).not.toMatch(/recommenc/i)
+    expect(fr.errorOrderOtherAccount).toMatch(/créée/i)
   })
 })
 

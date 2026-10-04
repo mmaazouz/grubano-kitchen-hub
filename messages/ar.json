@@ -3380,6 +3380,7 @@
       "toastItemRemoved": "تم إزالة العنصر",
       "errorAddressRequired": "يرجى إدخال عنوان التوصيل",
       "errorCartOwner": "لم تعد سلتك مرتبطة بهذا الحساب — أعد تحميل الصفحة وابدأ من جديد.",
+      "errorOrderOtherAccount": "تم إنشاء طلبك، لكن الحساب المتصل قد تغيّر — ستجده في «الطلبات».",
       "errorOrderFailed": "خطأ في الطلب",
       "errorNetwork": "خطأ في الشبكة. يرجى المحاولة مرة أخرى.",
       "errClosedWithOpening": "المطعم مغلق حاليًا — يفتح {label}. يمكنك الطلب حينها.",
