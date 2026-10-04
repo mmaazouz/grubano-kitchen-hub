@@ -559,7 +559,11 @@ describe('J — the shell declares the identity, and only from the session', () 
   it('loading → declares nothing; authenticated without an id → UNDECLARES', () => {
     const effect = code.slice(code.indexOf('if (status === \'loading\') return'), code.indexOf('}, [status, addressOwnerId])'))
     expect(effect.length, 'the effect slice must be the effect').toBeGreaterThan(40)
-    expect(effect.length).toBeLessThan(500)
+    // The cap exists to prove the slice is the EFFECT and not the rest of the file. It grew
+    // with the cart lot, which added the cart-owner declaration and the one-shot guest-cart
+    // promotion consumption to this same effect — that is the identity authority, so it is
+    // the right home for them.
+    expect(effect.length).toBeLessThan(1400)
     expect(effect).toContain("if (status === 'loading') return")
     // An identity we cannot name must not keep the PREVIOUS owner declared: a bare
     // `return` here used to leave A's cache being served to an unnameable session.

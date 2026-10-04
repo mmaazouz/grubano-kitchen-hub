@@ -70,6 +70,7 @@ vi.mock('next-auth/jwt', () => ({ getToken: tokenMock }))
 import {
   readCart, writeCart, cartCount, setCartOwner, clearCartOwner, getCartOwner,
   currentCartStamp, sessionCartStamp, promoteGuestCartToUser, __resetCartOwner,
+  markGuestCartPromotionIntent, consumeGuestCartPromotionIntent,
   type EatCartData,
 } from '@/lib/eat-cart'
 import { POST as createOrder } from '@/app/api/orders/route'
@@ -228,6 +229,29 @@ describe('M/N/Q/R — the legacy basket, the guest, and the unknown identity', (
     expect(store.getItem(bucketOf('A'))).toContain('truffe')
   })
 
+  it('[R] with NO identity it does not fall back to the GUEST bucket either', () => {
+    // The assertions above were satisfiable by accident: they only ever seeded a USER
+    // bucket, so a readCart() that silently read the guest bucket when the owner is null
+    // would still have returned null. The adversarial review proved that mutation
+    // survived. Seed the guest bucket itself.
+    seed('guest', CART_A)
+    expect(getCartOwner()).toBeNull()
+    expect(readCart()).toBeNull()
+    expect(cartCount()).toBe(0)
+  })
+
+  it('[R] with NO identity a write is REFUSED, not merely misdirected', () => {
+    // Same gap on the write side: `writeFor` computes its key inside its own try/catch, so
+    // dropping the owner guard made it throw and be swallowed — the store looked untouched
+    // for the wrong reason. Pin the refusal where it is observable: a guest bucket that
+    // already exists must not be overwritten by an unattributed write.
+    seed('guest', CART_A)
+    writeCart(CART_B)
+    expect(store.keys()).toEqual([bucketOf('guest')])
+    expect(store.getItem(bucketOf('guest')), 'the existing basket is intact').toContain('truffe')
+    expect(store.getItem(bucketOf('guest'))).not.toContain('Margherita')
+  })
+
   it('[R] the identity can be UNDECLARED, and then nothing is served', () => {
     setCartOwner({ kind: 'user', id: 'A' })
     writeCart(CART_A)
@@ -269,6 +293,34 @@ describe('O/P — guest → user is a PROMOTION, and only the checkout flow may 
     setCartOwner({ kind: 'user', id: 'B' })  // what /eat/auth does
     expect(readCart(), 'no automatic adoption').toBeNull()
     expect(store.getItem(bucketOf('guest')), 'and the guest basket is left alone').toContain('truffe')
+  })
+
+  it('[O] the two hand-off branches authorise the promotion ONCE, and only from the cart parcours', () => {
+    // REGRESSION FOUND BY THE FINAL REVIEW: only the in-page OTP branch promoted. The
+    // sheet's « utiliser mon mot de passe » and the e-mailed magic LINK both LEAVE the cart
+    // page, so they cannot call the promotion — before this lot they did not need to,
+    // because the basket was global. They now record a one-shot authorisation.
+    expect(consumeGuestCartPromotionIntent(), 'nothing authorised by default').toBe(false)
+    markGuestCartPromotionIntent()
+    expect(consumeGuestCartPromotionIntent()).toBe(true)
+    expect(consumeGuestCartPromotionIntent(), 'ONE shot: a later sign-in promotes nothing').toBe(false)
+
+    // …and it is the cart's parcours that records it, at BOTH hand-off points.
+    const sheet = executable(read('components/eat/CheckoutAuthSheet.tsx'))
+    expect(sheet).toMatch(/if \(!res\.otpEnabled\) markGuestCartPromotionIntent\(\)/)
+    expect(sheet).toMatch(/onClick=\{\(\) => \{ markGuestCartPromotionIntent\(\); router\.push\('\/eat\/auth'\) \}\}/)
+    // Exactly the two hand-off sites — the import carries no parentheses, so it is not
+    // counted, and a third authorisation anywhere in the sheet would be caught here.
+    expect((sheet.match(/markGuestCartPromotionIntent\(\)/g) ?? [])).toHaveLength(2)
+    // …and the identity authority consumes it with a SERVER-confirmed id, nothing else.
+    const shell = executable(read('components/eat/EatShell.tsx'))
+    expect(shell).toMatch(/if \(consumeGuestCartPromotionIntent\(\)\) \{/)
+    expect(shell).toMatch(/fetch\('\/api\/auth\/session', \{ cache: 'no-store' \}\)/)
+    expect(shell).toMatch(/if \(uid\) promoteGuestCartToUser\(uid\)/)
+    // The authorisation is the ONLY thing that can trigger it there.
+    const consume = shell.slice(shell.indexOf('if (consumeGuestCartPromotionIntent())'), shell.indexOf('return\n    }'))
+    expect(consume.length).toBeGreaterThan(80)
+    expect(consume).not.toMatch(/readFor|setCartOwner/)
   })
 
   it('the basket ON SCREEN wins over an older one the user left in this tab', () => {
@@ -425,7 +477,9 @@ describe('G/H/S/T — the first frame, and the money guard', () => {
 
   it('[G] the shell declares the cart owner and gates the badge on the comparison', () => {
     const shell = executable(read('components/eat/EatShell.tsx'))
-    expect(shell).toContain("import { readCart, cartCount, setCartOwner, clearCartOwner, currentCartStamp, sessionCartStamp, CART_EVENT } from '@/lib/eat-cart'")
+    for (const sym of ['readCart', 'cartCount', 'setCartOwner', 'clearCartOwner', 'currentCartStamp', 'sessionCartStamp', 'consumeGuestCartPromotionIntent', 'promoteGuestCartToUser', 'CART_EVENT']) {
+      expect(shell, sym).toContain(sym)
+    }
     expect(shell).toMatch(/setCartOwner\(me\)/)
     expect(shell).toMatch(/setCartOwner\(\{ kind: 'guest' \}\)/)
     expect(shell).toMatch(/if \(!addressOwnerId\) \{ clearAddressOwner\(\); clearCartOwner\(\); return \}/)
@@ -505,15 +559,25 @@ describe('G/H/S/T — the first frame, and the money guard', () => {
     expect(orders).toMatch(/if \(currentCartStamp\(\) !== loadedFor\) return\s*\n\s*writeCart\(\{/)
   })
 
-  it('NEGATIVE CONTROLS — each guard, removed, is detectable', () => {
+  it('the source pins are ANCHORED on text that exists (a ban on absent code bans nothing)', () => {
+    // NOT a negative control. The earlier version of this case replaced a string in a
+    // local copy and asserted the copy had changed — a tautology that proved nothing about
+    // the repository. The real mutation proof for this lot is executed against the working
+    // tree (remove the stamp check, remove the placeOrder guard, accept an absent header,
+    // promote the guest basket automatically: each turns this suite red), and it is run at
+    // the command line, not here. What belongs here is the weaker but honest claim: every
+    // string these pins anchor on is actually present, so none of them is vacuous.
     const cart = executable(read('app/[locale]/eat/cart/page.tsx'))
-    expect(cart.replace('const cart = cartOwnedHere ? cartState : null', 'const cart = cartState'))
-      .not.toMatch(/const cart = cartOwnedHere \? cartState : null/)
-    expect(cart.replace("if (!orderCart || !ownerId) { setError(t('errorCartOwner')); return }", ''))
-      .not.toContain('if (!orderCart || !ownerId)')
     const route = executable(read('app/api/orders/route.ts'))
-    expect(route.replace("if (!token.sub || claimedCartOwner !== token.sub) {", 'if (false) {'))
-      .not.toContain('claimedCartOwner !== token.sub')
+    for (const [src, needle] of [
+      [cart, 'const cart = cartOwnedHere ? cartState : null'],
+      [cart, "if (!orderCart || !ownerId) { setError(t('errorCartOwner')); return }"],
+      [cart, "'x-cart-owner': ownerId"],
+      [route, 'if (!token.sub || claimedCartOwner !== token.sub) {'],
+      [route, "req.headers.get('x-cart-owner')"],
+    ] as [string, string][]) {
+      expect(src.includes(needle), needle).toBe(true)
+    }
   })
 })
 

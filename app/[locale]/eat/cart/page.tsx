@@ -138,9 +138,9 @@ export default function CartScreen() {
     const sync = () => {
       setCart(readCart())
       setCartStamp(currentCartStamp())
+      setHydrated(true)
     }
     sync()
-    setHydrated(true)
     window.addEventListener(CART_EVENT, sync)
     window.addEventListener('storage', sync)
     return () => {
@@ -608,6 +608,9 @@ export default function CartScreen() {
           ...(tipsEnabled && tipCents > 0 ? { tipCents } : {}),
         }),
       })
+      // The server refused the cart-owner claim: say it in the user's language, never
+      // print the machine code.
+      if (res.status === 409) { setError(t('errorCartOwner')); return }
       if (res.status === 401) {
         router.push('/eat/auth')
         return
@@ -654,7 +657,11 @@ export default function CartScreen() {
 
   // ── Rendering (CD verbatim markup, scoped under .gb / .gb-cart) ────────────────
 
-  if (!hydrated) {
+  // HYDRATED means the basket AND the identity are known. Setting it as soon as the
+  // basket was read painted the EMPTY state for one /api/auth/session round trip on every
+  // hard load, because the gate is deliberately closed until the owner is declared — a
+  // self-inflicted flash of « panier vide » in front of a real basket.
+  if (!hydrated || cartStamp === null) {
     return (
       <div className="gb">
         <main className="gb-cart">

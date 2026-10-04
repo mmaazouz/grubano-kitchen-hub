@@ -15,6 +15,7 @@ import {
   writeCart,
   currentCartStamp,
   sessionCartStamp,
+  CART_EVENT,
   showToast,
   isFav,
   toggleFav,
@@ -255,6 +256,25 @@ export default function RestaurantScreen() {
     cartStamp === sessionCartStamp(sessionStatus, (session?.user as { id?: string } | undefined)?.id)
   const cart = cartOwnedHere ? cartState : null
 
+  // The basket and the identity it was read under, kept LIVE. The stamp used to be
+  // captured once inside the restaurant fetch's callback, so after an in-place identity
+  // change nothing re-read it and add-to-cart stayed silently dead for the rest of this
+  // page's life. CART_EVENT fires on every write and on every identity change.
+  useEffect(() => {
+    const sync = () => {
+      setCartStamp(currentCartStamp())
+      const existing = readCart()
+      setCart(existing && existing.restaurantId === id ? existing : null)
+    }
+    sync()
+    window.addEventListener(CART_EVENT, sync)
+    window.addEventListener('storage', sync)
+    return () => {
+      window.removeEventListener(CART_EVENT, sync)
+      window.removeEventListener('storage', sync)
+    }
+  }, [id])
+
   const modeLabel = (m: Mode) =>
     m === 'delivery' ? t('modeDelivery') : m === 'takeaway' ? t('modeTakeaway') : t('modeDineIn')
   const modeSub = (m: Mode) =>
@@ -295,7 +315,6 @@ export default function RestaurantScreen() {
         // V5-1b — tolerant: absent/odd payload ⇒ booking entry stays hidden.
         if (d.reservable === true) setReservable(true)
         const existing = readCart()
-        setCartStamp(currentCartStamp())
         if (existing && existing.restaurantId === id) setCart(existing)
       })
       .catch(() => {})

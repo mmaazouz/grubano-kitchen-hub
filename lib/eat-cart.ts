@@ -230,6 +230,33 @@ export function promoteGuestCartToUser(userId: string): boolean {
   return moved
 }
 
+/** One-shot, tab-scoped authorisation for the promotion below. */
+const PROMOTE_INTENT_KEY = PREFIX + 'promote'
+
+/**
+ * Record that the CART's checkout parcours is handing the visitor off to authenticate
+ * elsewhere (« utiliser mon mot de passe » → /eat/auth, or the e-mailed magic LINK →
+ * /eat/magic). Those paths leave this page, so they cannot call the promotion themselves;
+ * this is the explicit authorisation that lets the identity authority do it once on their
+ * behalf. Written ONLY by that parcours — never by a sign-in, never inferred.
+ */
+export function markGuestCartPromotionIntent(): void {
+  if (typeof window === 'undefined') return
+  try { sessionStorage.setItem(PROMOTE_INTENT_KEY, '1') } catch { /* ignore */ }
+}
+
+/** Read AND clear the authorisation. One shot: a second sign-in in this tab promotes nothing. */
+export function consumeGuestCartPromotionIntent(): boolean {
+  if (typeof window === 'undefined') return false
+  try {
+    const had = sessionStorage.getItem(PROMOTE_INTENT_KEY) === '1'
+    sessionStorage.removeItem(PROMOTE_INTENT_KEY)
+    return had
+  } catch {
+    return false
+  }
+}
+
 /** Test-only: forget the declared identity between cases. */
 export function __resetCartOwner(): void {
   owner = null

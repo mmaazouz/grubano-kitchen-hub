@@ -4,7 +4,10 @@ import { useEffect, useState } from 'react'
 import { Link, usePathname, useRouter } from '@/navigation'
 import { useSession } from 'next-auth/react'
 import { useTranslations, useLocale } from 'next-intl'
-import { readCart, cartCount, setCartOwner, clearCartOwner, currentCartStamp, sessionCartStamp, CART_EVENT } from '@/lib/eat-cart'
+import {
+  readCart, cartCount, setCartOwner, clearCartOwner, currentCartStamp, sessionCartStamp,
+  consumeGuestCartPromotionIntent, promoteGuestCartToUser, CART_EVENT,
+} from '@/lib/eat-cart'
 import { getDefaultAddress, syncFromServer, setAddressOwner, clearAddressOwner, currentAddressStamp, sessionAddressStamp, ADDRESS_EVENT, type EatAddress } from '@/lib/eat-addresses'
 import { syncGeoCacheOwner } from '@/lib/use-geolocation'
 import { formatEuros } from '@/lib/format-money'
@@ -132,6 +135,22 @@ export default function EatShell({ children }: { children: React.ReactNode }) {
       setCartOwner(me)
       syncGeoCacheOwner(me)
       void syncFromServer()
+      // The cart's checkout parcours may have handed the visitor off to authenticate
+      // elsewhere (« utiliser mon mot de passe » → /eat/auth, or the e-mailed magic link →
+      // /eat/magic). Those paths leave the cart page, so it cannot promote its own basket;
+      // it left a ONE-SHOT authorisation instead, consumed here. Everything else is
+      // unchanged: no authorisation, no promotion — a plain sign-in adopts nothing.
+      if (consumeGuestCartPromotionIntent()) {
+        // Same rule as the in-page path: the id is the one the SERVER attributes to this
+        // browser, never a React value that may lag.
+        void fetch('/api/auth/session', { cache: 'no-store' })
+          .then((r) => r.json())
+          .then((s) => {
+            const uid = (s?.user as { id?: string } | undefined)?.id
+            if (uid) promoteGuestCartToUser(uid)
+          })
+          .catch(() => { /* the basket simply stays in the guest bucket */ })
+      }
       return
     }
     setAddressOwner({ kind: 'guest' })
