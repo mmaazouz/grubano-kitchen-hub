@@ -93,5 +93,10 @@ export default async function MarketplaceOrdersPage(props: { params: { locale: s
   /* operatorId = the buyer from callerOperator() above. The supply cart is partitioned by
      it and this screen writes that cart (« Recommander »), so the client is told whose
      history it holds. Server authority still comes from the session, never from this. */
-  return <OrdersClient orders={orders} operatorId={operator!.id} />
+  /* key: a change of the SERVER-resolved buyer must not reuse the mounted instance. The
+     recovery refresh re-renders this component without remounting the client one, and
+     client state does not notice a changed prop — so the key is the structural half of
+     that fix, and the client's own re-seed is the half that does not depend on this page
+     remembering to pass it. */
+  return <OrdersClient key={operator!.id} orders={orders} operatorId={operator!.id} />
 }

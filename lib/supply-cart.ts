@@ -77,6 +77,28 @@ export function clearSupplyCartOwner(): void {
   owner = null
 }
 
+/**
+ * Undeclare, but ONLY if the declared owner is this caller's — a component must not
+ * undeclare a declaration that is not its own.
+ *
+ * WHY THIS AND NOT THE UNCONDITIONAL CLEAR. The owner is module state, shared by every
+ * mounted component, and during an App Router soft navigation the OUTGOING page is still
+ * mounted while the incoming one renders. A stale page rendered for A and a fresh page
+ * rendered for B therefore coexist, and if A's effect runs last an unconditional clear
+ * would undeclare B's correct declaration. Nothing would leak — but B's screen would keep
+ * believing it owns its basket while every write silently became a no-op, and its effect
+ * deps never change again, so it would never re-declare. A basket that stops saving.
+ *
+ * The invariant is not "clear it on a mismatch", it is "the declared owner is the live
+ * session's buyer". Refusing to touch someone else's declaration leaves that satisfied;
+ * undeclaring it can break it. Returns true when it actually undeclared.
+ */
+export function clearSupplyCartOwnerIfMine(operatorId: string): boolean {
+  if (!operatorId || owner === null || owner !== operatorId) return false
+  owner = null
+  return true
+}
+
 /** The declared owner, or null while the identity is unknown. */
 export function getSupplyCartOwner(): string | null {
   return owner
@@ -98,6 +120,45 @@ export function currentSupplyCartStamp(): string | null {
 export function sessionSupplyCartStamp(status: string, operatorId?: string | null): string | null {
   if (status === 'authenticated') return operatorId ? stampFor(operatorId) : null
   return null
+}
+
+export interface SupplyCartIdentity {
+  /** The stamp the LIVE session implies, or null when no buyer can be named. */
+  sessionStamp: string | null
+  /** The live session IS the buyer the SERVER rendered this page for. */
+  identityMatchesServer: boolean
+}
+
+/**
+ * THE IDENTITY HANDSHAKE, in one place, pure.
+ *
+ * A marketplace page is server-rendered for the Operator callerOperator() resolved, and
+ * that id is then FROZEN in the client bundle. The session is not frozen: it can become
+ * someone else without this component ever remounting. So the server's id is authoritative
+ * only while it still agrees with the live session, and two different mistakes follow from
+ * forgetting that:
+ *
+ *   • gating only on the session STATUS — A then logout then B login puts status back to
+ *     'authenticated' while the component still carries operatorId = A, so the effect
+ *     declares the GLOBAL module owner as A during B's session. Nothing need leak visibly
+ *     for the invariant the rest of this module rests on to be false.
+ *   • gating only the RENDER — the rows stay mounted, so state hydrated for A stays
+ *     mutable under B, and the write is merely DEFERRED until the session returns to A.
+ *
+ * Callers derive this during render (never in an effect — an effect runs after the frame
+ * that already painted) and use identityMatchesServer to gate every read, every
+ * mutation and every write. It is deliberately pure: declaring the owner is a side effect
+ * and belongs in an effect, not in a render.
+ */
+export function supplyCartIdentity(
+  status: string,
+  liveOperatorId: string | null | undefined,
+  serverOperatorId: string,
+): SupplyCartIdentity {
+  const sessionStamp = sessionSupplyCartStamp(status, liveOperatorId)
+  const identityMatchesServer =
+    sessionStamp !== null && !!serverOperatorId && sessionStamp === stampFor(serverOperatorId)
+  return { sessionStamp, identityMatchesServer }
 }
 
 /** The unattributable pre-fix buckets, destroyed rather than adopted. */

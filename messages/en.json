@@ -6270,6 +6270,7 @@
     "cancelConfirm": "Cancel this order? This action cannot be undone."
   },
   "marketplaceCart": {
+    "errOrderUnverified": "Your order was sent. We could not confirm your session — find it under « My orders ».",
     "errOrderOwner": "This cart is no longer linked to this account — reload the page.",
     "errOrderOtherAccount": "Your order was sent, but the signed-in account has changed — find it under « My orders ».",
     "backToMarketplace": "Back to marketplace",

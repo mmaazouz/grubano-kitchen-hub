@@ -6270,6 +6270,7 @@
     "cancelConfirm": "Annuler cette commande ? Cette action est irréversible."
   },
   "marketplaceCart": {
+    "errOrderUnverified": "Votre commande a bien été envoyée. Nous n’avons pas pu confirmer votre session — retrouvez-la dans « Mes commandes ».",
     "errOrderOwner": "Ce panier n'est plus associé à ce compte — rechargez la page.",
     "errOrderOtherAccount": "Votre commande a bien été envoyée, mais le compte connecté a changé — retrouvez-la dans « Mes commandes ».",
     "backToMarketplace": "Retour au marketplace",

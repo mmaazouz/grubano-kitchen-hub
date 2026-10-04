@@ -76,6 +76,9 @@ export default async function SupplierCartPage(props: { params: { locale: string
 
   return (
     <CartClient
+      /* key: see the orders page — a different buyer must not reuse this instance, which
+         holds a basket, a free-text note and a chosen delivery day. */
+      key={operator!.id}
       supplierId={supplier.id}
       /* The buyer, from the callerOperator() resolved above — never a client id. */
       operatorId={operator!.id}

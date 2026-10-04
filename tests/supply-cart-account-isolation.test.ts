@@ -65,6 +65,7 @@ import {
   readSupplyCart, writeSupplyCart, supplyCartCount,
   setSupplyCartOwner, clearSupplyCartOwner, getSupplyCartOwner,
   currentSupplyCartStamp, sessionSupplyCartStamp, clearSupplyCartForOwner,
+  supplyCartIdentity, clearSupplyCartOwnerIfMine,
   __resetSupplyCartOwner, type SupplyCart,
 } from '@/lib/supply-cart'
 import { POST as placeSupplyOrder } from '@/app/api/marketplace/orders/route'
@@ -394,12 +395,9 @@ describe('the catalogue, the cart and the history each gate on the render\'s ide
   it('the catalogue owns its quantities before showing or persisting them', () => {
     // the dangerous pattern this replaced — read on [supplierId], write on [supplierId, cart]
     // — could write {} or a stale state into the wrong bucket on an identity change.
-    expect(catalog).toMatch(/const sessionStamp = sessionSupplyCartStamp\(status, \(session\?\.user as \{ id\?: string \} \| undefined\)\?\.id\)/)
-    // all three conjuncts, in one expression: a named session, agreeing with the server's
-    // operatorId, and quantities actually hydrated UNDER that same stamp.
-    expect(catalog).toMatch(
-      /const ownedHere =\s*sessionStamp !== null &&\s*sessionStamp === `u:\$\{operatorId\}` &&\s*hydratedFor === sessionStamp/,
-    )
+    expect(catalog).toMatch(/supplyCartIdentity\(status, liveOperatorId, operatorId\)/)
+    // the gate is the shared identity match AND an actual hydration under that stamp
+    expect(catalog).toMatch(/const ownedHere = identityMatchesServer && hydratedFor === sessionStamp/)
     // the gated empty is a FROZEN module constant: stable identity for the memos below,
     // and unmutatable, since every gated render shares the one object.
     expect(catalog).toMatch(/const cart = ownedHere \? cartState : NO_CART/)
@@ -426,8 +424,9 @@ describe('the catalogue, the cart and the history each gate on the render\'s ide
   })
 
   it('the history is masked under a mismatched identity, and « Recommander » cannot write', () => {
-    expect(orders).toMatch(/const historyStampOk = sessionStamp !== null && sessionStamp === `u:\$\{operatorId\}`/)
-    expect(orders).toMatch(/const visibleOrders = historyStampOk \? orders : NO_ORDERS/)
+    expect(orders).toMatch(/supplyCartIdentity\(status, liveOperatorId, operatorId\)/)
+    expect(orders).toMatch(/const historyOwned = identityMatchesServer && loadedFor === operatorId/)
+    expect(orders).toMatch(/const visibleOrders = historyOwned \? orders : NO_ORDERS/)
     // every derivation the screen renders reads the GATED list, not the raw state
     for (const pin of [
       'const base = visibleOrders.filter(inPeriod)',
@@ -441,8 +440,8 @@ describe('the catalogue, the cart and the history each gate on the render\'s ide
       '  const [orders, setOrders] = useState<MyOrder[]>(initial)',
     ])
     // the reorder write is guarded on entry AND again immediately before the write
-    expect(orders).toMatch(/function reorder\(o: MyOrder\) \{\s*\n(\s*\n)*\s*if \(!historyStampOk\) return/)
-    expect(orders).toMatch(/if \(!historyStampOk \|\| currentSupplyCartStamp\(\) !== `u:\$\{operatorId\}`\) return\s*\n\s*writeSupplyCart\(o\.supplierProfileId, cart\)/)
+    expect(orders).toMatch(/function reorder\(o: MyOrder\) \{\s*\n(\s*\n)*\s*if \(!historyOwned\) return/)
+    expect(orders).toMatch(/if \(!historyOwned \|\| currentSupplyCartStamp\(\) !== `u:\$\{operatorId\}`\) return\s*\n\s*writeSupplyCart\(o\.supplierProfileId, cart\)/)
   })
 
   it('all three take the buyer from the SERVER page, which resolves it with callerOperator', () => {
@@ -480,18 +479,28 @@ describe('the server guard is first, and the flag was not touched', () => {
   const route = executable(read(ROUTE))
 
   it('the claim is checked after the role gate and BEFORE the body, the pricing and Prisma', () => {
+    // SCOPED TO POST. `const operator = await callerOperator()` also opens the GET handler,
+    // which comes first in the file, so an unscoped indexOf resolved there and the ordering
+    // assertion held for ANY placement of the guard inside POST — including after the
+    // Prisma create.
+    const post = route.slice(route.indexOf('export async function POST'))
+    expect(post.length, 'POST handler found').toBeGreaterThan(0)
+    expect(post).not.toContain('export async function GET')
     const at = (needle: string) => {
-      const i = route.indexOf(needle)
+      const i = post.indexOf(needle)
       expect(i, needle).toBeGreaterThan(-1)
       return i
     }
-    expect(at('const operator = await callerOperator()')).toBeLessThan(at("req.headers.get('x-supply-cart-owner')"))
+    // the pre-existing 401 and 403 still come first
+    expect(at('const operator = await callerOperator()')).toBeLessThan(at("status: 401"))
+    expect(at("status: 401")).toBeLessThan(at("['restaurant', 'admin'].includes(operator.role)"))
+    expect(at("['restaurant', 'admin'].includes(operator.role)")).toBeLessThan(at("req.headers.get('x-supply-cart-owner')"))
     expect(at("req.headers.get('x-supply-cart-owner')")).toBeLessThan(at('await req.json()'))
     expect(at("req.headers.get('x-supply-cart-owner')")).toBeLessThan(at('prisma.supplierProfile.findUnique'))
     expect(at("req.headers.get('x-supply-cart-owner')")).toBeLessThan(at('buildOrderLines(items'))
     expect(at("req.headers.get('x-supply-cart-owner')")).toBeLessThan(at('prisma.supplyOrder.create'))
-    expect(route).toMatch(/if \(claimedOwner !== operator\.id\) \{/)
-    expect(route).toMatch(/\{ error: 'supply_cart_owner_mismatch' \}, \{ status: 409 \}/)
+    expect(post).toMatch(/if \(claimedOwner !== operator\.id\) \{/)
+    expect(post).toMatch(/\{ error: 'supply_cart_owner_mismatch' \}, \{ status: 409 \}/)
     // absent must NOT be tolerated, and the claim must not be allowed to default
     expect(route).not.toMatch(/!claimedOwner \|\|/)
     expect(route).not.toMatch(/claimedOwner \?\?/)
@@ -517,8 +526,8 @@ describe('the server guard is first, and the flag was not touched', () => {
       [executable(read(CATALOG)), 'const cart = ownedHere ? cartState : NO_CART'],
       [executable(read(CART)), "if (!cartOwnerId) { setPlaceError(t('errOrderOwner')); return }"],
       [executable(read(CART)), 'clearSupplyCartForOwner(orderOwner, supplierId)'],
-      [executable(read(ORDERS)), 'const visibleOrders = historyStampOk ? orders : NO_ORDERS'],
-      [executable(read(ORDERS)), 'if (!historyStampOk) return'],
+      [executable(read(ORDERS)), 'const visibleOrders = historyOwned ? orders : NO_ORDERS'],
+      [executable(read(ORDERS)), 'if (!historyOwned) return'],
       [executable(read(ROUTE)), "req.headers.get('x-supply-cart-owner')"],
       [read('lib/supply-cart.ts'), 'return `${PREFIX}u.${operatorId}.s.${supplierId}`'],
     ] as [string, string][]) {
@@ -533,6 +542,447 @@ describe('the server guard is first, and the flag was not touched', () => {
       expect(ns.errOrderOtherAccount, loc).toBeTruthy()
       // the order EXISTS in that branch — telling the buyer to try again would invite a double
       expect(ns.errOrderOtherAccount, loc).not.toMatch(/réessay|try again|de nuevo|riprov|حاول مرة/i)
+    }
+  })
+})
+
+/** A key CART_A does NOT contain, so "did B's click reach A?" is answerable. */
+const INJECTED = 'item-B-injected'
+
+const readForA = (): SupplyCart => {
+  const raw = store.getItem(bucket(A, S))
+  return raw ? (JSON.parse(raw) as { cart: SupplyCart }).cart : {}
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ROUND 2 — the render was gated, the MUTATIONS and the module OWNER were not
+// ══════════════════════════════════════════════════════════════════════════════
+//
+// Two defects survived round 1, both the same shape: the gate decided what to SHOW and
+// left everything else alone.
+//
+// BUG 1 — the catalogue keeps its rows mounted when the gate is shut (at qty 0, controls
+//   live), so the state hydrated for A stayed MUTABLE under B. The write effect refused at
+//   the time, which only DEFERRED it: when the session returned to A the effect persisted
+//   B's clicks into A's bucket. Gating the render is not gating the mutation.
+//
+// BUG 2 — the owner effect gated on the session STATUS alone. A, logout, B login puts
+//   status back to 'authenticated' while the component still carries the server prop
+//   operatorId = A, so the effect declared the GLOBAL module owner as A during B's
+//   session. Nothing visible leaked — and the invariant the whole module rests on was
+//   still false.
+//
+// BUG 3 (found while fixing those two, same class) — the « commande envoyée » panel
+//   outlives an identity change and named A's supplier and A's total under B.
+//
+// HOW THESE ARE PROVEN. There is no DOM harness here (vitest environment: 'node'), and
+// transcribing a component's logic into a test proves only that the model agrees with its
+// author. So the DECISION — where all the subtlety lives — was extracted into one pure
+// exported function, supplyCartIdentity, which the three components call and these tests
+// EXECUTE. What stays textual is a four-line effect body and the list of mutation sites,
+// and that list is CLOSED by counting: R9 is an enumeration, not a sample.
+
+/** The owner effect of the three components, in the order they run it. The source pins in
+ *  R7/R8 assert each component really performs these operations, in this order — this is a
+ *  driver for the real library, not a second implementation of the decision, which lives
+ *  in supplyCartIdentity and is called here. */
+function ownerEffect(status: string, liveId: string, serverId: string, supplierId: string) {
+  const { identityMatchesServer, sessionStamp } = supplyCartIdentity(status, liveId, serverId)
+  if (!identityMatchesServer) {
+    clearSupplyCartOwnerIfMine(serverId)
+    return { identityMatchesServer, sessionStamp, cart: {} as SupplyCart, hydratedFor: null as string | null }
+  }
+  setSupplyCartOwner(serverId)
+  return {
+    identityMatchesServer,
+    sessionStamp,
+    cart: readSupplyCart(supplierId),
+    hydratedFor: currentSupplyCartStamp(),
+  }
+}
+/** What the two hydrating components compute during render. */
+const ownedHere = (r: { identityMatchesServer: boolean; sessionStamp: string | null; hydratedFor: string | null }) =>
+  r.identityMatchesServer && r.hydratedFor === r.sessionStamp
+
+describe('R1–R3 — the module owner follows the LIVE session, never the frozen prop', () => {
+  it('R1 — page for A, session A: the owner is declared and the basket is this buyer\'s', () => {
+    setSupplyCartOwner(A)
+    writeSupplyCart(S, CART_A)
+    __resetSupplyCartOwner()
+
+    const r = ownerEffect('authenticated', A, A, S)
+    expect(getSupplyCartOwner()).toBe(A)
+    expect(r.cart).toEqual(CART_A)
+    expect(r.hydratedFor).toBe('u:' + A)
+    expect(ownedHere(r)).toBe(true)
+  })
+
+  it('R2 — page frozen for A, session becomes B: the owner is NULL, never A', () => {
+    setSupplyCartOwner(A)
+    writeSupplyCart(S, CART_A)
+    const frozen = store.getItem(bucket(A, S))
+
+    const r = ownerEffect('authenticated', B, A, S) // server prop still A, live session B
+    expect(r.identityMatchesServer).toBe(false)
+    expect(getSupplyCartOwner()).toBeNull()         // NOT A — this is the invariant
+    expect(currentSupplyCartStamp()).toBeNull()
+    expect(r.cart).toEqual({})                      // nothing of A's is held in state
+    expect(ownedHere(r)).toBe(false)
+    expect(store.getItem(bucket(A, S))).toBe(frozen)
+  })
+
+  it('R3 — THE BUG: A logs out, B logs in, status is authenticated again, prop still A', () => {
+    setSupplyCartOwner(A)
+    writeSupplyCart(S, CART_A)
+
+    // the status round-trip that made the old authenticated-only guard pass
+    const seen: Array<string | null> = []
+    ownerEffect('authenticated', A, A, S);   seen.push(getSupplyCartOwner())
+    ownerEffect('unauthenticated', '', A, S); seen.push(getSupplyCartOwner())
+    ownerEffect('authenticated', B, A, S);   seen.push(getSupplyCartOwner())
+
+    expect(seen).toEqual([A, null, null])
+    // the third step is the whole point: authenticated AGAIN, so the old guard would have
+    // run setSupplyCartOwner(A) while B holds the session.
+    expect(getSupplyCartOwner()).not.toBe(A)
+    // an identity that cannot be named is refused too (a session with no sub)
+    ownerEffect('authenticated', '', A, S)
+    expect(getSupplyCartOwner()).toBeNull()
+  })
+})
+
+describe('R4–R5 — a click made under B can never surface under A', () => {
+  it('R4 — under B the gate is shut, so no mutation of A\'s quantities is reachable', () => {
+    setSupplyCartOwner(A)
+    writeSupplyCart(S, CART_A)
+    const hydrated = ownerEffect('authenticated', A, A, S)
+    expect(hydrated.cart).toEqual(CART_A)
+
+    // the session becomes B without a remount
+    const shut = ownerEffect('authenticated', B, A, S)
+    expect(ownedHere(shut)).toBe(false)
+    // setQty returns on exactly this condition (pinned in R9), and the state it would have
+    // mutated is no longer held at all
+    expect(shut.cart).toEqual({})
+    // belt and braces: a write attempted in this state is refused by the library itself,
+    // because no owner is declared. INJECTED is a key CART_A does not contain — a sentinel
+    // that collided with the real data could not tell contamination from the basket.
+    writeSupplyCart(S, { [INJECTED]: 99 })
+    expect(store.keys()).toEqual([bucket(A, S)])
+    expect(readForA()).toEqual(CART_A)
+  })
+
+  it('R5 — A then B then A: A\'s bucket is byte-identical and the state is re-READ from it', () => {
+    setSupplyCartOwner(A)
+    writeSupplyCart(S, CART_A)
+    const frozen = store.getItem(bucket(A, S))
+
+    ownerEffect('authenticated', A, A, S)              // A
+    ownerEffect('authenticated', B, A, S)              // B — gate shut, owner undeclared
+    writeSupplyCart(S, { [INJECTED]: 99 })             // whatever B tries, refused
+    const back = ownerEffect('authenticated', A, A, S) // A returns, still no remount
+
+    expect(store.getItem(bucket(A, S))).toBe(frozen)   // byte-identical across the trip
+    expect(back.cart).toEqual(CART_A)                  // re-READ from storage, not resumed
+    expect(back.cart).not.toHaveProperty(INJECTED)
+    expect(ownedHere(back)).toBe(true)
+    expect(getSupplyCartOwner()).toBe(A)
+  })
+})
+
+describe('R5b — two screens mounted at once must not undeclare each other', () => {
+  it('a STALE page for A may not undeclare a CORRECT declaration of B', () => {
+    // App Router keeps the OUTGOING page mounted while the incoming one renders, so a
+    // stale catalogue rendered for A and a fresh cart rendered for B coexist for a moment,
+    // sharing one module owner. The fresh page declares B correctly…
+    ownerEffect('authenticated', B, B, S)
+    expect(getSupplyCartOwner()).toBe(B)
+
+    // …then the stale page's effect runs, sees its own mismatch, and must NOT clear B.
+    const stale = ownerEffect('authenticated', B, A, S)
+    expect(stale.identityMatchesServer).toBe(false)
+    expect(getSupplyCartOwner()).toBe(B)   // still declared — B's writes keep working
+
+    // and it is not merely inert: it DOES undeclare its own declaration
+    ownerEffect('authenticated', A, A, S)
+    expect(getSupplyCartOwner()).toBe(A)
+    ownerEffect('authenticated', B, A, S)
+    expect(getSupplyCartOwner()).toBeNull()
+  })
+
+  it('the unconditional clear would have broken the invariant it was meant to keep', () => {
+    // It left B's screen believing it owned its basket while every write silently became a
+    // no-op — fail-closed, but a basket that stops saving, and its effect deps never
+    // change again so it would never re-declare. Here the declaration survives.
+    ownerEffect('authenticated', B, B, S)
+    ownerEffect('authenticated', B, A, S)          // the stale A page's effect
+    writeSupplyCart(S, { 'item-riz': 7 })          // B edits its basket
+    expect(store.getItem(bucket(B, S))).not.toBeNull()
+    expect(readSupplyCart(S)).toEqual({ 'item-riz': 7 })
+    expect(store.getItem(bucket(A, S))).toBeNull() // and nothing landed in A's
+  })
+})
+
+describe('R6 — the one-shot recovery is bounded by construction', () => {
+  it('at most one refresh per live identity, so the guard cannot loop or brick the screen', () => {
+    // A model of the four lines in the components (pinned textually in R11). What is being
+    // checked is the BOUND, which is a property of the ref key, not of React.
+    let refreshes = 0
+    const ref = { current: '' }
+    const tick = (status: string, liveId: string, serverId: string) => {
+      const { identityMatchesServer } = supplyCartIdentity(status, liveId, serverId)
+      if (identityMatchesServer || status !== 'authenticated' || !liveId) return
+      if (ref.current === liveId) return
+      ref.current = liveId
+      refreshes++
+    }
+    // a stale page for A under B, re-rendered many times (every keystroke, every poll)
+    for (let i = 0; i < 50; i++) tick('authenticated', B, A)
+    expect(refreshes).toBe(1)
+    // the server answers with B's page: no further refresh, ever
+    for (let i = 0; i < 50; i++) tick('authenticated', B, B)
+    expect(refreshes).toBe(1)
+    // a different account arrives: exactly one more
+    tick('authenticated', C, A)
+    expect(refreshes).toBe(2)
+    // and never while the session is unresolved or signed out
+    tick('loading', '', A)
+    tick('unauthenticated', '', A)
+    expect(refreshes).toBe(2)
+  })
+})
+
+describe('R7–R11 — every mutation site is guarded, and the list is CLOSED by counting', () => {
+  const cat = executable(read(CATALOG))
+  const crt = executable(read(CART))
+  const ord = executable(read(ORDERS))
+
+  it('R7 — the three screens derive the gate from the ONE shared function', () => {
+    for (const [src, name] of [[cat, 'catalogue'], [crt, 'cart'], [ord, 'orders']] as [string, string][]) {
+      expect(src.includes("const liveOperatorId = (session?.user as { id?: string } | undefined)?.id ?? ''"), name).toBe(true)
+      expect(src.includes('supplyCartIdentity(status, liveOperatorId, operatorId)'), name).toBe(true)
+      // nobody re-derives it locally any more — two definitions is how they drift apart
+      expect(src.includes('sessionSupplyCartStamp('), name).toBe(false)
+    }
+    // and the shared function compares the LIVE id with the SERVER id — bug 2, in one line
+    const lib = executable(read('lib/supply-cart.ts'))
+    expect(lib).toMatch(
+      /const identityMatchesServer =\s*sessionStamp !== null && !!serverOperatorId && sessionStamp === stampFor\(serverOperatorId\)/,
+    )
+  })
+
+  it('R8 — the undeclare is INSIDE the branch, and the branch TERMINATES before the declaration', () => {
+    // ONE anchored regex per screen, not three independent pins. Three pins saying "the
+    // branch exists", "the clear exists" and "the deps are right" cannot see whether the
+    // clear is inside the branch, nor whether the branch RETURNS before the
+    // setSupplyCartOwner it exists to prevent. Two screens were in fact missing that
+    // terminator — so BUG 2 was live, in the cart and in the history, with this suite
+    // green. The regex below spans header, body, return, closing brace, and the
+    // declaration that must be unreachable from the branch.
+    for (const [src, name] of [[cat, 'catalogue'], [crt, 'cart'], [ord, 'orders']] as [string, string][]) {
+      expect(
+        /if \(!identityMatchesServer\) \{[\s\S]{0,700}?clearSupplyCartOwnerIfMine\(operatorId\)[\s\S]{0,400}?\n\s*return\n\s*\}\n\s*setSupplyCartOwner\(operatorId\)/
+          .test(src),
+        name + ': undeclare inside the branch, branch returns before the declaration',
+      ).toBe(true)
+      // …and NEVER the unconditional clear: a component must not undeclare a declaration
+      // that is not its own (R5b).
+      expect(src.includes('clearSupplyCartOwner()'), name).toBe(false)
+      // the deps must carry the LIVE id: the session status alone is what let bug 2 through
+      expect(/\}, \[identityMatchesServer, liveOperatorId, operatorId/.test(src), name).toBe(true)
+    }
+    // the two hydrating screens also drop the in-memory copy, so nothing of the other
+    // account is held here — and therefore nothing of it is mutable here
+    for (const [src, name] of [[cat, 'catalogue'], [crt, 'cart']] as [string, string][]) {
+      expect(/clearSupplyCartOwnerIfMine\(operatorId\)\s*\n\s*setCart\(\{\}\)\s*\n\s*setHydratedFor\(null\)/.test(src), name).toBe(true)
+    }
+  })
+
+  it('R9 — CLOSED ENUMERATION: every setCart / writeSupplyCart site, and its guard', () => {
+    // Counts, so that adding an unguarded mutation later fails this test rather than
+    // slipping past a pin that only sampled the sites it already knew about.
+    // Counted PER SCREEN: the catalogue has three state-mutation sites, the cart four.
+    // Assuming they are symmetrical is how a site goes uncounted — and this assertion is
+    // what caught the fourth when round 3 added it.
+    expect((cat.match(/setCart\(/g) ?? []).length, 'catalogue setCart sites').toBe(3)
+    expect((crt.match(/setCart\(/g) ?? []).length, 'cart setCart sites').toBe(4)
+    for (const [src, name] of [[cat, 'catalogue'], [crt, 'cart']] as [string, string][]) {
+      //   1. setCart({})                  — inside the !identityMatchesServer branch
+      //   2. setCart(readSupplyCart(…))    — inside the matching branch
+      //   3. setCart((c) => …) in setQty   — behind "if (!ownedHere) return"
+      //   4. (cart only) setCart({}) on the success path — reachable only after a 201 for
+      //      `orderOwner`, which placeOrder refuses to send unless cartOwnerId is set,
+      //      i.e. unless ownedHere held. It SPENDS the basket; it cannot fill one.
+      expect(/const setQty = \(id: string, q: number\) => \{\s*\n\s*if \(!ownedHere\) return/.test(src), name + ' setQty guard').toBe(true)
+      // the sync-to-storage write, behind the same gate. ANCHORED ON THE NEGATION: the
+      // earlier pin matched `ownedHere) return`, which is equally true of the INVERTED
+      // guard `if (ownedHere) return` — a pin that passes against the broken code.
+      expect(/if \((?:!mounted \|\| )?!ownedHere\) return\s*\n\s*writeSupplyCart\(supplierId, cartState\)/.test(src), name + ' sync write guard').toBe(true)
+    }
+    // The write sites, counted per screen: the catalogue has TWO (the sync effect and the
+    // navigation hand-off), the cart ONE (its sync effect — it hands off to the server, not
+    // to another screen). Measured, not assumed symmetrical.
+    expect((cat.match(/writeSupplyCart\(/g) ?? []).length, 'catalogue write sites').toBe(2)
+    expect((crt.match(/writeSupplyCart\(/g) ?? []).length, 'cart write sites').toBe(1)
+    // the catalogue's second write is the navigation hand-off: guarded EXPLICITLY, not
+    // merely by canProceed being false because the gated cart is empty
+    expect(cat).toMatch(/if \(!ownedHere \|\| !canProceed\) return\s*\n\s*writeSupplyCart\(supplierId, cart\)/)
+    // the rows go inert through the EXISTING disabled control — never through the stock
+    // tag, which would state a false reason
+    expect(cat).toMatch(/const locked = !ownedHere/)
+    expect(cat).toMatch(/\{out \|\| locked \? \(/)
+    expect(cat).toMatch(/\{out && \(/) // « rupture de stock » still keys on stock alone
+    // orders: the only writer is reorder, guarded on entry and again before the write
+    expect((ord.match(/writeSupplyCart\(/g) ?? []).length).toBe(1)
+    expect(ord).toMatch(/function reorder\(o: MyOrder\) \{\s*\n(\s*\n)*\s*if \(!historyOwned\) return/)
+    expect(ord).toMatch(/if \(!historyOwned \|\| currentSupplyCartStamp\(\) !== .u:\$\{operatorId\}.\) return\s*\n\s*writeSupplyCart\(o\.supplierProfileId, cart\)/)
+    // …and cancel, which has a real await, is checked on BOTH sides of it
+    expect(ord).toMatch(/async function cancel\(id: string\) \{\s*\n(\s*\n)*\s*if \(!historyOwned\) return/)
+    expect(ord).toMatch(/if \(res\.ok && historyOwned\) \{/)
+  })
+
+  it('R10 — the confirmation panel is stamped, and never painted for another buyer', () => {
+    expect(crt).toMatch(/useState<\{ totalCents: number; owner: string \} \| null>\(null\)/)
+    expect(crt).toMatch(/setPlaced\(\{ totalCents: d\?\.order\?\.totalCents \?\? totalCents, owner: orderOwner \}\)/)
+    expect(crt).toMatch(/if \(placed && identityMatchesServer && placed\.owner === liveOperatorId\) \{/)
+  })
+
+  it('R11 — the history never says « aucune commande » while the identity diverges', () => {
+    // the safe branch must come FIRST and must cover the mismatch…
+    expect(ord).toMatch(/if \(!mounted \|\| status === 'loading' \|\| !historyOwned\) \{/)
+    // …so the empty state is reachable only once the identity agrees
+    const safe = ord.indexOf("if (!mounted || status === 'loading' || !historyOwned) {")
+    const empty = ord.indexOf('if (visibleOrders.length === 0) {')
+    expect(safe).toBeGreaterThan(-1)
+    expect(empty).toBeGreaterThan(safe)
+    // and the recovery is the bounded one-shot proven in R6 — in ALL THREE screens, not
+    // only here: an inert screen with no way out is the pressure that gets a guard
+    // deleted, and the supplier page's delivery-zone badge is computed from the BUYER's
+    // own restaurant cities server-side, where no client guard can reach it.
+    for (const [src, name] of [[cat, 'catalogue'], [crt, 'cart'], [ord, 'orders']] as [string, string][]) {
+      // ONE regex spanning the whole effect, INCLUDING its dep array. R6 proves the BOUND
+      // against a model; nothing proved the effect actually re-evaluates, so `}, [])`
+      // would have bricked every stale screen with a green suite. Anchored on the
+      // recovery effect's own body so the owner effect's deps cannot satisfy it.
+      expect(
+        /const refreshedFor = useRef\(''\)\s*\n\s*useEffect\(\(\) => \{\s*\n\s*if \(identityMatchesServer \|\| status !== 'authenticated' \|\| !liveOperatorId\) return\s*\n\s*if \(refreshedFor\.current === liveOperatorId\) return\s*\n\s*refreshedFor\.current = liveOperatorId\s*\n\s*router\.refresh\(\)\s*\n\s*\}, \[identityMatchesServer, status, liveOperatorId, router\]\)/
+          .test(src),
+        name + ': the recovery effect, its one-shot ref AND its dep array',
+      ).toBe(true)
+    }
+  })
+})
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ROUND 3 — the recovery re-opened the leak, and four pins could not fail
+// ══════════════════════════════════════════════════════════════════════════════
+//
+// An independent adversarial review of round 2 confirmed fifteen defects. The worst was
+// mine, and it was the recovery itself: router.refresh() re-renders the SERVER component
+// without remounting the client one — exactly why it was chosen — and useState IGNORES a
+// changed initial value. So OrdersClient ended up holding B's props with A's rows in
+// state, the identity gate (which compares the live session with the PROP) read TRUE
+// again, and B was shown A's suppliers, totals and line snapshots with a working
+// « Recommander ». The original P0, reintroduced by its own fix.
+//
+// The two hydrating screens were immune only because their gate also demands
+// hydratedFor === sessionStamp. The comment on the history screen — "nothing was read out
+// of storage that could belong to someone else" — was the false premise: the rows were
+// captured in STATE, under the previous identity.
+
+describe('R12 — the server-rendered history cannot outlive the buyer it was fetched for', () => {
+  it('a changed server buyer must invalidate the rows BEFORE the gate can read them', () => {
+    // The structural half: three screens take a key, so a different buyer is a different
+    // component instance and no client state survives at all.
+    for (const [p, name] of [
+      ['app/[locale]/marketplace/orders/page.tsx', 'orders'],
+      ['app/[locale]/marketplace/suppliers/[id]/panier/page.tsx', 'cart'],
+      ['app/[locale]/marketplace/suppliers/[id]/page.tsx', 'catalogue'],
+    ] as [string, string][]) {
+      expect(executable(read(p)).includes('key={operator!.id}'), name).toBe(true)
+    }
+    // The client half, which does not depend on a parent remembering the key: the rows
+    // carry the buyer they were fetched for, and a mismatch re-seeds DURING RENDER,
+    // because the gate is a render-time derivation and an effect is one frame too late.
+    const ord = executable(read(ORDERS))
+    expect(ord).toMatch(/const \[loadedFor, setLoadedFor\] = useState\(operatorId\)/)
+    expect(ord).toMatch(
+      /if \(loadedFor !== operatorId\) \{\s*\n\s*setLoadedFor\(operatorId\)\s*\n\s*setOrders\(initial\)\s*\n\s*setSelectedId\(null\)\s*\n\s*\}/,
+    )
+    // and the re-seed happens BEFORE the gate that would otherwise read the stale rows
+    expect(ord.indexOf('if (loadedFor !== operatorId) {')).toBeLessThan(ord.indexOf('const historyOwned ='))
+  })
+
+  it('the gate keeps the second conjunct, so removing either half does not silently re-open the other', () => {
+    const ord = executable(read(ORDERS))
+    expect(ord).toMatch(/const historyOwned = identityMatchesServer && loadedFor === operatorId/)
+    // every consumer reads the gated list, and the raw state is still read in exactly the
+    // two places the closed enumeration allows
+    const rawReads = ord.split('\n').filter((l) => /\borders\b/.test(l)
+      && !/visibleOrders|NO_ORDERS|marketplace\/orders|mkt-orders|orders: initial|orders: MyOrder\[\]|setOrders\(initial\)/.test(l))
+    expect(rawReads).toEqual(['  const [orders, setOrders] = useState<MyOrder[]>(initial)'])
+  })
+})
+
+describe('R13 — the cart resets the FORM, not only the basket', () => {
+  it('the free-text note to the supplier does not survive an identity change', () => {
+    const crt = executable(read(CART))
+    // the note is submitted with the order (notes: notes || null), so A's delivery
+    // instructions would otherwise travel on B's SupplyOrder
+    expect(crt).toMatch(
+      /if \(!identityMatchesServer\) \{[\s\S]{0,700}?setNotes\(''\)\s*\n\s*setDesiredDate\(null\)\s*\n\s*return/,
+    )
+    // …and the day chips re-seed for the new buyer afterwards
+    expect(crt).toMatch(/\}, \[supplierId, leadTimeDays, locale, identityMatchesServer\]\)/)
+  })
+
+  it('« Votre panier est vide » is only reachable once the basket is proven and hydrated', () => {
+    const crt = executable(read(CART))
+    expect(crt).toMatch(/if \(!mounted \|\| status === 'loading' \|\| !ownedHere\) \{/)
+    const safe = crt.indexOf("if (!mounted || status === 'loading' || !ownedHere) {")
+    expect(safe).toBeGreaterThan(-1)
+    // the empty-cart copy comes after it
+    expect(crt.indexOf("t('emptyTitle')")).toBeGreaterThan(safe)
+  })
+})
+
+describe('R14 — after a successful order, the screen never says something it cannot know', () => {
+  it('the probe distinguishes « I could not tell » from « nobody »', () => {
+    const crt = executable(read(CART))
+    expect(crt).toMatch(/async function confirmedOperatorId\(\): Promise<string \| null>/)
+    // the catch returns null, not '' — '' would mean "signed out", which is a claim
+    expect(crt).toMatch(/\} catch \{\s*\n\s*return null\s*\n\s*\}/)
+    expect(crt).toMatch(/if \(stillMine === null\) \{ setPlaceError\(t\('errOrderUnverified'\)\); return \}/)
+    expect(crt).toMatch(/if \(stillMine !== orderOwner\) \{ setPlaceError\(t\('errOrderOtherAccount'\)\); return \}/)
+  })
+
+  it('the basket is spent as soon as the order exists, so no branch can leave it re-submittable', () => {
+    const crt = executable(read(CART))
+    // the stored bucket AND the state, before the probe can send us down any branch
+    expect(crt).toMatch(/clearSupplyCartForOwner\(orderOwner, supplierId\)\s*\n\s*setCart\(\{\}\)/)
+    const spend = crt.indexOf('clearSupplyCartForOwner(orderOwner, supplierId)')
+    const probe = crt.indexOf('const stillMine = await confirmedOperatorId()')
+    expect(spend).toBeGreaterThan(-1)
+    expect(probe).toBeGreaterThan(spend)
+  })
+
+  it('all three post-order messages exist in five locales, and none invites a retry', () => {
+    // POSITIVE CONTROL on the ban itself: a regex that matches nothing bans nothing, so
+    // prove it catches a string that SHOULD be refused before trusting it on real copy.
+    const invitesRetry = (s: string) => /réessay|try again|de nuevo|riprov|حاول مرة|أعد المحاولة/i.test(s)
+    expect(invitesRetry('Veuillez réessayer plus tard')).toBe(true)
+    expect(invitesRetry('Please try again')).toBe(true)
+    expect(invitesRetry('حاول مرة أخرى')).toBe(true)
+    expect(invitesRetry('Votre commande a bien été envoyée.')).toBe(false)
+
+    for (const loc of ['fr', 'en', 'es', 'it', 'ar']) {
+      const ns = JSON.parse(readFileSync(`messages/${loc}.json`, 'utf8')).marketplaceCart
+      for (const k of ['errOrderOwner', 'errOrderOtherAccount', 'errOrderUnverified']) {
+        expect(ns[k], `${loc}/${k}`).toBeTruthy()
+      }
+      // the order EXISTS in both post-order branches: a retry would duplicate it
+      expect(invitesRetry(ns.errOrderOtherAccount), loc).toBe(false)
+      expect(invitesRetry(ns.errOrderUnverified), loc).toBe(false)
     }
   })
 })
