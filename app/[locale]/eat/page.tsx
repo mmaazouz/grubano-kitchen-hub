@@ -7,7 +7,11 @@ import { formatCuisineList } from '@/lib/categories'
 import { formatDistance } from '@/lib/format'
 import { formatEuros } from '@/lib/format-money'
 import { useGeolocation } from '@/lib/use-geolocation'
-import { readFavs, toggleFav, FAV_EVENT } from '@/lib/eat-cart'
+import {
+  favOwner, setFavOwner, readFavsForOwner, toggleFavForOwner,
+  favEventIsMine, favStorageIsMine, FAV_EVENT,
+} from '@/lib/eat-cart'
+import { useSession } from 'next-auth/react'
 import { getRestaurantCover } from '@/lib/food-images'
 // gb-foundation FIRST: gb-tokens.css begins with `@import …Material+Symbols…`, which
 // the CSS spec only honours when it is the first rule of the route's stylesheet. If
@@ -76,6 +80,10 @@ interface RecentOrder {
   restaurantId?: string
 }
 
+/** Stable identity for the fail-closed empty list: a fresh [] per render would churn the
+ *  memos that depend on it. Frozen, because every gated render shares the one array. */
+const NO_FAVS: string[] = Object.freeze([]) as unknown as string[]
+
 export default function HomeScreen() {
   const t = useTranslations('eat.home')
   const tc = useTranslations('common')
@@ -89,7 +97,19 @@ export default function HomeScreen() {
   // WAVE 2 — distance du resto géocodé le plus proche (message honnête « rien tout près »)
   const [nearestKm, setNearestKm] = useState<number | null>(null)
   const [recent, setRecent] = useState<RecentOrder[]>([])
-  const [favs, setFavs] = useState<string[]>([])
+  /** RAW — read only through the gate below: the ids AND the owner they were read for. */
+  // ── FAVOURITES OWNER, RESOLVED DURING RENDER ───────────────────────────────────
+  // The hearts belong to a session, so the identity has to be read in the same render as
+  // the session — an effect runs after the frame that has already painted the previous
+  // account's hearts. `null` while the session resolves, and null for an authenticated
+  // session with no usable id: fail closed.
+  const { data: favSession, status: favSessionStatus } = useSession()
+  const favLiveUserId = (favSession?.user as { id?: string } | undefined)?.id
+  const favsOwner = favOwner(favSessionStatus, favLiveUserId)
+
+  const [favsState, setFavsState] = useState<{ owner: string | null; ids: string[] }>({ owner: null, ids: [] })
+  /** The ONLY list this screen may show: this owner's, or none. */
+  const favs = favsOwner !== null && favsState.owner === favsOwner ? favsState.ids : NO_FAVS
   const [loading, setLoading] = useState(true)
 
   // First visit of the session → play the splash once (real wiring, kept).
@@ -103,17 +123,30 @@ export default function HomeScreen() {
     }
   }, [router])
 
-  // Favorites (real, localStorage) — live via FAV_EVENT.
+  // Favorites (real, localStorage, PER OWNER) — live via FAV_EVENT.
   useEffect(() => {
-    const sync = () => setFavs(readFavs())
-    sync()
-    window.addEventListener(FAV_EVENT, sync)
-    window.addEventListener('storage', sync)
-    return () => {
-      window.removeEventListener(FAV_EVENT, sync)
-      window.removeEventListener('storage', sync)
+    if (favsOwner === null) {
+      // Unknown identity: declare nothing, hold nothing, show nothing.
+      setFavOwner(null)
+      setFavsState({ owner: null, ids: [] })
+      return
     }
-  }, [])
+    // Declared so the library can REFUSE a write for anyone else — including from a
+    // handler this render captured, clicked after the session has moved on.
+    setFavOwner(favsOwner)
+    const sync = () => setFavsState({ owner: favsOwner, ids: readFavsForOwner(favsOwner) })
+    sync()
+    // Both events are filtered BY OWNER: another account's change must not even cause a
+    // re-read here, and an event that names no owner is foreign (fail closed).
+    const onFav = (e: Event) => { if (favEventIsMine(e, favsOwner)) sync() }
+    const onStore = (e: StorageEvent) => { if (favStorageIsMine(e, favsOwner)) sync() }
+    window.addEventListener(FAV_EVENT, onFav)
+    window.addEventListener('storage', onStore)
+    return () => {
+      window.removeEventListener(FAV_EVENT, onFav)
+      window.removeEventListener('storage', onStore)
+    }
+  }, [favsOwner])
 
   // Restaurants — nearest-first when geo is on, else newest (V4-2 : le tri par
   // note s'appuyait sur la colonne fabriquée du seed — repli honnête nouveauté).
@@ -189,8 +222,14 @@ export default function HomeScreen() {
 
   const onHeart = (e: React.MouseEvent, id: string) => {
     e.stopPropagation()
-    const now = toggleFav(id)
-    setFavs((f) => (now ? [...f, id] : f.filter((x) => x !== id)))
+    // Named owner, and the library refuses unless it is still the declared one: a click
+    // that lands after the session changed writes nothing (null), and nothing is shown.
+    if (favsOwner === null) return
+    const now = toggleFavForOwner(favsOwner, id)
+    if (now === null) return
+    setFavsState((s) => (s.owner !== favsOwner
+      ? s
+      : { owner: favsOwner, ids: now ? [...s.ids, id] : s.ids.filter((x) => x !== id) }))
   }
 
   return (

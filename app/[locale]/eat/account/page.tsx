@@ -5,7 +5,9 @@ import { useSession, signOut } from 'next-auth/react'
 import { useTranslations, useLocale } from 'next-intl'
 import { usePathname, useRouter } from '@/navigation'
 import { locales, type Locale } from '@/i18n'
-import { readFavs, showToast } from '@/lib/eat-cart'
+import {
+  favOwner, readFavsForOwner, favEventIsMine, favStorageIsMine, FAV_EVENT, showToast,
+} from '@/lib/eat-cart'
 import { getTheme, setTheme, watchSystem, type Theme } from '@/lib/eat-theme'
 // gb-foundation FIRST: gb-tokens.css opens with `@import …Material+Symbols…`, valid
 // only when it is the route stylesheet's first rule — keep it before page CSS so the
@@ -50,16 +52,35 @@ export default function ProfileScreen() {
 
   const [points, setPoints] = useState(0)
   const [orders, setOrders] = useState<Order[]>([])
-  const [favCount, setFavCount] = useState(0)
+  /** RAW — read only through the gate below. A COUNT is data too: « 7 » tells B how many
+   *  restaurants A had favourited. */
+  const [favCountState, setFavCountState] = useState<{ owner: string | null; n: number }>({ owner: null, n: 0 })
   // « Apparence » (P1-THEME) — real theme persistence (lib/eat-theme): light / dark / auto,
   // saved in localStorage + applied as data-theme on <html>. Default = light (unchanged).
   const [appearance, setAppearance] = useState<Theme>('light')
 
   const loggedIn = status === 'authenticated'
 
+  // ── FAVOURITES OWNER, RESOLVED DURING RENDER ───────────────────────────────────
+  const favLiveUserId = (session?.user as { id?: string } | undefined)?.id
+  const favsOwner = favOwner(status, favLiveUserId)
+  /** The only number this screen may show. */
+  const favCount = favsOwner !== null && favCountState.owner === favsOwner ? favCountState.n : 0
+
   useEffect(() => {
-    setFavCount(readFavs().length)
-  }, [])
+    if (favsOwner === null) { setFavCountState({ owner: null, n: 0 }); return }
+    const sync = () => setFavCountState({ owner: favsOwner, n: readFavsForOwner(favsOwner).length })
+    sync()
+    // this screen only READS, so it declares no owner — but it still filters by owner
+    const onFav = (e: Event) => { if (favEventIsMine(e, favsOwner)) sync() }
+    const onStore = (e: StorageEvent) => { if (favStorageIsMine(e, favsOwner)) sync() }
+    window.addEventListener(FAV_EVENT, onFav)
+    window.addEventListener('storage', onStore)
+    return () => {
+      window.removeEventListener(FAV_EVENT, onFav)
+      window.removeEventListener('storage', onStore)
+    }
+  }, [favsOwner])
 
   // Load the saved theme + keep 'auto' in sync with the OS scheme.
   useEffect(() => {
