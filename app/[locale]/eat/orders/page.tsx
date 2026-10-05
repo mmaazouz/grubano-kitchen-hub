@@ -183,7 +183,9 @@ export default function OrdersPage() {
    *  one is « we do not know », the other is « you have none ». */
   const [failed, setFailed] = useState(false)
   const [tab, setTab] = useState<'current' | 'past'>('current')
-  const [query, setQuery] = useState('')
+  // RAW state — read only through `query` below. The stamp is the identity that TYPED the
+  // text, which is not necessarily the identity the loaded list belongs to.
+  const [queryState, setQueryState] = useState<{ stamp: string | null; text: string }>({ stamp: null, text: '' })
   // V5-1 — bumped after a successful reservation cancel so the list refetches.
   const [reloadTick, setReloadTick] = useState(0)
 
@@ -231,6 +233,20 @@ export default function OrdersPage() {
   // null for an authenticated session with no usable id — and there is no orders list for a
   // guest, so 'guest' can never match either.
   const ordersOwned = liveStamp !== null && liveStamp !== 'guest' && data?.stamp === liveStamp
+  /** The search text, but only for the identity that typed it. DERIVED, not reset in an
+   *  effect: an effect runs after the frame that has already painted the previous account's
+   *  string into the input, and that frame is the one that matters. Everything the search
+   *  touches — the input's value and both filters — reads this and never `queryState`. */
+  const query = liveStamp !== null && liveStamp !== 'guest' && queryState.stamp === liveStamp
+    ? queryState.text
+    : ''
+  /** …and a keystroke is recorded ONLY under a usable, authenticated identity, stamped with
+   *  it, so there is no way to leave text behind that the gate above would then hand to
+   *  someone else. */
+  const setQuery = (text: string) => {
+    if (liveStamp === null || liveStamp === 'guest') return
+    setQueryState({ stamp: liveStamp, text })
+  }
   /** The ONLY shape the rest of this component may read. */
   const visibleData = ordersOwned ? data : null
   /** …and the only two lists. Every card, counter, filter and empty/list decision below is

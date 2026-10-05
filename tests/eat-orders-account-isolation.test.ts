@@ -124,13 +124,22 @@ function makePage() {
   let deps: string | null = null
   let alive: { v: boolean } | null = null
   let failed = false
+  /** The page's queryState: the text AND the identity that typed it. */
+  let queryState: { stamp: string | null; text: string } = { stamp: null, text: '' }
   const requests: Array<{
     forStamp: string | null
     resolve: (d: { current: Card[]; past: Card[] }) => void
     fail: () => void
   }> = []
 
-  function render(status: string, liveUserId: string | undefined, reloadTick = 0, query = '') {
+  /** The page's onChange: a keystroke is recorded only under a usable identity. */
+  function type(status: string, liveUserId: string | undefined, text: string) {
+    const liveStamp = sessionCartStamp(status, liveUserId)
+    if (liveStamp === null || liveStamp === 'guest') return
+    queryState = { stamp: liveStamp, text }
+  }
+
+  function render(status: string, liveUserId: string | undefined, reloadTick = 0) {
     const key = JSON.stringify([status, liveUserId ?? null, reloadTick])
     if (key !== deps) {
       if (alive) alive.v = false // the cleanup of the previous run: `return () => { alive = false }`
@@ -162,6 +171,10 @@ function makePage() {
       }
     }
     const g = gate(status, liveUserId, data)
+    // the page's derivation: the text belongs to the identity that typed it
+    const query = g.liveStamp !== null && g.liveStamp !== 'guest' && queryState.stamp === g.liveStamp
+      ? queryState.text
+      : ''
     const q = query.trim().toLowerCase()
     const current = g.safeCurrent.filter((c) => String(c.restaurantName).toLowerCase().includes(q))
     const past = g.safePast.filter((c) => String(c.restaurantName).toLowerCase().includes(q))
@@ -169,13 +182,13 @@ function makePage() {
     const loadFailed = g.ordersOwned && failed && !showLoading
     const activeCards = current
     return {
-      ...g, current, past, loading, showLoading, loadFailed,
+      ...g, current, past, loading, showLoading, loadFailed, query,
       isEmpty: !showLoading && !loadFailed && activeCards.length === 0,
       counters: { current: g.safeCurrent.length, past: g.safePast.length },
       requests,
     }
   }
-  return { render, requests }
+  return { render, type, requests }
 }
 
 beforeEach(() => {
@@ -698,5 +711,162 @@ describe('X — the \'guest\' term of the gate, EXECUTED', () => {
     }
     expect(wrote).toBe(false)
     expect(readCart()).toBeNull()
+  })
+})
+
+describe('Y — the search text belongs to whoever typed it', () => {
+  const SECRET_A = 'SECRET-A'
+  const SEARCH_B = 'SEARCH-B'
+
+  it('A types SECRET-A, the session becomes B without a remount: the field is EMPTY', () => {
+    const p = makePage()
+    p.render('authenticated', A)
+    p.requests[0].resolve({ current: A_CURRENT, past: A_PAST })
+    p.type('authenticated', A, SECRET_A)
+    expect(p.render('authenticated', A).query).toBe(SECRET_A)   // A sees their own text
+
+    // FIRST FRAME under B — no effect has run yet, and none needs to: the value is derived.
+    const first = p.render('authenticated', B)
+    expect(first.query).toBe('')
+    expect(JSON.stringify(first)).not.toContain(SECRET_A)
+  })
+
+  it('…and A\'s text does not filter B\'s orders', () => {
+    const p = makePage()
+    p.render('authenticated', A)
+    p.requests[0].resolve({ current: A_CURRENT, past: A_PAST })
+    p.type('authenticated', A, SECRET_A)
+
+    p.render('authenticated', B)                              // identity change, refetch
+    p.requests[1].resolve({ current: B_CURRENT, past: [] })
+    const asB = p.render('authenticated', B)
+    // B's own order survives: 'Chez B' does not contain 'secret-a', so a raw query would
+    // have hidden it — which is the second half of the defect, not just the visible field.
+    expect(asB.query).toBe('')
+    expect(asB.current.map((c) => c.id)).toEqual(['o-B-1'])
+    expect(asB.counters).toEqual({ current: 1, past: 0 })
+    expect(asB.isEmpty).toBe(false)
+  })
+
+  it('B types SEARCH-B, and it is invisible when A comes back', () => {
+    const p = makePage()
+    p.render('authenticated', B)
+    p.requests[0].resolve({ current: B_CURRENT, past: [] })
+    p.type('authenticated', B, SEARCH_B)
+    expect(p.render('authenticated', B).query).toBe(SEARCH_B)
+
+    const backToA = p.render('authenticated', A)
+    expect(backToA.query).toBe('')
+    expect(JSON.stringify(backToA)).not.toContain(SEARCH_B)
+    // …and when A's own list returns, A's list is not filtered by B's text either
+    p.requests[1].resolve({ current: A_CURRENT, past: A_PAST })
+    const asA = p.render('authenticated', A)
+    expect(asA.query).toBe('')
+    expect(asA.current).toHaveLength(3)
+  })
+
+  it('a keystroke under an unusable identity is not recorded at all', () => {
+    const p = makePage()
+    p.render('authenticated', A)
+    p.requests[0].resolve({ current: A_CURRENT, past: A_PAST })
+    // no id, signed out, still resolving: nothing may be stamped, so nothing can be
+    // handed to the next account by the gate
+    p.type('authenticated', undefined, 'ghost-1')
+    p.type('unauthenticated', undefined, 'ghost-2')
+    p.type('loading', undefined, 'ghost-3')
+    const asA = p.render('authenticated', A)
+    expect(asA.query).toBe('')
+    expect(JSON.stringify(asA)).not.toContain('ghost-')
+  })
+
+  it('the page derives the value and guards the keystroke, in source', () => {
+    const src = executable(read(PAGE))
+    // the state carries the identity that typed the text…
+    expect(src).toMatch(
+      /const \[queryState, setQueryState\] = useState<\{ stamp: string \| null; text: string \}>\(\{ stamp: null, text: '' \}\)/,
+    )
+    // …the value is DERIVED during render, not reset in an effect (too late by a frame)…
+    expect(src).toMatch(
+      /const query = liveStamp !== null && liveStamp !== 'guest' && queryState\.stamp === liveStamp\s*\n\s*\? queryState\.text\s*\n\s*: ''/,
+    )
+    expect(src).not.toMatch(/setQueryState\(\{ stamp: null, text: '' \}\)/)   // no effect-reset
+    // …and a keystroke is only recorded under a usable, authenticated identity
+    expect(src).toMatch(
+      /const setQuery = \(text: string\) => \{\s*\n\s*if \(liveStamp === null \|\| liveStamp === 'guest'\) return\s*\n\s*setQueryState\(\{ stamp: liveStamp, text \}\)\s*\n\s*\}/,
+    )
+    // the input and BOTH filters read the derived value, never the raw state
+    expect(src).toMatch(/<input value=\{query\} onChange=\{\(e\) => setQuery\(e\.target\.value\)\}/)
+    expect((src.match(/const q = query\.trim\(\)\.toLowerCase\(\)/g) ?? []).length).toBe(2)
+    expect(src).not.toMatch(/queryState\.text\s*\.trim/)
+    expect(src).not.toMatch(/value=\{queryState/)
+  })
+
+  it('CLOSED ENUMERATION: every read of the raw queryState', () => {
+    const src = executable(read(PAGE))
+    const uses = src.split('\n').filter((l) => /(?<![\w$])queryState(?![\w$])/.test(l)).map((l) => l.trim())
+    expect(uses).toEqual([
+      "const [queryState, setQueryState] = useState<{ stamp: string | null; text: string }>({ stamp: null, text: '' })",
+      "const query = liveStamp !== null && liveStamp !== 'guest' && queryState.stamp === liveStamp",
+      '? queryState.text',
+    ])
+  })
+
+  it('the two gates agree on what a usable identity is', () => {
+    // ordersOwned and the query gate each spell out `liveStamp !== null && liveStamp !==
+    // 'guest'`. Duplicated terms drift, so this pins that both carry it — if one is ever
+    // relaxed, this fails rather than letting the two disagree in silence.
+    const src = executable(read(PAGE))
+    expect((src.match(/liveStamp !== null && liveStamp !== 'guest'/g) ?? []).length).toBe(2)
+    expect(src).toMatch(/const ordersOwned = liveStamp !== null && liveStamp !== 'guest' &&/)
+    expect(src).toMatch(/const query = liveStamp !== null && liveStamp !== 'guest' &&/)
+  })
+})
+
+describe('Z — the COMPLETE useState inventory of this screen', () => {
+  it('every piece of state is accounted for, and none of it can speak for another account', () => {
+    // Requirement: re-inventory ALL the state, not only the ones already fixed. The whole
+    // list is asserted, so adding state later fails this test and forces the author to say
+    // why it is safe — which is the only way an inventory stays true.
+    const src = executable(read(PAGE))
+    const body = src.slice(src.indexOf('export default function OrdersPage()'))
+    const states = Array.from(body.matchAll(/const \[(\w+), set\w+\] = useState/g)).map((m) => m[1])
+    expect(states).toEqual([
+      // 1. the loaded history — gated by `ordersOwned`, read only through visibleData
+      'data',
+      // 2. a boolean: a request is in flight. Holds no account content; a request left in
+      //    flight by an identity change keeps the skeleton up, which is correct.
+      'loading',
+      // 3. a boolean: the last load for the CURRENT identity did not answer. Consumed as
+      //    `loadFailed = ordersOwned && failed && …`, so it is gated like the history, and
+      //    the effect resets it per identity.
+      'failed',
+      // 4. which tab is selected. A UI position, not account content: both tabs exist for
+      //    every account and their counters come from the gated lists, so carrying it
+      //    across an identity change states nothing about the previous account.
+      'tab',
+      // 5. the search text WITH the identity that typed it — this lot. Read only through
+      //    the derived `query`.
+      'queryState',
+      // 6. a monotonic counter used solely as an effect dependency (bumped by a reservation
+      //    cancel and by the load-failure retry). Carries no content, and cannot suppress a
+      //    refetch because liveUserId is a dependency too.
+      'reloadTick',
+    ])
+    // the two that hold account CONTENT are both gated; the four others are booleans, a
+    // tab name and a counter
+    expect(src).toMatch(/const visibleData = ordersOwned \? data : null/)
+    expect(src).toMatch(/const query = liveStamp !== null/)
+  })
+
+  it('the child components hold no state that outlives a gated-away card', () => {
+    // ReservationCard owns confirming/busy/err. It is rendered from the gated lists, so a
+    // card of the previous account is UNMOUNTED on the first frame after the change and
+    // its state dies with it — there is no state hoisted above the gate.
+    const src = executable(read(PAGE))
+    const card = src.slice(src.indexOf('function ReservationCard('), src.indexOf('export default function OrdersPage()'))
+    expect(Array.from(card.matchAll(/const \[(\w+), set\w+\] = useState/g)).map((m) => m[1]))
+      .toEqual(['confirming', 'busy', 'err'])
+    // …and it is only ever rendered from `current` / `past`, which derive from the gate
+    expect((src.match(/<ReservationCard key=\{c\.id\}/g) ?? []).length).toBe(2)
   })
 })
