@@ -168,7 +168,13 @@ describe('BC — structure de la référence (écran 3 « Payée »)', () => {
     // correspondre à CE ticket.
     expect(PAGE).not.toContain('URLSearchParams')
     expect(PAGE).toContain("fetch('/api/eat/orders')")
-    expect(PAGE).toMatch(/c\?\.kind === 'dinein' && c\?\.id === id/)
+    // Le ticket comparé est celui CAPTURÉ au départ de la requête (lot d'isolation du
+    // reçu, tests/eat-receipt-account-isolation.test.ts) : ce qui était `id` est désormais
+    // `requestTicketId`. L'invariant de cette épingle est inchangé et même renforcé — la
+    // correspondance porte sur CE ticket, et une réponse tardive ne peut plus la satisfaire
+    // pour un autre.
+    expect(PAGE).toMatch(/c\?\.kind === 'dinein' && c\?\.id === requestTicketId/)
+    expect(PAGE).toMatch(/const requestTicketId = id/)
     expect(PAGE).toMatch(/\{rateRestoId \? \([\s\S]{0,400}?\/eat\/r\/\$\{rateRestoId\}\/reviews/)
     expect(PAGE).toMatch(/mailto:contact@grubano\.com\?subject=\$\{encodeURIComponent\(t\('issueSubject'/)
   })
