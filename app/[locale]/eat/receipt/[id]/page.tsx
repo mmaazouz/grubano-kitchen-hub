@@ -141,7 +141,14 @@ export default function DineinReceiptScreen() {
   // and the previous account's document simply stayed.
   useEffect(() => {
     if (!scopeOk || !id) {
-      // No usable identity: hold nothing, ask nothing, and do not pretend to be loading.
+      // No usable identity: hold nothing and ask nothing. The `loading: false` written here
+      // is deliberately UNOBSERVABLE — out of scope the derived `loading` above is
+      // unconditionally true, so the screen reads as loading whatever this field says. An
+      // earlier comment here claimed the page "does not pretend to be loading", which was
+      // the opposite of what happens: a signed-out visitor gets the sign-in branch, and
+      // every other unusable identity gets the skeleton, which is the honest answer when we
+      // cannot name the account. What this write is actually FOR is dropping the previous
+      // account's document from memory.
       setReceiptState({ owner: null, ticketId: null, receipt: null, error: '', loading: false })
       return
     }

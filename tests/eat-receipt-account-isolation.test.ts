@@ -25,10 +25,15 @@ import { readFileSync } from 'node:fs'
 //   • MODELLED — React's two phases, SEPARATELY: render() derives the frame and touches no
 //     state, flushEffects() is what runs after the commit. They are not collapsed, because
 //     collapsing them hides the window in which a late response can still commit.
-//   • CLOSED BY ENUMERATION over the FIELD names, not the containers — an enumeration over
-//     containers can always be escaped by choosing another container (a useRef, a module
-//     `let`, a differently-named setter); an enumeration over the data cannot, because a
-//     leak has to READ a field to paint it.
+//   • CLOSED BY EXACT SETS. The first version of this header said an enumeration over the
+//     data "cannot be escaped, because a leak has to READ a field to paint it". The
+//     principle holds; that implementation did not, because it enumerated nine of the
+//     thirteen fields and leaned on two escapable container bans — a reviewer painted A's
+//     street and A's dish names from a module-level holder with all 72 tests green. A
+//     PREDICATE over field reads is still a predicate. What cannot be escaped is an EXACT
+//     SET: the complete list of lines naming each field, of module-scope declarations, and
+//     of hook calls. A leak has to add a line, and adding a line changes a set. See the
+//     review-round block at the end of this file.
 
 import { sessionCartStamp } from '@/lib/eat-cart'
 
@@ -111,13 +116,13 @@ function makePage() {
   let deps: string | null = null
   let aliveReceipt: { v: boolean } | null = null
   let aliveRate: { v: boolean } | null = null
-  let pending: { authStatus: string; userId: string | undefined; ticketId: string } | null = null
+  let pending: { authStatus: string; userId: string | undefined; ticketId: string; tick: number } | null = null
   const receiptReqs: Array<{ owner: string; ticketId: string; ok: (r: ReceiptData) => void; fail: (msg: string | null) => void }> = []
   const rateReqs: Array<{ owner: string; ticketId: string; found: (restoId: string) => void; none: () => void }> = []
 
   function render(authStatus: string, userId: string | undefined, ticketId: string, tick = 0) {
     const key = JSON.stringify([String(sessionCartStamp(authStatus, userId)), ticketId, tick])
-    if (key !== deps) pending = { authStatus, userId, ticketId }
+    if (key !== deps) pending = { authStatus, userId, ticketId, tick }
     return {
       ...gate(authStatus, userId, ticketId, receiptState, rateState),
       raw: { receiptState, rateState },
@@ -128,11 +133,14 @@ function makePage() {
 
   function flushEffects() {
     if (!pending) return
-    const { authStatus, userId, ticketId } = pending
+    const { authStatus, userId, ticketId, tick } = pending
     pending = null
     const liveStamp = sessionCartStamp(authStatus, userId)
     const scopeOk = liveStamp !== null && liveStamp !== 'guest'
-    deps = JSON.stringify([String(liveStamp), ticketId, 0])
+    // The tick is part of the dependency key, as it is in the page. Hardcoding 0 here meant
+    // that from the first retry onwards the model re-issued a request on EVERY render, so
+    // case J's "no needless request" claim silently stopped covering the retry axis.
+    deps = JSON.stringify([String(liveStamp), ticketId, tick])
     if (aliveReceipt) aliveReceipt.v = false
     if (aliveRate) aliveRate.v = false
     aliveReceipt = null
@@ -494,10 +502,13 @@ describe('§13/§15 — the real file, pinned and closed over the FIELDS', () =>
     ])
   })
 
-  it('§15 CLOSED ENUMERATION over the PRIVATE FIELDS — a second holder cannot paint them', () => {
-    // An enumeration over containers is escapable by choosing another container; a leak has
-    // to READ a field to paint it. Each of these sets is the complete list for the real
-    // file: the interface, and reads that descend from the GATED `receipt`.
+  it('§15 the nine fields whose reads all descend from the gated receipt', () => {
+    // NARROWED: this case proves those nine fields are read only through the gate. It does
+    // NOT prove no other container exists, and it does not cover `lines`, `address` or the
+    // per-line fields — the review-round block at the end of this file closes all thirteen
+    // with exact sets, and closes module scope and the hook set too. The predicate below is
+    // also escapable on its own terms (`<container>.receipt.<field>` satisfies it), which is
+    // the second reason the exact sets exist.
     for (const [field, expected] of [
       ['sessionCode', 4], ['amountPaid', 4], ['subtotal', 3], ['restaurantName', 3],
       ['officialName', 1], ['tableName', 3], ['paidAt', 3], ['currency', 2], ['city', 2],
@@ -515,9 +526,10 @@ describe('§13/§15 — the real file, pinned and closed over the FIELDS', () =>
     expect(src).toMatch(/t\('issueSubject', \{ code: receipt\.sessionCode \}\)/)
     // …and the review link only through the gated id
     expect(src).toMatch(/href=\{`\/eat\/r\/\$\{rateRestoId\}\/reviews`\}/)
-    // no other container could hold any of it
+    // a useRef is banned outright; module scope and the whole hook set are closed by exact
+    // sets in the review-round block (the `/^let /` form used here was anchored at column
+    // zero, so one leading space defeated it)
     expect(src).not.toMatch(/useRef/)
-    expect(src.split('\n').filter((l) => /^let /.test(l)), 'module-level mutable state').toEqual([])
     // THREE declarations, counted on the declaration form so the import line cannot pad
     // the number: the receipt scope, the rate scope, and the retry counter.
     const decls = (src.match(/const \[\w+, set\w+\] = useState/g) ?? [])
@@ -596,5 +608,220 @@ describe('§13/§15 — the real file, pinned and closed over the FIELDS', () =>
     expect(ordersRoute).toMatch(/token\.sub/)
     // this page sends no identity of its own to either
     expect(src).toMatch(/fetch\('\/api\/eat\/orders'\)/)
+  })
+})
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+// REVIEW ROUND — my enumeration was escapable, and the page was under-proven
+// ══════════════════════════════════════════════════════════════════════════════
+//
+// Thirty-five findings confirmed, and they collapse into one dominant defect: the §15
+// enumeration above closes NINE of the receipt's THIRTEEN fields. `lines`, `address` and the
+// per-line `name` / `unitPrice` / `quantity` were never enumerated, and the two container
+// bans that were supposed to back it up are both escapable — `/^let /` is anchored at column
+// zero, so one leading space defeats it, and the state count only matches the
+// array-destructured form of useState. A reviewer measured it: a module-level holder (an
+// indented `let`, or a `const` whose object property is named `receipt`) plus a span placed
+// OUTSIDE every branch of the cascade paints A's street, A's dish name and A's unit price on
+// every frame — and all 72 tests stayed green. The per-field predicate was escapable too:
+// /receipt[?]?\./ is satisfied by any `<container>.receipt.<field>`.
+//
+// That is the model/pin-agrees-with-its-author family a FIFTH time, and this time in the
+// very assertion I added as the answer to the fourth. The lesson I had drawn — "enumerate
+// the data, not the container" — was right; my implementation of it was not, because a
+// PREDICATE over field reads is still a predicate. What cannot be escaped is an EXACT SET:
+// the complete list of lines naming each field, and the complete list of module-scope
+// declarations and hook calls. A leak has to add a line, and adding a line changes a set.
+//
+// So everything below is an exact set. No predicate decides what is allowed.
+
+describe('the review round — exact sets, not predicates', () => {
+  const src = executable(read(PAGE))
+  /** Every trimmed line of the real file naming an identifier, in file order. */
+  const lines = (name: string) =>
+    src.split('\n').filter((l) => new RegExp(`(?<![\\w$])${name}(?![\\w$])`).test(l)).map((l) => l.trim())
+
+  const IFACE_LINE = 'lines: Array<{ name: string; unitPrice: number; quantity: number }>'
+  const PUSH_META = "<span>{receipt.tableName ? t('bannerTable', { name: receipt.tableName }) : t('bannerDinein')}</span>"
+  const QTY_LINE = '<span className="rc-line__qty mono"><bdi>{l.quantity}×</bdi></span> {l.name}'
+  const AMOUNT_LINE = '<span className="rc-line__amount"><bdi>{money(l.unitPrice * l.quantity)}</bdi></span>'
+
+  it('EXACT SET — `lines`, the itemised bill (the field the enumeration used to miss)', () => {
+    expect(lines('lines')).toEqual([
+      IFACE_LINE,
+      '<section className="rc-lines">',                                  // a CSS class, not a read
+      "<span className=\"rc-lines__count mono\" aria-label={t('linesCount', { count: receipt.lines.length })}>{receipt.lines.length}</span>",
+      '{receipt.lines.map((l, i) => (',
+    ])
+  })
+
+  it('EXACT SET — `address`, A\'s street', () => {
+    expect(lines('address')).toEqual([
+      "import { receiptAddressLines } from '@/lib/receipt-address'",      // the import
+      'address: string | null',                                          // the interface
+      'const addressLines = receiptAddressLines(receipt?.address ?? null, receipt?.city ?? null)',
+    ])
+  })
+
+  it('EXACT SET — the per-line fields, which descend from receipt.lines.map', () => {
+    expect(lines('unitPrice')).toEqual([
+      IFACE_LINE,
+      "<small>{t.rich('unitPrice', { price: money(l.unitPrice), m: (chunks) => <bdi>{chunks}</bdi> })}</small>",
+      AMOUNT_LINE,
+    ])
+    expect(lines('quantity')).toEqual([IFACE_LINE, QTY_LINE, AMOUNT_LINE])
+    expect(lines('name')).toEqual([IFACE_LINE, PUSH_META, QTY_LINE])
+    // `l` is the map callback's parameter, so every one of those reads descends from the
+    // GATED receipt — there is exactly one map, over receipt.lines.
+    expect((src.match(/\.map\(\(l, i\) => \(/g) ?? []).length, 'one map over the lines').toBe(1)
+    expect(src).toMatch(/\{receipt\.lines\.map\(\(l, i\) => \(/)
+  })
+
+  it('EXACT SET — module scope. Nothing mutable may live there, at any indentation', () => {
+    // The old ban was /^let / at column zero. This is the whole of module scope instead:
+    // one frozen string constant, and that is all. An indented `let`, a `var`, or a `const`
+    // holding a mutable object all change this set.
+    const moduleDecls = src.split('\n').filter((l) => /^\s*(let|var|const)\s/.test(l) && !/^\s{2,}/.test(l)).map((l) => l.trim())
+    expect(moduleDecls).toEqual(["const PARIS = 'Europe/Paris'"])
+    // belt: every mutable binding in the file, enumerated. Two function-scope race flags,
+    // and nothing else — a new `let` anywhere changes this set.
+    expect(src.split('\n').filter((l) => /^\s*(let|var)\s/.test(l)).map((l) => l.trim()))
+      .toEqual(['let alive = true', 'let alive = true'])
+  })
+
+  it('EXACT SET — the hooks. A new container cannot appear without changing this', () => {
+    const hooks = Array.from(new Set(src.match(/\buse[A-Z]\w*(?=\s*[(<])/g) ?? [])).sort()
+    expect(hooks).toEqual([
+      'useEffect', 'useLocale', 'useParams', 'useRouter', 'useSession', 'useState', 'useTranslations',
+    ])
+    // counted on a form that does not depend on destructuring: `const x = useState(...)`
+    // escaped the old pin, which required `const [x, setX] =`.
+    expect((src.match(/useState[<(]/g) ?? []).length, 'every useState call').toBe(3)
+  })
+
+  it('the two-axis gate is an EXACT SET too, so no disjunction can be appended', () => {
+    // The gate — the literal subject of this PR — used to rest on one format-sensitive
+    // toMatch, and every behavioural case runs against the suite's reimplementation, so a
+    // trailing `|| true`-shaped disjunction restored the original defect with 72/72 green.
+    // the declaration's continuation line names `scopeOk`, not `inScope` — it is covered by
+    // the scopeOk set below, which is what makes the two sets together close the gate.
+    expect(lines('inScope')).toEqual([
+      'const inScope = (st: { owner: string | null; ticketId: string | null }) =>',
+      'const receipt = inScope(receiptState) ? receiptState.receipt : null',
+      "const error = inScope(receiptState) ? receiptState.error : ''",
+      'const loading = inScope(receiptState) ? receiptState.loading : true',
+      'const rateRestoId = inScope(rateState) ? rateState.restoId : null',
+    ])
+    expect(lines('scopeOk')).toEqual([
+      "const scopeOk = liveStamp !== null && liveStamp !== 'guest'",
+      'scopeOk && st.owner === liveStamp && st.ticketId === id',
+      'if (!scopeOk || !id) { setRateState({ owner: null, ticketId: null, restoId: null }); return }',
+      '}, [liveStamp, scopeOk, id])',
+      'if (!scopeOk || !id) {',
+      '}, [liveStamp, scopeOk, id, retryTick, t])',
+    ])
+  })
+
+  it('the render cascade is pinned, so « false emptiness » cannot be introduced', () => {
+    // `loading ||` was unpinned: changing it to `loading &&` kept the suite green while
+    // B's first frame became exactly the false-empty screen case B exists to exclude.
+    expect(src).toMatch(/\{authStatus === 'unauthenticated' \? \(/)
+    expect(src).toMatch(/\) : loading \|\| authStatus === 'loading' \? \(/)
+    expect(src).toMatch(/\) : error \? \(/)
+    expect(src).toMatch(/\) : receipt \? \(/)
+    // the order matters as much as the operators
+    const at = (needle: string) => {
+      const i = src.indexOf(needle)
+      expect(i, needle).toBeGreaterThan(-1)
+      return i
+    }
+    expect(at("{authStatus === 'unauthenticated' ? (")).toBeLessThan(at(') : loading || '))
+    expect(at(') : loading || ')).toBeLessThan(at(') : error ? ('))
+    expect(at(') : error ? (')).toBeLessThan(at(') : receipt ? ('))
+  })
+
+  it('the error text comes from the page, not from the test\'s imagination', () => {
+    // The error path was proven only against a model that fabricated the message: deleting
+    // the page's error text entirely stayed green and left a blank dead end.
+    expect(src).toMatch(/error: \(body\?\.error as string\) \|\| t\('loadError'\)/)
+    expect((src.match(/t\('loadError'\)/g) ?? []).length, 'the fallback, in both failure paths').toBe(2)
+    expect(src).toMatch(/<p>\{error\}<\/p>/)
+    expect(src).toMatch(/onClick=\{retry\}>\{t\('retry'\)\}/)
+    // and the key really exists, in all five locales
+    for (const loc of ['fr', 'en', 'es', 'it', 'ar']) {
+      const ns = JSON.parse(readFileSync(`messages/${loc}.json`, 'utf8')).eat.receipt
+      expect(ns.loadError, `${loc}/loadError`).toBeTruthy()
+      expect(ns.retry, `${loc}/retry`).toBeTruthy()
+    }
+  })
+
+  it('N (repaired) — three identities, and C\'s isolation is asserted on LOADED data', () => {
+    // The old case asserted C's isolation against a state that held nothing for anyone:
+    // both cross-account assertions were vacuous. Here A's and B's receipts are actually
+    // committed, so the assertion has something to be wrong about.
+    const p = makePage()
+    p.turn('authenticated', A, T1)
+    p.receiptReqs[0].ok(RECEIPT_A)
+    expect(p.render('authenticated', A, T1).receipt?.sessionCode).toBe(A_SESSION_CODE)   // A's, loaded
+
+    p.turn('authenticated', B, T1)
+    p.receiptReqs[1].ok(RECEIPT_B)
+    expect(p.render('authenticated', B, T1).receipt?.sessionCode).toBe('SESSB-0001')     // B's, loaded
+
+    p.turn('authenticated', C, T1)                                   // now C arrives
+    const asC = p.render('authenticated', C, T1)
+    expect(asC.receipt).toBeNull()                                   // neither A's nor B's
+    expect(asC.raw.receiptState.owner).toBe(`u:${C}`)                // re-stamped for C
+    expect(JSON.stringify(asC)).not.toContain(A_SESSION_CODE)
+    expect(JSON.stringify(asC)).not.toContain('SESSB-0001')
+    // …and C's own answer is the only thing C can see
+    p.receiptReqs[2].ok({ ...RECEIPT_B, sessionCode: 'SESSC-0001', restaurantName: 'Chez C' })
+    const loaded = p.render('authenticated', C, T1)
+    expect(loaded.receipt?.sessionCode).toBe('SESSC-0001')
+    expect(JSON.stringify(loaded)).not.toContain(A_RESTO)
+  })
+
+  it('N bis — the SAME three-identity case for rateRestoId, which had none', () => {
+    const p = makePage()
+    p.turn('authenticated', A, T1)
+    p.rateReqs[0].found(A_RESTO_ID)
+    expect(p.render('authenticated', A, T1).rateRestoId).toBe(A_RESTO_ID)
+
+    p.turn('authenticated', B, T1)
+    p.rateReqs[1].found('resto-B-1')
+    expect(p.render('authenticated', B, T1).rateRestoId).toBe('resto-B-1')
+
+    p.turn('authenticated', C, T1)
+    expect(p.render('authenticated', C, T1).rateRestoId).toBeNull()
+    // every late arrival, in both orders, while C is live
+    p.rateReqs[0].found(A_RESTO_ID)
+    p.rateReqs[1].found('resto-B-1')
+    const asC = p.render('authenticated', C, T1)
+    expect(asC.rateRestoId).toBeNull()
+    expect(JSON.stringify(asC.raw.rateState)).not.toContain(A_RESTO_ID)
+    expect(JSON.stringify(asC.raw.rateState)).not.toContain('resto-B-1')
+  })
+
+  it('and the receipt and the rate can never be MIXED across owners', () => {
+    // receipt B with rate A, or receipt A with rate B — neither is reachable, because both
+    // derive from the same pair.
+    const p = makePage()
+    p.turn('authenticated', A, T1)
+    p.turn('authenticated', B, T1)
+    p.receiptReqs[1].ok(RECEIPT_B)       // B's receipt lands
+    p.rateReqs[0].found(A_RESTO_ID)      // A's rate lands late
+    const g = p.render('authenticated', B, T1)
+    expect(g.receipt?.sessionCode).toBe('SESSB-0001')
+    expect(g.rateRestoId).toBeNull()     // NOT A's restaurant
+    // the mirror: A's receipt late, B's rate fresh
+    const q = makePage()
+    q.turn('authenticated', A, T1)
+    q.turn('authenticated', B, T1)
+    q.rateReqs[1].found('resto-B-1')
+    q.receiptReqs[0].ok(RECEIPT_A)
+    const h = q.render('authenticated', B, T1)
+    expect(h.receipt).toBeNull()         // NOT A's receipt
+    expect(h.rateRestoId).toBe('resto-B-1')
   })
 })
