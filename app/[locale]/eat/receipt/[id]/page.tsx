@@ -1,11 +1,12 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { useTranslations, useLocale } from 'next-intl'
 import { Link, useRouter } from '@/navigation'
 import { formatEuros, formatAmount } from '@/lib/format-money'
+import { sessionCartStamp } from '@/lib/eat-cart'
 import { receiptAddressLines } from '@/lib/receipt-address'
 import './receipt.css'
 import '@/app/gb-foundation/gb-tokens.css'
@@ -57,11 +58,42 @@ export default function DineinReceiptScreen() {
   const locale = useLocale()
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
-  const { status: authStatus } = useSession()
+  const { data: session, status: authStatus } = useSession()
 
-  const [receipt, setReceipt] = useState<ReceiptData | null>(null)
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(true)
+  // ── OWNER + TICKET, RESOLVED DURING RENDER ───────────────────────────────────
+  // A receipt is private to a PAIR: the account that paid, and the ticket. The identity
+  // comes from the primitive the other consumer screens already use — no second,
+  // divergent definition — and it is read in the same render as the session, because an
+  // effect runs after the frame that has already painted the previous account's document.
+  // `u:<id>` is the only owner a receipt can have: `guest` has none, and null means the
+  // identity is unresolved or unusable. Both fail closed.
+  const liveUserId = (session?.user as { id?: string } | undefined)?.id
+  const liveStamp = sessionCartStamp(authStatus, liveUserId)
+  const scopeOk = liveStamp !== null && liveStamp !== 'guest'
+
+  /** RAW — read only through the derivations below. Carries the pair it was fetched for,
+   *  and its own loading/error, because an error obtained under A must not be shown to B
+   *  any more than a document would be. */
+  const [receiptState, setReceiptState] = useState<{
+    owner: string | null
+    ticketId: string | null
+    receipt: ReceiptData | null
+    error: string
+    loading: boolean
+  }>({ owner: null, ticketId: null, receipt: null, error: '', loading: true })
+
+  /** Does a stamped piece of state belong to THIS render's pair? */
+  const inScope = (st: { owner: string | null; ticketId: string | null }) =>
+    scopeOk && st.owner === liveStamp && st.ticketId === id
+
+  /** THE ONLY receipt this screen may read. Every private field below goes through it. */
+  const receipt = inScope(receiptState) ? receiptState.receipt : null
+  /** An error belongs to the pair that obtained it. A 403 that B really got for A's ticket
+   *  is B's own answer and is shown; an error inherited from A is not. */
+  const error = inScope(receiptState) ? receiptState.error : ''
+  /** Out of scope we have no answer for this pair YET, which is a loading state and not an
+   *  empty one — showing a blank receipt or a stale error would both be false. */
+  const loading = inScope(receiptState) ? receiptState.loading : true
   // « Noter ce restaurant » (référence) : l'id du restaurant n'est PAS servi par
   // la route du reçu (select étroit, intouchable). Il est retrouvé par une
   // lecture SERVEUR de MES commandes — GET /api/eat/orders, session-gatée, qui
@@ -71,49 +103,104 @@ export default function DineinReceiptScreen() {
   // un autre restaurant — la destination poste réellement). Best-effort : pas
   // de correspondance ⇒ la rangée n'apparaît pas, jamais d'action dont le
   // contexte n'est pas vrai.
-  const [rateRestoId, setRateRestoId] = useState<string | null>(null)
+  /** RAW — read only through `rateRestoId` below. Scoped to the same pair: the link posts
+   *  a REAL review, so a restaurant found for A must not be offered to B. */
+  const [rateState, setRateState] = useState<{
+    owner: string | null
+    ticketId: string | null
+    restoId: string | null
+  }>({ owner: null, ticketId: null, restoId: null })
+  /** THE ONLY restaurant id this screen may link to. */
+  const rateRestoId = inScope(rateState) ? rateState.restoId : null
+
   useEffect(() => {
-    if (authStatus !== 'authenticated') return
+    if (!scopeOk || !id) { setRateState({ owner: null, ticketId: null, restoId: null }); return }
+    // Captured BEFORE the request leaves; the response is stamped with THESE, never with
+    // whatever the session or the URL has become by the time it resolves.
+    const requestOwner = liveStamp
+    const requestTicketId = id
     let alive = true
+    setRateState({ owner: requestOwner, ticketId: requestTicketId, restoId: null })
     fetch('/api/eat/orders')
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         if (!alive || !d) return
         const cards = [...(d.current ?? []), ...(d.past ?? [])] as Array<{ id?: string; kind?: string; restaurantId?: string }>
-        const mine = cards.find((c) => c?.kind === 'dinein' && c?.id === id)
-        if (mine?.restaurantId) setRateRestoId(mine.restaurantId)
+        const mine = cards.find((c) => c?.kind === 'dinein' && c?.id === requestTicketId)
+        if (mine?.restaurantId) setRateState({ owner: requestOwner, ticketId: requestTicketId, restoId: mine.restaurantId })
       })
       .catch(() => {})
     return () => { alive = false }
-  }, [authStatus, id])
+  }, [liveStamp, scopeOk, id])
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError('')
-    try {
-      const res = await fetch(`/api/eat/tickets/${encodeURIComponent(id)}/receipt`)
-      const body = await res.json().catch(() => null)
-      if (!res.ok || !body?.receipt) {
-        // Message SERVEUR affiché tel quel quand il existe (règle projet).
-        setError((body?.error as string) || t('loadError'))
-        return
-      }
-      setReceipt(body.receipt as ReceiptData)
-    } catch {
-      setError(t('loadError'))
-    } finally {
-      setLoading(false)
+  /** The retry button bumps this; it cannot carry a scope of its own. See `retry` below. */
+  const [retryTick, setRetryTick] = useState(0)
+
+  // Fetch keyed on the PAIR. `authStatus` alone could not see A -> logout -> B login (it
+  // begins and ends at 'authenticated' and the ticket does not change), so nothing refetched
+  // and the previous account's document simply stayed.
+  useEffect(() => {
+    if (!scopeOk || !id) {
+      // No usable identity: hold nothing and ask nothing. The `loading: false` written here
+      // is deliberately UNOBSERVABLE — out of scope the derived `loading` above is
+      // unconditionally true, so the screen reads as loading whatever this field says. An
+      // earlier comment here claimed the page "does not pretend to be loading", which was
+      // the opposite of what happens: a signed-out visitor gets the sign-in branch, and
+      // every other unusable identity gets the skeleton, which is the honest answer when we
+      // cannot name the account. What this write is actually FOR is dropping the previous
+      // account's document from memory.
+      setReceiptState({ owner: null, ticketId: null, receipt: null, error: '', loading: false })
+      return
     }
-  }, [id, t])
+    // Captured BEFORE the request leaves. The response is stamped with these two values and
+    // never with the identity at response time.
+    const requestOwner = liveStamp
+    const requestTicketId = id
+    let alive = true
+    // Stamped for the new pair immediately, so the previous account's document is dropped
+    // rather than merely hidden, and this pair reads as loading until its own answer lands.
+    setReceiptState({ owner: requestOwner, ticketId: requestTicketId, receipt: null, error: '', loading: true })
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/eat/tickets/${encodeURIComponent(requestTicketId)}/receipt`)
+        const body = await res.json().catch(() => null)
+        if (!alive) return
+        if (!res.ok || !body?.receipt) {
+          // Message SERVEUR affiché tel quel quand il existe (règle projet). It is stamped,
+          // so a 403 B really received for this ticket is shown to B — and an error A
+          // received is never shown to anyone else.
+          setReceiptState({
+            owner: requestOwner, ticketId: requestTicketId, receipt: null,
+            error: (body?.error as string) || t('loadError'), loading: false,
+          })
+          return
+        }
+        setReceiptState({
+          owner: requestOwner, ticketId: requestTicketId,
+          receipt: body.receipt as ReceiptData, error: '', loading: false,
+        })
+      } catch {
+        if (!alive) return
+        setReceiptState({
+          owner: requestOwner, ticketId: requestTicketId, receipt: null,
+          error: t('loadError'), loading: false,
+        })
+      }
+    })()
+    return () => { alive = false }
+    // WHAT GUARANTEES SAFETY HERE. React flushes passive effects after paint, so a response
+    // for A can land between the commit of the B render and this cleanup, with `alive` still
+    // true, and commit a state stamped for A. That is harmless, and it is harmless because
+    // of the STAMP and the render-time gate above — never because the cleanup got there
+    // first. The cleanup's narrower job is to stop a late response for A from CLOBBERING a
+    // state already committed for B.
+  }, [liveStamp, scopeOk, id, retryTick, t])
 
-  // Fetch gaté sur la session (patron /eat/orders) ; si la session tombe
-  // pendant que la page reste ouverte, le reçu est PURGÉ.
-  useEffect(() => {
-    if (authStatus === 'authenticated') load()
-  }, [authStatus, load])
-  useEffect(() => {
-    if (authStatus === 'unauthenticated') { setReceipt(null); setLoading(false) }
-  }, [authStatus])
+  /** Retry. It takes no scope from the frame that rendered it: it only bumps a counter, and
+   *  the effect above re-issues the request with the CURRENT identity and ticket. So a
+   *  handler captured under A, clicked after the session became B, cannot fetch as A — the
+   *  worst it can do is make B's own request happen again. */
+  const retry = () => setRetryTick((n) => n + 1)
 
   // Argent = lib/format-money (locale validée, jamais brute vers Intl).
   // 'eur' est la seule devise réelle ; tout autre code — y compris vide — est
@@ -162,7 +249,7 @@ export default function DineinReceiptScreen() {
       ) : error ? (
         <div className="rc-error" role="alert">
           <p>{error}</p>
-          <button type="button" className="gb-btn gb-btn--ghost" onClick={load}>{t('retry')}</button>
+          <button type="button" className="gb-btn gb-btn--ghost" onClick={retry}>{t('retry')}</button>
         </div>
       ) : receipt ? (
         <article className="rc-blocks">

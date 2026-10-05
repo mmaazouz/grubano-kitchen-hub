@@ -217,10 +217,19 @@ describe('AU — la PAGE du reçu est épinglée (revue : la surface livrée n�
   })
 
   it('⭐ session : fetch gaté authenticated + PURGE du reçu si la session tombe ; id encodé ; erreur AVANT reçu (jamais un reçu partiel)', () => {
-    expect(src).toContain("authStatus === 'authenticated'")
+    // Le gating de session est devenu un gating de PAIRE (propriétaire, ticket) — lot
+    // d'isolation du reçu, tests/eat-receipt-account-isolation.test.ts. Les quatre
+    // invariants de ce cas sont préservés, chacun sous sa forme actuelle et plus forte :
+    //   • fetch gaté sur une session utilisable  → scopeOk (authentifié ET id exploitable)
+    //   • PURGE si la session tombe              → la branche sans identité remet l'état à
+    //     zéro, et la grille de rendu le masque dès la même frame (avant tout effet)
+    //   • id encodé                              → encodeURIComponent(requestTicketId)
+    //   • erreur AVANT reçu                      → inchangé, épinglé ci-dessous
+    expect(src).toContain("const scopeOk = liveStamp !== null && liveStamp !== 'guest'")
     expect(src).toContain("authStatus === 'unauthenticated'")
-    expect(src).toContain('setReceipt(null)')
-    expect(src).toContain('encodeURIComponent(id)')
+    expect(src).toContain("if (!scopeOk || !id) {")
+    expect(src).toContain("setReceiptState({ owner: null, ticketId: null, receipt: null, error: '', loading: false })")
+    expect(src).toContain('encodeURIComponent(requestTicketId)')
     expect(src.indexOf(': error ?')).toBeGreaterThan(-1)
     expect(src.indexOf(': error ?')).toBeLessThan(src.indexOf(': receipt ?')) // ordre des états
   })
