@@ -80,6 +80,10 @@ interface RecentOrder {
   restaurantId?: string
 }
 
+/** Stable identity for the fail-closed empty row. Frozen, because every gated render
+ *  shares the one array. */
+const NO_RECENT: RecentOrder[] = Object.freeze([]) as unknown as RecentOrder[]
+
 /** Stable identity for the fail-closed empty list: a fresh [] per render would churn the
  *  memos that depend on it. Frozen, because every gated render shares the one array. */
 const NO_FAVS: string[] = Object.freeze([]) as unknown as string[]
@@ -96,7 +100,10 @@ export default function HomeScreen() {
   const [restaurants, setRestaurants] = useState<Restaurant[]>([])
   // WAVE 2 — distance du resto géocodé le plus proche (message honnête « rien tout près »)
   const [nearestKm, setNearestKm] = useState<number | null>(null)
-  const [recent, setRecent] = useState<RecentOrder[]>([])
+  /** RAW — read only through `recent` below: the cards AND the identity they were fetched
+   *  for. The row shows a restaurant name, an item count and a euro total per card, plus a
+   *  link into that restaurant, so it is the account's purchase history in miniature. */
+  const [recentState, setRecentState] = useState<{ owner: string | null; cards: RecentOrder[] }>({ owner: null, cards: [] })
   /** RAW — read only through the gate below: the ids AND the owner they were read for. */
   // ── FAVOURITES OWNER, RESOLVED DURING RENDER ───────────────────────────────────
   // The hearts belong to a session, so the identity has to be read in the same render as
@@ -106,10 +113,22 @@ export default function HomeScreen() {
   const { data: favSession, status: favSessionStatus } = useSession()
   const favLiveUserId = (favSession?.user as { id?: string } | undefined)?.id
   const favsOwner = favOwner(favSessionStatus, favLiveUserId)
+  /** The same value under the name it actually has: `favOwner` delegates to
+   *  sessionCartStamp, so this IS the live session identity — `u:<userId>` authenticated,
+   *  `guest` signed out, null while it resolves or when the id is unusable. Aliased rather
+   *  than re-derived: a second definition of identity is a second thing to get wrong. */
+  const liveOwner = favsOwner
 
   const [favsState, setFavsState] = useState<{ owner: string | null; ids: string[] }>({ owner: null, ids: [] })
   /** The ONLY list this screen may show: this owner's, or none. */
   const favs = favsOwner !== null && favsState.owner === favsOwner ? favsState.ids : NO_FAVS
+  /** The ONLY cards « Recommander » may show. Derived DURING RENDER, so the row of the
+   *  previous account disappears in the same frame the session changes — an effect would
+   *  run after that frame has already painted it. A signed-out visitor has no order
+   *  history, so 'guest' can never own this row either. */
+  const recent = liveOwner !== null && liveOwner !== 'guest' && recentState.owner === liveOwner
+    ? recentState.cards
+    : NO_RECENT
   const [loading, setLoading] = useState(true)
 
   // First visit of the session → play the splash once (real wiring, kept).
@@ -174,10 +193,29 @@ export default function HomeScreen() {
   // Recommander — the consumer's real recent orders (reorder). Signed-out / none →
   // empty → the whole section is omitted below.
   useEffect(() => {
+    // Nothing to ask for, and nobody to ask as: a visitor has no order history (the route
+    // answers 401), and an unresolved identity must not produce a request we could not
+    // attribute. So we do not call the endpoint at all, and we hold nothing.
+    if (liveOwner === null || liveOwner === 'guest') {
+      setRecentState({ owner: null, cards: [] })
+      return
+    }
+    // The identity this request is FOR, captured before it leaves. The response is stamped
+    // with this and never with whatever the session has become by the time it resolves.
+    const requestOwner = liveOwner
+    // DROP THE PREVIOUS ACCOUNT'S COPY. The gate already hides it, but this effect only
+    // re-runs when the identity CHANGED, so there is no reason to keep another account's
+    // purchase history in memory while we fetch this one's — and if the new request fails,
+    // nothing of theirs is left held either.
+    setRecentState({ owner: null, cards: [] })
     let alive = true
     fetch('/api/eat/orders')
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
+        // A non-2xx or a transport error commits NOTHING: an empty row stamped for B would
+        // say « B has never ordered », which a failure does not establish. The section is
+        // simply omitted by the `recent.length > 0` guard below, which is the honest
+        // outcome for an optional row.
         if (!alive || !d) return
         const cards = [...(d.current ?? []), ...(d.past ?? [])] as Array<{
           id: string; restaurantName: string; itemsCount: number; total: number; restaurantId?: string
@@ -192,11 +230,16 @@ export default function HomeScreen() {
           out.push({ id: c.id, restaurantName: c.restaurantName, itemsCount: c.itemsCount, total: c.total, restaurantId: c.restaurantId })
           if (out.length >= 8) break
         }
-        setRecent(out)
+        setRecentState({ owner: requestOwner, cards: out })
       })
       .catch(() => {})
     return () => { alive = false }
-  }, [])
+    // KEYED ON THE IDENTITY. With `[]` this never re-ran, and A → logout → B login begins
+    // and ends at 'authenticated', so B kept A's row for the life of the mount. Keying on
+    // it also makes the `alive` cleanup load-bearing rather than decorative: React runs it
+    // when the identity changes, so a request issued for A is disowned before it can
+    // resolve, whichever order the two responses arrive in.
+  }, [liveOwner])
 
 
   const cuisineWithMeta = useCallback(
