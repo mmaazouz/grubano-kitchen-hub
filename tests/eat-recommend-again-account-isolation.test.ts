@@ -65,46 +65,65 @@ function gate(status: string, userId: string | undefined, state: Stamped) {
 }
 
 /**
- * MODELLED: React's dependency comparison and cleanup. Every decision it makes, it makes by
- * calling the real favOwner; the dependency array it compares is pinned against the source
- * in case J, and the gate it applies is pinned in case S.
+ * MODELLED: React's two phases, honestly separated. `render()` computes what the frame shows
+ * and NOTHING else; `flushEffects()` is what runs after that frame has committed — the
+ * cleanup, the drop and the request. Collapsing them (as the first version of this model
+ * did) makes the model unable to express the window between the two, and lets an assertion
+ * about the raw state pass for a reason the real page does not provide.
+ *
+ * Every decision it makes, it makes by calling the real favOwner; the dependency array it
+ * compares, the capture order, the commit site and the non-2xx handling are all pinned
+ * against the source, so the model cannot quietly be kinder than the page.
  */
 function makePage() {
   let state: Stamped = { owner: null, cards: [] }
   let deps: string | null = null
   let alive: { v: boolean } | null = null
+  let pending: { status: string; userId: string | undefined } | null = null
   const requests: Array<{ forOwner: string; resolve: (cards: Card[] | null) => void }> = []
 
+  /** The RENDER phase: derive the frame. It touches no state — React would not let it. */
   function render(status: string, userId: string | undefined) {
-    const liveOwner = favOwner(status, userId)
-    const key = String(liveOwner)
-    if (key !== deps) {
-      if (alive) alive.v = false // the cleanup: `return () => { alive = false }`
-      deps = key
-      alive = null
-      if (liveOwner === null || liveOwner === 'guest') {
-        // the page does not call the endpoint at all in this state
-        state = { owner: null, cards: [] }
-      } else {
-        const mine = { v: true }
-        alive = mine
-        const requestOwner = liveOwner // captured BEFORE the request leaves
-        // the page drops the previous account's copy here (pinned in the source tests), so
-        // a failing request for B leaves nothing of A's held either
-        state = { owner: null, cards: [] }
-        requests.push({
-          forOwner: requestOwner,
-          resolve: (cards) => {
-            if (!mine.v) return      // disowned by the cleanup
-            if (cards === null) return // a non-2xx / transport error commits NOTHING
-            state = { owner: requestOwner, cards }
-          },
-        })
-      }
-    }
-    return { ...gate(status, userId, state), requests, raw: state }
+    const key = String(favOwner(status, userId))
+    if (key !== deps) pending = { status, userId }   // the deps changed: an effect is due
+    return { ...gate(status, userId, state), requests, raw: state, effectPending: pending !== null }
   }
-  return { render, requests }
+
+  /** AFTER the commit: cleanup, then the effect body. */
+  function flushEffects() {
+    if (!pending) return
+    const { status, userId } = pending
+    pending = null
+    const liveOwner = favOwner(status, userId)
+    deps = String(liveOwner)
+    if (alive) alive.v = false // the cleanup: `return () => { alive = false }`
+    alive = null
+    if (liveOwner === null || liveOwner === 'guest') {
+      // the page does not call the endpoint at all in this state
+      state = { owner: null, cards: [] }
+      return
+    }
+    const mine = { v: true }
+    alive = mine
+    const requestOwner = liveOwner // captured BEFORE the request leaves
+    state = { owner: null, cards: [] } // the previous account's copy is dropped here
+    requests.push({
+      forOwner: requestOwner,
+      resolve: (cards) => {
+        if (!mine.v) return        // disowned by the cleanup
+        if (cards === null) return // a non-2xx / transport error commits NOTHING
+        state = { owner: requestOwner, cards }
+      },
+    })
+  }
+
+  /** A full React turn: render, commit, run effects, and return the frame that was shown. */
+  function turn(status: string, userId: string | undefined) {
+    const frame = render(status, userId)
+    flushEffects()
+    return frame
+  }
+  return { render, flushEffects, turn, requests }
 }
 
 // ══ A–F : nothing of A's survives under B ════════════════════════════════════
@@ -175,12 +194,12 @@ describe('G–I — an identity that cannot be named owns nothing', () => {
 
   it('…and the page does not even CALL the endpoint without a usable identity', () => {
     const p = makePage()
-    p.render('loading', undefined)
-    p.render('unauthenticated', undefined)
-    p.render('authenticated', undefined)
+    p.turn('loading', undefined)
+    p.turn('unauthenticated', undefined)
+    p.turn('authenticated', undefined)
     expect(p.requests).toHaveLength(0)
     // …then a real identity arrives and exactly one request goes out
-    p.render('authenticated', A)
+    p.turn('authenticated', A)
     expect(p.requests.map((r) => r.forOwner)).toEqual([OWN_A])
   })
 })
@@ -190,13 +209,13 @@ describe('G–I — an identity that cannot be named owns nothing', () => {
 describe('J–L — an identity change refetches, and nothing else does', () => {
   it('J — A → B with status never leaving \'authenticated\' issues a new request', () => {
     const p = makePage()
-    p.render('authenticated', A)
+    p.turn('authenticated', A)
     p.requests[0].resolve(A_CARDS)
-    expect(p.render('authenticated', A).cards).toHaveLength(2)
+    expect(p.turn('authenticated', A).cards).toHaveLength(2)
 
     // This is exactly what `[]` could not do: both ends of A → logout → B login are
     // 'authenticated', so no new request was guaranteed and B kept A's row.
-    const asB = p.render('authenticated', B)
+    const asB = p.turn('authenticated', B)
     expect(p.requests.map((r) => r.forOwner)).toEqual([OWN_A, OWN_B])
     expect(asB.cards).toEqual([])          // and nothing of A's is shown while B's loads
     expect(asB.sectionShown).toBe(false)
@@ -204,20 +223,20 @@ describe('J–L — an identity change refetches, and nothing else does', () => 
 
   it('K — B → A refetches too, and never reuses the earlier response', () => {
     const p = makePage()
-    p.render('authenticated', B)
+    p.turn('authenticated', B)
     p.requests[0].resolve(B_CARDS)
-    p.render('authenticated', A)
+    p.turn('authenticated', A)
     expect(p.requests.map((r) => r.forOwner)).toEqual([OWN_B, OWN_A])
-    const mid = p.render('authenticated', A)
+    const mid = p.turn('authenticated', A)
     expect(mid.cards).toEqual([])          // B's row is not shown to A either
     p.requests[1].resolve(A_CARDS)
-    expect(p.render('authenticated', A).cards).toHaveLength(2)
+    expect(p.turn('authenticated', A).cards).toHaveLength(2)
   })
 
   it('L — re-rendering under the SAME identity issues no further request', () => {
     const p = makePage()
-    p.render('authenticated', A)
-    for (let i = 0; i < 25; i++) p.render('authenticated', A)
+    p.turn('authenticated', A)
+    for (let i = 0; i < 25; i++) p.turn('authenticated', A)
     expect(p.requests).toHaveLength(1)
   })
 })
@@ -227,45 +246,45 @@ describe('J–L — an identity change refetches, and nothing else does', () => 
 describe('M–Q — a response for A can never become B\'s row', () => {
   it('M — A in flight, session becomes B, B resolves, THEN A resolves late', () => {
     const p = makePage()
-    p.render('authenticated', A)                 // A's request starts
-    p.render('authenticated', B)                 // the cleanup disowns it
+    p.turn('authenticated', A)                 // A's request starts
+    p.turn('authenticated', B)                 // the cleanup disowns it
     p.requests[1].resolve(B_CARDS)               // B lands first
-    expect(p.render('authenticated', B).cards.map((c) => c.id)).toEqual(['order-B-1'])
+    expect(p.turn('authenticated', B).cards.map((c) => c.id)).toEqual(['order-B-1'])
 
     p.requests[0].resolve(A_CARDS)               // A lands LATE
-    const after = p.render('authenticated', B)
+    const after = p.turn('authenticated', B)
     expect(after.cards.map((c) => c.id)).toEqual(['order-B-1'])   // B's row intact
     expect(JSON.stringify(after.cards)).not.toContain(A_RESTAURANT)
   })
 
   it('N — A in flight, session becomes B, A resolves FIRST, then B', () => {
     const p = makePage()
-    p.render('authenticated', A)
-    p.render('authenticated', B)
+    p.turn('authenticated', A)
+    p.turn('authenticated', B)
     p.requests[0].resolve(A_CARDS)               // A lands first, already disowned
-    const afterA = p.render('authenticated', B)
+    const afterA = p.turn('authenticated', B)
     expect(afterA.cards).toEqual([])
     expect(afterA.sectionShown).toBe(false)
     expect(JSON.stringify(afterA.raw)).not.toContain(A_RESTAURANT)   // not even in state
 
     p.requests[1].resolve(B_CARDS)
-    expect(p.render('authenticated', B).cards.map((c) => c.id)).toEqual(['order-B-1'])
+    expect(p.turn('authenticated', B).cards.map((c) => c.id)).toEqual(['order-B-1'])
   })
 
   it('O — a response for THIS identity is visible, which is the point of the gate', () => {
     const p = makePage()
-    p.render('authenticated', B)
+    p.turn('authenticated', B)
     p.requests[0].resolve(B_CARDS)
-    const g = p.render('authenticated', B)
+    const g = p.turn('authenticated', B)
     expect(g.cards).toHaveLength(1)
     expect(g.sectionShown).toBe(true)
   })
 
   it('P — an EMPTY response for B omits the section honestly', () => {
     const p = makePage()
-    p.render('authenticated', B)
+    p.turn('authenticated', B)
     p.requests[0].resolve([])
-    const g = p.render('authenticated', B)
+    const g = p.turn('authenticated', B)
     expect(g.cards).toEqual([])
     expect(g.sectionShown).toBe(false)     // omitted, and it is B's own emptiness
     expect(g.raw).toEqual({ owner: OWN_B, cards: [] })
@@ -273,11 +292,11 @@ describe('M–Q — a response for A can never become B\'s row', () => {
 
   it('Q — a non-2xx for B commits NOTHING: no card of A\'s, and no fabricated row for B', () => {
     const p = makePage()
-    p.render('authenticated', A)
+    p.turn('authenticated', A)
     p.requests[0].resolve(A_CARDS)
-    p.render('authenticated', B)
+    p.turn('authenticated', B)
     p.requests[1].resolve(null)            // 401 / 500 / unparseable body
-    const g = p.render('authenticated', B)
+    const g = p.turn('authenticated', B)
     expect(g.cards).toEqual([])
     expect(g.sectionShown).toBe(false)
     // the state was NOT overwritten with an empty row stamped for B — a failure does not
@@ -406,10 +425,16 @@ describe('R/S — the page derives the row from the gated value, and only from i
 
 // ══ §11 — the rest of /eat, re-inventoried ══════════════════════════════════
 
-describe('the COMPLETE useState inventory of /eat', () => {
-  it('every piece of state is accounted for, and none of it can speak for another account', () => {
-    // The whole list is asserted, so adding state later fails this test and forces the
-    // author to say why it is safe — which is the only way an inventory stays true.
+describe('the useState inventory of /eat', () => {
+  it('every useState is accounted for — and see the field enumeration for the real closure', () => {
+    // NARROWED, because the earlier title and comment claimed completeness this matcher
+    // does not have: it sees `const [x, setX] = useState` and nothing else, so a useRef, a
+    // module-level `let`, or the same useState with a setter not named `set*` all escape
+    // it. A reviewer proved that by inserting a useRef holding the cards and rendering
+    // A's restaurant name on the first frame — 25/25 green. What actually closes the
+    // question is the enumeration over the FIELD names in the review-round block below:
+    // an enumeration over containers can always be escaped by choosing another container,
+    // an enumeration over the data cannot, because a leak has to read a field to paint it.
     const src = executable(read(PAGE))
     const body = src.slice(src.indexOf('export default function HomeScreen'))
     expect(body.length, 'the component body was found').toBeGreaterThan(0)
@@ -434,13 +459,27 @@ describe('the COMPLETE useState inventory of /eat', () => {
     expect(src).toMatch(/const favs = favsOwner !== null/)
   })
 
-  it('the geolocation state really is device-scoped, not account-scoped', () => {
-    // Stated rather than assumed: nearestKm is computed from the restaurant list and the
-    // device coords, with no identity anywhere in its derivation.
+  it('nearestKm is a derived NUMBER; the position it derives from is another lot\'s question', () => {
+    // WITHDRAWN AS WRITTEN. This case used to be titled « the geolocation state really is
+    // device-scoped, not account-scoped » and sliced 400 characters from the first
+    // occurrence of `setNearestKm` — which landed on the useState declaration and a
+    // neighbouring doc comment, not on the derivation it claimed to judge. Worse, the
+    // conclusion was wrong: lib/use-geolocation.ts stamps its PERSISTED cache by identity
+    // precisely because the cached fix is not only coordinates — /api/geo/reverse turns it
+    // into a postal label — so the repository itself treats that position as
+    // account-scoped. This page renders that label (`coords?.label`).
+    //
+    // What this case can honestly assert is narrower: the number is derived from the API
+    // response and names no identity. Whether the hook's IN-MEMORY coords survive an
+    // identity change in an open mount is a separate subsystem, reported for its own lot.
     const src = executable(read(PAGE))
     expect(src).toMatch(/const \{ coords, status, request, clear \} = useGeolocation\(\)/)
-    const nearest = src.slice(src.indexOf('setNearestKm'))
-    expect(nearest.slice(0, 400)).not.toMatch(/liveOwner|favsOwner|favLiveUserId/)
+    // the derivation itself, anchored on the assignment and bounded to it
+    const i = src.indexOf("setNearestKm(typeof d.nearestKm === 'number' ? d.nearestKm : null)")
+    expect(i, 'the nearestKm derivation moved — this guard would be vacuous').toBeGreaterThan(-1)
+    expect(src.slice(i, i + 80)).not.toMatch(/liveOwner|favsOwner|favLiveUserId/)
+    // and the hook's label IS rendered here, which is why the question belongs to that lot
+    expect(src).toMatch(/\{coords\?\.label && <span>\{coords\.label\}<\/span>\}/)
   })
 
   it('the lot touched nothing it was told not to touch', () => {
@@ -457,5 +496,176 @@ describe('the COMPLETE useState inventory of /eat', () => {
     for (const f of ['app/[locale]/eat/orders/page.tsx', 'lib/eat-addresses.ts', 'lib/supply-cart.ts']) {
       expect(read(f).length, f).toBeGreaterThan(100)
     }
+  })
+})
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+// REVIEW ROUND — what an independent adversarial pass found in this suite
+// ══════════════════════════════════════════════════════════════════════════════
+//
+// Twenty findings confirmed. Most were here, in the proofs, not in the page — and the
+// worst of them was that THE SUITE STAYS GREEN AGAINST A REAL RE-LEAK. The inventory
+// below enumerates `useState` tuples whose setter is named `set*`, so a `useRef`, a
+// module-level `let`, or the very same useState with a setter called `assignLeak` all
+// escape it. A reviewer inserted a useRef holding the fetched cards and rendered
+// `{leakRef.current[0].restaurantName}` on the first frame — exactly the P1 this lot
+// fixes, in a different container — and the suite reported 25/25.
+//
+// THE LESSON, and it generalises past this file: an enumeration over CONTAINERS can
+// always be escaped by choosing another container. An enumeration over the DATA cannot:
+// a leak has to READ a field to paint it. So the closed set below is over the field
+// names, not over the state names.
+
+describe('the review round — closed over the DATA, not over the container', () => {
+  const src = executable(read(PAGE))
+
+  /** Every trimmed line of the real file that names a field, in order. */
+  const linesNaming = (field: string) =>
+    src.split('\n').filter((l) => new RegExp(`(?<![\\w$])${field}(?![\\w$])`).test(l)).map((l) => l.trim())
+
+  it('CLOSED ENUMERATION over restaurantName — a second holder cannot paint it', () => {
+    expect(linesNaming('restaurantName')).toEqual([
+      'restaurantName: string',                                     // the interface
+      'id: string; restaurantName: string; itemsCount: number; total: number; restaurantId?: string', // the cast
+      'out.push({ id: c.id, restaurantName: c.restaurantName, itemsCount: c.itemsCount, total: c.total, restaurantId: c.restaurantId })',
+      '<b>{o.restaurantName}</b>',                                  // inside recent.map, the ONLY render
+    ])
+  })
+
+  it('CLOSED ENUMERATION over itemsCount and the euro total', () => {
+    expect(linesNaming('itemsCount')).toEqual([
+      'itemsCount: number',
+      'id: string; restaurantName: string; itemsCount: number; total: number; restaurantId?: string',
+      'out.push({ id: c.id, restaurantName: c.restaurantName, itemsCount: c.itemsCount, total: c.total, restaurantId: c.restaurantId })',
+      "<span>{t('itemsAndTotal', { count: o.itemsCount, total: formatEuros(o.total, locale) })}</span>",
+    ])
+  })
+
+  it('CLOSED ENUMERATION over restaurantId — the link B must never be able to follow', () => {
+    expect(linesNaming('restaurantId')).toEqual([
+      'restaurantId?: string',
+      'id: string; restaurantName: string; itemsCount: number; total: number; restaurantId?: string',
+      'const k = c.restaurantId ?? c.id',                           // the de-dup key
+      'out.push({ id: c.id, restaurantName: c.restaurantName, itemsCount: c.itemsCount, total: c.total, restaurantId: c.restaurantId })',
+      'onClick={() => o.restaurantId && router.push(`/eat/r/${o.restaurantId}`)}',
+      'style={o.restaurantId ? { backgroundImage: `url(${getRestaurantCover(o.restaurantId)})` } : undefined}',
+    ])
+  })
+
+  it('…and there is NO other container that could hold the cards', () => {
+    // The three the reviewer actually used to escape the useState inventory.
+    expect(src).not.toMatch(/useRef/)
+    expect(src.split('\n').filter((l) => /^let /.test(l)), 'module-level mutable state').toEqual([])
+    // exactly ONE piece of state is typed to hold the cards
+    expect((src.match(/useState<\{ owner: string \| null; cards: RecentOrder\[\] \}>/g) ?? []).length).toBe(1)
+    // FOUR mentions of the card array type, counted not guessed: twice on the NO_RECENT
+    // line (the annotation and the cast), once in the state's type, once on the local the
+    // de-dup loop fills. A fifth would be a new holder.
+    expect((src.match(/RecentOrder\[\]/g) ?? []).length, 'every mention of the card array type').toBe(4)
+    expect(src).toMatch(/const NO_RECENT: RecentOrder\[\] = Object\.freeze\(\[\]\) as unknown as RecentOrder\[\]/)
+    expect(src).toMatch(/const out: RecentOrder\[\] = \[\]/)
+  })
+
+  it('CLOSED ENUMERATION over the WRITE sites, not only the reads', () => {
+    // Case S closes the READ side. A reviewer added a commit site stamped for the wrong
+    // owner and the suite stayed green, because nothing enumerated the writes.
+    const writes = src.split('\n').filter((l) => /setRecentState\(/.test(l)).map((l) => l.trim())
+    expect(writes).toEqual([
+      'setRecentState({ owner: null, cards: [] })',                 // no usable identity
+      'setRecentState({ owner: null, cards: [] })',                 // the drop, before the request
+      'setRecentState({ owner: requestOwner, cards: out })',        // the only commit of data
+    ])
+    // the only commit of DATA is stamped with the captured owner, never with anything else
+    expect((src.match(/setRecentState\(\{ owner: requestOwner/g) ?? []).length).toBe(1)
+    expect(src).not.toMatch(/setRecentState\(\{ owner: liveOwner/)
+    expect(src).not.toMatch(/setRecentState\(\{ owner: favsOwner/)
+  })
+
+  it('the gate is pinned WHOLE, so widening the identity cannot stay green', () => {
+    // The earlier pins were prefix matches (`const recent = liveOwner !== null`), which
+    // survive dropping the guest term or the stamp comparison. Both halves are pinned as
+    // one expression now.
+    expect(src).toMatch(
+      /const recent = liveOwner !== null && liveOwner !== 'guest' && recentState\.owner === liveOwner\s*\n\s*\? recentState\.cards\s*\n\s*: NO_RECENT/,
+    )
+    expect(src).toMatch(
+      /if \(liveOwner === null \|\| liveOwner === 'guest'\) \{\s*\n\s*setRecentState\(\{ owner: null, cards: \[\] \}\)\s*\n\s*return\s*\n\s*\}/,
+    )
+  })
+
+  it('ANGLE 3 — what is guaranteed in the window before the effect runs', () => {
+    // The project owner is right that the drop happens in the EFFECT, after the B render
+    // has committed, so the data is NOT removed at the same instant the session changes.
+    // The model now has React's two phases, so the window exists and can be asserted
+    // honestly instead of being collapsed away.
+    const p = makePage()
+    p.turn('authenticated', A)
+    p.requests[0].resolve(A_CARDS)
+    expect(p.turn('authenticated', A).cards).toHaveLength(2)
+
+    // THE FRAME ITSELF: render for B, nothing else has run yet.
+    const frame = p.render('authenticated', B)
+    expect(frame.effectPending).toBe(true)        // the effect has NOT run
+    expect(frame.cards).toEqual([])               // …and nothing of A's is shown
+    expect(frame.sectionShown).toBe(false)
+    expect(frame.raw.owner).toBe(`u:${A}`)        // it IS still held — stated, not hidden
+    expect(JSON.stringify(frame.raw)).toContain(A_RESTAURANT)
+
+    // What makes that harmless is the gate, and the fact that no card exists to carry a
+    // handler: the row is built by recent.map over the GATED value.
+    expect(src).toMatch(/\{recent\.map\(\(o, i\) => \(/)
+    expect(src).toMatch(/onClick=\{\(\) => o\.restaurantId && router\.push\(`\/eat\/r\/\$\{o\.restaurantId\}`\)\}/)
+
+    // …and then the effect runs and it is physically gone.
+    p.flushEffects()
+    const after = p.render('authenticated', B)
+    expect(after.raw).toEqual({ owner: null, cards: [] })
+    expect(JSON.stringify(after)).not.toContain(A_RESTAURANT)
+  })
+
+  it('ANGLE 2/6 — a late response for A commits, and the GATE is what makes it harmless', () => {
+    // The page comment used to claim the cleanup disowns A's request « before it can
+    // resolve ». React flushes passive effects after paint, so a response landing between
+    // the B commit and the effect still has alive === true and still commits. Asserting
+    // the real behaviour rather than the comfortable one.
+    const p = makePage()
+    p.turn('authenticated', A)
+    const frame = p.render('authenticated', B)    // committed, effects not flushed
+    expect(frame.effectPending).toBe(true)
+    p.requests[0].resolve(A_CARDS)                // A's response lands in the window
+    const stillB = p.render('authenticated', B)
+    expect(stillB.raw.owner).toBe(`u:${A}`)       // it DID commit…
+    expect(stillB.cards).toEqual([])              // …and it is invisible, by the stamp
+    expect(stillB.sectionShown).toBe(false)
+    // the source now names the right mechanism
+    expect(read(PAGE)).toContain('WHAT ACTUALLY GUARANTEES SAFETY HERE')
+    expect(read(PAGE)).not.toMatch(/disowned before it can\s*\n?\s*\/\/ resolve/)
+  })
+
+  it('A → B → C with three requests in flight: no owner ever sees another\'s row', () => {
+    const C = 'user-C'
+    const p = makePage()
+    p.turn('authenticated', A)
+    p.turn('authenticated', B)
+    p.turn('authenticated', C)
+    expect(p.requests.map((r) => r.forOwner)).toEqual([`u:${A}`, `u:${B}`, `u:${C}`])
+    // every arrival order, with C live throughout
+    p.requests[1].resolve(B_CARDS)
+    expect(p.render('authenticated', C).cards).toEqual([])
+    p.requests[0].resolve(A_CARDS)
+    expect(p.render('authenticated', C).cards).toEqual([])
+    p.requests[2].resolve([{ id: 'order-C-1', restaurantName: 'Chez C', itemsCount: 1, total: 5, restaurantId: 'resto-C' }])
+    const asC = p.render('authenticated', C)
+    expect(asC.cards.map((c) => c.id)).toEqual(['order-C-1'])
+    expect(JSON.stringify(asC)).not.toContain(A_RESTAURANT)
+    expect(JSON.stringify(asC)).not.toContain('Chez B')
+  })
+
+  it('the component body is located by an assertion that can actually fail', () => {
+    // `expect(body.length).toBeGreaterThan(0)` could never fail: an indexOf miss yields
+    // slice(-1), whose length is 1. The -1 trap, for the third time in this project.
+    const i = src.indexOf('export default function HomeScreen')
+    expect(i, 'the component body anchor moved — the inventory would be vacuous').toBeGreaterThan(-1)
   })
 })

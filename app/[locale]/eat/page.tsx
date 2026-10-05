@@ -203,10 +203,15 @@ export default function HomeScreen() {
     // The identity this request is FOR, captured before it leaves. The response is stamped
     // with this and never with whatever the session has become by the time it resolves.
     const requestOwner = liveOwner
-    // DROP THE PREVIOUS ACCOUNT'S COPY. The gate already hides it, but this effect only
-    // re-runs when the identity CHANGED, so there is no reason to keep another account's
-    // purchase history in memory while we fetch this one's — and if the new request fails,
-    // nothing of theirs is left held either.
+    // DROP THE PREVIOUS ACCOUNT'S COPY — and be precise about WHEN. The render-time gate
+    // above stopped showing it in the frame the session changed; THIS runs later, in the
+    // effect, after that frame has committed. So the two are not simultaneous, and the
+    // guarantee for the gap is not "it is gone" but "it is unreachable": the gate fails in
+    // that frame and every later one, and the only handler on a card is created inside
+    // `recent.map(...)`, so with the row empty no card and therefore no handler exists.
+    // This effect only re-runs when the identity CHANGED, so there is no reason to keep
+    // another account's purchase history in memory while we fetch this one's — and if the
+    // new request fails, nothing of theirs is left held either.
     setRecentState({ owner: null, cards: [] })
     let alive = true
     fetch('/api/eat/orders')
@@ -235,10 +240,17 @@ export default function HomeScreen() {
       .catch(() => {})
     return () => { alive = false }
     // KEYED ON THE IDENTITY. With `[]` this never re-ran, and A → logout → B login begins
-    // and ends at 'authenticated', so B kept A's row for the life of the mount. Keying on
-    // it also makes the `alive` cleanup load-bearing rather than decorative: React runs it
-    // when the identity changes, so a request issued for A is disowned before it can
-    // resolve, whichever order the two responses arrive in.
+    // and ends at 'authenticated', so B kept A's row for the life of the mount.
+    //
+    // WHAT ACTUALLY GUARANTEES SAFETY HERE, because naming the wrong mechanism is how the
+    // right one gets deleted later. React flushes passive effects AFTER paint, so there is
+    // a real window between the commit of the B render and this cleanup: a response for A
+    // landing inside it still sees `alive === true` and still commits
+    // { owner: 'u:A', cards: A }. That is harmless, and it is harmless because of the
+    // STAMP and the render-time gate — the row is hidden in that frame and in every later
+    // one because its owner contradicts the live identity. The cleanup's job is narrower
+    // than it looks: it stops a late response for A from CLOBBERING a row already
+    // committed for B, which is a correctness problem for B rather than a leak of A's.
   }, [liveOwner])
 
 
