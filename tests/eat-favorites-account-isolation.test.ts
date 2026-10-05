@@ -278,17 +278,41 @@ describe('M–O — another owner\'s event, and a handler captured under A', () 
     expect(local.getItem(bucket(OWN_A))).toBe(frozenA)
   })
 
-  it('the owner is never declared on the server, where module state is shared', () => {
+  it('the owner is never DECLARED on the server, where module state is shared', () => {
+    // This one needs liveFavOwner to start null, so it cannot also carry a declared owner.
     const saved = (globalThis as { window?: unknown }).window
     delete (globalThis as { window?: unknown }).window
     try {
       setFavOwner(OWN_A)
       expect(getFavOwner()).toBeNull()
-      expect(readFavsForOwner(OWN_A)).toEqual([])
-      expect(toggleFavForOwner(OWN_A, R1)).toBeNull()
     } finally {
       ;(globalThis as { window?: unknown }).window = saved
     }
+  })
+
+  it('…and neither a READ nor a WRITE touches storage on the server', () => {
+    // The earlier version asserted all three in one case, and the other two passed for
+    // unrelated reasons: beforeEach had just cleared the store, so the read returned []
+    // because the bucket was ABSENT, and the write returned null through the
+    // declared-owner check — not through either window guard. Here the bucket EXISTS and
+    // the owner IS declared before window disappears, so the window guards are the only
+    // thing left to refuse.
+    toggleAs(OWN_A, R1)
+    expect(readFavsForOwner(OWN_A)).toEqual([R1])   // it really is readable first
+    const frozen = local.getItem(bucket(OWN_A))
+
+    const saved = (globalThis as { window?: unknown }).window
+    delete (globalThis as { window?: unknown }).window
+    try {
+      expect(getFavOwner()).toBe(OWN_A)             // still declared from the client side
+      expect(readFavsForOwner(OWN_A)).toEqual([])   // …and yet reads nothing: the SSR guard
+      expect(toggleFavForOwner(OWN_A, R1)).toBeNull()
+      expect(toggleFavForOwner(OWN_A, R2)).toBeNull()
+    } finally {
+      ;(globalThis as { window?: unknown }).window = saved
+    }
+    expect(local.getItem(bucket(OWN_A))).toBe(frozen)   // nothing was written either
+    expect(readFavsForOwner(OWN_A)).toEqual([R1])       // and the client can read it again
   })
 })
 
@@ -472,6 +496,20 @@ describe('I–L — the five surfaces, each gated on the live owner', () => {
     expect(account).not.toMatch(/setFavOwner\(/)
   })
 
+  it('…and the enumeration is not the ONLY guard: each surface renders from the GATED name', () => {
+    // The enumeration says where the raw state may be NAMED. These say what the screens
+    // actually render from, so neither surface depends on that one assertion alone.
+    const home = executable(read(HOME))
+    expect(home).toMatch(/const on = favs\.includes\(r\.id\)/)
+    const account = executable(read(ACCOUNT))
+    expect(account).toMatch(/<span className="val">\{favCount\}<\/span>/)
+    const favsPage = executable(read(FAVS))
+    expect(favsPage).toMatch(/const favRestaurants = favs/)
+    const resto = executable(read(RESTO))
+    expect(resto).toMatch(/className=\{`hd__ic\$\{fav \? ' is-fav' : ''\}`\}/)
+    expect(resto).toMatch(/aria-pressed=\{fav\}/)
+  })
+
   it('K — the favourites FILTER on search works off the gated list', () => {
     const src = executable(read(SEARCH))
     // favCount and the per-row heart both read `favs`, which is the gated list
@@ -495,12 +533,18 @@ describe('I–L — the five surfaces, each gated on the live owner', () => {
       const src = executable(read(p))
       const re = new RegExp(`(?<![\\w$])${raw}(?![\\w$])`)
       const lines = src.split('\n').filter((l) => re.test(l)).map((l) => l.trim())
-      // the declaration, the gate, and the setters — never a read that bypasses the gate
+      // EXACTLY TWO places may name the raw state: its declaration and the gate. The
+      // earlier predicate also exempted "a line that starts with a setter" and "a line
+      // containing setFav", which tested how a line BEGINS and not what it READS — so
+      // `setFavFilter(favsState.ids.length > 0)`, an ungated read that would switch B's
+      // Favoris chip on because A had favourites, passed. Those clauses were dead weight
+      // on the real code anyway (the setters are `setFavsState`, which does not contain
+      // the lowercase name this regex looks for), so they bought nothing and let a bypass
+      // through. A whitelist with a clause nobody needs is a hole.
+      expect(lines.length, `${name}: expected the declaration and the gate`).toBe(2)
       for (const l of lines) {
-        const ok = l.startsWith(`const [${raw},`)          // declaration
+        const ok = l.startsWith(`const [${raw},`)          // the declaration
           || l.includes(`${raw}.owner === favsOwner`)       // the gate
-          || /^set\w+\(/.test(l) || l.includes('setFav')    // a write of it
-          || l.startsWith('?') || l.startsWith(':')         // the gate's continuation lines
         expect(ok, `${name}: ungated read -> ${l}`).toBe(true)
       }
     }
@@ -516,7 +560,13 @@ describe('the lot touched nothing it was told not to touch', () => {
     expect(lib).toMatch(/export function clearUserCart/)
     expect(lib).toMatch(/const PREFIX = 'grubano_cart\.v2\.'/)
     // and favourites never reach for the cart's buckets
-    const favPart = lib.slice(lib.indexOf('// ── Favorite restaurants, PER OWNER'))
+    // ANCHORED ON CODE, and a miss is a FAILURE. The anchor used to be the banner comment,
+    // and indexOf returns -1 on a miss — String.slice(-1) is the file's LAST CHARACTER, so
+    // both bans below passed against a one-character haystack. Rewording a comment was
+    // enough to void them.
+    const favAt = lib.indexOf("const FAV_PREFIX = 'grubano_favs.v2.'")
+    expect(favAt, 'the favourites anchor moved — this guard would be vacuous').toBeGreaterThan(-1)
+    const favPart = lib.slice(favAt)
     expect(favPart).not.toMatch(/grubano_cart/)
     expect(favPart).not.toMatch(/sessionStorage/)
     for (const f of ['lib/eat-addresses.ts', 'lib/supply-cart.ts', 'app/[locale]/eat/orders/page.tsx']) {
