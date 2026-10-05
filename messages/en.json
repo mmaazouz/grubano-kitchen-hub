@@ -3203,6 +3203,8 @@
       "guest": "Guest"
     },
     "orders": {
+      "loadError": "Your orders could not be loaded.",
+      "loadRetry": "Try again",
       "title": "My orders",
       "searchPlaceholder": "Search a restaurant, a dish…",
       "tabCurrent": "In progress",

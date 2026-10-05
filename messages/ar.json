@@ -3203,6 +3203,8 @@
       "guest": "ضيف"
     },
     "orders": {
+      "loadError": "تعذر تحميل طلباتك.",
+      "loadRetry": "إعادة المحاولة",
       "title": "طلباتي",
       "searchPlaceholder": "ابحث عن مطعم أو طبق…",
       "tabCurrent": "قيد التنفيذ",
