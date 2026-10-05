@@ -17,8 +17,10 @@ import {
   sessionCartStamp,
   CART_EVENT,
   showToast,
-  isFav,
-  toggleFav,
+  favOwner,
+  setFavOwner,
+  isFavForOwner,
+  toggleFavForOwner,
   type EatCartData,
   type EatCartLineItem,
   type EatCartItemOptions,
@@ -224,7 +226,8 @@ export default function RestaurantScreen() {
   // without tables (dark kitchen) never exposes a dead-end entry point.
   const [reservable, setReservable] = useState(false)
   const [mode, setMode] = useState<Mode>('takeaway')
-  const [fav, setFav] = useState(false)
+  /** RAW — read only through the gate below. */
+  const [favState, setFavState] = useState<{ owner: string | null; on: boolean }>({ owner: null, on: false })
   // RAW state — read only through the ownership gate below, never directly.
   const [cartState, setCart] = useState<EatCartData | null>(null)
   /** The identity the basket was read under (first-frame guard). */
@@ -321,9 +324,17 @@ export default function RestaurantScreen() {
       .finally(() => setLoading(false))
   }, [id])
 
+  // ── FAVOURITES OWNER, RESOLVED DURING RENDER ───────────────────────────────────
+  const favLiveUserId = (session?.user as { id?: string } | undefined)?.id
+  const favsOwner = favOwner(sessionStatus, favLiveUserId)
+  /** The only heart state this screen may show: lit for this owner, or not lit. */
+  const fav = favsOwner !== null && favState.owner === favsOwner && favState.on
+
   useEffect(() => {
-    if (id) setFav(isFav(id))
-  }, [id])
+    if (favsOwner === null) { setFavOwner(null); setFavState({ owner: null, on: false }); return }
+    setFavOwner(favsOwner)
+    if (id) setFavState({ owner: favsOwner, on: isFavForOwner(favsOwner, id) })
+  }, [id, favsOwner])
 
   const allItems = useMemo(() => menu.flatMap((c) => c.items), [menu])
   const categories = useMemo(() => ['Tout', ...menu.map((c) => c.category)], [menu])
@@ -630,8 +641,10 @@ export default function RestaurantScreen() {
               type="button"
               className={`hd__ic${fav ? ' is-fav' : ''}`}
               onClick={() => {
-                const now = toggleFav(id)
-                setFav(now)
+                if (favsOwner === null) return
+                const now = toggleFavForOwner(favsOwner, id)
+                if (now === null) return   // refused: nothing written, nothing announced
+                setFavState({ owner: favsOwner, on: now })
                 showToast(now ? t('addedToFavorites') : t('removedFromFavorites'))
               }}
               aria-label={fav ? t('favoriteRemove') : t('favoriteAdd')}

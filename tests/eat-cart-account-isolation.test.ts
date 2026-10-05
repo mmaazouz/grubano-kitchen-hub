@@ -714,9 +714,19 @@ describe('the guard is first, and nothing else moved', () => {
     // Asserted by content, not by digest: these are large files and the point is that the
     // cart fix is client-side plus one server guard.
     const cartLib = read('lib/eat-cart.ts')
-    expect(cartLib, 'favourites are a SEPARATE lot').toContain("const FAV_KEY = 'grubano_favs'")
-    expect(cartLib).toMatch(/export function toggleFav/)
-    expect(cartLib).not.toMatch(/favOwner|FAV_PREFIX/)
+    // This pin used to record favourites as a KNOWN GAP, asserting the global
+    // `grubano_favs` key was still there and deliberately banning any owner scoping. That
+    // separate lot has since been done (tests/eat-favorites-account-isolation.test.ts), so
+    // the marker is inverted rather than deleted: favourites are now per owner, and the
+    // ambiguous global API is gone.
+    expect(cartLib).not.toContain("const FAV_KEY = 'grubano_favs'")
+    expect(cartLib).not.toMatch(/export function toggleFav\(/)
+    expect(cartLib).toMatch(/const FAV_PREFIX = 'grubano_favs\.v2\.'/)
+    expect(cartLib).toMatch(/export function toggleFavForOwner/)
+    // …and what THIS lot owns is still intact: the cart keeps its own buckets and its
+    // explicit promotion, which the favourites rule (never promote) does not transpose to.
+    expect(cartLib).toMatch(/const PREFIX = 'grubano_cart\.v2\.'/)
+    expect(cartLib).toMatch(/export function promoteGuestCartToUser/)
     for (const f of ['lib/eat-addresses.ts', 'lib/use-geolocation.ts', 'lib/supply-cart.ts']) {
       expect(read(f).length, f).toBeGreaterThan(100) // present and not emptied
     }

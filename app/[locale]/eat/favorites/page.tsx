@@ -5,7 +5,11 @@ import { useTranslations, useLocale } from 'next-intl'
 import { Link, useRouter } from '@/navigation'
 import { formatCuisineList } from '@/lib/categories'
 import { formatDistance } from '@/lib/format'
-import { readFavs, toggleFav, FAV_EVENT, showToast } from '@/lib/eat-cart'
+import {
+  favOwner, setFavOwner, readFavsForOwner, toggleFavForOwner,
+  favEventIsMine, favStorageIsMine, FAV_EVENT, showToast,
+} from '@/lib/eat-cart'
+import { useSession } from 'next-auth/react'
 import { getRestaurantCover } from '@/lib/food-images'
 // gb-foundation FIRST: gb-tokens.css opens with `@import …Material+Symbols…`, valid
 // only when it is the route stylesheet's first rule — keep it before page CSS so the
@@ -40,6 +44,10 @@ interface Restaurant {
 
 const TINTS = ['t1', 't2', 't3', 't4', 't5', 't6']
 
+/** Stable identity for the fail-closed empty list: a fresh [] per render would churn the
+ *  memos that depend on it. Frozen, because every gated render shares the one array. */
+const NO_FAVS: string[] = Object.freeze([]) as unknown as string[]
+
 export default function FavoritesScreen() {
   const t = useTranslations('eat.favorites')
   const tc = useTranslations('common')
@@ -48,25 +56,55 @@ export default function FavoritesScreen() {
   const router = useRouter()
 
   const [all, setAll] = useState<Restaurant[]>([])
-  const [favs, setFavs] = useState<string[]>([])
+  // ── FAVOURITES OWNER, RESOLVED DURING RENDER ───────────────────────────────────
+  // The hearts belong to a session, so the identity has to be read in the same render as
+  // the session — an effect runs after the frame that has already painted the previous
+  // account's hearts. `null` while the session resolves, and null for an authenticated
+  // session with no usable id: fail closed.
+  const { data: favSession, status: favSessionStatus } = useSession()
+  const favLiveUserId = (favSession?.user as { id?: string } | undefined)?.id
+  const favsOwner = favOwner(favSessionStatus, favLiveUserId)
+
+  /** RAW — read only through the gate below: the ids AND the owner they were read for. */
+  const [favsState, setFavsState] = useState<{ owner: string | null; ids: string[] }>({ owner: null, ids: [] })
+  /** The ONLY list this screen may show: this owner's, or none. */
+  const favs = favsOwner !== null && favsState.owner === favsOwner ? favsState.ids : NO_FAVS
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<'resto' | 'dish'>('resto')
   const bold = (chunks: ReactNode) => <b>{chunks}</b>
 
   useEffect(() => {
-    setFavs(readFavs())
-    const sync = () => setFavs(readFavs())
-    window.addEventListener(FAV_EVENT, sync)
-    window.addEventListener('storage', sync)
+    if (favsOwner === null) {
+      // Unknown identity: declare nothing, hold nothing, show nothing.
+      setFavOwner(null)
+      setFavsState({ owner: null, ids: [] })
+      return
+    }
+    // Declared so the library can REFUSE a write for anyone else — including from a
+    // handler this render captured, clicked after the session has moved on.
+    setFavOwner(favsOwner)
+    const sync = () => setFavsState({ owner: favsOwner, ids: readFavsForOwner(favsOwner) })
+    sync()
+    // Both events are filtered BY OWNER: another account's change must not even cause a
+    // re-read here, and an event that names no owner is foreign (fail closed).
+    const onFav = (e: Event) => { if (favEventIsMine(e, favsOwner)) sync() }
+    const onStore = (e: StorageEvent) => { if (favStorageIsMine(e, favsOwner)) sync() }
+    window.addEventListener(FAV_EVENT, onFav)
+    window.addEventListener('storage', onStore)
+    return () => {
+      window.removeEventListener(FAV_EVENT, onFav)
+      window.removeEventListener('storage', onStore)
+    }
+  }, [favsOwner])
+
+  // The restaurant catalogue is public and identity-free, so it is fetched once and is not
+  // part of the favourites gate.
+  useEffect(() => {
     fetch('/api/restaurants?take=50')
       .then((r) => r.json())
       .then((d) => setAll(d.restaurants ?? []))
       .catch(() => {})
       .finally(() => setLoading(false))
-    return () => {
-      window.removeEventListener(FAV_EVENT, sync)
-      window.removeEventListener('storage', sync)
-    }
   }, [])
 
   // Real favorited restaurants, preserving the user's save order.
@@ -80,11 +118,15 @@ export default function FavoritesScreen() {
   // GLOBAL empty (CD empty block — hides tabs + hint) ONLY when the user has zero
   // restaurant favorites after load. The dish tab keeps the tabs visible (so the
   // user can switch back) and renders its own pane-local empty instead.
-  const restoEmpty = !loading && favRestaurants.length === 0
+  // « Aucun favori » is a statement about THIS account, so it waits for an identity: while
+  // the session is unresolved the list is empty for lack of an owner, not for lack of
+  // favourites.
+  const restoEmpty = !loading && favsOwner !== null && favRestaurants.length === 0
   const state = restoEmpty ? 'empty' : 'list'
 
   function remove(id: string) {
-    toggleFav(id)
+    if (favsOwner === null) return
+    if (toggleFavForOwner(favsOwner, id) === null) return   // refused: say nothing, do nothing
     showToast(t('removedToast'))
   }
 

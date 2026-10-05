@@ -302,34 +302,151 @@ export function showToast(message: string) {
   window.dispatchEvent(new CustomEvent(TOAST_EVENT, { detail: message }))
 }
 
-// ── Favorite restaurants (persisted in localStorage) ──────────────────────
-const FAV_KEY = 'grubano_favs'
+// ── Favorite restaurants, PER OWNER (persisted in localStorage) ───────────
+//
+// WHAT WAS WRONG. One key, `grubano_favs`, for the whole browser, with no identity in the
+// key and none in the value. A favourited restaurant R; A signed out; B signed in on the
+// same browser and saw R hearted, counted in « Favoris », listed on /eat/favorites and
+// filtering /eat/search. And it was worse than a read: when B un-hearted R, B rewrote that
+// same key, so A's favourite was DESTROYED. A cross-account leak of a preference, and a
+// destructive corruption in both directions.
+//
+// THE OWNER IS THE SESSION. `grubano_favs.v2.u.<userId>` for a signed-in account,
+// `grubano_favs.v2.guest` for a visitor, and the stored envelope REPEATS the owner, so a
+// value that landed under the wrong key — or was copied there — reads EMPTY instead of
+// reading as the current owner's.
+//
+// GUEST: a separate bucket, and NO promotion in either direction, ever. A visitor's hearts
+// stay the visitor's; signing in does not adopt them and signing out does not inherit the
+// account's. There is no product requirement for a transfer here, and inventing one is how
+// a preference crosses accounts. (The consumer CART does promote, on an explicit act of the
+// « compte au paiement » flow — that rule is the cart's and does not transpose.)
+//
+// LEGACY: the old global key is UNATTRIBUTABLE — it is the blob that leaked, and it may
+// hold hearts belonging to someone who is not the person signing in now. It is never read
+// and never written, by anyone: it is not migrated to the first account that connects, and
+// it is not deleted either, because destroying data this lot was only asked to ignore is
+// not ours to do. It simply becomes inert.
+//
+// The ambiguous global API (readFavs / isFav / toggleFav) is REMOVED rather than kept
+// alongside: a function that cannot say WHO is reading should not be reachable at all.
+const FAV_PREFIX = 'grubano_favs.v2.'
 export const FAV_EVENT = 'grubano:favs'
 
-export function readFavs(): string[] {
-  if (typeof window === 'undefined') return []
+/** `u:<userId>` or `guest` — the same token lib/eat-cart already uses for the cart. */
+export type FavOwner = string
+
+/** null = the identity is unknown (session still resolving, or no usable id) ⇒ fail closed. */
+let liveFavOwner: FavOwner | null = null
+
+type FavEnvelope = { owner: string; ids: string[] }
+
+/**
+ * The favourites owner a next-auth session implies. Available in the SAME render as the new
+ * session, which is what makes a first-frame guard possible: the owner is declared in an
+ * effect, and effects run AFTER the render that introduced the new session, so a component
+ * holding ids in state would paint the previous account's hearts for one committed frame.
+ *
+ * Delegates to sessionCartStamp so there is ONE definition of what a session's identity is,
+ * under a name that says favourites.
+ */
+export function favOwner(status: string, userId?: string | null): FavOwner | null {
+  return sessionCartStamp(status, userId)
+}
+
+/** The bucket for an owner. Both the key and the value name it. */
+export function favKeyFor(owner: FavOwner): string {
+  if (owner === 'guest') return `${FAV_PREFIX}guest`
+  return `${FAV_PREFIX}u.${owner.slice('u:'.length)}`
+}
+
+/**
+ * Declare the owner the browser currently belongs to, from the live session. Writes are
+ * re-validated against it, so a handler captured under A cannot write as A once the session
+ * is B — the guard the stale closure carries is not the one that decides.
+ */
+export function setFavOwner(owner: FavOwner | null): void {
+  if (typeof window === 'undefined') return // module state is shared across requests there
+  liveFavOwner = owner
+}
+
+export function getFavOwner(): FavOwner | null {
+  return liveFavOwner
+}
+
+/** This owner's favourites. [] for an unknown owner, and [] for anything unattributable. */
+export function readFavsForOwner(owner: FavOwner | null): string[] {
+  if (typeof window === 'undefined' || !owner) return []
   try {
-    const raw = localStorage.getItem(FAV_KEY)
-    return raw ? (JSON.parse(raw) as string[]) : []
+    const raw = localStorage.getItem(favKeyFor(owner))
+    if (!raw) return []
+    const parsed = JSON.parse(raw) as unknown
+    // v2 envelope ONLY. A bare array is the legacy shape or a hand-written value:
+    // unattributable, so it reads empty rather than as this owner's.
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return []
+    const env = parsed as Partial<FavEnvelope>
+    if (env.owner !== owner || !Array.isArray(env.ids)) return []
+    const out: string[] = []
+    for (const v of env.ids) if (typeof v === 'string' && v && !out.includes(v)) out.push(v)
+    return out
   } catch {
     return []
   }
 }
 
-export function isFav(id: string): boolean {
-  return readFavs().includes(id)
+export function isFavForOwner(owner: FavOwner | null, id: string): boolean {
+  if (!owner || !id) return false
+  return readFavsForOwner(owner).includes(id)
 }
 
-/** Toggle a restaurant favorite. Returns the new favorited state. */
-export function toggleFav(id: string): boolean {
-  const favs = readFavs()
+/**
+ * Toggle one restaurant for a NAMED owner. Returns the new state, or null when the write
+ * was REFUSED — which the caller must treat as "nothing happened".
+ *
+ * It refuses unless the owner it was asked to write for is the one currently declared. That
+ * is the whole point: the page that captured this handler may have been rendered under A,
+ * and the click may arrive after the session became B.
+ */
+export function toggleFavForOwner(owner: FavOwner | null, id: string): boolean | null {
+  if (typeof window === 'undefined' || !owner || !id) return null
+  if (liveFavOwner === null || owner !== liveFavOwner) return null
+  const favs = readFavsForOwner(owner)
   const exists = favs.includes(id)
   const next = exists ? favs.filter((f) => f !== id) : [...favs, id]
   try {
-    localStorage.setItem(FAV_KEY, JSON.stringify(next))
-    window.dispatchEvent(new CustomEvent(FAV_EVENT))
+    const key = favKeyFor(owner)
+    if (next.length === 0) localStorage.removeItem(key)
+    else localStorage.setItem(key, JSON.stringify({ owner, ids: next } as FavEnvelope))
+    // The event NAMES its owner, so a listener can tell its own change from someone else's.
+    window.dispatchEvent(new CustomEvent(FAV_EVENT, { detail: { owner } }))
   } catch {
-    /* ignore */
+    /* storage full / disabled — a favourite is a convenience */
   }
   return !exists
+}
+
+/**
+ * Is this FAV_EVENT this owner's? FAIL CLOSED: an event with no owner in its detail — an
+ * old bundle in another tab, or anything else dispatching the bare event — is foreign, so
+ * it is ignored rather than taken as a reason to re-read.
+ */
+export function favEventIsMine(e: Event, owner: FavOwner | null): boolean {
+  if (!owner) return false
+  const detail = (e as CustomEvent).detail as { owner?: unknown } | undefined
+  return !!detail && detail.owner === owner
+}
+
+/**
+ * Does this native `storage` event touch THIS owner's bucket? A change to another account's
+ * bucket must not even cause a re-read, let alone an adoption. `key === null` is
+ * localStorage.clear(), which concerns everyone.
+ */
+export function favStorageIsMine(e: StorageEvent, owner: FavOwner | null): boolean {
+  if (!owner) return false
+  return e.key === null || e.key === favKeyFor(owner)
+}
+
+/** Test-only: forget the declared owner between cases. */
+export function __resetFavOwner(): void {
+  liveFavOwner = null
 }
