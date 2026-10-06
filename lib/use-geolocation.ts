@@ -23,7 +23,25 @@ export interface GeoCoords {
   postcode?: string | null
 }
 
-export type GeoStatus = 'idle' | 'requesting' | 'granted' | 'denied' | 'unavailable'
+/**
+ * `denied` the user refused -- never retried, that would re-prompt.
+ * `timeout` the fix took too long. TRANSIENT and RETRYABLE: the device can locate itself,
+ *           it just did not manage it in the time allowed. This used to be folded into
+ *           `unavailable`, which the UI renders as « pas disponible sur cet appareil » --
+ *           a false statement -- and uses to DISABLE the controls, so one slow fix locked
+ *           the user out until a reload.
+ * `unavailable` POSITION_UNAVAILABLE from the platform. Transient and retryable too.
+ * `unsupported` no navigator.geolocation at all. The only state where disabling a control
+ *           is honest, because retrying genuinely cannot work.
+ */
+export type GeoStatus =
+  | 'idle'
+  | 'requesting'
+  | 'granted'
+  | 'denied'
+  | 'timeout'
+  | 'unavailable'
+  | 'unsupported'
 
 export interface UseGeolocation {
   coords: GeoCoords | null
@@ -86,6 +104,33 @@ export function setGeoOwner(owner: GeoOwner | null): void {
 export function getGeoEpoch(): number {
   return geoEpoch
 }
+
+/**
+ * The epoch whose acquisition is in flight, or null. ONE acquisition at a time, app-wide —
+ * not per component: every /eat page mounts two instances of this hook (the screen and the
+ * « Livrer à » sheet) and both expose the same `request`, so a gesture on each would open
+ * two platform requests, do two reverse-geocode round trips, and let the loser's answer land
+ * last and flip the screen back. Keyed on the EPOCH, so a « disable » or an identity change
+ * releases it: a request belonging to a bumped epoch can never hold the lock shut.
+ */
+let inFlightEpoch: number | null = null
+
+/**
+ * Admit a new acquisition, or refuse it because one is already running. Atomic on purpose —
+ * a separate « is it busy » read followed by a « mark it busy » write is two steps a second
+ * click can slip between. The UI also disables its controls while requesting, but that is
+ * presentation; THIS is the guarantee.
+ */
+export function geoBeginAcquisition(requestEpoch: number): boolean {
+  if (inFlightEpoch === requestEpoch) return false
+  inFlightEpoch = requestEpoch
+  return true
+}
+
+/** Released when the acquisition reaches a terminal state — never between the two attempts. */
+export function geoEndAcquisition(): void {
+  inFlightEpoch = null
+}
 export function getGeoOwner(): GeoOwner | null {
   return liveGeoOwner
 }
@@ -93,6 +138,7 @@ export function getGeoOwner(): GeoOwner | null {
 export function __resetGeoOwner(): void {
   liveGeoOwner = null
   geoEpoch = 0
+  inFlightEpoch = null
 }
 
 /** The stamped shape held in React state. */
@@ -248,6 +294,7 @@ export function geoClear(prev: GeoState, owner: GeoOwner): GeoState {
  */
 export function geoInvalidateInFlight(): void {
   geoEpoch += 1
+  geoEndAcquisition()
 }
 
 /**
@@ -258,6 +305,48 @@ export function geoRehydrate(liveOwner: GeoOwner | null): GeoState {
   if (liveOwner === null) return { owner: null, coords: null, status: 'idle' }
   const cached = readCachedFor(liveOwner)
   return { owner: liveOwner, coords: cached, status: cached ? 'granted' : 'idle' }
+}
+
+/**
+ * ATTEMPT 1 — quick, and happy to reuse a recent fix.
+ *
+ * NOT high accuracy, on purpose. This position only ever orders a restaurant list by
+ * proximity, where a kilometre of error changes nothing; `enableHighAccuracy` buys GPS-grade
+ * precision we have no use for, at the cost of time and battery, and it is the setting most
+ * likely to make the acquisition that fails here. The two attempts therefore differ on the
+ * axes that actually caused the failure: PATIENCE and CACHE TOLERANCE.
+ */
+export const GEO_ATTEMPT_1: PositionOptions = {
+  enableHighAccuracy: false,
+  maximumAge: 60_000,   // a fix from the last minute is good enough to sort a list
+  timeout: 8_000,
+}
+
+/**
+ * ATTEMPT 2 — the permissive fallback, used only after a TIMEOUT or POSITION_UNAVAILABLE.
+ * Patient enough for a cold start and willing to accept a ten-minute-old fix.
+ */
+export const GEO_ATTEMPT_2: PositionOptions = {
+  enableHighAccuracy: false,
+  maximumAge: 600_000,
+  timeout: 30_000,
+}
+
+/** The platform's own error codes, named rather than compared as magic numbers. */
+export const GEO_ERR = { PERMISSION_DENIED: 1, POSITION_UNAVAILABLE: 2, TIMEOUT: 3 } as const
+
+/**
+ * THE RETRY DECISION, pure and exported: attempt `attempt` failed with `code` -- what now?
+ * `'retry'` means run the permissive attempt; anything else is the final status.
+ *
+ * ONE definition, and the tests call it rather than restating it. A refusal is never
+ * retried: re-prompting a user who just said no is hostile, and the browser would not ask
+ * again anyway. A timeout is never reported as a missing capability.
+ */
+export function geoAfterError(code: number, attempt: 1 | 2): GeoStatus | 'retry' {
+  if (code === GEO_ERR.PERMISSION_DENIED) return 'denied'
+  if (attempt === 1) return 'retry'
+  return code === GEO_ERR.TIMEOUT ? 'timeout' : 'unavailable'
 }
 
 /** Is this GEO_EVENT this owner's? FAIL CLOSED: an event naming no owner is foreign. */
@@ -314,11 +403,13 @@ export function useGeolocation(liveOwner: GeoOwner | null): UseGeolocation {
     const commit = (next: Partial<GeoState>) =>
       setState((prev) => geoCommit(prev, requestOwner, requestEpoch, next))
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
-      commit({ status: 'unavailable' })
+      commit({ status: 'unsupported' })
       return
     }
+    // A SECOND CLICK IS NOT A SECOND ACQUISITION. It joins the one already running.
+    if (!geoBeginAcquisition(requestEpoch)) return
     commit({ status: 'requesting' })
-    navigator.geolocation.getCurrentPosition(
+    const attemptWith = (attempt: 1 | 2) => navigator.geolocation.getCurrentPosition(
       (pos) => {
         // THE PROMPT CAN SIT OPEN FOR MINUTES. By the time the user taps « allow », the
         // session may be someone else's — so the position captured for A is dropped rather
@@ -329,6 +420,7 @@ export function useGeolocation(liveOwner: GeoOwner | null): UseGeolocation {
           lng: pos.coords.longitude,
           capturedAt: Date.now(),
         }
+        geoEndAcquisition()
         commit({ coords: next, status: 'granted' })
         persistFor(requestOwner, next)
         // WAVE 2 — reverse-geocode best-effort (proxy serveur → IGN) : enrichit la
@@ -351,15 +443,20 @@ export function useGeolocation(liveOwner: GeoOwner | null): UseGeolocation {
       },
       (err) => {
         if (!stillMine()) return
-        // PERMISSION_DENIED = 1, POSITION_UNAVAILABLE = 2, TIMEOUT = 3.
-        commit({ status: err.code === err.PERMISSION_DENIED ? 'denied' : 'unavailable' })
+        const outcome = geoAfterError(err.code, attempt)
+        if (outcome === 'retry') {
+          // The quick attempt did not land. Stay in `requesting` -- the screen keeps saying
+          // « localisation en cours » rather than flashing an error it is about to retract --
+          // and KEEP THE LOCK: the fallback is the same acquisition, not a new one.
+          attemptWith(2)
+          return
+        }
+        geoEndAcquisition()
+        commit({ status: outcome })
       },
-      {
-        enableHighAccuracy: false,
-        maximumAge: 1000 * 60 * 5, // 5 min cache from the browser layer
-        timeout: 10_000,
-      },
+      attempt === 1 ? GEO_ATTEMPT_1 : GEO_ATTEMPT_2,
     )
+    attemptWith(1)
   }, [liveOwner])
 
   const clear = useCallback(() => {

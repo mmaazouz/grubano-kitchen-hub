@@ -83,7 +83,17 @@ export default function GeolocSheet(
   /** The identity the saved list and `picked` were read under (first-frame guard). */
   const [addrStamp, setAddrStamp] = useState<string | null>(null)
   // Set when the user toggles geo ON from this overlay, so a successful grant advances.
-  const awaitingGrant = useRef(false)
+  /**
+   * WHAT THE NEXT SUCCESSFUL FIX IS FOR. Three different gestures in this sheet start an
+   * acquisition and they do NOT want the same thing afterwards, so one boolean cannot carry
+   * it: `none` — the permission switch, which only reflects state and must never navigate
+   * or close; `advance` — the step-1 primary button, whose job is to move the user on to
+   * the address step; `close` — « Utiliser ma position actuelle », which IS an explicit
+   * choice of destination, so a valid fix completes the selection and the sheet is done.
+   * Read once and CONSUMED, so a later render — a reverse-geocode landing, a parent
+   * re-render — cannot close the sheet a second time.
+   */
+  const intent = useRef<'none' | 'advance' | 'close'>('none')
 
   const geoOn = status === 'granted' && !!coords
 
@@ -118,7 +128,7 @@ export default function GeolocSheet(
     setStep('perm')
     setQuery('')
     setPicked(null)
-    awaitingGrant.current = false
+    intent.current = 'none'
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     return () => {
@@ -126,13 +136,21 @@ export default function GeolocSheet(
     }
   }, [open])
 
-  // When a grant lands after the user asked for it from here, advance to search.
+  // A VALID FIX, and only a valid fix, acts on the intent. `geoOn` is
+  // `status === 'granted' && !!coords`, so a timeout, a refusal or an unavailable position
+  // never reaches here and the sheet stays open on its error — which is the point.
+  //
+  // The RAW GPS success is enough: this does not wait for /api/geo/reverse. The postal
+  // label is an enrichment of a destination already chosen, and making the sheet linger
+  // until a third party answers would be a worse experience than the one being fixed.
   useEffect(() => {
-    if (geoOn && awaitingGrant.current) {
-      awaitingGrant.current = false
-      setStep('search')
-    }
-  }, [geoOn])
+    if (!geoOn) return
+    const want = intent.current
+    if (want === 'none') return
+    intent.current = 'none'          // consumed exactly once
+    if (want === 'close') onClose()
+    else setStep('search')
+  }, [geoOn, onClose])
 
   // Esc closes the overlay.
   useEffect(() => {
@@ -148,19 +166,25 @@ export default function GeolocSheet(
     if (geoOn) {
       clear()
     } else {
-      awaitingGrant.current = false // toggle reflects state; don't auto-advance from here
+      intent.current = 'none' // the switch only reflects state: never navigate, never close
       request()
     }
   }, [geoOn, clear, request])
 
+  // THE BUG. This button sits inside `.step-search` (geoloc.css keeps every step in the
+  // DOM and shows one via data-step), so when the position was already on its only action
+  // was `setStep('search')` — the step the button is already on. A pure no-op: no
+  // acquisition, no feedback, the sheet unchanged. And when the position was off it fired
+  // a request whose `requesting` state nothing rendered, so that branch looked identical.
+  //
+  // The button says « use my current position », so it acquires one, every time — including
+  // when a position is already held, because the held one can be a cached fix from a
+  // previous session and « actuelle » is a promise about NOW. No step change: we are
+  // already here, and the status line below reports the outcome in place.
   const useMyPosition = useCallback(() => {
-    if (geoOn) {
-      setStep('search')
-    } else {
-      awaitingGrant.current = true
-      request()
-    }
-  }, [geoOn, request])
+    intent.current = 'close'
+    request()
+  }, [request])
 
   const pickSaved = useCallback((a: EatAddress) => {
     setPicked(a)
@@ -248,13 +272,18 @@ export default function GeolocSheet(
                     <span className="geo-off-txt">{t('statusOffSub')}</span>
                   </span>
                 </div>
+                {/* `unavailable` and `timeout` are TRANSIENT, so they no longer disable
+                    this switch: folding a timeout into a permanent-sounding state and then
+                    locking the control is how one slow fix became « nothing works ». Only
+                    `unsupported` — no geolocation API at all — can honestly disable, plus
+                    `requesting` while an attempt is in flight. */}
                 <button
                   type="button"
                   className={`geo-switch${geoOn ? ' on' : ''}`}
                   role="switch"
                   aria-checked={geoOn}
                   aria-label={geoOn ? t('disableLocation') : t('enableLocation')}
-                  disabled={status === 'unavailable' || status === 'requesting'}
+                  disabled={status === 'requesting' || status === 'unsupported'}
                   onClick={toggleGeo}
                 >
                   <i />
@@ -283,10 +312,60 @@ export default function GeolocSheet(
                   </button>
                 )}
               </div>
-              <button type="button" className="geo-loc-btn" onClick={useMyPosition}>
-                <span className="ms" aria-hidden="true">my_location</span>
-                {t('useMyPosition')}
+              <button
+                type="button"
+                className="geo-loc-btn"
+                onClick={useMyPosition}
+                disabled={status === 'requesting' || status === 'unsupported'}
+                aria-busy={status === 'requesting'}
+              >
+                <span className="ms" aria-hidden="true">
+                  {status === 'requesting' ? 'progress_activity' : 'my_location'}
+                </span>
+                {status === 'requesting' ? t('locating') : t('useMyPosition')}
               </button>
+
+              {/* THE FEEDBACK THAT DID NOT EXIST. Nothing rendered for `requesting`, and
+                  nothing at all for a refusal, a timeout or an unavailable position — the
+                  sheet simply sat there. role=status / role=alert so a screen reader is
+                  told too. Manual entry stays available in every one of these states: the
+                  address field above is on this same step and is never disabled. */}
+              {status === 'requesting' && (
+                <p className="geo-loc-msg" role="status">{t('locatingHint')}</p>
+              )}
+              {/* A VISIBLE SUCCESS. Without this the acquisition finished in silence on
+                  this step: the button label went back to « Utiliser ma position actuelle »
+                  and nothing else changed, which reads exactly like the dead button this
+                  fix is about. The resolved postal address when the reverse-geocode has
+                  landed, the neutral « position détectée » otherwise — never an invented
+                  address. No step change: the user is on the address step and may still
+                  want a saved one. */}
+              {geoOn && (
+                <p className="geo-loc-msg geo-loc-msg--ok" role="status">
+                  <span className="ms" aria-hidden="true">check_circle</span>
+                  <span>{coords?.label || t('statusOnSub')}</span>
+                </p>
+              )}
+              {(status === 'denied' || status === 'timeout' || status === 'unavailable' || status === 'unsupported') && (
+                <p className="geo-loc-msg geo-loc-msg--err" role="alert">
+                  <span>
+                    {status === 'denied'
+                      ? t('errDenied')
+                      : status === 'timeout'
+                        ? t('errTimeout')
+                        : status === 'unsupported'
+                          ? t('errUnsupported')
+                          : t('errUnavailable')}
+                  </span>
+                  {/* A refusal and a missing API cannot be fixed by trying again, so no
+                      retry is offered there — offering one would be a lie. */}
+                  {(status === 'timeout' || status === 'unavailable') && (
+                    <button type="button" className="geo-retry" onClick={request}>
+                      {t('retry')}
+                    </button>
+                  )}
+                </p>
+              )}
 
               {/* Typeahead suggestions — CD « à venir » visual placeholder (no geocoding
                   provider wired): shown only when the user types, inert, never a real
@@ -381,18 +460,24 @@ export default function GeolocSheet(
               <button
                 type="button"
                 className="geo-btn geo-btn--primary"
-                disabled={status === 'unavailable'}
+                disabled={status === 'requesting' || status === 'unsupported'}
+                aria-busy={status === 'requesting'}
                 onClick={() => {
+                  // From step 1 the step change IS the feedback, so « Continuer » still
+                  // advances when a position is held; only the acquisition path needs the
+                  // in-place reporting the search step now has.
                   if (geoOn) {
                     setStep('search')
                   } else {
-                    awaitingGrant.current = true
+                    intent.current = 'advance'
                     request()
                   }
                 }}
               >
-                <span className="ms" style={{ fontSize: 19 }} aria-hidden="true">my_location</span>
-                {geoOn ? t('continue') : t('enableLocation')}
+                <span className="ms" style={{ fontSize: 19 }} aria-hidden="true">
+                  {status === 'requesting' ? 'progress_activity' : 'my_location'}
+                </span>
+                {status === 'requesting' ? t('locating') : geoOn ? t('continue') : t('enableLocation')}
               </button>
               <button
                 type="button"

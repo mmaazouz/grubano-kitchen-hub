@@ -68,6 +68,19 @@
 .gb-geoloc .geo-loc-btn{display:flex;align-items:center;gap:10px;width:100%;margin:12px 0;padding:12px 14px;background:var(--gb-surface-2);border:1px solid var(--gb-border);border-radius:var(--gb-r-md);cursor:pointer;color:var(--gb-text);font-weight:600;font-size:13.5px}
 .gb-geoloc .geo-loc-btn .ms{font-size:20px;color:var(--gb-zest-600)}
 [data-theme="dark"] .gb-geoloc .geo-loc-btn .ms{color:var(--gb-zest)}
+/* acquisition feedback — progress + the three honest failure messages. The sheet had NO
+   rendering for `requesting`, a refusal, a timeout or an unavailable position, which is why
+   a click produced no visible change at all. Tokens only, both themes via the foundation. */
+.gb-geoloc .geo-loc-btn[disabled]{opacity:.6;cursor:default}
+.gb-geoloc .geo-loc-btn[aria-busy="true"] .ms{animation:gb-geo-spin 1s linear infinite}
+@keyframes gb-geo-spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.gb-geoloc .geo-loc-btn[aria-busy="true"] .ms{animation:none}}
+.gb-geoloc .geo-loc-msg{display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap;margin:-4px 0 10px;font-size:12.5px;line-height:1.45;color:var(--gb-muted)}
+.gb-geoloc .geo-loc-msg--err{color:var(--gb-danger)}
+.gb-geoloc .geo-loc-msg--ok{color:var(--gb-success,var(--gb-zest-600))}
+.gb-geoloc .geo-loc-msg .ms{font-size:16px;line-height:1.2}
+.gb-geoloc .geo-retry{flex:none;padding:3px 10px;background:transparent;border:1px solid currentColor;border-radius:var(--gb-r-sm);color:inherit;font:inherit;font-weight:600;cursor:pointer}
+
 /* typeahead list (à venir — inert placeholder) */
 .gb-geoloc .geo-ac{border:1px solid var(--gb-border);border-radius:var(--gb-r-md);overflow:hidden;margin-top:4px}
 .gb-geoloc .geo-ac-group{display:flex;align-items:center;gap:8px;padding:11px 14px 8px}

@@ -898,9 +898,13 @@ describe('H–K / V — the five surfaces, each passing its live identity', () =
       .filter((l) => /^let\s|useRef|useState/.test(l))
     expect(containers).toEqual([
       "import { useCallback, useEffect, useState } from 'react'",
-      // the declared identity and the epoch — module scope, and NEITHER holds a position
-      'let liveGeoOwner: GeoOwner | null = null',
-      'let geoEpoch = 0',
+      // Module scope, and NONE of these three holds a position — that is the property this
+      // set exists for, and it is why each one is listed with what it does hold. The third
+      // was added by the acquisition fix and this assertion caught it, which is the point:
+      // a new module-scope mutable has to be looked at before it is allowed.
+      'let liveGeoOwner: GeoOwner | null = null',   // an identity string
+      'let geoEpoch = 0',                            // a counter
+      'let inFlightEpoch: number | null = null',     // a counter, or null
       // the one container that holds a position, with the owner it belongs to beside it
       "const [state, setState] = useState<GeoState>({ owner: null, coords: null, status: 'idle' })",
     ])
@@ -995,14 +999,25 @@ describe('H–K / V — the five surfaces, each passing its live identity', () =
     const src = executable(read(HOME))
     expect(src).toMatch(/const \{ coords, status, request, clear \} = useGeolocation\(liveOwner\)/)
     // the request is built from the GATED coords…
+    // FIVE lines now, measured. The query and the effect's dep array no longer name
+    // `coords`: the two numbers are pulled out of the GATED object and everything
+    // position-dependent reads those instead, so a reverse-geocode enrichment — same place,
+    // new object identity — cannot re-fire the catalogue request. The property this set
+    // exists for is unchanged and still holds at every site: nothing reads a position that
+    // did not come through the gate, because `lat`/`lng` are derived FROM `coords`.
     expect(linesOf(HOME, 'coords')).toEqual([
       'const { coords, status, request, clear } = useGeolocation(liveOwner)',
-      'if (coords) {',
-      "sp.set('lat', String(coords.lat))",
-      "sp.set('lng', String(coords.lng))",
-      '}, [coords, liveOwner])',
+      'const lat = coords?.lat ?? null',
+      'const lng = coords?.lng ?? null',
       "const geoActive = status === 'granted' && !!coords",
       '{coords?.label && <span>{coords.label}</span>}',
+    ])
+    // and the numbers themselves are read ONLY where they belong: the query and the deps
+    expect(linesOf(HOME, 'lat')).toEqual([
+      'const lat = coords?.lat ?? null',
+      'if (lat !== null && lng !== null) {',
+      "sp.set('lat', String(lat))",
+      '}, [lat, lng, liveOwner])',
     ])
     // …and nearestKm, a number derived from the account's own position, is stamped
     expect(src).toMatch(/const nearestKm = liveOwner !== null && nearestState\.owner === liveOwner \? nearestState\.km : null/)
@@ -1154,7 +1169,7 @@ describe('H–K / V — the five surfaces, each passing its live identity', () =
     // the cleanup is the LAST statement OF THAT SAME EFFECT. The span cannot cross another
     // `useEffect(`, so the sibling effect twenty lines below cannot satisfy this.
     expect(home).toMatch(
-      /useEffect\(\(\) => \{(?:(?!useEffect\()[\s\S])*?return \(\) => \{ alive = false \}\s*\n\s*\}, \[coords, liveOwner\]\)/,
+      /useEffect\(\(\) => \{(?:(?!useEffect\()[\s\S])*?return \(\) => \{ alive = false \}\s*\n\s*\}, \[lat, lng, liveOwner\]\)/,
     )
     // NO MUTABLE MODULE-SCOPE STATE on this page: that is the general form of the hoist,
     // and the one container enumeration that a hoisted flag cannot hide in.
@@ -1194,7 +1209,7 @@ describe('H–K / V — the five surfaces, each passing its live identity', () =
       /useEffect\(\(\) => \{\s*\n\s*const requestOwner = favsOwner\s*\n\s*let alive = true\s*\n\s*setFetching\(true\)/,
     )
     expect(search).toMatch(
-      /useEffect\(\(\) => \{(?:(?!useEffect\()[\s\S])*?return \(\) => \{ alive = false \}\s*\n\s*\}, \[query, cuisine, sort, coords, favsOwner\]\)/,
+      /useEffect\(\(\) => \{(?:(?!useEffect\()[\s\S])*?return \(\) => \{ alive = false \}\s*\n\s*\}, \[query, cuisine, sort, lat, lng, favsOwner\]\)/,
     )
     // THE SHAPE, NOT THE NAME. These two bans used to read `/const run = useCallback/` and
     // `/\brun\(\)/`: renaming the extraction to `load` satisfied both while restoring the
@@ -1240,14 +1255,19 @@ describe('H–K / V — the five surfaces, each passing its live identity', () =
   })
 
   it('I — /eat/search builds its query from the gated coords only', () => {
+    // FIVE lines now, measured — see the /eat case for why the query left this set.
     expect(linesOf(SEARCH, 'coords')).toEqual([
       'const { coords } = useGeolocation(favsOwner)',
-      'if (coords) {',
-      "sp.set('lat', String(coords.lat))",
-      "sp.set('lng', String(coords.lng))",
-      '}, [query, cuisine, sort, coords, favsOwner])',
+      'const lat = coords?.lat ?? null',
+      'const lng = coords?.lng ?? null',
       'if (coords) return // geo drives the order — sort is inert when location is on',
       '<button type="button" className="sort" onClick={cycleSort} disabled={Boolean(coords)}>',
+    ])
+    expect(linesOf(SEARCH, 'lat')).toEqual([
+      'const lat = coords?.lat ?? null',
+      'if (lat !== null && lng !== null) {',
+      "sp.set('lat', String(lat))",
+      '}, [query, cuisine, sort, lat, lng, favsOwner])',
     ])
   })
 
@@ -1268,8 +1288,14 @@ describe('H–K / V — the five surfaces, each passing its live identity', () =
     // `X || true` CANNOT FAIL. It was here, and a reviewer deleted the address line this
     // case claims to judge with the suite still green. The property is real, so it is now
     // asserted as a property: the sheet renders the gated label and nothing else.
+    // TWO lines now, measured. The second was added by the acquisition fix: the sheet
+    // finished an acquisition in silence on the search step, so a success line was added
+    // there. Both render the SAME gated value — `coords` is null unless its owner is the
+    // live one — which is the property this case exists for, now asserted at two sites
+    // instead of one.
     expect(linesOf(SHEET, 'coords').filter((l) => /coords\?\.label|coords\.label/.test(l))).toEqual([
       '<span className="geo-on-txt">{coords?.label || t(\'statusOnSub\')}</span>',
+      "<span>{coords?.label || t('statusOnSub')}</span>",
     ])
   })
 

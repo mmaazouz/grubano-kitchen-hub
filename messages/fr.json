@@ -3063,7 +3063,7 @@
       "geoBannerTitle": "Activer ma position",
       "geoBannerSubtitle": "Pour voir les restos les plus proches.",
       "geoBannerDenied": "Autorisez la localisation dans votre navigateur pour réessayer.",
-      "geoBannerUnavailable": "La géolocalisation n'est pas disponible sur cet appareil.",
+      "geoBannerUnavailable": "Position introuvable pour le moment. Réessayez.",
       "geoEnable": "Activer",
       "geoActive": "Position activée — résultats triés par proximité.",
       "geoDisable": "Désactiver la position",
@@ -3092,7 +3092,11 @@
       "itemsAndTotal": "{count, plural, =1 {1 article} other {# articles}} · {total}",
       "tagPopular": "Populaire",
       "favorite": "Ajouter aux favoris",
-      "unfavorite": "Retirer des favoris"
+      "unfavorite": "Retirer des favoris",
+      "geoBannerLocating": "Recherche de votre position…",
+      "geoBannerTimeout": "La localisation a pris trop de temps. Réessayez.",
+      "geoBannerUnsupported": "La géolocalisation n'est pas disponible sur cet appareil.",
+      "geoEnabling": "Localisation…"
     },
     "search": {
       "title": "Explorer",
@@ -3936,7 +3940,14 @@
       "mapPlaceholderSub": "Sélectionnez une adresse enregistrée pour continuer",
       "mapAdjustHint": "Déplacez le point pour ajuster",
       "edit": "Modifier",
-      "confirmAddress": "Confirmer l'adresse"
+      "confirmAddress": "Confirmer l'adresse",
+      "locating": "Localisation…",
+      "locatingHint": "Recherche de votre position. Cela peut prendre quelques secondes.",
+      "errTimeout": "La localisation a pris trop de temps. Réessayez, ou saisissez une adresse ci-dessus.",
+      "errDenied": "Autorisation refusée. Autorisez la localisation dans les réglages de votre navigateur, ou saisissez une adresse ci-dessus.",
+      "errUnavailable": "Position introuvable pour le moment. Réessayez, ou saisissez une adresse ci-dessus.",
+      "errUnsupported": "Votre navigateur ne gère pas la localisation. Saisissez une adresse ci-dessus.",
+      "retry": "Réessayer"
     },
     "reviews": {
       "title": "Avis & notes",

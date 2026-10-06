@@ -3063,7 +3063,7 @@
       "geoBannerTitle": "Activar mi ubicación",
       "geoBannerSubtitle": "Para ver los restaurantes más cercanos.",
       "geoBannerDenied": "Permite la localización en tu navegador para volver a intentarlo.",
-      "geoBannerUnavailable": "La geolocalización no está disponible en este dispositivo.",
+      "geoBannerUnavailable": "No se ha podido encontrar tu posición ahora mismo. Inténtalo de nuevo.",
       "geoEnable": "Activar",
       "geoActive": "Ubicación activada — resultados ordenados por proximidad.",
       "geoDisable": "Desactivar ubicación",
@@ -3092,7 +3092,11 @@
       "itemsAndTotal": "{count, plural, =1 {1 artículo} other {# artículos}} · {total}",
       "tagPopular": "Popular",
       "favorite": "Añadir a favoritos",
-      "unfavorite": "Quitar de favoritos"
+      "unfavorite": "Quitar de favoritos",
+      "geoBannerLocating": "Buscando tu posición…",
+      "geoBannerTimeout": "La localización ha tardado demasiado. Inténtalo de nuevo.",
+      "geoBannerUnsupported": "La geolocalización no está disponible en este dispositivo.",
+      "geoEnabling": "Localizando…"
     },
     "search": {
       "title": "Explorar",
@@ -3936,7 +3940,14 @@
       "mapPlaceholderSub": "Selecciona una dirección guardada para continuar",
       "mapAdjustHint": "Arrastra el punto para ajustar",
       "edit": "Editar",
-      "confirmAddress": "Confirmar dirección"
+      "confirmAddress": "Confirmar dirección",
+      "locating": "Localizando…",
+      "locatingHint": "Buscando tu posición. Puede tardar unos segundos.",
+      "errTimeout": "La localización ha tardado demasiado. Inténtalo de nuevo o escribe una dirección arriba.",
+      "errDenied": "Permiso denegado. Permite la ubicación en los ajustes de tu navegador o escribe una dirección arriba.",
+      "errUnavailable": "No se ha podido encontrar tu posición ahora mismo. Inténtalo de nuevo o escribe una dirección arriba.",
+      "errUnsupported": "Tu navegador no admite la ubicación. Escribe una dirección arriba.",
+      "retry": "Reintentar"
     },
     "reviews": {
       "title": "Opiniones y valoraciones",

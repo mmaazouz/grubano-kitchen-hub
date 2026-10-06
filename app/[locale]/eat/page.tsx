@@ -135,6 +135,13 @@ export default function HomeScreen() {
   // street. The hook is given the live identity so a fix captured by one account is never
   // shown, sent or measured for another — including on the first frame, before any effect.
   const { coords, status, request, clear } = useGeolocation(liveOwner)
+  // THE TWO NUMBERS, pulled out of the gated object. The catalogue effect below is keyed
+  // on THESE, not on `coords`: /api/geo/reverse enriches the fix with a postal label a
+  // moment after it lands, which gives `coords` a new identity for the SAME position and
+  // used to re-fire the whole catalogue request. Same latitude and longitude ⇒ no refetch;
+  // a real move ⇒ a refetch, because the numbers themselves changed.
+  const lat = coords?.lat ?? null
+  const lng = coords?.lng ?? null
 
   const [favsState, setFavsState] = useState<{ owner: string | null; ids: string[] }>({ owner: null, ids: [] })
   /** The ONLY list this screen may show: this owner's, or none. */
@@ -201,9 +208,9 @@ export default function HomeScreen() {
     let alive = true
     setFetching(true)
     const sp = new URLSearchParams({ take: '20' })
-    if (coords) {
-      sp.set('lat', String(coords.lat))
-      sp.set('lng', String(coords.lng))
+    if (lat !== null && lng !== null) {
+      sp.set('lat', String(lat))
+      sp.set('lng', String(lng))
     } else {
       sp.set('sort', 'newest')
     }
@@ -228,10 +235,11 @@ export default function HomeScreen() {
       // while a newer request is still in flight would close the skeleton over nothing.
       .finally(() => { if (alive) setFetching(false) })
     return () => { alive = false }
-    // keyed on the identity as well as the position: `coords` is already gated, but the
-    // DERIVED number must be re-attributed too, and the request must not carry A's lat/lng
-    // once B is live.
-  }, [coords, liveOwner])
+    // keyed on the identity as well as the position: the coordinates are already gated, but
+    // the DERIVED number must be re-attributed too, and the request must not carry A's
+    // lat/lng once B is live. The position enters as two NUMBERS so that a reverse-geocode
+    // enrichment — same place, new object — does not re-run this.
+  }, [lat, lng, liveOwner])
 
   // Recommander — the consumer's real recent orders (reorder). Signed-out / none →
   // empty → the whole section is omitted below.
@@ -347,20 +355,31 @@ export default function HomeScreen() {
           <div className="gtxt">
             <b>{t('geoBannerTitle')}</b>
             <span>
-              {status === 'denied'
-                ? t('geoBannerDenied')
-                : status === 'unavailable'
-                  ? t('geoBannerUnavailable')
-                  : t('geoBannerSubtitle')}
+              {/* A TIMEOUT USED TO LAND HERE AS `unavailable`, which this banner renders
+                  as « la géolocalisation n'est pas disponible sur cet appareil » — a false
+                  statement about a device that can locate itself perfectly well, it just
+                  needed longer. That text now belongs to `unsupported` alone. */}
+              {status === 'requesting'
+                ? t('geoBannerLocating')
+                : status === 'denied'
+                  ? t('geoBannerDenied')
+                  : status === 'timeout'
+                    ? t('geoBannerTimeout')
+                    : status === 'unsupported'
+                      ? t('geoBannerUnsupported')
+                      : status === 'unavailable'
+                        ? t('geoBannerUnavailable')
+                        : t('geoBannerSubtitle')}
             </span>
           </div>
           <button
             type="button"
             className="gbtn"
             onClick={request}
-            disabled={status === 'unavailable' || status === 'requesting'}
+            disabled={status === 'requesting' || status === 'unsupported'}
+            aria-busy={status === 'requesting'}
           >
-            {t('geoEnable')}
+            {status === 'requesting' ? t('geoEnabling') : t('geoEnable')}
           </button>
         </div>
       ) : (

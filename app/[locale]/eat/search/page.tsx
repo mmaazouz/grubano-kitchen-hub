@@ -183,6 +183,10 @@ function SearchContent() {
   // Gated coords mean no lat/lng of the previous account can reach the search query, on
   // the first frame or on any refetch.
   const { coords } = useGeolocation(favsOwner)
+  // see /eat: the query effect is keyed on the two NUMBERS, so a reverse-geocode
+  // enrichment of the same position does not re-run the search.
+  const lat = coords?.lat ?? null
+  const lng = coords?.lng ?? null
 
   /** RAW — read only through the gate below: the ids AND the owner they were read for. */
   const [favsState, setFavsState] = useState<{ owner: string | null; ids: string[] }>({ owner: null, ids: [] })
@@ -236,9 +240,9 @@ function SearchContent() {
     const sp = new URLSearchParams()
     if (query) sp.set('q', query)
     if (cuisine) sp.set('category', cuisine)
-    if (coords) {
-      sp.set('lat', String(coords.lat))
-      sp.set('lng', String(coords.lng))
+    if (lat !== null && lng !== null) {
+      sp.set('lat', String(lat))
+      sp.set('lng', String(lng))
     } else {
       sp.set('sort', sort)
     }
@@ -261,7 +265,7 @@ function SearchContent() {
     return () => { alive = false }
     // the identity is a dep: `coords` is already gated, but the rows must be re-attributed
     // too, and the request must not carry the previous account's lat/lng.
-  }, [query, cuisine, sort, coords, favsOwner])
+  }, [query, cuisine, sort, lat, lng, favsOwner])
 
   const sortLabel = t(SORTS.find((s) => s.value === sort)?.labelKey ?? 'sortNewest')
   const cycleSort = () => {
