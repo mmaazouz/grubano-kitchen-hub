@@ -443,10 +443,17 @@ describe('the useState inventory of /eat', () => {
       // 1. the public restaurant catalogue — GET /api/restaurants is identity-free, and the
       //    same rows are served to everyone, signed in or not.
       'restaurants',
-      // 2. the distance to the nearest geocoded restaurant. Derived from the DEVICE's
-      //    position (lib/use-geolocation), which belongs to the browser and not to an
-      //    account: it is the same number for whoever is signed in on this device.
-      'nearestKm',
+      // 2. the distance to the nearest geocoded restaurant -- NOW OWNER-STAMPED. This
+      //    entry used to read `nearestKm`, and this comment used to call the position
+      //    device-scoped: the same number for whoever is signed in on this device.
+      //    That was wrong, for the reason the case below gives: /api/geo/reverse turns
+      //    the fix into a postal label which this page renders, so the repository
+      //    itself treats it as account content. The geolocation lot replaced the raw
+      //    number with an { owner, km } pair, so the NAME changed with it. Refreshing
+      //    the list keeps the invariant this case exists for -- that no useState of
+      //    this page holds account content without a gate -- and strengthens it:
+      //    three of the five are now gated, where two were.
+      'nearestState',
       // 3. this lot — the account's recent orders, owner-stamped and gated.
       'recentState',
       // 4. the favourites ids, owner-stamped and gated (the previous lot).
@@ -454,31 +461,45 @@ describe('the useState inventory of /eat', () => {
       // 5. a boolean: the catalogue request is in flight. No account content.
       'loading',
     ])
-    // the two that hold account CONTENT are both gated, by the same live identity
+    // the three that hold account CONTENT are all gated, on a live identity
     expect(src).toMatch(/const recent = liveOwner !== null/)
     expect(src).toMatch(/const favs = favsOwner !== null/)
+    expect(src).toMatch(/const nearestKm = liveOwner !== null && nearestState\.owner === liveOwner/)
   })
 
-  it('nearestKm is a derived NUMBER; the position it derives from is another lot\'s question', () => {
-    // WITHDRAWN AS WRITTEN. This case used to be titled « the geolocation state really is
-    // device-scoped, not account-scoped » and sliced 400 characters from the first
-    // occurrence of `setNearestKm` — which landed on the useState declaration and a
-    // neighbouring doc comment, not on the derivation it claimed to judge. Worse, the
-    // conclusion was wrong: lib/use-geolocation.ts stamps its PERSISTED cache by identity
-    // precisely because the cached fix is not only coordinates — /api/geo/reverse turns it
-    // into a postal label — so the repository itself treats that position as
-    // account-scoped. This page renders that label (`coords?.label`).
+  it('the position nearestKm derives from IS account-scoped -- the deferred question is answered', () => {
+    // REFRESHED, with its conclusion REVERSED on purpose. Two earlier forms of this case
+    // were wrong in opposite directions. The first was titled "the geolocation state
+    // really is device-scoped, not account-scoped" and sliced 400 characters from the
+    // first `setNearestKm` -- landing on the declaration and a neighbouring doc comment,
+    // not on the derivation it claimed to judge. The second withdrew that conclusion but
+    // still asserted the derivation names NO identity, and deferred the real question:
+    // whether the hook's IN-MEMORY coords survive an identity change in an open mount
+    // was called "a separate subsystem, reported for its own lot".
     //
-    // What this case can honestly assert is narrower: the number is derived from the API
-    // response and names no identity. Whether the hook's IN-MEMORY coords survive an
-    // identity change in an open mount is a separate subsystem, reported for its own lot.
+    // That lot has run, and the answer was yes -- they did survive. So the derivation now
+    // names the owner it was computed FOR, and this case asserts the OPPOSITE of what it
+    // used to: the write site MUST mention the identity. That is the fix, not a drift.
     const src = executable(read(PAGE))
-    expect(src).toMatch(/const \{ coords, status, request, clear \} = useGeolocation\(\)/)
-    // the derivation itself, anchored on the assignment and bounded to it
-    const i = src.indexOf("setNearestKm(typeof d.nearestKm === 'number' ? d.nearestKm : null)")
-    expect(i, 'the nearestKm derivation moved — this guard would be vacuous').toBeGreaterThan(-1)
-    expect(src.slice(i, i + 80)).not.toMatch(/liveOwner|favsOwner|favLiveUserId/)
-    // and the hook's label IS rendered here, which is why the question belongs to that lot
+    // the hook is handed the live identity; it does not read a session itself, because one
+    // of its five callers renders with no SessionProvider at all
+    expect(src).toMatch(/const \{ coords, status, request, clear \} = useGeolocation\(liveOwner\)/)
+    // ONE write site, counted -- a second could stamp a different owner, or none, without
+    // moving any assertion below (a toMatch is satisfied by whichever occurrence matches)
+    expect(src.split('setNearestState(').length - 1,
+      'exactly one write site: a second could skip the stamp unseen').toBe(1)
+    // and it stamps the owner the request was issued for, so a response landing after an
+    // account change cannot be attributed to whoever happens to be live when it arrives
+    expect(src).toMatch(
+      /setNearestState\(\{ owner: requestOwner, km: typeof d\.nearestKm === 'number' \? d\.nearestKm : null \}\)/,
+    )
+    // the read is gated on that stamp matching the live owner, in RENDER -- not in an
+    // effect, which would run only after the first frame had already painted A's distance
+    expect(src).toMatch(
+      /const nearestKm = liveOwner !== null && nearestState\.owner === liveOwner \? nearestState\.km : null/,
+    )
+    // the reverse-geocoded label is still rendered here -- now gated at the source, since
+    // the hook returns `coords` only while the owner it was captured for is the live one
     expect(src).toMatch(/\{coords\?\.label && <span>\{coords\.label\}<\/span>\}/)
   })
 
