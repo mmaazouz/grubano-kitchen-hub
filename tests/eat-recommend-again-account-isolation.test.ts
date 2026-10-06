@@ -442,7 +442,13 @@ describe('the useState inventory of /eat', () => {
     expect(states).toEqual([
       // 1. the public restaurant catalogue — GET /api/restaurants is identity-free, and the
       //    same rows are served to everyone, signed in or not.
-      'restaurants',
+      // 1 bis. the catalogue rows. THE COMMENT THAT USED TO SIT ON THIS ENTRY WAS FALSE:
+      //    it said « GET /api/restaurants is identity-free, and the same rows are served to
+      //    everyone, signed in or not ». That is true of the legacy branch and false of the
+      //    geo branch this screen uses, which attaches `distanceKm` to every row measured
+      //    from the caller's own lat/lng. An independent review showed the comment was not
+      //    merely inaccurate: it was the reason the leak looked out of scope. Now stamped.
+      'restaurantState',
       // 2. the distance to the nearest geocoded restaurant -- NOW OWNER-STAMPED. This
       //    entry used to read `nearestKm`, and this comment used to call the position
       //    device-scoped: the same number for whoever is signed in on this device.
@@ -458,13 +464,16 @@ describe('the useState inventory of /eat', () => {
       'recentState',
       // 4. the favourites ids, owner-stamped and gated (the previous lot).
       'favsState',
-      // 5. a boolean: the catalogue request is in flight. No account content.
-      'loading',
+      // 5. a boolean: the catalogue request is in flight. No account content. `loading` is
+      //    now DERIVED from it, so a frame whose rows belong to another identity keeps the
+      //    skeleton up instead of claiming there is nothing to show.
+      'fetching',
     ])
     // the three that hold account CONTENT are all gated, on a live identity
     expect(src).toMatch(/const recent = liveOwner !== null/)
     expect(src).toMatch(/const favs = favsOwner !== null/)
     expect(src).toMatch(/const nearestKm = liveOwner !== null && nearestState\.owner === liveOwner/)
+    expect(src).toMatch(/const rowsAreMine = liveOwner !== null && restaurantState\.owner === liveOwner/)
   })
 
   it('the position nearestKm derives from IS account-scoped -- the deferred question is answered', () => {

@@ -105,6 +105,12 @@ export default function EatShell({ children }: { children: React.ReactNode }) {
   // The cached geolocation fix is dropped alongside it: /api/geo/reverse stores the
   // REVERSE-GEOCODED POSTAL ADDRESS of the position under one global key, so the next
   // identity was shown the previous one's address line as its own « position active ».
+  //
+  // WHAT GUARANTEES THAT NOW IS NOT THIS CALL. syncGeoCacheOwner is erasure and hygiene;
+  // the guard is the stamp check inside readCachedFor (lib/use-geolocation.ts), which
+  // refuses a cache whose owner is not the one asking, plus the render-time gate on the
+  // in-memory state. Disabling that check reopens the leak with this call still in place.
+  // Naming the wrong mechanism here is how the right one ends up deleted as redundant.
   const addressOwnerId = (session?.user as { id?: string } | undefined)?.id
 
   // FIRST-FRAME GUARD. The effect below declares the identity, and effects run AFTER the

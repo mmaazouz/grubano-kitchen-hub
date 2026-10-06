@@ -48,9 +48,18 @@ const events: Array<{ owner?: unknown }> = []
 ;(globalThis as { localStorage?: unknown }).localStorage = local
 ;(globalThis as { sessionStorage?: unknown }).sessionStorage = new MemStorage()
 
+import { sessionCartStamp } from '@/lib/eat-cart'
+import { sessionAddressStamp } from '@/lib/eat-addresses'
 import {
   geoVisible, geoEventIsMine, setGeoOwner, getGeoOwner, __resetGeoOwner,
   syncGeoCacheOwner, GEO_EVENT, type GeoCoords, type GeoState,
+  // THE REAL DECISIONS. Nothing below restates them. An independent review proved why:
+  // the model's copy of the cache read had no age limit (so it could not see that rule at
+  // all) while its copy of the reverse commit had a guard the source did NOT have (so it
+  // proved a safety that did not exist). A copy can be kinder or blinder than the source,
+  // and either way all it proves is that the copy agrees with its author.
+  geoRehydrate, geoCommit, geoStillMine, geoClear, geoInvalidateInFlight, getGeoEpoch,
+  readCachedFor, persistFor,
 } from '@/lib/use-geolocation'
 
 win.addEventListener(GEO_EVENT, (e) => { events.push(((e as CustomEvent).detail ?? {}) as { owner?: unknown }) })
@@ -65,12 +74,17 @@ const A_LAT = 45.76431, A_LNG = 4.83566
 const A_LABEL = '12 rue Confidentielle-A, 69001 Villeneuve-A'
 const A_CITY = 'Villeneuve-A'
 const A_POSTCODE = '69001'
+// RELATIVE TO NOW, because readCachedFor really does refuse a fix older than a week and
+// these fixtures are now read THROUGH it. They used to be fixed epoch values eight months
+// in the past: the model that read them had no age check, so the suite could not tell that
+// the cache it was asserting on would in fact have been refused by the hook.
+const FRESH = Date.now() - 60_000
 const COORDS_A: GeoCoords = {
-  lat: A_LAT, lng: A_LNG, capturedAt: 1_770_000_000_000,
+  lat: A_LAT, lng: A_LNG, capturedAt: FRESH,
   label: A_LABEL, city: A_CITY, postcode: A_POSTCODE,
 }
 const COORDS_B: GeoCoords = {
-  lat: 48.8566, lng: 2.3522, capturedAt: 1_770_000_100_000,
+  lat: 48.8566, lng: 2.3522, capturedAt: FRESH + 1_000,
   label: '1 place B, 75001 Ville-B', city: 'Ville-B', postcode: '75001',
 }
 /** Every value of A's that must never surface under another identity. */
@@ -148,16 +162,15 @@ describe('A–G — a position is shown only to the identity it belongs to', () 
 // ══ M, N, U : the disk cache, owner-stamped ══════════════════════════════════
 
 describe('M/N/U — the cache is read only when the stamp beside it names this owner', () => {
-  /** The hook's rehydration, driving the real library. */
+  /**
+   * The hook's rehydration -- THE REAL FUNCTION, not a restatement of it. This block used
+   * to re-implement the stamp check, and a reviewer measured the cost: disabling the real
+   * check in lib/use-geolocation.ts left every case here green, because each case was
+   * checking the copy sitting next to it.
+   */
   const rehydrate = (liveOwner: string | null): GeoState => {
     setGeoOwner(liveOwner)
-    if (liveOwner === null) return { owner: null, coords: null, status: 'idle' }
-    // readCachedFor is internal; its contract is exercised through the public surface by
-    // seeding the pair and reading it back the way the hook does.
-    const stampOk = local.getItem(OWNER_KEY) === liveOwner
-    const raw = stampOk ? local.getItem(STORAGE_KEY) : null
-    const coords = raw ? (JSON.parse(raw) as GeoCoords) : null
-    return { owner: liveOwner, coords, status: coords ? 'granted' : 'idle' }
+    return geoRehydrate(liveOwner)
   }
 
   it('M — the same owner reloading reuses their own cache (the point of the cache)', () => {
@@ -208,9 +221,11 @@ describe('M/N/U — the cache is read only when the stamp beside it names this o
 // ══ O–T : the two late callbacks, and the stale clear ════════════════════════
 
 /**
- * MODELLED: the hook's asynchronous commit discipline. Every decision it makes is made by
- * the real module state (setGeoOwner / getGeoOwner) and the real gate; the source pins at
- * the end hold the page to this shape, so the model cannot be kinder than the hook.
+ * MODELLED: only the SEQUENCING -- which callback fires, when, and in what order. Every
+ * DECISION is the repository's own exported function (geoRehydrate, geoCommit, geoClear,
+ * geoStillMine, persistFor), so this model can be neither kinder nor blinder than the hook.
+ * What stays modelled is legitimately a test's job: React's two phases, and holding a
+ * browser permission prompt open across an identity change.
  */
 function makeHook() {
   let state: GeoState = { owner: null, coords: null, status: 'idle' }
@@ -221,58 +236,51 @@ function makeHook() {
     fail: (denied: boolean) => void
   }> = []
 
-  /** The hook's own commit: refuses unless the captured owner is still the declared one. */
-  const commit = (owner: string, next: Partial<GeoState>) => {
-    if (getGeoOwner() !== owner) return
-    state = { owner, coords: next.coords ?? null, status: next.status ?? state.status }
-  }
-  const persistFor = (owner: string, coords: GeoCoords | null) => {
-    if (getGeoOwner() !== owner) return false
-    if (coords) { local.setItem(STORAGE_KEY, JSON.stringify(coords)); local.setItem(OWNER_KEY, owner) }
-    else local.removeItem(STORAGE_KEY)
-    return true
-  }
-
   function mountFor(liveOwner: string | null) {
     setGeoOwner(liveOwner)
-    if (liveOwner === null) { state = { owner: null, coords: null, status: 'idle' }; return }
-    const stampOk = local.getItem(OWNER_KEY) === liveOwner
-    const raw = stampOk ? local.getItem(STORAGE_KEY) : null
-    const coords = raw ? (JSON.parse(raw) as GeoCoords) : null
-    state = { owner: liveOwner, coords, status: coords ? 'granted' : 'idle' }
+    state = geoRehydrate(liveOwner)
   }
 
   function request(liveOwner: string | null) {
     if (liveOwner === null) return
     const requestOwner = liveOwner
-    commit(requestOwner, { status: 'requesting' })
+    // captured together, exactly where the hook captures them
+    const requestEpoch = getGeoEpoch()
+    const commit = (next: Partial<GeoState>) => {
+      state = geoCommit(state, requestOwner, requestEpoch, next)
+    }
+    // the position this request captured, held in ITS closure -- which is what makes a
+    // late reverse answer able to resurrect a fix that has since been cleared
+    let captured: GeoCoords | null = null
+    commit({ status: 'requesting' })
     pending.push({
       owner: requestOwner,
       position: (c) => {
-        if (getGeoOwner() !== requestOwner) return      // the prompt outlived the session
-        commit(requestOwner, { coords: c, status: 'granted' })
+        if (!geoStillMine(requestOwner, requestEpoch)) return   // the prompt outlived it
+        captured = c
+        commit({ coords: c, status: 'granted' })
         persistFor(requestOwner, c)
       },
       reverse: (label, city, postcode) => {
-        if (getGeoOwner() !== requestOwner) return      // the POSTAL ADDRESS, checked again
-        const base = state.owner === requestOwner ? state.coords : null
-        if (!base) return
-        const enriched = { ...base, label, city, postcode }
-        commit(requestOwner, { coords: enriched, status: 'granted' })
+        // the POSTAL ADDRESS: the most sensitive thing the hook ever holds, checked again
+        if (!geoStillMine(requestOwner, requestEpoch)) return
+        if (!captured) return
+        const enriched: GeoCoords = { ...captured, label, city, postcode }
+        commit({ coords: enriched, status: 'granted' })
         persistFor(requestOwner, enriched)
       },
       fail: (denied) => {
-        if (getGeoOwner() !== requestOwner) return
-        commit(requestOwner, { status: denied ? 'denied' : 'unavailable' })
+        if (!geoStillMine(requestOwner, requestEpoch)) return
+        commit({ status: denied ? 'denied' : 'unavailable' })
       },
     })
   }
 
   function clear(liveOwner: string | null) {
     if (liveOwner === null) return
-    if (getGeoOwner() !== liveOwner) return             // a clear captured under A
-    if (state.owner === liveOwner) state = { owner: liveOwner, coords: null, status: 'idle' }
+    state = geoClear(state, liveOwner)
     persistFor(liveOwner, null)
+    geoInvalidateInFlight()
   }
 
   const view = (liveOwner: string | null) => {
@@ -405,6 +413,158 @@ describe('O–T — a callback that outlives the session commits nothing', () =>
   })
 })
 
+// ══ W–Z : what an independent adversarial review found ══════════════════════
+
+describe('W–Z — the four defects a review proved, now closed', () => {
+  beforeEach(() => { local.clear(); events.length = 0; __resetGeoOwner() })
+
+  it('W — a fix older than the cache window is refused, for its own owner too', () => {
+    // THE AGE LIMIT WAS INVISIBLE TO THIS SUITE. The fixtures were fixed epoch values eight
+    // months in the past and the model that read them had no age check, so every cache case
+    // was asserting on a value the real hook would have thrown away. Now the real function
+    // runs, and the rule it enforces is asserted rather than bypassed.
+    seedCache(OWN_A, { ...COORDS_A, capturedAt: Date.now() - 8 * 24 * 60 * 60 * 1000 })
+    setGeoOwner(OWN_A)
+    expect(readCachedFor(OWN_A), 'a week-old fix is stale').toBeNull()
+    expect(geoRehydrate(OWN_A).coords).toBeNull()
+    expect(geoRehydrate(OWN_A).status).toBe('idle')
+    // and a fresh one for the same owner still is reused — the cache has a point
+    seedCache(OWN_A, COORDS_A)
+    expect(geoRehydrate(OWN_A).coords?.label).toBe(A_LABEL)
+  })
+
+  it('X — « disable », then the reverse answer lands: the position does NOT come back', () => {
+    // The reverse answer is built from the position captured in its own closure, so the
+    // owner check alone let it through: clear() emptied the state and the disk, then the
+    // answer put the position back AND rewrote the POSTAL ADDRESS to storage, undoing an
+    // explicit opt-out. The epoch is what rules it out.
+    const h = makeHook()
+    h.mountFor(OWN_A)
+    h.request(OWN_A)
+    h.pending[0].position({ lat: A_LAT, lng: A_LNG, capturedAt: Date.now() })
+    expect(h.view(OWN_A).coords?.lat).toBe(A_LAT)
+    expect(local.getItem(STORAGE_KEY)).not.toBeNull()
+
+    h.clear(OWN_A)                                   // the user switches location OFF
+    expect(h.view(OWN_A).coords).toBeNull()
+    expect(local.getItem(STORAGE_KEY)).toBeNull()
+
+    h.pending[0].reverse(A_LABEL, A_CITY, A_POSTCODE)   // …and only now the answer arrives
+    expect(h.view(OWN_A).coords, 'the opt-out outranks an answer in flight').toBeNull()
+    expect(h.view(OWN_A).status).toBe('idle')
+    expect(local.getItem(STORAGE_KEY), 'and the address was not rewritten').toBeNull()
+    for (const sentinel of A_SENTINELS) {
+      expect(JSON.stringify(local.keys().map((k) => local.getItem(k))), sentinel).not.toContain(sentinel)
+    }
+  })
+
+  it('X bis — an identity change also invalidates an answer already in flight', () => {
+    const h = makeHook()
+    h.mountFor(OWN_A)
+    h.request(OWN_A)
+    h.mountFor(OWN_B)                                // A → B, same mount, no remount
+    h.pending[0].position({ lat: A_LAT, lng: A_LNG, capturedAt: Date.now() })
+    h.pending[0].reverse(A_LABEL, A_CITY, A_POSTCODE)
+    expect(h.view(OWN_B).coords).toBeNull()
+    expect(local.getItem(STORAGE_KEY)).toBeNull()
+  })
+
+  it('Y — a STATUS-ONLY commit does not erase the position it did not mention', () => {
+    // `coords: next.coords ?? null` erased it, which is not a leak but is a real break: a
+    // commit({ status: 'requesting' }) over a cached fix nulled the coords, and on /eat the
+    // effect keyed on `coords` then re-fetched the catalogue WITHOUT lat/lng, losing the
+    // nearest-first order, and flipped the « position active » banner and back.
+    setGeoOwner(OWN_A)
+    const epoch = getGeoEpoch()
+    const held: GeoState = { owner: OWN_A, coords: COORDS_A, status: 'granted' }
+    const after = geoCommit(held, OWN_A, epoch, { status: 'requesting' })
+    expect(after.coords?.label, 'the position survives a status-only update').toBe(A_LABEL)
+    expect(after.status).toBe('requesting')
+    // …while an EXPLICIT null still clears, which is how the error paths and clear work
+    expect(geoCommit(held, OWN_A, epoch, { coords: null, status: 'denied' }).coords).toBeNull()
+  })
+
+  it('the three decisions refuse directly, each called with a hostile argument', () => {
+    // THE MUTATION BATTERY FOUND THESE THREE STILL GREEN, each for the same reason: the
+    // guard was protected only by a caller that happened to check the same thing first, so
+    // deleting it changed nothing observable through the model. Calling the exported
+    // decision DIRECTLY is what makes a redundant guard testable at all — a defence in
+    // depth has no behaviour of its own as long as something upstream still holds.
+
+    // geoCommit — the re-validation INSIDE the updater. A deferred React update sees a
+    // newer module state than its closure did, so this is the check that actually decides.
+    setGeoOwner(OWN_B)
+    const held: GeoState = { owner: OWN_B, coords: COORDS_B, status: 'granted' }
+    const epochNow = getGeoEpoch()
+    // …A's answer, arriving with A's owner: refused, state untouched
+    expect(geoCommit(held, OWN_A, epochNow, { coords: COORDS_A, status: 'granted' })).toBe(held)
+    // …and the right owner but a stale epoch (a « disable » happened since): also refused
+    expect(geoCommit(held, OWN_B, epochNow - 1, { coords: COORDS_A, status: 'granted' })).toBe(held)
+    // …while the live owner at the current epoch does commit, so this is not vacuous
+    expect(geoCommit(held, OWN_B, epochNow, { status: 'requesting' }).status).toBe('requesting')
+
+    // geoClear — a « disable » captured under A must not touch what B holds
+    expect(geoClear(held, OWN_A), 'a clear for A leaves B alone').toBe(held)
+    expect(geoClear(held, OWN_B).coords, 'and B can clear their own').toBeNull()
+    // THE CASE THAT SEPARATES THE TWO GUARDS. The one above passes with the live-owner
+    // check deleted, because `prev.owner === owner` already refuses it: the state is B's.
+    // The check only bites when the state IS this owner's and that owner is no longer the
+    // live one — a « disable » tapped under A, arriving after the session became B. Not a
+    // leak: a stale handler acting at all is the class of bug this whole lot is about, and
+    // without the check geoClear's answer depends on which identity happens to be live
+    // rather than on which one the handler was captured under.
+    const aHeld: GeoState = { owner: OWN_A, coords: COORDS_A, status: 'granted' }
+    expect(geoClear(aHeld, OWN_A), 'A\'s own clear is inert once A is gone').toBe(aHeld)
+    setGeoOwner(OWN_A)
+    expect(geoClear(aHeld, OWN_A).coords, 'and live again, it clears').toBeNull()
+    setGeoOwner(OWN_B)
+
+    // persistFor — refuses for an owner that is not the declared one
+    local.clear()
+    expect(persistFor(OWN_A, COORDS_A), 'A is not live').toBe(false)
+    expect(local.getItem(STORAGE_KEY)).toBeNull()
+  })
+
+  it('POSITIVE CONTROL — a successful persist really does emit its event', () => {
+    // `expect(events).toEqual([])` elsewhere asserts that NOTHING was emitted, and a
+    // reviewer showed what that costs: deleting the dispatch entirely left every such
+    // assertion green, because an assertion of emptiness cannot notice that the channel is
+    // dead. The empty-assertions are only meaningful next to this one.
+    local.clear()
+    events.length = 0
+    setGeoOwner(OWN_A)
+    expect(persistFor(OWN_A, COORDS_A)).toBe(true)
+    expect(events, 'exactly one event, naming its owner').toEqual([{ owner: OWN_A }])
+    // and the clearing branch announces itself too, so siblings drop the fix
+    events.length = 0
+    expect(persistFor(OWN_A, null)).toBe(true)
+    expect(events).toEqual([{ owner: OWN_A }])
+  })
+
+  it('Z — a half-written cache pair is unreadable, not readable as the other account\'s', () => {
+    // Two keys, two writes, and the second can fail (quota, private browsing). Value-then-
+    // stamp left the NEW owner's fix under the OLD stamp. The stamp is now dropped first,
+    // so any failure leaves an unstamped blob and readCachedFor refuses it.
+    seedCache(OWN_A, COORDS_A)
+    setGeoOwner(OWN_B)
+    const realSet = local.setItem.bind(local)
+    let calls = 0
+    ;(local as unknown as { setItem: (k: string, v: string) => void }).setItem = (k, v) => {
+      calls += 1
+      if (k === OWNER_KEY && calls > 1) throw new Error('QuotaExceededError')
+      realSet(k, v)
+    }
+    try {
+      persistFor(OWN_B, COORDS_B)
+    } finally {
+      ;(local as unknown as { setItem: (k: string, v: string) => void }).setItem = realSet
+    }
+    // B's fix may or may not be on disk, but NOBODY can read it as theirs
+    expect(readCachedFor(OWN_A), 'A must not inherit B\'s fix').toBeNull()
+    expect(readCachedFor(OWN_B), 'and an unstamped pair is refused even to its owner').toBeNull()
+  })
+})
+
 // ══ H–K, V : the surfaces, closed by exact sets ══════════════════════════════
 
 const read = (p: string) => readFileSync(p, 'utf8').replace(/\r\n/g, '\n')
@@ -480,6 +640,58 @@ describe('H–K / V — the five surfaces, each passing its live identity', () =
     )
     expect(src).toMatch(/setGeoOwner\(liveOwner\)/)
     expect(src).not.toMatch(/useSession/)   // the public page has no SessionProvider
+    // THE REHYDRATION'S OWN STATE WRITE, pinned. Nothing held it before, and a reviewer
+    // rewrote it to `coords: cached ?? prev.coords`: after a swap the effect RE-STAMPED A's
+    // coords as B's, so B saw A's postal label, sent A's lat/lng, and persistFor wrote them
+    // under B's stamp — the original P1 reopened in full, 65/65 green. The write is now the
+    // exported decision, so there is one shape to pin and the test executes it.
+    expect(src).toMatch(
+      /setGeoOwner\(liveOwner\)\s*\n\s*setState\(geoRehydrate\(liveOwner\)\)\s*\n\s*if \(liveOwner === null\) return/,
+    )
+    // and it is the ONLY state-write shape in the effect: the event listener re-uses it
+    expect((src.match(/setState\(geoRehydrate\(liveOwner\)\)/g) ?? []).length,
+      'mount and the sibling event, nothing else').toBe(2)
+  })
+
+  it('EXACT SET — the hook holds the position in ONE container, and no other', () => {
+    // AN ENUMERATION OVER ONE CONTAINER IS ESCAPABLE BY CHOOSING ANOTHER. A reviewer did
+    // exactly that: a module-level `let lastFix` written by both callbacks and read through
+    // a new export put A's postal address on B's /eat, fully ungated, with the suite green —
+    // because the only container this file enumerated was `state`. So the set is over EVERY
+    // container the hook could stash a position in.
+    const containers = executable(read(HOOK)).split('\n').map((l) => l.trim())
+      .filter((l) => /^let\s|useRef|useState/.test(l))
+    expect(containers).toEqual([
+      "import { useCallback, useEffect, useState } from 'react'",
+      // the declared identity and the epoch — module scope, and NEITHER holds a position
+      'let liveGeoOwner: GeoOwner | null = null',
+      'let geoEpoch = 0',
+      // the one container that holds a position, with the owner it belongs to beside it
+      "const [state, setState] = useState<GeoState>({ owner: null, coords: null, status: 'idle' })",
+    ])
+  })
+
+  it('EXACT SET — every disk access in the hook, so none can be smuggled past the stamp', () => {
+    // The guards inside persistFor and readCachedFor are worth nothing if a write can go
+    // round them. A reviewer added a localStorage.setItem BEFORE the reverse guard: A's
+    // address landed in the cache while B was live, under B's stamp, and the suite stayed
+    // green because nothing enumerated the disk accesses themselves.
+    expect(linesOf(HOOK, 'localStorage')).toEqual([
+      // syncGeoCacheOwner — EatShell's identity effect (unchanged by this lot)
+      'if (localStorage.getItem(OWNER_KEY) !== stamp) {',
+      'localStorage.removeItem(STORAGE_KEY)',
+      'localStorage.setItem(OWNER_KEY, stamp)',
+      // readCachedFor — the stamp is checked BEFORE the value is even read
+      'if (localStorage.getItem(OWNER_KEY) !== owner) return null',
+      'const raw = localStorage.getItem(STORAGE_KEY)',
+      // persistFor — stamp dropped FIRST, so a half-written pair is unreadable rather
+      // than readable as somebody else's
+      'localStorage.removeItem(OWNER_KEY)',
+      'localStorage.setItem(STORAGE_KEY, JSON.stringify(coords))',
+      'localStorage.setItem(OWNER_KEY, owner)',
+      // persistFor, the clearing branch
+      'localStorage.removeItem(STORAGE_KEY)',
+    ])
   })
 
   it('EXACT SET — the raw state is read only where it is gated', () => {
@@ -497,9 +709,31 @@ describe('H–K / V — the five surfaces, each passing its live identity', () =
 
   it('both async callbacks re-validate against the DECLARED owner, not their closure', () => {
     const src = executable(read(HOOK))
-    // three guards: the position callback, the reverse answer, and the error callback
-    expect((src.match(/if \(liveGeoOwner !== requestOwner\) return/g) ?? []).length).toBe(3)
+    // A COUNT IS NOT A POSITION. This used to assert only that three guards existed; a
+    // reviewer pointed out that moving one of them AFTER the commit it is supposed to
+    // protect keeps the count at three. Each guard is therefore anchored to its own site,
+    // and the EXACT SET below also fixes the total.
+    expect(linesOf(HOOK, 'stillMine')).toEqual([
+      'const stillMine = () => geoStillMine(requestOwner, requestEpoch)',
+      'if (!stillMine()) return',   // the browser's position callback
+      'if (!stillMine()) return',   // the reverse-geocode answer
+      'if (!stillMine()) return',   // the error callback
+    ])
+    // ANCHORED: each guard is the first statement of its callback, before any commit.
+    expect(src).toMatch(/\(pos\) => \{\s*\n\s*if \(!stillMine\(\)\) return\s*\n\s*const next: GeoCoords = \{/)
+    expect(src).toMatch(/if \(!stillMine\(\)\) return\s*\n\s*if \(!d \|\| d\.status !== 'ok' \|\| !d\.label\) return/)
+    expect(src).toMatch(/\(err\) => \{\s*\n\s*if \(!stillMine\(\)\) return/)
+    // the owner AND the epoch are captured together, once, before the prompt opens
+    expect(src).toMatch(/const requestOwner = liveOwner\s*\n\s*const requestEpoch = geoEpoch/)
     expect((src.match(/const requestOwner = liveOwner/g) ?? []).length).toBe(1)
+    // the decision itself is ONE exported predicate, not restated anywhere
+    expect(src).toMatch(
+      /export function geoStillMine\(requestOwner: GeoOwner, requestEpoch: number\): boolean \{\s*\n\s*return liveGeoOwner === requestOwner && geoEpoch === requestEpoch\s*\n\}/,
+    )
+    // EVERY commit in `request` goes through the exported decision — no bare setState
+    expect(src).toMatch(/const commit = \(next: Partial<GeoState>\) =>\s*\n\s*setState\(\(prev\) => geoCommit\(prev, requestOwner, requestEpoch, next\)\)/)
+    // a status-only commit must not erase the position (`in`, not `?? null`)
+    expect(src).toMatch(/const coords = 'coords' in next \? next\.coords \?\? null : prev\.coords/)
     // every write to disk names its owner and refuses unless it is still live
     expect(src).toMatch(/if \(liveGeoOwner === null \|\| owner !== liveGeoOwner\) return false/)
     expect((src.match(/persistFor\(requestOwner,/g) ?? []).length).toBe(2)
@@ -512,7 +746,12 @@ describe('H–K / V — the five surfaces, each passing its live identity', () =
     expect(src).toMatch(
       /const clear = useCallback\(\(\) => \{\s*\n\s*if \(liveOwner === null\) return\s*\n\s*const owner = liveOwner\s*\n\s*if \(liveGeoOwner !== owner\) return/,
     )
-    expect(src).toMatch(/setState\(\(prev\) => \(prev\.owner === owner \?/)
+    // ANCHORED AND ORDERED: the state write, the disk write, and the invalidation, in that
+    // order. The invalidation is what stops a reverse answer already on the wire putting the
+    // position back and rewriting the postal address after an explicit « disable ».
+    expect(src).toMatch(
+      /setState\(\(prev\) => geoClear\(prev, owner\)\)\s*\n\s*persistFor\(owner, null\)\s*\n\s*geoInvalidateInFlight\(\)/,
+    )
     // the cache is read only when the stamp names this owner
     expect(src).toMatch(/if \(localStorage\.getItem\(OWNER_KEY\) !== owner\) return null/)
   })
@@ -543,13 +782,96 @@ describe('H–K / V — the five surfaces, each passing its live identity', () =
     ])
   })
 
+
+  it('H bis — THE DISTANCE VECTOR: the rows themselves are owner-stamped', () => {
+    // FOUND BY AN INDEPENDENT REVIEW, and it was a real cross-account leak that this lot
+    // had half-fixed. app/api/restaurants/route.ts attaches `distanceKm` TO EVERY ROW at
+    // 0.1 km resolution and sorts by it, so a 20-row response is 20 distances measured from
+    // the account's home. `nearestKm` — which this lot did gate — is only the MINIMUM of
+    // that vector. The vector itself sat in an unstamped useState, so after an A → B swap
+    // the first frame painted « à env. 1,2 km » on every card for B: restaurants whose
+    // coordinates are public, so twenty distances locate A by multilateration.
+    const home = executable(read(HOME))
+    expect(linesOf(HOME, 'restaurantState')).toEqual([
+      'const [restaurantState, setRestaurantState] = useState<{ owner: string | null; rows: Restaurant[] }>({ owner: null, rows: [] })',
+      'const rowsAreMine = liveOwner !== null && restaurantState.owner === liveOwner',
+      'const restaurants = rowsAreMine ? restaurantState.rows : NO_ROWS',
+    ])
+    // the write names the owner the request was issued for — and so does the FAILURE path.
+    // This used to be `.catch(() => {})`: a refetch that failed for B left A's rows painted
+    // for the whole mount, because setLoading(false) closed the skeleton over them. A
+    // request that has not answered is not an answer.
+    expect(home).toMatch(/setRestaurantState\(\{ owner: requestOwner, rows: d\.restaurants \?\? \[\] \}\)/)
+    expect(home).toMatch(/\.catch\(\(\) => \{\s*\n\s*setRestaurantState\(\{ owner: requestOwner, rows: \[\] \}\)\s*\n\s*\}\)/)
+    // NARROWED, because a blanket ban was wrong: the other silent swallow on this page is
+    // SAFE, and the difference is the whole point. The recent-orders effect commits to
+    // `recentState`, which IS stamped, so a failed refetch leaves A's cards sitting in
+    // state where the render gate hides them — nothing is fabricated and nothing of A's is
+    // shown. The restaurants effect had no stamp, so the identical swallow left A's
+    // distances painted. Counted, so a third swallow cannot appear unseen.
+    expect((home.match(/\.catch\(\(\) => \{\}\)/g) ?? []).length,
+      'only the stamped recent-orders effect may swallow').toBe(1)
+    // and the skeleton stays up on a mismatch instead of telling an account with
+    // restaurants that there are none
+    expect(linesOf(HOME, 'loading')).toEqual([
+      'const loading = fetching || !rowsAreMine',
+      '{loading ? (',
+    ])
+    expect(linesOf(HOME, 'fetching')).toEqual([
+      'const [fetching, setFetching] = useState(true)',
+      'const loading = fetching || !rowsAreMine',
+    ])
+  })
+
+  it('I bis — /eat/search holds up to FIFTY of those distances, stamped the same way', () => {
+    const search = executable(read(SEARCH))
+    expect(linesOf(SEARCH, 'resultState')).toEqual([
+      'const [resultState, setResultState] = useState<{ owner: string | null; rows: Restaurant[] }>({ owner: null, rows: [] })',
+      'const rowsAreMine = favsOwner !== null && resultState.owner === favsOwner',
+      'const results = rowsAreMine ? resultState.rows : NO_ROWS',
+    ])
+    expect(search).toMatch(/const requestOwner = favsOwner/)
+    expect(search).toMatch(/setResultState\(\{ owner: requestOwner, rows: data\.restaurants \?\? \[\] \}\)/)
+    expect(search).toMatch(/setResultState\(\{ owner: requestOwner, rows: \[\] \}\)/)   // the catch
+    expect(linesOf(SEARCH, 'fetching')).toEqual([
+      'const [fetching, setFetching] = useState(true)',
+      'const loading = fetching || !rowsAreMine',
+    ])
+  })
+
+  it('EXACT SET — every useState of /eat, so no row of account content escapes a gate', () => {
+    // An enumeration over containers is escapable by choosing another container, which is
+    // why the hook's own containers are enumerated separately above. This set exists for a
+    // narrower reason: it is the list that a reviewer showed was WRONG about one of its
+    // members. `restaurants` was described in the neighbouring suite as « identity-free,
+    // the same rows for everyone signed in or not » — true of the legacy branch of
+    // /api/restaurants, false of the geo branch, which is the one this screen uses.
+    const decls = executable(read(HOME)).split('\n').map((l) => l.trim())
+      .filter((l) => /= useState/.test(l))
+    expect(decls).toEqual([
+      'const [restaurantState, setRestaurantState] = useState<{ owner: string | null; rows: Restaurant[] }>({ owner: null, rows: [] })',
+      'const [nearestState, setNearestState] = useState<{ owner: string | null; km: number | null }>({ owner: null, km: null })',
+      'const [recentState, setRecentState] = useState<{ owner: string | null; cards: RecentOrder[] }>({ owner: null, cards: [] })',
+      "const [favsState, setFavsState] = useState<{ owner: string | null; ids: string[] }>({ owner: null, ids: [] })",
+      'const [fetching, setFetching] = useState(true)',
+    ])
+    // four hold account content, and all four are gated on a live identity in RENDER
+    const src = executable(read(HOME))
+    expect(src).toMatch(/const rowsAreMine = liveOwner !== null && restaurantState\.owner === liveOwner/)
+    expect(src).toMatch(/const nearestKm = liveOwner !== null && nearestState\.owner === liveOwner/)
+    expect(src).toMatch(/const recent = liveOwner !== null/)
+    expect(src).toMatch(/const favs = favsOwner !== null/)
+    // the fifth is a boolean, and it is not read raw: `loading` is derived from it
+    expect(src).toMatch(/const loading = fetching \|\| !rowsAreMine/)
+  })
+
   it('I — /eat/search builds its query from the gated coords only', () => {
     expect(linesOf(SEARCH, 'coords')).toEqual([
       'const { coords } = useGeolocation(favsOwner)',
       'if (coords) {',
       "sp.set('lat', String(coords.lat))",
       "sp.set('lng', String(coords.lng))",
-      '}, [query, cuisine, sort, coords])',
+      '}, [query, cuisine, sort, coords, favsOwner])',
       'if (coords) return // geo drives the order — sort is inert when location is on',
       '<button type="button" className="sort" onClick={cycleSort} disabled={Boolean(coords)}>',
     ])
@@ -569,7 +891,12 @@ describe('H–K / V — the five surfaces, each passing its live identity', () =
     expect(src).toMatch(/const \{ coords, status, request, clear \} = useGeolocation\(sessionStamp\)/)
     // the switch and the address line both read the gated values
     expect(src).toMatch(/const geoOn = status === 'granted' && !!coords/)
-    expect(linesOf(SHEET, 'coords').some((l) => /coords\?\.label|coords\.label/.test(l)) || true).toBe(true)
+    // `X || true` CANNOT FAIL. It was here, and a reviewer deleted the address line this
+    // case claims to judge with the suite still green. The property is real, so it is now
+    // asserted as a property: the sheet renders the gated label and nothing else.
+    expect(linesOf(SHEET, 'coords').filter((l) => /coords\?\.label|coords\.label/.test(l))).toEqual([
+      '<span className="geo-on-txt">{coords?.label || t(\'statusOnSub\')}</span>',
+    ])
   })
 
   it('V — the public chef page keeps working, with an explicit guest owner', () => {
@@ -580,16 +907,53 @@ describe('H–K / V — the five surfaces, each passing its live identity', () =
     expect(src).not.toMatch(/sessionCartStamp|favOwner\(/)
   })
 
-  it('the lot touched nothing it was told not to touch', () => {
-    // EatShell still performs the disk-side owner sync, unchanged
-    const shell = read('components/eat/EatShell.tsx')
-    expect(shell).toMatch(/syncGeoCacheOwner\(me\)/)
-    expect(shell).toMatch(/syncGeoCacheOwner\(\{ kind: 'guest' \}\)/)
-    for (const f of [
-      'lib/eat-cart.ts', 'lib/eat-addresses.ts', 'lib/supply-cart.ts',
-      'app/[locale]/eat/orders/page.tsx', 'app/[locale]/eat/receipt/[id]/page.tsx',
-    ]) {
-      expect(read(f).length, f).toBeGreaterThan(100)
+  it('the forbidden areas still hold the invariants that would break if they were touched', () => {
+    // RENAMED AND REWRITTEN. The old version asserted `read(f).length > 100` for each
+    // forbidden file, which cannot detect any modification whatsoever, and matched
+    // `syncGeoCacheOwner(me)` with a bare toMatch that `if (false) syncGeoCacheOwner(me)`
+    // would satisfy. Worse, the claim was not a source property at all: « the diff touched
+    // nothing else » is a property of the COMMIT, verified with git outside the suite
+    // (`git diff --name-only`), and no assertion over file contents can stand in for it.
+    // What a test CAN do is hold the invariants whose breakage would matter.
+    const shell = executable(read('components/eat/EatShell.tsx'))
+    // ANCHORED, because a bare toMatch is satisfied by `if (false) syncGeoCacheOwner(me)`.
+    // The call sits with its two siblings in the identity effect, so a dead one is visible.
+    expect(shell).toMatch(
+      /setAddressOwner\(me\)\s*\n\s*setCartOwner\(me\)\s*\n\s*syncGeoCacheOwner\(me\)/,
+    )
+    expect(shell).toMatch(
+      /setAddressOwner\(\{ kind: 'guest' \}\)\s*\n\s*setCartOwner\(\{ kind: 'guest' \}\)\s*\n\s*syncGeoCacheOwner\(\{ kind: 'guest' \}\)/,
+    )
+    // The neighbouring lots' guards, each asserted as the invariant it is rather than by
+    // file length. These are the lines whose removal would re-open a merged hotfix.
+    expect(executable(read('lib/eat-cart.ts'))).toMatch(/export function sessionCartStamp\(status: string, userId\?: string \| null\): string \| null/)
+    expect(executable(read('lib/eat-addresses.ts'))).toMatch(/export function sessionAddressStamp\(status: string, userId\?: string \| null\): string \| null/)
+    // measured, not remembered: both gate on `liveStamp`, and both exclude the guest
+    // bucket — an order history and a paid receipt have no guest reading
+    expect(executable(read('app/[locale]/eat/orders/page.tsx')))
+      .toMatch(/const ordersOwned = liveStamp !== null && liveStamp !== 'guest' && data\?\.stamp === liveStamp/)
+    expect(executable(read('app/[locale]/eat/receipt/[id]/page.tsx')))
+      .toMatch(/const scopeOk = liveStamp !== null && liveStamp !== 'guest'/)
+  })
+
+  it('the two identity definitions AGREE — they are separate bodies, and must not drift', () => {
+    // NOT A SOURCE PIN: both functions are CALLED, across every case, and their answers
+    // compared. A reviewer found that this app has TWO byte-identical implementations of
+    // « who is signed in » — sessionCartStamp (passed by /eat, /eat/search, /eat/r/[id])
+    // and sessionAddressStamp (passed by GeolocSheet) — while a comment in the hook claims
+    // there is only one. The module-level declared owner is last-writer-wins, so if these
+    // two ever diverge the sheet would declare a different owner from the page it sits on.
+    //
+    // ALIASING ONE ONTO THE OTHER IS THE REAL FIX, and it is NOT done here: lib/eat-addresses
+    // is on this lot's do-not-touch list. Reported as its own lot. Until then, divergence
+    // is red rather than silent.
+    for (const status of ['authenticated', 'unauthenticated', 'loading', 'nonsense']) {
+      for (const id of ['user-A', 'user-B', '', null, undefined]) {
+        expect(sessionAddressStamp(status, id), `${status}/${String(id)}`)
+          .toBe(sessionCartStamp(status, id))
+      }
     }
+    // and neither can ever produce the literal guest bucket for a signed-in account
+    expect(sessionCartStamp('authenticated', 'guest')).toBe('u:guest')
   })
 })

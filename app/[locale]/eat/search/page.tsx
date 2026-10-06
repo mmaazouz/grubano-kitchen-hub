@@ -157,9 +157,17 @@ function SearchContent() {
   const [query, setQuery] = useState(urlQuery)
   const [cuisine, setCuisine] = useState(params.get('cuisine') ?? '')
   const [sort, setSort] = useState('newest') // V4-2 : défaut honnête (ex-'rating' fabriqué)
-  const [results, setResults] = useState<Restaurant[]>([])
+  // OWNER-STAMPED. Every row carries `distanceKm` measured FROM THIS ACCOUNT'S POSITION
+  // (app/api/restaurants/route.ts attaches it per row at 0.1 km resolution and sorts by
+  // it), so the response is account content even though the rows themselves are public.
+  // Fifty distances to restaurants whose coordinates are public locate the account by
+  // multilateration, which is a STRONGER statement about where it was than the single
+  // `nearestKm` this lot already gated -- that number is just the minimum of this vector.
+  const [resultState, setResultState] = useState<{ owner: string | null; rows: Restaurant[] }>({ owner: null, rows: [] })
   const [fallback, setFallback] = useState(false)
-  const [loading, setLoading] = useState(true)
+  // RAW: is a request in flight. `loading` is derived from it below, because a frame whose
+  // rows belong to another identity must keep the skeleton up rather than claim « nothing ».
+  const [fetching, setFetching] = useState(true)
 
   // Favorites (REAL — lib/eat-cart, PER OWNER), live via FAV_EVENT + cross-tab storage.
   // ── FAVOURITES OWNER, RESOLVED DURING RENDER ───────────────────────────────────
@@ -213,7 +221,9 @@ function SearchContent() {
   useEffect(() => setQuery(urlQuery), [urlQuery])
 
   const run = useCallback(async () => {
-    setLoading(true)
+    // Captured before the request leaves; the response is attributed to THIS identity.
+    const requestOwner = favsOwner
+    setFetching(true)
     const sp = new URLSearchParams()
     if (query) sp.set('q', query)
     if (cuisine) sp.set('category', cuisine)
@@ -227,15 +237,17 @@ function SearchContent() {
     try {
       const res = await fetch(`/api/restaurants?${sp}`)
       const data: SearchResponse = await res.json()
-      setResults(data.restaurants ?? [])
+      setResultState({ owner: requestOwner, rows: data.restaurants ?? [] })
       setFallback(Boolean(data.categoryHadNoMatch))
     } catch {
-      setResults([])
+      setResultState({ owner: requestOwner, rows: [] })
       setFallback(false)
     } finally {
-      setLoading(false)
+      setFetching(false)
     }
-  }, [query, cuisine, sort, coords])
+    // the identity is a dep: `coords` is already gated, but the rows must be re-attributed
+    // too, and the request must not carry the previous account's lat/lng.
+  }, [query, cuisine, sort, coords, favsOwner])
 
   useEffect(() => {
     run()
@@ -277,6 +289,10 @@ function SearchContent() {
     [locale, t, tc, tr],
   )
 
+  // RENDER-TIME GATE, the same shape as the favourites above it.
+  const rowsAreMine = favsOwner !== null && resultState.owner === favsOwner
+  const results = rowsAreMine ? resultState.rows : NO_ROWS
+  const loading = fetching || !rowsAreMine
   const favCount = useMemo(() => results.filter((r) => favs.includes(r.id)).length, [results, favs])
   const typing = query.trim().length > 0
   const noMatch = typing && !loading && results.length === 0
@@ -569,6 +585,8 @@ function SearchContent() {
 /** Stable identity for the fail-closed empty list: a fresh [] per render would churn the
  *  memos that depend on it. Frozen, because every gated render shares the one array. */
 const NO_FAVS: string[] = Object.freeze([]) as unknown as string[]
+/** Stable identity for the ungated case, so the gate does not re-run every memo below it. */
+const NO_ROWS: Restaurant[] = Object.freeze([]) as unknown as Restaurant[]
 
 export default function ExploreScreen() {
   return (
