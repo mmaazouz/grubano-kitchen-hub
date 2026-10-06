@@ -565,6 +565,241 @@ describe('W–Z — the four defects a review proved, now closed', () => {
   })
 })
 
+
+// ══ AA–AG : a superseded request must be INERT, not merely invisible ═════════
+
+/**
+ * MODELLED: the interleaving of two catalogue requests -- when each promise settles, and
+ * React's rule that an effect's cleanup runs BEFORE the next effect body. That ordering is
+ * legitimately a test's job; there is no decision function to export here, because the
+ * discipline is control flow inside an effect.
+ *
+ * WHAT BINDS THE REAL FILES is therefore not this model. It is the EXACT SET over every
+ * `alive` line of each page further down, plus the mutation battery: each of the eight
+ * guards, deleted one at a time, turns this suite red. The model proves the discipline is
+ * sufficient; the sets and the mutations prove the pages implement it.
+ */
+function mountCatalogue(kind: 'home' | 'search') {
+  const state = {
+    rows: { owner: null as string | null, rows: [] as string[] },
+    nearest: { owner: null as string | null, km: null as number | null },
+    fallback: false,
+    fetching: true,
+  }
+  let liveOwner: string | null = null
+  let cleanup: (() => void) | null = null
+
+  interface Req {
+    owner: string
+    success(rows: string[], km: number | null, noMatch?: boolean): void
+    fail(): void
+    settle(): void
+  }
+  const reqs: Req[] = []
+
+  /** The effect body. `alive` is captured per run, exactly as the page captures it. */
+  function runEffect(): void {
+    if (cleanup) cleanup()                 // React runs the previous cleanup first
+    const requestOwner = liveOwner
+    if (requestOwner === null) return
+    let alive = true
+    // synchronous, before any await: this request IS the current one at this instant
+    state.fetching = true
+    reqs.push({
+      owner: requestOwner,
+      success: (rows, km, noMatch) => {
+        if (!alive) return
+        state.rows = { owner: requestOwner, rows }
+        if (kind === 'home') state.nearest = { owner: requestOwner, km }
+        else state.fallback = Boolean(noMatch)
+      },
+      fail: () => {
+        if (!alive) return
+        state.rows = { owner: requestOwner, rows: [] }
+        if (kind === 'search') state.fallback = false
+      },
+      settle: () => { if (alive) state.fetching = false },
+    })
+    cleanup = () => { alive = false }
+  }
+
+  return {
+    /** A session change re-runs the identity-keyed effect. No remount. */
+    signIn(owner: string | null) { liveOwner = owner; runEffect() },
+    unmount() { if (cleanup) cleanup() },
+    reqs,
+    view() {
+      const rowsAreMine = liveOwner !== null && state.rows.owner === liveOwner
+      return {
+        rowsAreMine,
+        rows: rowsAreMine ? state.rows.rows : [],
+        nearestKm: liveOwner !== null && state.nearest.owner === liveOwner ? state.nearest.km : null,
+        loading: state.fetching || !rowsAreMine,
+        fallback: state.fallback,
+        rawRowsOwner: state.rows.owner,
+        rawNearestOwner: state.nearest.owner,
+      }
+    },
+  }
+}
+
+describe('AA–AG — /eat: a late response for the previous identity commits nothing', () => {
+  it('AA — B SUCCESS, then A SUCCESS late: the state stays B and B never returns to loading', () => {
+    // THE DEFECT. The stamp made A's late answer INVISIBLE; it never made it INERT. A
+    // re-stamped the state as A's, `rowsAreMine` went false, and `loading` — derived from
+    // it — went back to true: B sat on the skeleton until some dependency happened to
+    // change. No identity leaked and B's screen was wrong anyway.
+    const c = mountCatalogue('home')
+    c.signIn(OWN_A)                       // 1. A's request starts
+    c.signIn(OWN_B)                       // 2-3. session becomes B, B's request starts
+    c.reqs[1].success(['b1', 'b2'], 1.4)  // 4. B answers
+    c.reqs[1].settle()
+    expect(c.view().rows).toEqual(['b1', 'b2'])
+    expect(c.view().loading).toBe(false)
+
+    c.reqs[0].success(['a1', 'a2', 'a3'], 9.9)   // 5. A answers LATE
+    c.reqs[0].settle()
+    expect(c.view().rows, 'B keeps its own rows').toEqual(['b1', 'b2'])
+    expect(c.view().nearestKm, 'and its own distance').toBe(1.4)
+    expect(c.view().rawRowsOwner, 'A never got to re-stamp the state').toBe(OWN_B)
+    expect(c.view().rawNearestOwner).toBe(OWN_B)
+    expect(c.view().loading, 'and B is NOT put back on the skeleton').toBe(false)
+  })
+
+  it('AB — A SUCCESS first: invisible on the first frame, then B\'s own answer shows', () => {
+    // The window the stamp still has to cover: render B → A's answer → cleanup has already
+    // run, so nothing commits; but even if it did, the gate hides it.
+    const c = mountCatalogue('home')
+    c.signIn(OWN_A)
+    c.signIn(OWN_B)
+    c.reqs[0].success(['a1'], 9.9)        // A answers BEFORE B
+    c.reqs[0].settle()
+    expect(c.view().rows, 'nothing of A is visible').toEqual([])
+    expect(c.view().nearestKm).toBeNull()
+    expect(c.view().loading, 'and the skeleton stays up rather than showing nothing').toBe(true)
+
+    c.reqs[1].success(['b1'], 2.1)
+    c.reqs[1].settle()
+    expect(c.view().rows).toEqual(['b1'])
+    expect(c.view().nearestKm).toBe(2.1)
+    expect(c.view().loading).toBe(false)
+  })
+
+  it('AC — a late FAILURE for A does not empty what B has', () => {
+    const c = mountCatalogue('home')
+    c.signIn(OWN_A)
+    c.signIn(OWN_B)
+    c.reqs[1].success(['b1', 'b2'], 1.4)
+    c.reqs[1].settle()
+    c.reqs[0].fail()                      // A's request fails, late
+    c.reqs[0].settle()
+    expect(c.view().rows, 'B is untouched by A\'s failure').toEqual(['b1', 'b2'])
+    expect(c.view().rawRowsOwner).toBe(OWN_B)
+    expect(c.view().loading).toBe(false)
+  })
+
+  it('AD — a late `finally` for A does not close the skeleton while B is still in flight', () => {
+    const c = mountCatalogue('home')
+    c.signIn(OWN_A)
+    c.signIn(OWN_B)                       // B's request is in flight, nothing committed yet
+    expect(c.view().loading).toBe(true)
+    c.reqs[0].settle()                    // A's `finally` fires
+    expect(c.view().loading, 'B is still loading, because B has not answered').toBe(true)
+    c.reqs[1].success(['b1'], 1.0)
+    c.reqs[1].settle()
+    expect(c.view().loading).toBe(false)
+  })
+
+  it('AE — A → B → C with three in flight: C survives every response order', () => {
+    for (const order of [[0, 1, 2], [2, 1, 0], [1, 0, 2], [0, 2, 1], [1, 2, 0], [2, 0, 1]]) {
+      const c = mountCatalogue('home')
+      c.signIn(OWN_A)
+      c.signIn(OWN_B)
+      c.signIn(OWN_C)
+      for (const i of order) {
+        if (i === 2) c.reqs[2].success(['c1'], 3.3)
+        else c.reqs[i].success([`stale-${i}`], 9.9)
+        c.reqs[i].settle()
+      }
+      expect(c.view().rows, `order ${order.join('')}`).toEqual(['c1'])
+      expect(c.view().nearestKm, `order ${order.join('')}`).toBe(3.3)
+      expect(c.view().rawRowsOwner, `order ${order.join('')}`).toBe(OWN_C)
+      expect(c.view().loading, `order ${order.join('')}`).toBe(false)
+    }
+  })
+
+  it('AF — and after unmount, nothing commits at all', () => {
+    const c = mountCatalogue('home')
+    c.signIn(OWN_A)
+    c.unmount()
+    c.reqs[0].success(['a1'], 9.9)
+    c.reqs[0].settle()
+    expect(c.view().rawRowsOwner, 'the response had nowhere to land').toBeNull()
+  })
+})
+
+describe('AG — /eat/search: the same matrix, plus `fallback`', () => {
+  it('a late A response may not overwrite B\'s fallback flag', () => {
+    // `fallback` drives « aucun résultat dans cette catégorie, voici autre chose ». It is
+    // not owner-stamped and cannot usefully be: it is a property of the REQUEST, which is
+    // exactly why a superseded request must not write it.
+    const c = mountCatalogue('search')
+    c.signIn(OWN_A)
+    c.signIn(OWN_B)
+    c.reqs[1].success(['b1'], null, false)      // B: the category matched
+    c.reqs[1].settle()
+    expect(c.view().fallback).toBe(false)
+    c.reqs[0].success(['a1'], null, true)       // A, late: the category had no match
+    c.reqs[0].settle()
+    expect(c.view().fallback, 'B\'s answer stands').toBe(false)
+    expect(c.view().rows).toEqual(['b1'])
+    expect(c.view().loading).toBe(false)
+  })
+
+  it('a late A catch may not clear B\'s rows, fallback or loading', () => {
+    const c = mountCatalogue('search')
+    c.signIn(OWN_A)
+    c.signIn(OWN_B)
+    c.reqs[1].success(['b1', 'b2'], null, true)  // B legitimately fell back
+    c.reqs[1].settle()
+    expect(c.view().fallback).toBe(true)
+    c.reqs[0].fail()                             // A's catch, late
+    c.reqs[0].settle()
+    expect(c.view().rows, 'rows kept').toEqual(['b1', 'b2'])
+    expect(c.view().fallback, 'fallback kept — the catch would have set it false').toBe(true)
+    expect(c.view().loading, 'loading kept').toBe(false)
+  })
+
+  it('B SUCCESS then A SUCCESS late: the rows stay B\'s, and B never reloads', () => {
+    const c = mountCatalogue('search')
+    c.signIn(OWN_A)
+    c.signIn(OWN_B)
+    c.reqs[1].success(['b1'], null, false)
+    c.reqs[1].settle()
+    c.reqs[0].success(['a1', 'a2'], null, false)
+    c.reqs[0].settle()
+    expect(c.view().rows).toEqual(['b1'])
+    expect(c.view().rawRowsOwner).toBe(OWN_B)
+    expect(c.view().loading).toBe(false)
+  })
+
+  it('three in flight: the newest survives every order', () => {
+    for (const order of [[0, 1, 2], [2, 1, 0], [1, 0, 2]]) {
+      const c = mountCatalogue('search')
+      c.signIn(OWN_A)
+      c.signIn(OWN_B)
+      c.signIn(OWN_C)
+      for (const i of order) {
+        c.reqs[i].success(i === 2 ? ['c1'] : [`stale-${i}`], null, i !== 2)
+        c.reqs[i].settle()
+      }
+      expect(c.view().rows, `order ${order.join('')}`).toEqual(['c1'])
+      expect(c.view().fallback, `order ${order.join('')}`).toBe(false)
+      expect(c.view().loading, `order ${order.join('')}`).toBe(false)
+    }
+  })
+})
+
 // ══ H–K, V : the surfaces, closed by exact sets ══════════════════════════════
 
 const read = (p: string) => readFileSync(p, 'utf8').replace(/\r\n/g, '\n')
@@ -802,7 +1037,7 @@ describe('H–K / V — the five surfaces, each passing its live identity', () =
     // for the whole mount, because setLoading(false) closed the skeleton over them. A
     // request that has not answered is not an answer.
     expect(home).toMatch(/setRestaurantState\(\{ owner: requestOwner, rows: d\.restaurants \?\? \[\] \}\)/)
-    expect(home).toMatch(/\.catch\(\(\) => \{\s*\n\s*setRestaurantState\(\{ owner: requestOwner, rows: \[\] \}\)\s*\n\s*\}\)/)
+    expect(home).toMatch(/\.catch\(\(\) => \{\s*\n\s*if \(!alive\) return\s*\n\s*setRestaurantState\(\{ owner: requestOwner, rows: \[\] \}\)\s*\n\s*\}\)/)
     // NARROWED, because a blanket ban was wrong: the other silent swallow on this page is
     // SAFE, and the difference is the whole point. The recent-orders effect commits to
     // `recentState`, which IS stamped, so a failed refetch leaves A's cards sitting in
@@ -863,6 +1098,145 @@ describe('H–K / V — the five surfaces, each passing its live identity', () =
     expect(src).toMatch(/const favs = favsOwner !== null/)
     // the fifth is a boolean, and it is not read raw: `loading` is derived from it
     expect(src).toMatch(/const loading = fetching \|\| !rowsAreMine/)
+  })
+
+  it('EXACT SET — every invalidation guard on /eat, so no commit site is left open', () => {
+    // A SUPERSEDED REQUEST MUST BE INERT, NOT MERELY INVISIBLE. The stamp decides what may
+    // be SEEN; this flag decides what may be WRITTEN. An independent review found the gap:
+    // a late response for A, landing after B's had already committed, re-stamped the state
+    // as A's — the gate then hid it from B and `rowsAreMine` went false, so `loading`, which
+    // is derived from it, went back to true and B sat on the skeleton until a dependency
+    // happened to change. No identity leaked, and B's screen was wrong regardless.
+    //
+    // This is the EXACT SET, not a count: every line of this file naming the flag, in both
+    // effects. The recentState effect below has had its cleanup since the Recommander lot;
+    // the catalogue effect, which this lot extended, never had one.
+    expect(linesOf(HOME, 'alive')).toEqual([
+      // the catalogue effect — declaration, success, catch, finally, cleanup
+      'let alive = true',
+      'if (!alive) return',
+      'if (!alive) return',
+      '.finally(() => { if (alive) setFetching(false) })',
+      'return () => { alive = false }',
+      // the recent-orders effect (the Recommander lot) — unchanged here
+      'let alive = true',
+      'if (!alive || !d) return',
+      'return () => { alive = false }',
+    ])
+    const home = executable(read(HOME))
+    // ANCHORED: each guard is the FIRST statement of its callback, before any commit —
+    // a guard that sits AFTER the commit it protects would keep every count intact.
+    expect(home).toMatch(
+      /\.then\(\(d\) => \{\s*\n\s*if \(!alive\) return\s*\n\s*setRestaurantState\(/,
+    )
+    // and BOTH stamped states are written inside that same guarded block: the distance was
+    // committed one line after the rows, so a guard covering only the rows would have let a
+    // stale request re-stamp the number
+    expect(home).toMatch(
+      /if \(!alive\) return\s*\n\s*setRestaurantState\(\{ owner: requestOwner, rows: d\.restaurants \?\? \[\] \}\)[\s\S]{0,320}?setNearestState\(\{ owner: requestOwner, km:/,
+    )
+    // BOUND AS A BLOCK, not as a bag of lines. `linesOf` compares trimmed line TEXT in
+    // file order and says nothing about what encloses a line; a review proved three kills
+    // that walk straight past a set of lines. So the opening of the effect, the owner
+    // capture, the flag and the first commit are matched in ONE expression, adjacent:
+    //   · the opener must be a useEffect — a useCallback cannot be invalidated, because
+    //     React never calls the cleanup it returns;
+    //   · `let alive = true` must be INSIDE it — hoisted to module scope the flag is
+    //     initialised once per module load, the first cleanup latches it false for ever,
+    //     and the page is pinned on the skeleton (worse than the bug being fixed);
+    //   · nothing may be inserted before the flag — a one-line early return there
+    //     neutralises the whole request path and leaves `fetching` true for ever.
+    // `setFetching(true)` is deliberately NOT guarded: it runs synchronously in the effect
+    // body, before any await, so at that instant this request IS the current one.
+    expect(home).toMatch(
+      /useEffect\(\(\) => \{\s*\n\s*const requestOwner = liveOwner\s*\n\s*let alive = true\s*\n\s*setFetching\(true\)/,
+    )
+    // the cleanup is the LAST statement OF THAT SAME EFFECT. The span cannot cross another
+    // `useEffect(`, so the sibling effect twenty lines below cannot satisfy this.
+    expect(home).toMatch(
+      /useEffect\(\(\) => \{(?:(?!useEffect\()[\s\S])*?return \(\) => \{ alive = false \}\s*\n\s*\}, \[coords, liveOwner\]\)/,
+    )
+    // NO MUTABLE MODULE-SCOPE STATE on this page: that is the general form of the hoist,
+    // and the one container enumeration that a hoisted flag cannot hide in.
+    expect(executable(read(HOME)).split('\n').filter((l) => /^(let|var)\s/.test(l)),
+      'nothing mutable at module scope').toEqual([])
+  })
+
+  it('EXACT SET — every invalidation guard on /eat/search, including `fallback`', () => {
+    // The fetch used to live in a useCallback, which cannot be invalidated by a cleanup, so
+    // it is inlined into the one effect that called it. That removes the SHAPE of the bug:
+    // the request can no longer be started by anything that does not own a cleanup.
+    expect(linesOf(SEARCH, 'alive')).toEqual([
+      'let alive = true',
+      'if (!alive) return',
+      'if (!alive) return',
+      'if (alive) setFetching(false)',
+      'return () => { alive = false }',
+    ])
+    const search = executable(read(SEARCH))
+    // success: the guard precedes BOTH writes — the rows and `fallback`. `fallback` is a
+    // property of the REQUEST and cannot be owner-stamped, which is exactly why a
+    // superseded request must not write it: A's « no match in this category » would
+    // otherwise replace B's answer.
+    expect(search).toMatch(
+      /if \(!alive\) return\s*\n\s*setResultState\(\{ owner: requestOwner, rows: data\.restaurants \?\? \[\] \}\)\s*\n\s*setFallback\(Boolean\(data\.categoryHadNoMatch\)\)/,
+    )
+    // catch: the same, and it would set `fallback` back to false
+    expect(search).toMatch(
+      /if \(!alive\) return\s*\n\s*setResultState\(\{ owner: requestOwner, rows: \[\] \}\)\s*\n\s*setFallback\(false\)/,
+    )
+    // finally: a stale `finally` must not close the skeleton over a newer request
+    expect(search).toMatch(/\} finally \{\s*\n\s*if \(alive\) setFetching\(false\)\s*\n\s*\}/)
+    // BOUND AS A BLOCK — see the /eat case above for why a set of lines is not enough.
+    // This one expression is what forbids re-extracting the body into a callback, hoisting
+    // the flag, and inserting anything before it.
+    expect(search).toMatch(
+      /useEffect\(\(\) => \{\s*\n\s*const requestOwner = favsOwner\s*\n\s*let alive = true\s*\n\s*setFetching\(true\)/,
+    )
+    expect(search).toMatch(
+      /useEffect\(\(\) => \{(?:(?!useEffect\()[\s\S])*?return \(\) => \{ alive = false \}\s*\n\s*\}, \[query, cuisine, sort, coords, favsOwner\]\)/,
+    )
+    // THE SHAPE, NOT THE NAME. These two bans used to read `/const run = useCallback/` and
+    // `/\brun\(\)/`: renaming the extraction to `load` satisfied both while restoring the
+    // un-invalidatable entry point they existed to forbid. A cleanup returned from a
+    // useCallback is returned to its CALLER and dropped — React never sees it.
+    expect(search, 'no cleanup may be returned from a callback').not.toMatch(
+      /=\s*useCallback\((?:(?!useEffect\()[\s\S])*?alive = false/,
+    )
+    expect(search, 'the fetch is started by an effect, never by a callback').not.toMatch(
+      /=\s*useCallback\((?:(?!useEffect\()[\s\S])*?fetch\(`\/api\/restaurants/,
+    )
+    expect(executable(read(SEARCH)).split('\n').filter((l) => /^(let|var)\s/.test(l)),
+      'nothing mutable at module scope').toEqual([])
+  })
+
+  it('EVERY write of the four states goes through a guarded block — enumerated', () => {
+    // A guard is worth nothing if a write can be added beside it. These are the complete
+    // lists of write sites, so a new unguarded one cannot appear without turning this red.
+    const home = executable(read(HOME)).split('\n').map((l) => l.trim())
+    // MEASURED. The useState declarations are NOT in these sets: they read `, setX]`, and
+    // a search for `setX(` cannot match that. I wrote them in from memory and the suite
+    // caught it — the same trap as `setNearestState(` last round, from the other end.
+    expect(home.filter((l) => /setRestaurantState\(|setNearestState\(/.test(l))).toEqual([
+      'setRestaurantState({ owner: requestOwner, rows: d.restaurants ?? [] })',
+      "setNearestState({ owner: requestOwner, km: typeof d.nearestKm === 'number' ? d.nearestKm : null })",
+      'setRestaurantState({ owner: requestOwner, rows: [] })',
+    ])
+    expect(home.filter((l) => /setFetching\(/.test(l))).toEqual([
+      'setFetching(true)',
+      '.finally(() => { if (alive) setFetching(false) })',
+    ])
+    const search = executable(read(SEARCH)).split('\n').map((l) => l.trim())
+    expect(search.filter((l) => /setResultState\(|setFallback\(/.test(l))).toEqual([
+      'setResultState({ owner: requestOwner, rows: data.restaurants ?? [] })',
+      'setFallback(Boolean(data.categoryHadNoMatch))',
+      'setResultState({ owner: requestOwner, rows: [] })',
+      'setFallback(false)',
+    ])
+    expect(search.filter((l) => /setFetching\(/.test(l))).toEqual([
+      'setFetching(true)',
+      'if (alive) setFetching(false)',
+    ])
   })
 
   it('I — /eat/search builds its query from the gated coords only', () => {

@@ -191,6 +191,14 @@ export default function HomeScreen() {
   useEffect(() => {
     // Captured before the request leaves, and the response is stamped with it.
     const requestOwner = liveOwner
+    // INVALIDATION. The stamp decides whether a response may be SEEN; this flag decides
+    // whether it may be WRITTEN AT ALL. They are not the same guarantee: a late response
+    // for A, landing after B's own response has already committed, re-stamped the state as
+    // A's — the gate then hid it from B and `rowsAreMine` went false, leaving B on the
+    // skeleton until a dependency happened to change. The identity was never leaked and B's
+    // screen was never right either. Cleared by the cleanup below, so this request stops
+    // existing the moment it is superseded or the mount goes away.
+    let alive = true
     setFetching(true)
     const sp = new URLSearchParams({ take: '20' })
     if (coords) {
@@ -202,6 +210,7 @@ export default function HomeScreen() {
     fetch(`/api/restaurants?${sp}`)
       .then((r) => r.json())
       .then((d) => {
+        if (!alive) return
         setRestaurantState({ owner: requestOwner, rows: d.restaurants ?? [] })
         // WAVE 2 — méta honnêteté géo : distance du plus proche (message « rien
         // tout près ») ; les restos sans coords arrivent déjà appendus par l'API.
@@ -212,9 +221,13 @@ export default function HomeScreen() {
       // (offline, 500), the skeleton closed over the OLD account's distance vector and it
       // stayed on screen for the whole mount. /eat/search already cleared here.
       .catch(() => {
+        if (!alive) return
         setRestaurantState({ owner: requestOwner, rows: [] })
       })
-      .finally(() => setFetching(false))
+      // …and a superseded request may not touch the flag either: an old `finally` firing
+      // while a newer request is still in flight would close the skeleton over nothing.
+      .finally(() => { if (alive) setFetching(false) })
+    return () => { alive = false }
     // keyed on the identity as well as the position: `coords` is already gated, but the
     // DERIVED number must be re-attributed too, and the request must not carry A's lat/lng
     // once B is live.

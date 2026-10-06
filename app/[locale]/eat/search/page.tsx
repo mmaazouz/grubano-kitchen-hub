@@ -220,9 +220,18 @@ function SearchContent() {
   // Keep the page query in sync with the URL ?q= the shell topbar updates.
   useEffect(() => setQuery(urlQuery), [urlQuery])
 
-  const run = useCallback(async () => {
+  // INLINED INTO THE EFFECT, where a cleanup can own it. This was a useCallback called by
+  // the effect below, and a useCallback cannot be invalidated: a late response for A,
+  // landing after B's had already committed, re-stamped the rows as A's (hiding them from B
+  // and pinning B to the skeleton), overwrote B's `fallback` with A's answer, and let an old
+  // `finally` close the skeleton while B was still in flight. The stamp decides what may be
+  // SEEN; only an invalidated request decides what may be WRITTEN. Inlining also removes
+  // the shape of the bug: the request can no longer be started by anything that does not
+  // own a cleanup.
+  useEffect(() => {
     // Captured before the request leaves; the response is attributed to THIS identity.
     const requestOwner = favsOwner
+    let alive = true
     setFetching(true)
     const sp = new URLSearchParams()
     if (query) sp.set('q', query)
@@ -234,24 +243,25 @@ function SearchContent() {
       sp.set('sort', sort)
     }
     sp.set('take', '50')
-    try {
-      const res = await fetch(`/api/restaurants?${sp}`)
-      const data: SearchResponse = await res.json()
-      setResultState({ owner: requestOwner, rows: data.restaurants ?? [] })
-      setFallback(Boolean(data.categoryHadNoMatch))
-    } catch {
-      setResultState({ owner: requestOwner, rows: [] })
-      setFallback(false)
-    } finally {
-      setFetching(false)
-    }
+    void (async () => {
+      try {
+        const res = await fetch(`/api/restaurants?${sp}`)
+        const data: SearchResponse = await res.json()
+        if (!alive) return
+        setResultState({ owner: requestOwner, rows: data.restaurants ?? [] })
+        setFallback(Boolean(data.categoryHadNoMatch))
+      } catch {
+        if (!alive) return
+        setResultState({ owner: requestOwner, rows: [] })
+        setFallback(false)
+      } finally {
+        if (alive) setFetching(false)
+      }
+    })()
+    return () => { alive = false }
     // the identity is a dep: `coords` is already gated, but the rows must be re-attributed
     // too, and the request must not carry the previous account's lat/lng.
   }, [query, cuisine, sort, coords, favsOwner])
-
-  useEffect(() => {
-    run()
-  }, [run])
 
   const sortLabel = t(SORTS.find((s) => s.value === sort)?.labelKey ?? 'sortNewest')
   const cycleSort = () => {
