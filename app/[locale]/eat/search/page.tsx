@@ -149,7 +149,7 @@ function SearchContent() {
   const locale = useLocale()
   const params = useSearchParams()
   const router = useRouter()
-  const { coords } = useGeolocation()
+  // the geolocation hook is called below, once `favsOwner` exists — see GEO OWNER
 
   // Desktop query = URL ?q= (the shell topbar routes here). Mobile query = the
   // page's own input, seeded from ?q=. Both drive the SAME real fetch.
@@ -170,6 +170,11 @@ function SearchContent() {
   const { data: favSession, status: favSessionStatus } = useSession()
   const favLiveUserId = (favSession?.user as { id?: string } | undefined)?.id
   const favsOwner = favOwner(favSessionStatus, favLiveUserId)
+
+  // ── GEO OWNER ──────────────────────────────────────────────────────────────────
+  // Gated coords mean no lat/lng of the previous account can reach the search query, on
+  // the first frame or on any refetch.
+  const { coords } = useGeolocation(favsOwner)
 
   /** RAW — read only through the gate below: the ids AND the owner they were read for. */
   const [favsState, setFavsState] = useState<{ owner: string | null; ids: string[] }>({ owner: null, ids: [] })

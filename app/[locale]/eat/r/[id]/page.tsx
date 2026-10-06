@@ -244,7 +244,7 @@ export default function RestaurantScreen() {
   const [smallOrderCfg, setSmallOrderCfg] = useState<{ feeCents: number; thresholdCents: number } | null>(null)
   // PASSIVE read of the cached position only — this page NEVER calls request()
   // (geolocation is out of S1.1 scope): no permission prompt, no network call.
-  const { coords } = useGeolocation()
+  // the geolocation hook is called below, once the owner exists — see GEO OWNER
   const { data: session, status: sessionStatus } = useSession()
 
   // ── CART OWNERSHIP, EVALUATED DURING RENDER ────────────────────────────────────
@@ -327,6 +327,11 @@ export default function RestaurantScreen() {
   // ── FAVOURITES OWNER, RESOLVED DURING RENDER ───────────────────────────────────
   const favLiveUserId = (session?.user as { id?: string } | undefined)?.id
   const favsOwner = favOwner(sessionStatus, favLiveUserId)
+
+  // ── GEO OWNER ──────────────────────────────────────────────────────────────────
+  // The haversine distance is computed from the account's own position: gating the coords
+  // means no distance measured from the previous account's location can be shown.
+  const { coords } = useGeolocation(favsOwner)
   /** The only heart state this screen may show: lit for this owner, or not lit. */
   const fav = favsOwner !== null && favState.owner === favsOwner && favState.on
 

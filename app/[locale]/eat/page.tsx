@@ -95,11 +95,14 @@ export default function HomeScreen() {
   const tr = useTranslations('eat.restaurant')
   const locale = useLocale()
   const router = useRouter()
-  const { coords, status, request, clear } = useGeolocation()
+  // the geolocation hook is called below, once `favsOwner` exists — see GEO OWNER
 
   const [restaurants, setRestaurants] = useState<Restaurant[]>([])
   // WAVE 2 — distance du resto géocodé le plus proche (message honnête « rien tout près »)
-  const [nearestKm, setNearestKm] = useState<number | null>(null)
+  /** RAW — read only through the gate below. The number is derived from the account's own
+   *  position, so « rien à moins de 25 km » is a weak but real statement about where the
+   *  PREVIOUS account was; it survives an identity change exactly as the coords did. */
+  const [nearestState, setNearestState] = useState<{ owner: string | null; km: number | null }>({ owner: null, km: null })
   /** RAW — read only through `recent` below: the cards AND the identity they were fetched
    *  for. The row shows a restaurant name, an item count and a euro total per card, plus a
    *  link into that restaurant, so it is the account's purchase history in miniature. */
@@ -118,6 +121,12 @@ export default function HomeScreen() {
    *  `guest` signed out, null while it resolves or when the id is unusable. Aliased rather
    *  than re-derived: a second definition of identity is a second thing to get wrong. */
   const liveOwner = favsOwner
+
+  // ── GEO OWNER ──────────────────────────────────────────────────────────────────
+  // A position is a physical fact about a person, and the reverse-geocoded label is their
+  // street. The hook is given the live identity so a fix captured by one account is never
+  // shown, sent or measured for another — including on the first frame, before any effect.
+  const { coords, status, request, clear } = useGeolocation(liveOwner)
 
   const [favsState, setFavsState] = useState<{ owner: string | null; ids: string[] }>({ owner: null, ids: [] })
   /** The ONLY list this screen may show: this owner's, or none. */
@@ -170,6 +179,8 @@ export default function HomeScreen() {
   // Restaurants — nearest-first when geo is on, else newest (V4-2 : le tri par
   // note s'appuyait sur la colonne fabriquée du seed — repli honnête nouveauté).
   useEffect(() => {
+    // Captured before the request leaves, and the response is stamped with it.
+    const requestOwner = liveOwner
     setLoading(true)
     const sp = new URLSearchParams({ take: '20' })
     if (coords) {
@@ -184,11 +195,14 @@ export default function HomeScreen() {
         setRestaurants(d.restaurants ?? [])
         // WAVE 2 — méta honnêteté géo : distance du plus proche (message « rien
         // tout près ») ; les restos sans coords arrivent déjà appendus par l'API.
-        setNearestKm(typeof d.nearestKm === 'number' ? d.nearestKm : null)
+        setNearestState({ owner: requestOwner, km: typeof d.nearestKm === 'number' ? d.nearestKm : null })
       })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [coords])
+    // keyed on the identity as well as the position: `coords` is already gated, but the
+    // DERIVED number must be re-attributed too, and the request must not carry A's lat/lng
+    // once B is live.
+  }, [coords, liveOwner])
 
   // Recommander — the consumer's real recent orders (reorder). Signed-out / none →
   // empty → the whole section is omitted below.
@@ -267,6 +281,8 @@ export default function HomeScreen() {
     [locale, t, tc, tr],
   )
 
+  /** The only distance this screen may state. */
+  const nearestKm = liveOwner !== null && nearestState.owner === liveOwner ? nearestState.km : null
   const geoActive = status === 'granted' && !!coords
   const popular = restaurants.slice(0, 6)
   const popularTitle = geoActive ? t('nearYou') : t('popular')

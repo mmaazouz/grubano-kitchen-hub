@@ -181,7 +181,11 @@ export default function ChefPublicPage({ slug }: { slug: string }) {
   // no SessionProvider needed on this standalone public tree).
   const [isResto, setIsResto] = useState(false)
 
-  const { coords, status: geoStatus, request: requestGeo } = useGeolocation()
+  // PUBLIC SURFACE. This page renders without a SessionProvider, so it has no session to
+  // read and must not acquire one: the owner is the explicit 'guest' identity. A visitor's
+  // fix is therefore kept in the guest bucket and is never adopted by, nor adopted from, a
+  // signed-in account.
+  const { coords, status: geoStatus, request: requestGeo } = useGeolocation('guest')
 
   useEffect(() => {
     let cancelled = false
