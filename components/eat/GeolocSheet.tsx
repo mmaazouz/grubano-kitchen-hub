@@ -70,7 +70,10 @@ export default function GeolocSheet(
   // 5 locales) rather than introducing a duplicate key.
   const ta = useTranslations('eat.addresses')
   const router = useRouter()
-  const { coords, status, request, clear } = useGeolocation()
+  // The sheet already receives the live identity for the saved-address guard; the geo
+  // state is scoped to the same one, so « position active » and its address line reflect
+  // whoever is signed in NOW — not whoever granted the permission.
+  const { coords, status, request, clear } = useGeolocation(sessionStamp)
 
   const [step, setStep] = useState<Step>('perm')
   const [query, setQuery] = useState('')

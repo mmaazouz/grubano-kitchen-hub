@@ -41,6 +41,76 @@ const MAX_AGE_MS = 1000 * 60 * 60 * 24 * 7 // 1 week
 const OWNER_KEY = 'grubano_geo.owner'
 
 /**
+ * The identity a fix belongs to: `u:<userId>` for an account, `guest` for a visitor, and
+ * null when the identity is unresolved or unusable. Same convention as the cart, the
+ * favourites and the receipt, so there is ONE notion of identity in this app.
+ *
+ * Unlike those, `guest` is a VALID owner here: a visitor may legitimately locate themselves,
+ * and components/chef/ChefPublicPage.tsx does exactly that with no session at all.
+ */
+export type GeoOwner = string
+
+/** Emitted after a successful commit, so sibling instances in the same tab can re-read. */
+export const GEO_EVENT = 'grubano:geo'
+
+/**
+ * The owner this browser currently belongs to, declared by the hook from the identity its
+ * caller passes in. Asynchronous work validates against THIS, not against the owner captured
+ * in its own closure — comparing a closure with itself is a tautology, and the two callbacks
+ * below (the browser's position callback and the reverse-geocode response) can both arrive
+ * after the session has changed.
+ */
+let liveGeoOwner: GeoOwner | null = null
+
+/**
+ * Bumped whenever the state is DELIBERATELY emptied: a « disable » tap, or an identity
+ * change. An async answer captured before a bump is stale even when its owner is still the
+ * live one, so the owner check alone is not enough to decide whether to commit it.
+ *
+ * WHY THIS EXISTS. The reverse-geocode answer is built from the position captured in its
+ * own closure. Committing it on the owner check alone RESURRECTED a fix the user had since
+ * switched off: clear() emptied the state and the disk, the answer then put the position
+ * back and rewrote the postal address to storage, undoing an explicit opt-out.
+ */
+let geoEpoch = 0
+
+export function setGeoOwner(owner: GeoOwner | null): void {
+  // Never on the server: module state is shared by every concurrent request there.
+  if (typeof window === 'undefined') return
+  // Only a real change counts: sibling instances declare the same owner on every mount,
+  // and bumping on those would drop the label of a request that is still perfectly valid.
+  if (liveGeoOwner !== owner) geoEpoch += 1
+  liveGeoOwner = owner
+}
+/** The current epoch. Exported so the tests read the real counter, not a copy of it. */
+export function getGeoEpoch(): number {
+  return geoEpoch
+}
+export function getGeoOwner(): GeoOwner | null {
+  return liveGeoOwner
+}
+/** Test-only: forget the declared identity between cases. */
+export function __resetGeoOwner(): void {
+  liveGeoOwner = null
+  geoEpoch = 0
+}
+
+/** The stamped shape held in React state. */
+export interface GeoState {
+  owner: GeoOwner | null
+  coords: GeoCoords | null
+  status: GeoStatus
+}
+
+/**
+ * THE GATE, exported so the tests execute the real decision rather than a copy of it.
+ * A fix is visible only to the identity it was read or captured under.
+ */
+export function geoVisible(liveOwner: GeoOwner | null, state: { owner: GeoOwner | null }): boolean {
+  return liveOwner !== null && state.owner === liveOwner
+}
+
+/**
  * Bind the cached fix to an identity, dropping it when the identity is not the one it was
  * captured under. Called from the EatShell identity effect (mount + every sign-in /
  * sign-out / account switch).
@@ -72,9 +142,15 @@ export function syncGeoCacheOwner(owner: { kind: 'user'; id: string } | { kind: 
   }
 }
 
-function readCached(): GeoCoords | null {
-  if (typeof window === 'undefined') return null
+/**
+ * The cached fix, but only when the stamp beside it names THIS owner. An unstamped or
+ * foreign `grubano_geo` is never adopted — it is the blob that leaked, and it may hold the
+ * postal address of someone who is not the person signing in now.
+ */
+export function readCachedFor(owner: GeoOwner): GeoCoords | null {
+  if (typeof window === 'undefined' || !owner) return null
   try {
+    if (localStorage.getItem(OWNER_KEY) !== owner) return null
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return null
     const parsed = JSON.parse(raw) as GeoCoords
@@ -92,61 +168,191 @@ function readCached(): GeoCoords | null {
   }
 }
 
-function persist(coords: GeoCoords | null) {
-  if (typeof window === 'undefined') return
+/**
+ * Persist a fix FOR A NAMED OWNER, and only while that owner is still the declared one.
+ * A position captured under A must never be written into the cache B now owns — which is
+ * exactly what a late browser callback would otherwise do.
+ */
+export function persistFor(owner: GeoOwner, coords: GeoCoords | null): boolean {
+  if (typeof window === 'undefined' || !owner) return false
+  if (liveGeoOwner === null || owner !== liveGeoOwner) return false
   try {
-    if (coords) localStorage.setItem(STORAGE_KEY, JSON.stringify(coords))
-    else localStorage.removeItem(STORAGE_KEY)
+    if (coords) {
+      // FAIL CLOSED ACROSS TWO KEYS. These are two writes and the second can fail (quota,
+      // private browsing). Value-then-stamp left the new owner's fix under the OLD stamp;
+      // stamp-then-value would leave the OLD owner's fix under the NEW stamp. Either way a
+      // readCachedFor hands one account the other's position. Dropping the stamp FIRST
+      // means any failure leaves an UNSTAMPED blob, which readCachedFor refuses.
+      // (lib/eat-cart.ts stores one envelope instead; that would change this cache's
+      // on-disk shape, which EatShell also writes, so it is left for its own lot.)
+      localStorage.removeItem(OWNER_KEY)
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(coords))
+      localStorage.setItem(OWNER_KEY, owner)
+    } else {
+      localStorage.removeItem(STORAGE_KEY)
+    }
+    window.dispatchEvent(new CustomEvent(GEO_EVENT, { detail: { owner } }))
+    return true
   } catch {
     /* ignore (private browsing, quota, etc.) */
+    return false
   }
 }
 
-export function useGeolocation(): UseGeolocation {
-  const [coords, setCoords] = useState<GeoCoords | null>(null)
-  const [status, setStatus] = useState<GeoStatus>('idle')
+/**
+ * Does this request still own the state? The owner must still be the declared one AND no
+ * deliberate emptying may have happened since the request was issued.
+ *
+ * ONE DEFINITION, exported. Both the early-return guards at the three async edges and the
+ * state commit below go through this, and the tests call it rather than restating it -- a
+ * test that restates the rule can only prove the restatement agrees with its author.
+ */
+export function geoStillMine(requestOwner: GeoOwner, requestEpoch: number): boolean {
+  return liveGeoOwner === requestOwner && geoEpoch === requestEpoch
+}
 
-  // Rehydrate cached coordinates on mount (client-only).
+/**
+ * THE COMMIT DECISION, pure and exported. Given the previous state and what a callback
+ * wants to write, what does the state become?
+ */
+export function geoCommit(
+  prev: GeoState,
+  requestOwner: GeoOwner,
+  requestEpoch: number,
+  next: Partial<GeoState>,
+): GeoState {
+  if (!geoStillMine(requestOwner, requestEpoch)) return prev
+  // A STATUS-ONLY update must not erase the position. `next.coords ?? null` did: a
+  // commit({ status: 'requesting' }) nulled a cached fix, which on /eat re-fired the
+  // catalogue fetch WITHOUT lat/lng (losing the nearest-first order) and flipped the
+  // « position active » banner to the opt-in one and back. `in` is the only test that
+  // distinguishes « not mentioned » from « explicitly null ».
+  const coords = 'coords' in next ? next.coords ?? null : prev.coords
+  return { owner: requestOwner, coords, status: next.status ?? prev.status }
+}
+
+/**
+ * THE CLEAR DECISION, pure and exported. A « disable » tapped under A must not wipe the fix
+ * B has since granted, and it must only undeclare its OWN owner's state.
+ */
+export function geoClear(prev: GeoState, owner: GeoOwner): GeoState {
+  if (liveGeoOwner !== owner) return prev
+  return prev.owner === owner ? { owner, coords: null, status: 'idle' } : prev
+}
+
+/**
+ * Invalidate every answer already in flight. An explicit « disable » outranks them: without
+ * this, a reverse-geocode answer still on the wire would put the position back AND rewrite
+ * the postal address to storage, undoing the opt-out. Kept OUT of the state updater, which
+ * React may run twice.
+ */
+export function geoInvalidateInFlight(): void {
+  geoEpoch += 1
+}
+
+/**
+ * THE REHYDRATION DECISION, pure and exported. What state does this identity start from?
+ * A cache that is not this owner's is never adopted, so the in-memory fix goes with it.
+ */
+export function geoRehydrate(liveOwner: GeoOwner | null): GeoState {
+  if (liveOwner === null) return { owner: null, coords: null, status: 'idle' }
+  const cached = readCachedFor(liveOwner)
+  return { owner: liveOwner, coords: cached, status: cached ? 'granted' : 'idle' }
+}
+
+/** Is this GEO_EVENT this owner's? FAIL CLOSED: an event naming no owner is foreign. */
+export function geoEventIsMine(e: Event, owner: GeoOwner | null): boolean {
+  if (!owner) return false
+  const detail = (e as CustomEvent).detail as { owner?: unknown } | undefined
+  return !!detail && detail.owner === owner
+}
+
+/**
+ * @param liveOwner the identity this render belongs to — `u:<id>`, `guest`, or null while it
+ *   is unresolved. REQUIRED, so no caller can forget it. The hook does NOT read useSession
+ *   itself: ChefPublicPage renders without a SessionProvider, and a hook that demanded one
+ *   would break that public page.
+ */
+export function useGeolocation(liveOwner: GeoOwner | null): UseGeolocation {
+  /** RAW — read only through the gate below: the fix AND the identity it belongs to. */
+  const [state, setState] = useState<GeoState>({ owner: null, coords: null, status: 'idle' })
+
+  // ── EVALUATED DURING RENDER ────────────────────────────────────────────────────
+  // The position is a physical fact about a person, so it is shown only to the identity it
+  // was read or captured under. This has to be a render-time derivation: the owner is
+  // declared in an effect, and effects run AFTER the frame that already painted the previous
+  // account's address line.
+  const mine = geoVisible(liveOwner, state)
+  const coords = mine ? state.coords : null
+  const status: GeoStatus = mine ? state.status : 'idle'
+
+  // Declare the owner and rehydrate FOR IT. Re-runs on an identity change, so a cache that
+  // is not this owner's is never adopted and the in-memory fix is dropped with it.
   useEffect(() => {
-    const cached = readCached()
-    if (cached) {
-      setCoords(cached)
-      setStatus('granted')
+    setGeoOwner(liveOwner)
+    setState(geoRehydrate(liveOwner))
+    if (liveOwner === null) return
+    // Sibling instances in the same tab (the page and the geoloc sheet) stay in step — but
+    // only on their OWN owner's events. This is a convenience, never the guard: the gate
+    // above is what closes the frame.
+    const onGeo = (e: Event) => {
+      if (!geoEventIsMine(e, liveOwner)) return
+      setState(geoRehydrate(liveOwner))
     }
-  }, [])
+    window.addEventListener(GEO_EVENT, onGeo)
+    return () => window.removeEventListener(GEO_EVENT, onGeo)
+  }, [liveOwner])
 
   const request = useCallback(() => {
+    if (liveOwner === null) return // no identity ⇒ never ask the browser for a position
+    // Captured BEFORE the permission prompt. Everything below is attributed to THIS owner.
+    const requestOwner = liveOwner
+    const requestEpoch = geoEpoch
+    const stillMine = () => geoStillMine(requestOwner, requestEpoch)
+    // The decision is re-made INSIDE the updater, because a deferred update sees a newer
+    // module state than the closure did.
+    const commit = (next: Partial<GeoState>) =>
+      setState((prev) => geoCommit(prev, requestOwner, requestEpoch, next))
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
-      setStatus('unavailable')
+      commit({ status: 'unavailable' })
       return
     }
-    setStatus('requesting')
+    commit({ status: 'requesting' })
     navigator.geolocation.getCurrentPosition(
       (pos) => {
+        // THE PROMPT CAN SIT OPEN FOR MINUTES. By the time the user taps « allow », the
+        // session may be someone else's — so the position captured for A is dropped rather
+        // than attributed to whoever is signed in now.
+        if (!stillMine()) return
         const next: GeoCoords = {
           lat: pos.coords.latitude,
           lng: pos.coords.longitude,
           capturedAt: Date.now(),
         }
-        setCoords(next)
-        setStatus('granted')
-        persist(next)
+        commit({ coords: next, status: 'granted' })
+        persistFor(requestOwner, next)
         // WAVE 2 — reverse-geocode best-effort (proxy serveur → IGN) : enrichit la
         // position d'une adresse LISIBLE. Échec du tiers = silencieux (les coords
         // restent pleinement utilisables pour le tri).
         fetch(`/api/geo/reverse?lat=${next.lat}&lng=${next.lng}`)
           .then((r) => (r.ok ? r.json() : null))
           .then((d: { status?: string; label?: string; city?: string | null; postcode?: string | null } | null) => {
+            // The reverse answer carries the POSTAL ADDRESS. It is the most sensitive thing
+            // this hook ever holds, and it arrives last — so it is checked again here.
+            // DO NOT RESURRECT: the epoch rules out an answer issued before a « disable »
+            // or an identity change, which the owner check alone lets through.
+            if (!stillMine()) return
             if (!d || d.status !== 'ok' || !d.label) return
             const enriched: GeoCoords = { ...next, label: d.label, city: d.city ?? null, postcode: d.postcode ?? null }
-            setCoords(enriched)
-            persist(enriched)
+            commit({ coords: enriched, status: 'granted' })
+            persistFor(requestOwner, enriched)
           })
           .catch(() => { /* best-effort */ })
       },
       (err) => {
+        if (!stillMine()) return
         // PERMISSION_DENIED = 1, POSITION_UNAVAILABLE = 2, TIMEOUT = 3.
-        setStatus(err.code === err.PERMISSION_DENIED ? 'denied' : 'unavailable')
+        commit({ status: err.code === err.PERMISSION_DENIED ? 'denied' : 'unavailable' })
       },
       {
         enableHighAccuracy: false,
@@ -154,13 +360,18 @@ export function useGeolocation(): UseGeolocation {
         timeout: 10_000,
       },
     )
-  }, [])
+  }, [liveOwner])
 
   const clear = useCallback(() => {
-    setCoords(null)
-    setStatus('idle')
-    persist(null)
-  }, [])
+    if (liveOwner === null) return
+    const owner = liveOwner
+    // A « disable » tapped under A must not wipe the fix B has since granted: persistFor
+    // refuses unless this owner is still the live one, and the state write is guarded too.
+    if (liveGeoOwner !== owner) return
+    setState((prev) => geoClear(prev, owner))
+    persistFor(owner, null)
+    geoInvalidateInFlight()
+  }, [liveOwner])
 
   return { coords, status, request, clear }
 }

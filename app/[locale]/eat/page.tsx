@@ -83,6 +83,8 @@ interface RecentOrder {
 /** Stable identity for the fail-closed empty row. Frozen, because every gated render
  *  shares the one array. */
 const NO_RECENT: RecentOrder[] = Object.freeze([]) as unknown as RecentOrder[]
+/** Stable identity for the ungated case, so the gate does not churn the memos below. */
+const NO_ROWS: Restaurant[] = Object.freeze([]) as unknown as Restaurant[]
 
 /** Stable identity for the fail-closed empty list: a fresh [] per render would churn the
  *  memos that depend on it. Frozen, because every gated render shares the one array. */
@@ -95,11 +97,20 @@ export default function HomeScreen() {
   const tr = useTranslations('eat.restaurant')
   const locale = useLocale()
   const router = useRouter()
-  const { coords, status, request, clear } = useGeolocation()
+  // the geolocation hook is called below, once `favsOwner` exists — see GEO OWNER
 
-  const [restaurants, setRestaurants] = useState<Restaurant[]>([])
+  // OWNER-STAMPED. Every row carries `distanceKm` measured FROM THIS ACCOUNT'S POSITION
+  // (app/api/restaurants/route.ts attaches it per row at 0.1 km resolution and sorts by
+  // it), so the response is account content even though the rows themselves are public.
+  // Twenty distances to restaurants whose coordinates are public locate the account by
+  // multilateration, which is a STRONGER statement about where it was than the single
+  // `nearestKm` this lot already gated -- that number is just the minimum of this vector.
+  const [restaurantState, setRestaurantState] = useState<{ owner: string | null; rows: Restaurant[] }>({ owner: null, rows: [] })
   // WAVE 2 — distance du resto géocodé le plus proche (message honnête « rien tout près »)
-  const [nearestKm, setNearestKm] = useState<number | null>(null)
+  /** RAW — read only through the gate below. The number is derived from the account's own
+   *  position, so « rien à moins de 25 km » is a weak but real statement about where the
+   *  PREVIOUS account was; it survives an identity change exactly as the coords did. */
+  const [nearestState, setNearestState] = useState<{ owner: string | null; km: number | null }>({ owner: null, km: null })
   /** RAW — read only through `recent` below: the cards AND the identity they were fetched
    *  for. The row shows a restaurant name, an item count and a euro total per card, plus a
    *  link into that restaurant, so it is the account's purchase history in miniature. */
@@ -119,6 +130,12 @@ export default function HomeScreen() {
    *  than re-derived: a second definition of identity is a second thing to get wrong. */
   const liveOwner = favsOwner
 
+  // ── GEO OWNER ──────────────────────────────────────────────────────────────────
+  // A position is a physical fact about a person, and the reverse-geocoded label is their
+  // street. The hook is given the live identity so a fix captured by one account is never
+  // shown, sent or measured for another — including on the first frame, before any effect.
+  const { coords, status, request, clear } = useGeolocation(liveOwner)
+
   const [favsState, setFavsState] = useState<{ owner: string | null; ids: string[] }>({ owner: null, ids: [] })
   /** The ONLY list this screen may show: this owner's, or none. */
   const favs = favsOwner !== null && favsState.owner === favsOwner ? favsState.ids : NO_FAVS
@@ -129,7 +146,9 @@ export default function HomeScreen() {
   const recent = liveOwner !== null && liveOwner !== 'guest' && recentState.owner === liveOwner
     ? recentState.cards
     : NO_RECENT
-  const [loading, setLoading] = useState(true)
+  // RAW: is a request in flight. `loading` is derived from it below, because a frame whose
+  // rows belong to another identity must keep the skeleton up rather than claim « nothing ».
+  const [fetching, setFetching] = useState(true)
 
   // First visit of the session → play the splash once (real wiring, kept).
   useEffect(() => {
@@ -170,7 +189,17 @@ export default function HomeScreen() {
   // Restaurants — nearest-first when geo is on, else newest (V4-2 : le tri par
   // note s'appuyait sur la colonne fabriquée du seed — repli honnête nouveauté).
   useEffect(() => {
-    setLoading(true)
+    // Captured before the request leaves, and the response is stamped with it.
+    const requestOwner = liveOwner
+    // INVALIDATION. The stamp decides whether a response may be SEEN; this flag decides
+    // whether it may be WRITTEN AT ALL. They are not the same guarantee: a late response
+    // for A, landing after B's own response has already committed, re-stamped the state as
+    // A's — the gate then hid it from B and `rowsAreMine` went false, leaving B on the
+    // skeleton until a dependency happened to change. The identity was never leaked and B's
+    // screen was never right either. Cleared by the cleanup below, so this request stops
+    // existing the moment it is superseded or the mount goes away.
+    let alive = true
+    setFetching(true)
     const sp = new URLSearchParams({ take: '20' })
     if (coords) {
       sp.set('lat', String(coords.lat))
@@ -181,14 +210,28 @@ export default function HomeScreen() {
     fetch(`/api/restaurants?${sp}`)
       .then((r) => r.json())
       .then((d) => {
-        setRestaurants(d.restaurants ?? [])
+        if (!alive) return
+        setRestaurantState({ owner: requestOwner, rows: d.restaurants ?? [] })
         // WAVE 2 — méta honnêteté géo : distance du plus proche (message « rien
         // tout près ») ; les restos sans coords arrivent déjà appendus par l'API.
-        setNearestKm(typeof d.nearestKm === 'number' ? d.nearestKm : null)
+        setNearestState({ owner: requestOwner, km: typeof d.nearestKm === 'number' ? d.nearestKm : null })
       })
-      .catch(() => {})
-      .finally(() => setLoading(false))
-  }, [coords])
+      // A REQUEST THAT HAS NOT ANSWERED IS NOT AN ANSWER. This used to swallow the error
+      // and leave the previous rows painted: if the refetch for the new identity failed
+      // (offline, 500), the skeleton closed over the OLD account's distance vector and it
+      // stayed on screen for the whole mount. /eat/search already cleared here.
+      .catch(() => {
+        if (!alive) return
+        setRestaurantState({ owner: requestOwner, rows: [] })
+      })
+      // …and a superseded request may not touch the flag either: an old `finally` firing
+      // while a newer request is still in flight would close the skeleton over nothing.
+      .finally(() => { if (alive) setFetching(false) })
+    return () => { alive = false }
+    // keyed on the identity as well as the position: `coords` is already gated, but the
+    // DERIVED number must be re-attributed too, and the request must not carry A's lat/lng
+    // once B is live.
+  }, [coords, liveOwner])
 
   // Recommander — the consumer's real recent orders (reorder). Signed-out / none →
   // empty → the whole section is omitted below.
@@ -267,6 +310,14 @@ export default function HomeScreen() {
     [locale, t, tc, tr],
   )
 
+  /** The only distance this screen may state. */
+  const nearestKm = liveOwner !== null && nearestState.owner === liveOwner ? nearestState.km : null
+  // RENDER-TIME GATE, the same shape as nearestKm above: rows whose owner contradicts the
+  // live identity are not shown, and the skeleton stays up instead of telling an account
+  // that has restaurants that there are none.
+  const rowsAreMine = liveOwner !== null && restaurantState.owner === liveOwner
+  const restaurants = rowsAreMine ? restaurantState.rows : NO_ROWS
+  const loading = fetching || !rowsAreMine
   const geoActive = status === 'granted' && !!coords
   const popular = restaurants.slice(0, 6)
   const popularTitle = geoActive ? t('nearYou') : t('popular')
