@@ -3063,7 +3063,7 @@
       "geoBannerTitle": "Attivi la posizione",
       "geoBannerSubtitle": "Per vedere i ristoranti più vicini.",
       "geoBannerDenied": "Autorizzi la localizzazione nel Suo browser per riprovare.",
-      "geoBannerUnavailable": "La geolocalizzazione non è disponibile su questo dispositivo.",
+      "geoBannerUnavailable": "Non è stato possibile trovare la tua posizione in questo momento. Riprova.",
       "geoEnable": "Attivi la posizione",
       "geoActive": "Posizione attivata — risultati ordinati per vicinanza.",
       "geoDisable": "Disattivi la posizione",
@@ -3092,7 +3092,11 @@
       "itemsAndTotal": "{count, plural, =1 {1 articolo} other {# articoli}} · {total}",
       "tagPopular": "Popolare",
       "favorite": "Aggiunga ai preferiti",
-      "unfavorite": "Rimuova dai preferiti"
+      "unfavorite": "Rimuova dai preferiti",
+      "geoBannerLocating": "Stiamo cercando la tua posizione…",
+      "geoBannerTimeout": "La localizzazione ha richiesto troppo tempo. Riprova.",
+      "geoBannerUnsupported": "La geolocalizzazione non è disponibile su questo dispositivo.",
+      "geoEnabling": "Localizzazione…"
     },
     "search": {
       "title": "Esplori",
@@ -3936,7 +3940,14 @@
       "mapPlaceholderSub": "Selezioni un indirizzo salvato per continuare",
       "mapAdjustHint": "Trascini il punto per regolare",
       "edit": "Modifichi",
-      "confirmAddress": "Confermi indirizzo"
+      "confirmAddress": "Confermi indirizzo",
+      "locating": "Localizzazione…",
+      "locatingHint": "Stiamo cercando la tua posizione. Possono servire alcuni secondi.",
+      "errTimeout": "La localizzazione ha richiesto troppo tempo. Riprova o inserisci un indirizzo sopra.",
+      "errDenied": "Autorizzazione negata. Consenti la posizione nelle impostazioni del browser oppure inserisci un indirizzo sopra.",
+      "errUnavailable": "Non è stato possibile trovare la tua posizione in questo momento. Riprova o inserisci un indirizzo sopra.",
+      "errUnsupported": "Il tuo browser non supporta la posizione. Inserisci un indirizzo sopra.",
+      "retry": "Riprova"
     },
     "reviews": {
       "title": "Recensioni e voti",

@@ -3063,7 +3063,7 @@
       "geoBannerTitle": "Enable my location",
       "geoBannerSubtitle": "To see the closest restaurants.",
       "geoBannerDenied": "Allow location in your browser to try again.",
-      "geoBannerUnavailable": "Geolocation is not available on this device.",
+      "geoBannerUnavailable": "Your position could not be found right now. Try again.",
       "geoEnable": "Enable",
       "geoActive": "Location enabled — results sorted by proximity.",
       "geoDisable": "Disable location",
@@ -3092,7 +3092,11 @@
       "itemsAndTotal": "{count, plural, =1 {1 item} other {# items}} · {total}",
       "tagPopular": "Popular",
       "favorite": "Add to favorites",
-      "unfavorite": "Remove from favorites"
+      "unfavorite": "Remove from favorites",
+      "geoBannerLocating": "Looking for your position…",
+      "geoBannerTimeout": "Finding your position took too long. Try again.",
+      "geoBannerUnsupported": "Location is not available on this device.",
+      "geoEnabling": "Locating…"
     },
     "search": {
       "title": "Explore",
@@ -3936,7 +3940,14 @@
       "mapPlaceholderSub": "Pick a saved address to continue",
       "mapAdjustHint": "Drag the pin to adjust",
       "edit": "Edit",
-      "confirmAddress": "Confirm address"
+      "confirmAddress": "Confirm address",
+      "locating": "Locating…",
+      "locatingHint": "Looking for your position. This can take a few seconds.",
+      "errTimeout": "Finding your position took too long. Try again, or type an address above.",
+      "errDenied": "Permission refused. Allow location in your browser settings, or type an address above.",
+      "errUnavailable": "Your position could not be found right now. Try again, or type an address above.",
+      "errUnsupported": "Your browser does not support location. Type an address above.",
+      "retry": "Try again"
     },
     "reviews": {
       "title": "Reviews & ratings",
