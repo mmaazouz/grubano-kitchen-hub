@@ -12,9 +12,11 @@
  * → `.np-lbl`. Every other CD class name (.chans/.chan/.sw/.aibox/.quiet/.soon) is kept
  * verbatim, scoped under the screen root.
  *
- * ⚠️ INERT preview — Wave 5 backend absent: see page.tsx header. The `.np-preview` banner
- * + `.np-soon-top` header pill are additive (no CD ref) and make the « bientôt » framing
- * explicit; the toggles work visually but persist nothing.
+ * ⚠️ THE TOGGLES PERSIST. This header used to say « the toggles work visually but persist
+ * nothing », which stopped being true when the load/save pair against /api/eat/account was
+ * added — the same stale claim that sat in page.tsx and let the account-isolation question
+ * go unasked. What is still absent is the SENDING pipeline (nothing acts on these
+ * preferences yet), which is what the `.np-preview` banner and the `.np-soon-top` pill say.
  * ───────────────────────────────────────────────────────────────────────────── */
 
 /* desktop card framing (matches the addresses screen — centred surface) */
@@ -41,6 +43,14 @@
 /* ── channels (CD .chans/.chan verbatim) ── */
 .gb-notifprefs .chans{display:flex;gap:8px;margin-bottom:18px}
 .gb-notifprefs .chan{flex:1;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-md);padding:12px 10px;text-align:center;cursor:pointer;font-family:inherit}
+/* INERT, AND IT LOOKS IT. The controls are disabled until the preferences on screen belong
+   to the live identity; without this they kept `cursor:pointer` and swallowed clicks in
+   silence, which reads as a broken screen rather than as one that is still loading. */
+.gb-notifprefs .chan[disabled],.gb-notifprefs .sw[disabled]{cursor:default;opacity:.55}
+.gb-notifprefs .chan[disabled]:hover{border-color:var(--gb-border)}
+/* the failed-load line + its only action */
+.gb-notifprefs .np-error{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 14px;padding:10px 12px;border:1px solid var(--gb-danger);border-radius:var(--gb-r-md);color:var(--gb-danger);font-size:13px;line-height:1.45}
+.gb-notifprefs .np-retry{flex:none;padding:4px 12px;background:transparent;border:1px solid currentColor;border-radius:var(--gb-r-sm);color:inherit;font:inherit;font-weight:600;cursor:pointer}
 .gb-notifprefs .chan.on{border-color:var(--gb-zest-600);box-shadow:0 0 0 2px rgba(255,106,31,.12)}
 .gb-notifprefs .chan .ms{font-size:22px;color:var(--gb-muted-2)}
 .gb-notifprefs .chan.on .ms{color:var(--gb-zest-600)}

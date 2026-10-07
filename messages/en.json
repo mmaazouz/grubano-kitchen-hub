@@ -2957,7 +2957,10 @@
       "aiTitle": "Smart summary",
       "aiSub": "1 notif/day, grouped by AI",
       "quietTitle": "Quiet hours",
-      "quietRange": "22:00 – 08:00"
+      "quietRange": "22:00 – 08:00",
+      "loadError": "Your preferences could not be loaded. Try again — nothing is saved until they are.",
+      "retry": "Try again",
+      "previewNoteGuest": "Sign in to save your preferences. Sending notifications (push, email, SMS) is coming soon."
     },
     "help": {
       "title": "Help",
