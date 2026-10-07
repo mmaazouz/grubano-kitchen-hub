@@ -10,7 +10,11 @@ import { prisma } from '@/lib/prisma'
 // updates them. This is NOT an auth surface — email changes go through the dedicated
 // /api/account/email-change flow and the password through the reset flow; this route
 // never touches password/email/role. NO money. The Operator row is the model every role
-// shares; this only ever mutates the caller's own name/phone.
+// shares; this only ever mutates the caller's own name/phone — and, since the notification
+// preferences lot, `notifPrefs`, which carries an extra guarantee: a PATCH that includes
+// notifPrefs must also name the identity it was prepared for, and is refused with 409
+// `owner_changed` when that is not the identity it authenticated as. See the check in PATCH
+// for why the client cannot make that guarantee by itself.
 
 async function ownerId(): Promise<string | null> {
   const session = await getServerSession(authOptions)
@@ -46,6 +50,12 @@ const ProfilePatch = z.object({
   name:       z.string().trim().min(1).max(80).optional(),
   phone:      z.string().trim().max(30).optional(),
   notifPrefs: NotifPrefs.optional(),
+  // THE IDENTITY THE CLIENT PREPARED THIS MUTATION FOR. Not a new notion of owner — the raw
+  // Operator id, the same value the session carries; the client keeps using sessionCartStamp
+  // for its own rendering and sends the plain id here. Declared in the schema because zod
+  // STRIPS unknown keys rather than rejecting them, so an undeclared field would arrive as
+  // `undefined` and the check below would silently compare nothing.
+  expectedUserId: z.string().min(1).optional(),
 })
 
 export async function PATCH(req: Request) {
@@ -53,6 +63,30 @@ export async function PATCH(req: Request) {
   if (!userId) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   const parsed = ProfilePatch.safeParse(await req.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ error: 'invalid' }, { status: 400 })
+
+  // ── THE OWNER CHECK — BEFORE ANY WRITE IS EVEN ASSEMBLED ────────────────────────
+  // A debounced save prepared under account A can leave after the browser has started
+  // attaching B's cookie: the client cannot see that gap, because the cookie is chosen at
+  // send time and the client's own belief lags behind by a broadcast. The server sees both
+  // at once, so it is the only party that can refuse — and it refuses by comparing the
+  // identity the client PREPARED the mutation for with the identity it actually
+  // AUTHENTICATED as. No new owner format: both sides are the raw Operator id.
+  //
+  // Scoped to `notifPrefs` ON PURPOSE for now: /eat/account/edit still sends name/phone
+  // without the field and is corrected in its own lot. Making it mandatory for those today
+  // would break that screen rather than protect it.
+  if (parsed.data.notifPrefs !== undefined) {
+    if (parsed.data.expectedUserId === undefined) {
+      // A client that cannot say who it is writing for has no business writing.
+      return NextResponse.json({ error: 'expected_user_id_required' }, { status: 400 })
+    }
+    if (parsed.data.expectedUserId !== userId) {
+      // The identity moved between preparing this mutation and sending it. The mutation is
+      // stale, not retryable as-is, and NOTHING is written. `owner_changed` is a stable
+      // code the client keys on to stay silent rather than claim a save that never happened.
+      return NextResponse.json({ error: 'owner_changed' }, { status: 409 })
+    }
+  }
 
   const data: { name?: string; phone?: string | null; notifPrefs?: typeof parsed.data.notifPrefs } = {}
   if (parsed.data.name !== undefined) data.name = parsed.data.name

@@ -2957,7 +2957,10 @@
       "aiTitle": "Résumé intelligent",
       "aiSub": "1 notif/jour, regroupée par l'IA",
       "quietTitle": "Heures calmes",
-      "quietRange": "22:00 – 08:00"
+      "quietRange": "22:00 – 08:00",
+      "loadError": "Impossible de charger tes préférences. Réessaie ; rien n'est enregistré tant qu'elles ne sont pas chargées.",
+      "retry": "Réessayer",
+      "previewNoteGuest": "Connecte-toi pour enregistrer tes préférences. L'envoi des notifications (push, e-mail, SMS) arrive bientôt."
     },
     "help": {
       "title": "Aide",

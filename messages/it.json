@@ -2957,7 +2957,10 @@
       "aiTitle": "Riepilogo intelligente",
       "aiSub": "1 notifica/giorno, raggruppata dall'IA",
       "quietTitle": "Ore silenziose",
-      "quietRange": "22:00 – 08:00"
+      "quietRange": "22:00 – 08:00",
+      "loadError": "Non è stato possibile caricare le tue preferenze. Riprova: niente viene salvato finché non sono caricate.",
+      "retry": "Riprova",
+      "previewNoteGuest": "Accedi per salvare le tue preferenze. L'invio delle notifiche (push, e-mail, SMS) arriverà presto."
     },
     "help": {
       "title": "Aiuto",
