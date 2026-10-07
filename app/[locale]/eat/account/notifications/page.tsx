@@ -133,11 +133,29 @@ export default function NotificationsPrefsPage() {
     // fetched, and the save effect refuses it explicitly.
     if (liveOwner === 'guest') { setPrefs({ owner: 'guest', ...DEFAULT_PREFS }); return }
     const requestOwner = liveOwner
+    // THE RAW ID THE SERVER HAS TO CONFIRM, captured from the SAME render as `requestOwner`
+    // and kept separate from it. `alive` closes the case where React has already moved on —
+    // it cannot close the case where React has NOT moved yet: the cookie becomes B's before
+    // the broadcast reaches this mount, the GET leaves believing it is A's, the server
+    // authenticates B, and the effect is still live. Stamping that response with
+    // `requestOwner` would publish B's preferences as A's, and `mine` would be true.
+    const requestUserId = liveUserId
     let alive = true
     fetch('/api/eat/account', { headers: { accept: 'application/json' } })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error('not ok'))))
-      .then((d: { notifPrefs?: unknown } | null) => {
+      .then((d: { ownerId?: unknown; notifPrefs?: unknown } | null) => {
         if (!alive) return
+        // NEVER STAMP A RESPONSE THE SERVER HAS NOT ATTRIBUTED TO THE SAME RAW ID. The
+        // comparison is against the captured `requestUserId`, not the live one, and the
+        // `typeof` half matters as much as the equality: a response that omits the field
+        // entirely — an older server, a cache, a proxy — must not slip through on
+        // `undefined === undefined`. A mismatch is a FAILED load, not a loaded screen: the
+        // state stays unstamped, so the defaults on display are never writable back, and
+        // `loadFailed` makes it say so and offers the retry.
+        if (typeof d?.ownerId !== 'string' || d.ownerId !== requestUserId) {
+          setLoadFailed(true)
+          return
+        }
         const p = (d?.notifPrefs ?? {}) as {
           channels?: Partial<Record<Channel, boolean>>
           rows?: Partial<Record<RowKey, boolean>>
@@ -155,7 +173,10 @@ export default function NotificationsPrefsPage() {
       // correctness about ownership.
       .catch(() => { if (alive) setLoadFailed(true) })
     return () => { alive = false }
-  }, [liveOwner, reloadNonce])
+    // `liveUserId` is declared, not suppressed: the effect genuinely reads it now. It cannot
+    // cause an extra run — whenever the owner is a real account `liveOwner` IS `u:${liveUserId}`,
+    // so the two always move together, and for guest/unresolved the id is undefined and stable.
+  }, [liveOwner, liveUserId, reloadNonce])
 
   // Auto-save (debounced). Keyed on the identity too, so a switch tears the effect down
   // and the cleanup disarms whatever it had pending.

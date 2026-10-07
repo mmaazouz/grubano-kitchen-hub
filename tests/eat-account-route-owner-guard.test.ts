@@ -25,7 +25,7 @@ vi.mock('@/lib/prisma', () => ({ prisma: db }))
 vi.mock('next-auth', () => ({ getServerSession }))
 vi.mock('@/lib/auth', () => ({ authOptions: {} }))
 
-import { PATCH } from '@/app/api/eat/account/route'
+import { GET, PATCH } from '@/app/api/eat/account/route'
 
 const A = 'user-A'
 const B = 'user-B'
@@ -161,5 +161,96 @@ describe('the server refuses a mutation prepared for another identity', () => {
     // and `expectedUserId` is DECLARED in the schema: zod strips undeclared keys, so an
     // undeclared field would arrive as undefined and the comparison would compare nothing
     expect(src).toMatch(/expectedUserId: z\.string\(\)\.min\(1\)\.optional\(\)/)
+  })
+})
+
+// ── GET: the response names the identity it was produced FOR ──────────────────
+//
+// The write side was closed first, and that left the read side proving nothing. Owner-scoping
+// `findUnique` makes the response CORRECT for whoever was authenticated and says NOTHING
+// about who that was — so a client whose belief lags behind the cookie cannot tell one
+// account's correct response from another's. `ownerId` is what lets it tell.
+//
+// These cases run the REAL handler. The id is the SESSION's; nothing in the request can
+// influence it.
+
+describe('GET returns the owner it authenticated', () => {
+  const OP = { name: 'Mohammed', phone: '0600000000', notifPrefs: PREFS_A }
+
+  beforeEach(() => {
+    db.operator.findUnique.mockResolvedValue(OP)
+  })
+
+  it('5 — an authenticated GET always carries ownerId, taken from the session', async () => {
+    for (const id of [A, B, 'operator-xyz-123']) {
+      signedInAs(id)
+      db.operator.findUnique.mockClear()
+      const res = await GET()
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body.ownerId, `session=${id}`).toBe(id)
+      // …and the row it read is the same identity's, chosen by the session
+      const arg = db.operator.findUnique.mock.calls[0][0] as { where: unknown }
+      expect(arg.where).toEqual({ id })
+    }
+  })
+
+  it('5 bis — the body\'s keys are exactly what the two screens need, and ownerId is one', async () => {
+    signedInAs(A)
+    const body = await (await GET()).json()
+    expect(Object.keys(body).sort()).toEqual(['name', 'notifPrefs', 'ownerId', 'phone'])
+    expect(body.notifPrefs).toEqual(PREFS_A)
+  })
+
+  it('5 ter — an unauthenticated GET names no owner and reads no row', async () => {
+    signedInAs(null)
+    const res = await GET()
+    expect(res.status).toBe(401)
+    expect(await res.json()).toEqual({ error: 'unauthorized' })
+    expect(db.operator.findUnique, 'nothing was read').not.toHaveBeenCalled()
+  })
+
+  it('5 quater — a missing row is still not an owner-named response', async () => {
+    signedInAs(A)
+    db.operator.findUnique.mockResolvedValue(null)
+    const res = await GET()
+    expect(res.status).toBe(404)
+    expect(await res.json()).not.toHaveProperty('ownerId')
+  })
+
+  it('6 — /eat/account/edit stays compatible with the enriched response', async () => {
+    // The sibling profile screen reads `name` and `phone` off this same GET. Adding a key
+    // must not change either, and must not make the screen's own load conditional on
+    // something it does not send. It is NOT modified in this lot — this case is what proves
+    // the enrichment did not break it.
+    signedInAs(A)
+    const d = await (await GET()).json()
+    expect(typeof d.name, 'the name the edit screen sets into its input').toBe('string')
+    expect(d.name).toBe(OP.name)
+    expect(typeof d.phone, 'and the phone, always a string').toBe('string')
+    expect(d.phone).toBe(OP.phone)
+
+    // what that screen actually does with the body, read off its real source
+    const edit = (await import('node:fs'))
+      .readFileSync('app/[locale]/eat/account/edit/page.tsx', 'utf8').replace(/\r\n/g, '\n')
+    expect(edit, 'it reads name').toMatch(/if \(typeof d\.name === 'string' && d\.name\) setName\(d\.name\)/)
+    expect(edit, 'and phone').toMatch(/if \(typeof d\.phone === 'string'\) setPhone\(d\.phone\)/)
+    // …and nothing else, so an added key is inert for it. The EXACT SET of its reads of the
+    // response object: an extra one would mean the enrichment had reached its behaviour.
+    const load = edit.slice(edit.indexOf('.then((d) => {'), edit.indexOf('.catch(() => {})'))
+    expect(load.match(/d\.\w+/g)).toEqual(['d.name', 'd.name', 'd.name', 'd.phone', 'd.phone'])
+    // it does NOT send expectedUserId yet, and its PATCH therefore must keep working — the
+    // name/phone exemption is still in force and is corrected in its own lot
+    expect(edit, 'still sends name/phone alone').toMatch(
+      /body: JSON\.stringify\(\{ name: trimmed, phone: phone\.trim\(\) \}\)/,
+    )
+    expect(edit, 'and has no expectedUserId in this lot').not.toMatch(/expectedUserId/)
+  })
+
+  it('6 bis — and that PATCH still succeeds, unchanged, without expectedUserId', async () => {
+    signedInAs(A)
+    const res = await patch({ name: 'Mohammed', phone: '0600000000' })
+    expect(res.status).toBe(200)
+    expect(db.operator.update).toHaveBeenCalledTimes(1)
   })
 })

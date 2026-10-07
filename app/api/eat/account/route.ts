@@ -15,6 +15,12 @@ import { prisma } from '@/lib/prisma'
 // notifPrefs must also name the identity it was prepared for, and is refused with 409
 // `owner_changed` when that is not the identity it authenticated as. See the check in PATCH
 // for why the client cannot make that guarantee by itself.
+//
+// BOTH DIRECTIONS ARE NAMED. Owner-scoping the queries is not enough on its own: it makes
+// every response CORRECT for whoever was authenticated, and says nothing about who that
+// was. A client whose belief about the session lags behind the cookie therefore cannot tell
+// one account's correct response from another's. So the GET also returns `ownerId`, and the
+// PATCH requires `expectedUserId` — read side and write side, the same raw Operator id.
 
 async function ownerId(): Promise<string | null> {
   const session = await getServerSession(authOptions)
@@ -29,7 +35,20 @@ export async function GET() {
     select: { name: true, phone: true, notifPrefs: true },
   })
   if (!op) return NextResponse.json({ error: 'not_found' }, { status: 404 })
-  return NextResponse.json({ name: op.name, phone: op.phone ?? '', notifPrefs: op.notifPrefs ?? {} })
+  // THE RESPONSE NAMES THE IDENTITY IT WAS PRODUCED FOR — the mirror image of the PATCH
+  // guard below, and necessary for the same reason. The browser attaches the cookie at SEND
+  // time, so a GET issued while the client still believes A can be authenticated as B; the
+  // client would then stamp B's row with A's owner and render it as A's own. It cannot
+  // detect that by itself, because nothing in the response said whose it was. Now it does:
+  // `ownerId` is the AUTHENTICATED Operator id — the session's, never the request's — and a
+  // client that captured a different id refuses the whole response. Additive: existing
+  // callers read `name`/`phone` and ignore the rest.
+  return NextResponse.json({
+    ownerId: userId,
+    name: op.name,
+    phone: op.phone ?? '',
+    notifPrefs: op.notifPrefs ?? {},
+  })
 }
 
 // Notification preferences (P1-NOTIFPREF) — the /eat/account/notifications toggles,

@@ -81,17 +81,24 @@ function mountPrefs() {
   let loadCleanup: (() => void) | null = null
   let saveCleanup: (() => void) | null = null
   let lastLoadOwner: string | null | undefined
-  const inFlight: Array<{ owner: string; alive: () => boolean }> = []
+  let loadFailed = false
+  let nonce = 0
+  // The RAW id, tracked beside the stamp exactly as the page tracks `liveUserId` beside
+  // `liveOwner` — `liveOwner` IS `u:${liveUserId}` whenever the identity is a real account.
+  const rawId = (o: string | null) => (o && o.startsWith('u:') ? o.slice(2) : undefined)
+  const inFlight: Array<{ owner: string; userId?: string; alive: () => boolean }> = []
   const patches: Array<{ owner: string; payload: Prefs }> = []
 
   /** The load effect, keyed on the identity. */
-  function runLoadEffect(): void {
-    if (lastLoadOwner === liveOwner) return      // keyed on [liveOwner]: no change, no re-run
+  function runLoadEffect(force = false): void {
+    // keyed on [liveOwner, reloadNonce]: no change, no re-run
+    if (!force && lastLoadOwner === liveOwner) return
     lastLoadOwner = liveOwner
     if (loadCleanup) loadCleanup()
     // an identity change disarms whatever the previous one left behind
     timer = null
     firstSave = true
+    loadFailed = false
     state = { owner: null, ...clone(DEFAULTS) }  // FAIL CLOSED: drop the previous account
     if (liveOwner === null) return               // unresolved: no request at all
     if (liveOwner === 'guest') {                 // a guest has no account to read or write
@@ -99,8 +106,9 @@ function mountPrefs() {
       return
     }
     const requestOwner = liveOwner
+    const requestUserId = rawId(liveOwner)       // captured beside the stamp, not re-derived later
     let alive = true
-    inFlight.push({ owner: requestOwner, alive: () => alive })
+    inFlight.push({ owner: requestOwner, userId: requestUserId, alive: () => alive })
     loadCleanup = () => { alive = false }
   }
 
@@ -123,18 +131,41 @@ function mountPrefs() {
   return {
     /** A session change: React re-renders, then runs the effects whose deps moved. */
     signIn(owner: string | null) { liveOwner = owner; flush() },
-    /** The GET for a pending request answers. */
-    answer(index: number, prefs: Prefs | null) {
+    /**
+     * The GET for a pending request answers. A third argument is the `ownerId` the SERVER
+     * put in the body — the identity it actually authenticated. Omit it for an honest server
+     * reached with the cookie the client expected; pass a different value to model the cookie
+     * having already moved.
+     *
+     * TAKEN AS A REST ARGUMENT, NOT A DEFAULTED PARAMETER. `answer(0, PREFS, undefined)`
+     * triggers a default parameter, so « the server omitted the field » would silently become
+     * « the server named the right owner » — which is exactly the case the page's `typeof`
+     * half exists to close, and the first version of this harness could not express it.
+     * Arity distinguishes « not passed » from « passed undefined »; nothing else does.
+     */
+    answer(index: number, prefs: Prefs | null, ...rest: unknown[]) {
       const req = inFlight[index]
       if (!req) throw new Error('no such request')
+      const serverOwnerId: unknown = rest.length > 0 ? rest[0] : req.userId
       if (!req.alive()) return                       // superseded: commits nothing
+      // THE SERVER MUST NAME THE SAME RAW ID THIS REQUEST WAS PREPARED FOR. A response the
+      // server attributed to anyone else — or to nobody, by omitting the field — is a failed
+      // load, never a loaded screen.
+      if (typeof serverOwnerId !== 'string' || serverOwnerId !== req.userId) {
+        loadFailed = true
+        flush()
+        return
+      }
       state = { owner: req.owner, ...clone(prefs ?? DEFAULTS) }
       flush()
     },
+    /** The user presses « Réessayer » — `reloadNonce` moves, so the load effect re-runs. */
+    retry() { nonce += 1; runLoadEffect(true); runSaveEffect() },
     /** The GET fails. A request that did not answer is not an answer: nothing is stamped. */
     failLoad(index: number) {
       const req = inFlight[index]
       if (!req || !req.alive()) return
+      loadFailed = true
       flush()
     },
     /** The user flips a switch. */
@@ -154,6 +185,7 @@ function mountPrefs() {
     get pending() { return inFlight.length },
     get armed() { return timer !== null },
     get patches() { return patches },
+    get nonce() { return nonce },
     /** What the screen actually shows. */
     get view() {
       const mine = liveOwner !== null && state.owner === liveOwner
@@ -164,6 +196,9 @@ function mountPrefs() {
         rows: mine ? state.rows : DEFAULTS.rows,
         quiet: mine ? state.quiet : DEFAULTS.quiet,
         rawOwner: state.owner,
+        // the recoverable half: the screen SAYS the load failed and offers the retry
+        loadFailed,
+        retryOffered: loadFailed,
       }
     },
   }
@@ -197,6 +232,11 @@ describe('the identity is the repository\'s own', () => {
       .filter((l) => /(?<![\w$])liveUserId(?![\w$])/.test(l))).toEqual([
       'const liveUserId = (session?.user as { id?: string } | undefined)?.id',
       'const liveOwner = sessionCartStamp(status, liveUserId)',
+      // captured so the RESPONSE can be held to the id the request was issued for
+      'const requestUserId = liveUserId',
+      // DECLARED, not suppressed: the load effect really reads the id now. It cannot add a
+      // run — `liveOwner` is `u:${liveUserId}` whenever the owner is an account.
+      '}, [liveOwner, liveUserId, reloadNonce])',
       // captured for the server guard, from THE SAME render that produced `saveOwner`
       'const saveUserId = liveUserId',
       '}, [channels, rows, quiet, liveOwner, liveUserId, mine, t])',
@@ -365,6 +405,145 @@ describe('A–H — preferences never cross an account boundary', () => {
   })
 })
 
+// ══ the GET half of the TOCTOU ══════════════════════════════════════════════
+//
+// FOUND BY INDEPENDENT REVIEW OF PR #15, AND REAL. The PATCH was closed by `expectedUserId`,
+// but the GET proved nothing about whose response it was. Owner-scoping the query makes
+// every response CORRECT for whoever was authenticated and says NOTHING about who that was.
+//
+//   React/useSession still believes A   ·   the browser cookie is already B's
+//   the GET leaves in that window       ·   the server authenticates B and answers B
+//   the effect is still live, so `alive` is TRUE — React has not moved yet, so there was
+//   nothing for the cleanup to tear down
+//   the client stamps the response with requestOwner = u:A
+//   → `mine` is TRUE and B's preferences render as A's own
+//
+// `alive` cannot close this: it only knows that the client's own belief has moved on. The
+// response now carries the AUTHENTICATED id and is refused unless it matches the raw id the
+// request was captured for. No new notion of identity — the same raw Operator id the PATCH
+// already sends as `expectedUserId`.
+
+describe('a GET response is adopted only under the identity the SERVER authenticated', () => {
+  let p: ReturnType<typeof mountPrefs>
+  beforeEach(() => { p = mountPrefs() })
+
+  it('1 — the client believes A, the server answers ownerId=B: B\'s prefs are NEVER adopted', () => {
+    p.signIn(OWN_A)
+    expect(p.pending, 'the GET left believing it was A\'s').toBe(1)
+    // the cookie had already become B's: the server authenticated B and returned B's row
+    p.answer(0, PREFS_B, B)
+    expect(p.view.rawOwner, 'nothing was stamped at all').toBeNull()
+    expect(p.view.mine, 'and therefore nothing is « mine »').toBe(false)
+    expect(p.view.channels, 'the neutral defaults, never B\'s').toEqual(DEFAULTS.channels)
+    expect(p.view.rows).toEqual(DEFAULTS.rows)
+    expect(p.view.quiet).toBe(DEFAULTS.quiet)
+    // the strongest form: not one field of B's reaches the screen
+    const shown = JSON.stringify(p.view)
+    expect(shown).not.toContain(JSON.stringify(PREFS_B.channels))
+    expect(shown).not.toContain(JSON.stringify(PREFS_B.rows))
+    // …and the screen is inert, so B's values cannot be written back under A either
+    expect(p.view.inert).toBe(true)
+    p.toggleQuiet()
+    p.fireTimer()
+    expect(p.patches).toEqual([])
+  })
+
+  it('2 — the client believes A and the server answers ownerId=A: adopted, unchanged', () => {
+    p.signIn(OWN_A)
+    p.answer(0, PREFS_A, A)
+    expect(p.view.mine).toBe(true)
+    expect(p.view.rawOwner).toBe(OWN_A)
+    expect(p.view.channels).toEqual(PREFS_A.channels)
+    expect(p.view.rows).toEqual(PREFS_A.rows)
+    expect(p.view.quiet).toBe(PREFS_A.quiet)
+    expect(p.view.loadFailed, 'a correct response is not a failure').toBe(false)
+    // and A can still save deliberately — the guard did not cost the screen its function
+    p.toggleQuiet()
+    p.fireTimer()
+    expect(p.patches.length).toBe(1)
+    expect(p.patches[0].owner).toBe(OWN_A)
+  })
+
+  it('3 — a mismatching response with perfectly valid prefs is fail-closed, and RECOVERABLE', () => {
+    // « ne transforme pas cette discordance en defaults chargés » — a stamped default screen
+    // would be writable, and the next toggle would PATCH defaults the user never chose over
+    // the preferences the server actually holds. So: unstamped, said, and retryable.
+    p.signIn(OWN_A)
+    p.answer(0, PREFS_B, B)              // structurally valid, attributed to the wrong account
+    expect(p.view.rawOwner, 'NOT stamped as loaded defaults').toBeNull()
+    expect(p.view.loadFailed, 'the screen says the load failed').toBe(true)
+    expect(p.view.retryOffered, 'and offers the only action that can fix it').toBe(true)
+    expect(p.view.inert).toBe(true)
+    p.toggleQuiet()
+    p.fireTimer()
+    expect(p.patches, 'nothing can be written over what we failed to read').toEqual([])
+
+    // RECOVERABLE: the retry re-runs the load, and a correct response works normally.
+    p.retry()
+    expect(p.nonce).toBe(1)
+    expect(p.pending, 'a fresh request left').toBe(2)
+    expect(p.view.loadFailed, 'the retry clears the error').toBe(false)
+    p.answer(1, PREFS_A, A)
+    expect(p.view.mine).toBe(true)
+    expect(p.view.channels).toEqual(PREFS_A.channels)
+  })
+
+  it('3 bis — a response that names NOBODY is refused too (undefined is not a match)', () => {
+    // An older server, a cache or a proxy can answer without the field. `undefined ===
+    // undefined` must never be read as « the owner matches »; the typeof half is what makes
+    // that impossible.
+    for (const bad of [undefined, null, '', 0, false, {}, [], `u:${A}`]) {
+      const q = mountPrefs()
+      q.signIn(OWN_A)
+      q.answer(0, PREFS_A, bad)
+      expect(q.view.rawOwner, `ownerId=${JSON.stringify(bad)}`).toBeNull()
+      expect(q.view.mine, `ownerId=${JSON.stringify(bad)}`).toBe(false)
+      expect(q.view.loadFailed, `ownerId=${JSON.stringify(bad)}`).toBe(true)
+    }
+    // …including the STAMP instead of the raw id: 'u:user-A' is not 'user-A'. The two notions
+    // are kept apart on purpose, and confusing them must fail closed rather than pass.
+  })
+
+  it('4 — A → B, then A\'s own response arrives late: still refused', () => {
+    p.signIn(OWN_A)
+    p.signIn(OWN_B)                      // React catches up; A's request is superseded
+    p.answer(1, PREFS_B, B)              // B loads normally
+    expect(p.view.channels).toEqual(PREFS_B.channels)
+    p.answer(0, PREFS_A, A)              // A's honest, correctly-attributed response, late
+    expect(p.view.rawOwner, 'B keeps its own').toBe(OWN_B)
+    expect(p.view.channels).toEqual(PREFS_B.channels)
+    expect(p.view.loadFailed, 'and a superseded response is not an error on B\'s screen').toBe(false)
+    expect(p.patches).toEqual([])
+  })
+
+  it('4 bis — the two guards are independent: neither alone would be enough', () => {
+    // `alive` catches « React already moved »; the ownerId check catches « React has not
+    // moved yet ». Each case below is closed by exactly one of them.
+    const q = mountPrefs()
+    q.signIn(OWN_A)
+    q.signIn(OWN_B)
+    q.answer(0, PREFS_A, A)              // superseded but correctly attributed → only `alive`
+    expect(q.view.rawOwner).toBeNull()
+
+    const r = mountPrefs()
+    r.signIn(OWN_A)
+    r.answer(0, PREFS_B, B)              // live but wrongly attributed → only the ownerId check
+    expect(r.view.rawOwner).toBeNull()
+    expect(r.view.loadFailed).toBe(true)
+  })
+
+  it('guest and unresolved still issue NO account GET at all', () => {
+    const g = mountPrefs()
+    g.signIn('guest')
+    expect(g.pending, 'a guest has no account to read').toBe(0)
+    expect(g.view.loadFailed, 'and nothing failed — there was nothing to do').toBe(false)
+    const u = mountPrefs()
+    u.signIn(null)
+    expect(u.pending, 'an identity we cannot name is one we cannot attribute data to').toBe(0)
+    expect(u.view.loadFailed).toBe(false)
+  })
+})
+
 // ══ the real file ═══════════════════════════════════════════════════════════
 
 describe('the page really implements this', () => {
@@ -378,7 +557,7 @@ describe('the page really implements this', () => {
     const src = executable(read(PAGE))
     // keyed on the owner — NOT on `[]`, which is what let B inherit A's preferences.
     // `reloadNonce` joined it so a failed load can be retried without a remount.
-    expect(src).toMatch(/\}, \[liveOwner, reloadNonce\]\)/)
+    expect(src).toMatch(/\}, \[liveOwner, liveUserId, reloadNonce\]\)/)
     expect(src, 'the empty dep array is gone').not.toMatch(/\}, \[\]\)/)
     // the previous account's values are dropped BEFORE anything is requested
     expect(src).toMatch(
@@ -397,9 +576,46 @@ describe('the page really implements this', () => {
     // the suite stayed at 19/19 while a superseded response wrote A's row back into state.
     // The guard must be the FIRST statement of the commit callback.
     expect(src).toMatch(
-      /\.then\(\(d: \{ notifPrefs\?: unknown \} \| null\) => \{\s*if \(!alive\) return/,
+      /\.then\(\(d: \{ ownerId\?: unknown; notifPrefs\?: unknown \} \| null\) => \{\s*if \(!alive\) return/,
     )
     expect(src).toMatch(/return \(\) => \{ alive = false \}/)
+
+    // ── THE GET OWNER CHECK ────────────────────────────────────────────────────────
+    // The raw id is captured BESIDE the stamp, from the same render, and kept separate from
+    // it: comparing the server's raw `ownerId` against the STAMP ('u:…') would never match
+    // and the screen would never load, so the two notions must not be conflated.
+    expect(src).toMatch(/const requestOwner = liveOwner\s*const requestUserId = liveUserId/)
+    // POSITION, NOT PRESENCE — the lesson this lot already learned twice. The check must sit
+    // between `if (!alive) return` and the first use of the payload, so that moving it below
+    // the stamped setPrefs (where it is dead code) cannot pass. The span may not cross the
+    // commit it guards.
+    expect(src).toMatch(
+      /if \(!alive\) return\s*if \(typeof d\?\.ownerId !== 'string' \|\| d\.ownerId !== requestUserId\) \{\s*setLoadFailed\(true\)\s*return\s*\}\s*const p = \(d\?\.notifPrefs/,
+    )
+    // BOTH HALVES. `typeof` alone would accept any string; the equality alone would accept a
+    // response that omits the field, on `undefined === undefined`.
+    expect(src, 'the equality is against the CAPTURED id').toMatch(/d\.ownerId !== requestUserId/)
+    expect(src, 'and a response that names nobody is not a match').toMatch(/typeof d\?\.ownerId !== 'string'/)
+    expect(src, 'never compared against the live id').not.toMatch(/d\.ownerId !== liveUserId/)
+    // EXACT SET over the fail-closed signal, so the mismatch cannot be routed anywhere else
+    // — in particular not into a stamped default screen, which would be writable.
+    expect(executable(read(PAGE)).split('\n').map((l) => l.trim())
+      .filter((l) => /setLoadFailed\(/.test(l))).toEqual([
+      'setLoadFailed(false)',                              // cleared at the top of every load
+      'setLoadFailed(true)',                               // the owner mismatch
+      '.catch(() => { if (alive) setLoadFailed(true) })',  // the transport failure
+    ])
+    // the mismatch branch TERMINATES — a missing `return` would fall through and adopt it
+    expect(src).toMatch(/setLoadFailed\(true\)\s*return\s*\}/)
+    expect(src, 'and it is never stamped as loaded').not.toMatch(
+      /setPrefs\(\{ owner: requestOwner, \.\.\.DEFAULT_PREFS \}\)/,
+    )
+
+    // THE SERVER HALF — the check is worthless if the response does not carry the id.
+    const api = executable(read('app/api/eat/account/route.ts'))
+    expect(api, 'the GET returns the AUTHENTICATED id, not anything from the request').toMatch(
+      /return NextResponse\.json\(\{\s*ownerId: userId,/,
+    )
     // EXACT SET over the two catch handlers, because a bare /\.catch\(\(\) => \{\}\)/ was
     // satisfied by the SAVE effect's sibling while the load's had been changed.
     expect(executable(read(PAGE)).split('\n').map((l) => l.trim()).filter((l) => /\.catch\(/.test(l))).toEqual([
