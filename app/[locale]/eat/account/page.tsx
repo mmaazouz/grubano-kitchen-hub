@@ -7,6 +7,7 @@ import { usePathname, useRouter } from '@/navigation'
 import { locales, type Locale } from '@/i18n'
 import {
   favOwner, readFavsForOwner, favEventIsMine, favStorageIsMine, FAV_EVENT, showToast,
+  sessionCartStamp,
 } from '@/lib/eat-cart'
 import { getTheme, setTheme, watchSystem, type Theme } from '@/lib/eat-theme'
 // gb-foundation FIRST: gb-tokens.css opens with `@import …Material+Symbols…`, valid
@@ -50,8 +51,18 @@ export default function ProfileScreen() {
   const router = useRouter()
   const pathname = usePathname()
 
-  const [points, setPoints] = useState(0)
-  const [orders, setOrders] = useState<Order[]>([])
+  // Points balance + order history — ALWAYS stamped. The screen used to keep them as
+  // plain primitives in an effect keyed on `[status]`, which stayed 'authenticated' across
+  // an A → B cross-tab switch (NextAuth's broadcast calls setSession without flipping to
+  // 'unauthenticated'), so A's balance / counts were painted onto B's profil, and a late
+  // GET armed under A could race B's and win. Stamping the state and matching it against
+  // the live `sessionStamp` at render time closes the race in BOTH directions.
+  const [pointsState, setPointsState] = useState<{ stamp: string | null; value: number }>(
+    { stamp: null, value: 0 },
+  )
+  const [ordersState, setOrdersState] = useState<{ stamp: string | null; value: Order[] }>(
+    { stamp: null, value: [] },
+  )
   /** RAW — read only through the gate below. A COUNT is data too: « 7 » tells B how many
    *  restaurants A had favourited. */
   const [favCountState, setFavCountState] = useState<{ owner: string | null; n: number }>({ owner: null, n: 0 })
@@ -61,8 +72,15 @@ export default function ProfileScreen() {
 
   const loggedIn = status === 'authenticated'
 
-  // ── FAVOURITES OWNER, RESOLVED DURING RENDER ───────────────────────────────────
+  // ── IDENTITY, RESOLVED DURING RENDER ───────────────────────────────────────────
+  // The live user id is captured in the same render as the new session, so a value
+  // whose stamp was taken under the previous owner fails the render-time match (see
+  // `sessionStamp` + the gated bindings below) and is never painted. The variable
+  // name `favLiveUserId` is the SAME primitive the favorites rail already pins across
+  // every /eat surface (eat-favorites-account-isolation): keeping it means ONE source
+  // of truth for « who is this component rendering for ».
   const favLiveUserId = (session?.user as { id?: string } | undefined)?.id
+  const sessionStamp = sessionCartStamp(status, favLiveUserId)
   const favsOwner = favOwner(status, favLiveUserId)
   /** The only number this screen may show. */
   const favCount = favsOwner !== null && favCountState.owner === favsOwner ? favCountState.n : 0
@@ -93,16 +111,66 @@ export default function ProfileScreen() {
     setTheme(next)
   }
 
+  // Loyalty balance (idcard tier + « Points » stat) + order history (« Commandes »
+  // stat, « Livrées » stat, « Mes commandes » row pill). Keyed on IDENTITY, not merely
+  // `status`: `status` stays 'authenticated' across an A → B cross-tab switch, so a
+  // dep of `[status]` left the previous account's balance and counts on screen (and let
+  // a late GET armed under A race B's). FAIL-CLOSED FIRST: the previous owner's values
+  // leave the profil BEFORE any request. requestOwner + requestUserId are captured
+  // together so the response can be refused unless the server echoed the SAME raw id
+  // (closes the window where React still believes A but the browser cookie is already
+  // B). `alive` closes the opposite window — React moved on, but a late response from
+  // the previous identity is still inbound. The .catch arms are no-ops: a fabricated
+  // `{ pointsBalance: 0 }` / `{ orders: [] }` would end up stamped as the live owner
+  // and painted as « their » (empty) data, which is the exact failure mode this closes.
   useEffect(() => {
+    setPointsState({ stamp: null, value: 0 })
+    setOrdersState({ stamp: null, value: [] })
     if (status !== 'authenticated') return
-    Promise.all([
-      fetch('/api/loyalty/wallet').then((r) => r.json()).catch(() => ({ pointsBalance: 0 })),
-      fetch('/api/orders?take=50').then((r) => r.json()).catch(() => ({ orders: [] })),
-    ]).then(([wallet, ord]) => {
-      setPoints(wallet.pointsBalance ?? 0)
-      setOrders(Array.isArray(ord.orders) ? ord.orders : [])
-    })
-  }, [status])
+    if (!favLiveUserId) return
+    const requestOwner = sessionStamp
+    const requestUserId = favLiveUserId
+    if (requestOwner === null) return
+    let alive = true
+    fetch('/api/loyalty/wallet').then((r) => (r.ok ? r.json() : null)).then((w: { ownerId?: unknown; pointsBalance?: unknown } | null) => {
+      if (!alive) return
+      // NEVER STAMP A RESPONSE THE SERVER DID NOT ATTRIBUTE TO THE SAME RAW ID. The
+      // typeof half matters: a response that OMITS the field (older server, cache,
+      // proxy) must not slip through on `undefined === undefined`. A mismatch is a
+      // FAILED load — the state stays unstamped, so the profil keeps the neutral view.
+      if (typeof w?.ownerId !== 'string' || w.ownerId !== requestUserId) return
+      const v = typeof w.pointsBalance === 'number' ? w.pointsBalance : 0
+      setPointsState({ stamp: requestOwner, value: v })
+    }).catch(() => {})
+    fetch('/api/orders?take=50').then((r) => (r.ok ? r.json() : null)).then((d: { ownerId?: unknown; orders?: unknown } | null) => {
+      if (!alive) return
+      if (typeof d?.ownerId !== 'string' || d.ownerId !== requestUserId) return
+      const list: Order[] = Array.isArray(d.orders)
+        ? (d.orders as unknown[]).filter((o): o is Order =>
+            typeof o === 'object' && o !== null
+              && typeof (o as { id?: unknown }).id === 'string'
+              && typeof (o as { status?: unknown }).status === 'string')
+        : []
+      setOrdersState({ stamp: requestOwner, value: list })
+    }).catch(() => {})
+    return () => { alive = false }
+    // `favLiveUserId` IS A DEPENDENCY: `status` alone cannot see A → logout → B when
+    // the broadcast moves the id without touching `status`. Keying on it also makes
+    // `alive` load-bearing — React runs the cleanup on identity change, so an in-flight
+    // request issued for A is disowned before it can resolve. `sessionStamp` is derived
+    // from `status` + `favLiveUserId` already in deps, so pinning the two primitives
+    // keeps `sessionStamp` current without an extra dependency that would re-fire on
+    // every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, /* account-points-orders-deps */ [status, favLiveUserId])
+
+  // RENDER-TIME GATE — a value is shown only when its stamp matches the identity the
+  // SESSION implies right now, which changes in the same render as the session. On an
+  // A → B switch inside this component, this is what prevents one committed frame of
+  // A's balance/counts painting under B. Default: 0 points, no orders (= member tier,
+  // no delivered count, no pill badge) — a signed-out-looking profil, never A's.
+  const points = pointsState.stamp !== null && pointsState.stamp === sessionStamp ? pointsState.value : 0
+  const orders = ordersState.stamp !== null && ordersState.stamp === sessionStamp ? ordersState.value : []
 
   // Real i18n locale switch (mirrors LanguageSwitcher): persist the cookie so the
   // middleware honours it on future visits, then replace the route with the new locale.
