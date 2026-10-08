@@ -9,6 +9,7 @@ import { useRouter } from '@/navigation'
 import { useSession } from 'next-auth/react'
 import { useTranslations, useLocale } from 'next-intl'
 import { formatAmount } from '@/lib/format-money'
+import { sessionCartStamp } from '@/lib/eat-cart'
 
 // ── /eat/rewards — CONSUMER loyalty rewards screen (gated /eat, DISPLAY-ONLY) ───
 //
@@ -51,24 +52,82 @@ export default function RewardsScreen() {
   const ta = useTranslations('eat.account') // tier labels (shared with the account screen)
   const locale = useLocale()
   const router = useRouter()
-  const { status } = useSession()
+  const { data: session, status } = useSession()
+  // The identity, reused — same shape as EatShell + /eat/cart (lib/eat-cart.sessionCartStamp).
+  const userId = (session?.user as { id?: string } | undefined)?.id
 
   const [loading, setLoading] = useState(true)
-  const [points, setPoints] = useState(0)
-  const [credit, setCredit] = useState<CreditStep[]>([])
+  // The wallet is stored WITH the stamp of the identity it was read under. The screen
+  // used to keep points + credit as plain primitives in an effect keyed on `[status]`,
+  // which stayed 'authenticated' across an A → B cross-tab switch (NextAuth's broadcast
+  // calls setSession without flipping to 'unauthenticated'), so A's balance and credit
+  // grid were painted onto B's rewards screen, and a late GET armed under A could race
+  // B's and win. Stamping the state and matching it against the live `sessionStamp` at
+  // render time closes the race in BOTH directions.
+  const [walletState, setWalletState] = useState<{ stamp: string | null; points: number; credit: CreditStep[] }>(
+    { stamp: null, points: 0, credit: [] },
+  )
 
+  // FIRST-FRAME GUARD — the stamp the SESSION implies, available in the SAME render as
+  // the new session. The effect below declares the identity, and effects run AFTER the
+  // render that introduced a new session: on an A → B switch inside the SPA this screen
+  // re-renders with B's session while `walletState` still holds A's values, and would
+  // paint A's balance for one committed frame. Comparing the stamp the value was read
+  // under with the stamp the SESSION implies closes that frame.
+  const sessionStamp = sessionCartStamp(status, userId)
+
+  // Loyalty wallet (/api/loyalty/wallet → pointsBalance + creditScale). Keyed on
+  // IDENTITY, not merely `[status]`: `status` stays 'authenticated' across an A → B
+  // cross-tab switch, so a dep of `[status]` left the previous account's balance and
+  // grid on screen (and let a late GET armed under A race B's). FAIL-CLOSED FIRST: the
+  // previous owner's values leave the screen BEFORE any request. requestOwner +
+  // requestUserId are captured together so the response can be refused unless the
+  // server echoed the SAME raw id (closes the window where React still believes A but
+  // the browser cookie is already B). `alive` closes the opposite window — React moved
+  // on, but a late response from the previous identity is still inbound.
   useEffect(() => {
+    setWalletState({ stamp: null, points: 0, credit: [] })
     if (status === 'loading') return
     if (status !== 'authenticated') { setLoading(false); return }
+    if (!userId) { setLoading(false); return }
+    const requestOwner = sessionStamp
+    const requestUserId = userId
+    if (requestOwner === null) { setLoading(false); return }
+    setLoading(true)
+    let alive = true
     fetch('/api/loyalty/wallet')
-      .then((r) => r.json())
-      .then((w) => {
-        setPoints(typeof w.pointsBalance === 'number' ? w.pointsBalance : 0)
-        setCredit(Array.isArray(w.creditScale) ? w.creditScale : [])
+      .then((r) => (r.ok ? r.json() : null))
+      .then((w: { ownerId?: unknown; pointsBalance?: unknown; creditScale?: unknown } | null) => {
+        if (!alive) return
+        // NEVER STAMP A RESPONSE THE SERVER DID NOT ATTRIBUTE TO THE SAME RAW ID. The
+        // typeof half matters: a response that OMITS the field (older server, cache,
+        // proxy) must not slip through on `undefined === undefined`. A mismatch is a
+        // FAILED load — the state stays unstamped, so the chrome keeps the neutral view.
+        if (typeof w?.ownerId !== 'string' || w.ownerId !== requestUserId) return
+        const pts = typeof w.pointsBalance === 'number' ? w.pointsBalance : 0
+        const scale = Array.isArray(w.creditScale) ? (w.creditScale as CreditStep[]) : []
+        setWalletState({ stamp: requestOwner, points: pts, credit: scale })
       })
-      .catch(() => { /* keep zeros */ })
-      .finally(() => setLoading(false))
-  }, [status])
+      .catch(() => { /* keep neutral — the stamp stays null */ })
+      .finally(() => { if (alive) setLoading(false) })
+    return () => { alive = false }
+    // `userId` IS A DEPENDENCY: `status` alone cannot see A → logout → B when the
+    // broadcast moves the id without touching `status`. Keying on it also makes `alive`
+    // load-bearing — React runs the cleanup on identity change, so an in-flight request
+    // issued for A is disowned before it can resolve. `sessionStamp` is derived from
+    // `status` + `userId` already in deps, so pinning the two primitives keeps
+    // `sessionStamp` current without an extra dependency that would re-fire on every
+    // render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, /* rewards-wallet-deps */ [status, userId])
+
+  // RENDER-TIME GATE — a value is shown only when its stamp matches the identity the
+  // SESSION implies right now, which changes in the same render as the session. On an
+  // A → B switch inside this component, this is what prevents one committed frame of
+  // A's balance + credit grid painting under B.
+  const stampOk = walletState.stamp !== null && walletState.stamp === sessionStamp
+  const points = stampOk ? walletState.points : 0
+  const credit = stampOk ? walletState.credit : []
 
   const tierKey = tierFor(points).key
   const tier = tierFor(points)
