@@ -69,8 +69,18 @@ export default function EatShell({ children }: { children: React.ReactNode }) {
   const [cartView, setCartView] = useState<{ stamp: string | null; count: number; subtotal: number }>(
     { stamp: null, count: 0, subtotal: 0 },
   )
-  const [points, setPoints] = useState<number | null>(null)
-  const [activeOrders, setActiveOrders] = useState(0)
+  // Loyalty points + active-order count — ALSO stamped. The shell used to keep them as
+  // plain primitives in an effect keyed on `[status]`, which stayed 'authenticated' across
+  // an A → B cross-tab switch (NextAuth's broadcast calls setSession without flipping to
+  // 'unauthenticated'), so A's balance and badge were painted onto B's chrome, and a late
+  // GET armed under A could race B's and win. Stamping the state and matching it against
+  // the live `sessionStamp` at render time closes the race in BOTH directions.
+  const [pointsState, setPointsState] = useState<{ stamp: string | null; value: number }>(
+    { stamp: null, value: 0 },
+  )
+  const [activeOrdersState, setActiveOrdersState] = useState<{ stamp: string | null; value: number }>(
+    { stamp: null, value: 0 },
+  )
   const [query, setQuery] = useState('')
   // The « Livrer à » value is stored WITH the stamp of the identity it was read under.
   const [defaultAddr, setDefaultAddr] = useState<{ stamp: string | null; addr: EatAddress | null }>(
@@ -185,20 +195,59 @@ export default function EatShell({ children }: { children: React.ReactNode }) {
     }
   }, [pathname])
 
-  // Loyalty (rail card + user tier) + active orders (Commandes badge) — read-only, once
-  // per session (the layout persists across /eat navigations). No source → no badge.
+  // Loyalty (rail card + user tier) + active orders (Commandes badge). Keyed on
+  // IDENTITY, not merely `status`: `status` stays 'authenticated' across an A → B
+  // cross-tab switch, so a dep of `[status]` left the previous account's balance and
+  // badge on screen (and let a late GET armed under A race B's). FAIL-CLOSED FIRST: the
+  // previous owner's values leave the shell BEFORE any request. requestOwner +
+  // requestUserId are captured together so the response can be refused unless the
+  // server echoed the SAME raw id (closes the window where React still believes A but
+  // the browser cookie is already B). `alive` closes the opposite window — React moved
+  // on, but a late response from the previous identity is still inbound.
   useEffect(() => {
+    setPointsState({ stamp: null, value: 0 })
+    setActiveOrdersState({ stamp: null, value: 0 })
     if (status !== 'authenticated') return
-    fetch('/api/loyalty/wallet').then((r) => r.json()).then((w) => {
-      if (typeof w?.pointsBalance === 'number') setPoints(w.pointsBalance)
+    if (!addressOwnerId) return
+    const requestOwner = sessionStamp
+    const requestUserId = addressOwnerId
+    if (requestOwner === null) return
+    let alive = true
+    fetch('/api/loyalty/wallet').then((r) => (r.ok ? r.json() : null)).then((w: { ownerId?: unknown; pointsBalance?: unknown } | null) => {
+      if (!alive) return
+      // NEVER STAMP A RESPONSE THE SERVER DID NOT ATTRIBUTE TO THE SAME RAW ID. The
+      // typeof half matters: a response that OMITS the field (older server, cache,
+      // proxy) must not slip through on `undefined === undefined`. A mismatch is a
+      // FAILED load — the state stays unstamped, so the chrome keeps the neutral view.
+      if (typeof w?.ownerId !== 'string' || w.ownerId !== requestUserId) return
+      const v = typeof w.pointsBalance === 'number' ? w.pointsBalance : 0
+      setPointsState({ stamp: requestOwner, value: v })
     }).catch(() => {})
-    fetch('/api/orders?take=50').then((r) => r.json()).then((d) => {
-      const orders = Array.isArray(d?.orders) ? d.orders : []
+    fetch('/api/orders?take=50').then((r) => (r.ok ? r.json() : null)).then((d: { ownerId?: unknown; orders?: unknown } | null) => {
+      if (!alive) return
+      if (typeof d?.ownerId !== 'string' || d.ownerId !== requestUserId) return
+      const orders = Array.isArray(d.orders) ? d.orders : []
       const active = orders.filter((o: { status?: string }) =>
         ['received', 'preparing', 'ready', 'picked_up'].includes(o.status ?? '')).length
-      setActiveOrders(active)
+      setActiveOrdersState({ stamp: requestOwner, value: active })
     }).catch(() => {})
-  }, [status])
+    return () => { alive = false }
+    // `addressOwnerId` IS A DEPENDENCY: `status` alone cannot see A → logout → B when
+    // the broadcast moves the id without touching `status`. Keying on it also makes
+    // `alive` load-bearing — React runs the cleanup on identity change, so an in-flight
+    // request issued for A is disowned before it can resolve. `sessionStamp` is derived
+    // from `status` + `addressOwnerId` already in deps, so pinning the two primitives
+    // keeps `sessionStamp` current without an extra dependency that would re-fire on
+    // every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, /* loyalty-active-orders-deps */ [status, addressOwnerId])
+
+  // RENDER-TIME GATE — a value is shown only when its stamp matches the identity the
+  // SESSION implies right now, which changes in the same render as the session. On an
+  // A → B switch inside this component, this is what prevents one committed frame of
+  // A's balance/badge painting under B.
+  const points = pointsState.stamp !== null && pointsState.stamp === sessionStamp ? pointsState.value : null
+  const activeOrders = activeOrdersState.stamp !== null && activeOrdersState.stamp === sessionStamp ? activeOrdersState.value : 0
 
   if (isFullscreen(pathname)) return <>{children}</>
 

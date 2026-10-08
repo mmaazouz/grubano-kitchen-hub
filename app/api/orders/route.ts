@@ -1110,7 +1110,13 @@ export async function GET(req: NextRequest) {
       withBadges = orders.map(({ stripePaymentIntentId: _pi, ...o }) => ({ ...o, refundedCents: 0, unattributedCents: 0, isTotal: false, isPartial: false }))
     }
 
-    return NextResponse.json({ orders: withBadges, total, take, skip })
+    // THE RESPONSE NAMES THE IDENTITY THE SERVER AUTHENTICATED — ownerId is `token.sub`,
+    // the Operator id the cookie authenticated AS. EatShell uses this to refuse an answer
+    // the browser attached a newer cookie to while React still believes the previous
+    // account (the client's own belief lags the broadcast; `alive` alone cannot see that
+    // case). Additive — existing callers (e.g. /eat/account) destructure `orders` and
+    // ignore the rest. token.sub is non-null here (the earlier 401 guard rejected a null).
+    return NextResponse.json({ ownerId: token.sub, orders: withBadges, total, take, skip })
   } catch (err) {
     console.error('[GET /api/orders]', err)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })

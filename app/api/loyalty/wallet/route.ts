@@ -134,7 +134,17 @@ export async function GET(req: NextRequest) {
     // is never shown a negative loyalty balance.
     const visibleBalance = Math.max(0, customer.pointsBalance)
 
+    // THE RESPONSE NAMES THE IDENTITY THE SERVER AUTHENTICATED — ownerId is `token.sub`,
+    // the Operator id the cookie authenticated AS, NEVER the queried customer's id (which,
+    // on the operator ?email= path, would be the OTHER person's id). A consumer-mode read
+    // (no ?email=) and an operator-mode read (?email=) therefore both carry the caller's
+    // own id, which is exactly what EatShell needs to refuse a response the browser
+    // attached a newer cookie to while React still believes the previous account. Additive
+    // — existing callers destructure `pointsBalance`/`points_balance` and ignore the rest.
+    const ownerId: string | null = typeof token?.sub === 'string' ? token.sub : null
+
     return NextResponse.json({
+      ownerId,
       points_balance:  visibleBalance,
       // camelCase alias — /eat/account and the cart loyalty toggle read this.
       pointsBalance:   visibleBalance,
