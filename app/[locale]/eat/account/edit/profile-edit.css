@@ -101,6 +101,12 @@
 .gb-profile-edit .err{display:flex;align-items:flex-start;gap:7px;margin-top:14px;padding:11px 13px;border-radius:var(--gb-r-md);background:var(--gb-danger-bg);border:1px solid var(--gb-danger-bd);font-size:12.5px;font-weight:600;color:var(--gb-danger)}
 .gb-profile-edit .err .ms{font-size:16px;flex-shrink:0;margin-top:1px}
 
+/* ── load-error row with retry (consumer profile) ─────────────────────────── */
+.gb-profile-edit .pe-error{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 14px;padding:10px 12px;border:1px solid var(--gb-danger);border-radius:var(--gb-r-md);color:var(--gb-danger);font-size:13px;line-height:1.45}
+.gb-profile-edit .pe-retry{flex:none;padding:4px 12px;background:transparent;border:1px solid currentColor;border-radius:var(--gb-r-sm);color:inherit;font:inherit;font-weight:600;cursor:pointer}
+/* a disabled input stops looking like a live one — reads as "loading", not "broken" */
+.gb-profile-edit .ctrl input:disabled{cursor:default;opacity:.6}
+
 /* ── centred result state (email-change done / reset done / reset invalid) ───── */
 .gb-profile-edit .result{display:flex;flex-direction:column;align-items:center;text-align:center;padding:36px 12px}
 .gb-profile-edit .result__ico{width:84px;height:84px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin-bottom:18px}

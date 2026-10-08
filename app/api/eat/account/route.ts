@@ -4,23 +4,27 @@ import { z } from 'zod'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
-// ── /api/eat/account (P1-PROFILE) — consumer profile (name + phone) ───────────────
+// ── /api/eat/account (P1-PROFILE) — consumer profile (name + phone + notifPrefs) ──────────
 // Session-gated + owner-scoped: every query keys on the logged-in Operator's own id, so
-// a user only ever reads/writes their own row. GET returns the current name/phone, PATCH
-// updates them. This is NOT an auth surface — email changes go through the dedicated
-// /api/account/email-change flow and the password through the reset flow; this route
-// never touches password/email/role. NO money. The Operator row is the model every role
-// shares; this only ever mutates the caller's own name/phone — and, since the notification
-// preferences lot, `notifPrefs`, which carries an extra guarantee: a PATCH that includes
-// notifPrefs must also name the identity it was prepared for, and is refused with 409
-// `owner_changed` when that is not the identity it authenticated as. See the check in PATCH
-// for why the client cannot make that guarantee by itself.
+// a user only ever reads/writes their own row. GET returns the current name/phone/prefs,
+// PATCH updates them. This is NOT an auth surface — email changes go through the dedicated
+// /api/account/email-change flow and the password through the reset flow; this route never
+// touches password/email/role. NO money. The Operator row is the model every role shares;
+// this only ever mutates the caller's own name/phone/notifPrefs.
 //
 // BOTH DIRECTIONS ARE NAMED. Owner-scoping the queries is not enough on its own: it makes
 // every response CORRECT for whoever was authenticated, and says nothing about who that
 // was. A client whose belief about the session lags behind the cookie therefore cannot tell
 // one account's correct response from another's. So the GET also returns `ownerId`, and the
-// PATCH requires `expectedUserId` — read side and write side, the same raw Operator id.
+// PATCH requires `expectedUserId` on EVERY write — read side and write side, the same raw
+// Operator id.
+//
+// The `expectedUserId` requirement used to be scoped to `notifPrefs` only, because the
+// sibling /eat/account/edit screen was not yet carrying it. That exemption is gone: with
+// both callers in-tree carrying the id, requiring it everywhere closes the TOCTOU on
+// name/phone the same way it was closed on notifPrefs. A debounced or awaited save prepared
+// under account A can leave after the browser has started attaching B's cookie — the
+// client cannot see that gap, so the server refuses the mutation.
 
 async function ownerId(): Promise<string | null> {
   const session = await getServerSession(authOptions)
@@ -41,8 +45,7 @@ export async function GET() {
   // client would then stamp B's row with A's owner and render it as A's own. It cannot
   // detect that by itself, because nothing in the response said whose it was. Now it does:
   // `ownerId` is the AUTHENTICATED Operator id — the session's, never the request's — and a
-  // client that captured a different id refuses the whole response. Additive: existing
-  // callers read `name`/`phone` and ignore the rest.
+  // client that captured a different id refuses the whole response.
   return NextResponse.json({
     ownerId: userId,
     name: op.name,
@@ -65,15 +68,14 @@ const NotifPrefs = z.object({
 // name is required-non-empty WHEN provided (Operator.name is non-null); phone is free-form
 // and an empty string CLEARS it. notifPrefs replaces the whole blob. An absent field is
 // left untouched.
+//
+// `expectedUserId` is DECLARED, not implicit — zod STRIPS unknown keys rather than rejecting
+// them, so an undeclared field would arrive as `undefined` and the check below would silently
+// compare nothing.
 const ProfilePatch = z.object({
-  name:       z.string().trim().min(1).max(80).optional(),
-  phone:      z.string().trim().max(30).optional(),
-  notifPrefs: NotifPrefs.optional(),
-  // THE IDENTITY THE CLIENT PREPARED THIS MUTATION FOR. Not a new notion of owner — the raw
-  // Operator id, the same value the session carries; the client keeps using sessionCartStamp
-  // for its own rendering and sends the plain id here. Declared in the schema because zod
-  // STRIPS unknown keys rather than rejecting them, so an undeclared field would arrive as
-  // `undefined` and the check below would silently compare nothing.
+  name:           z.string().trim().min(1).max(80).optional(),
+  phone:          z.string().trim().max(30).optional(),
+  notifPrefs:     NotifPrefs.optional(),
   expectedUserId: z.string().min(1).optional(),
 })
 
@@ -84,27 +86,26 @@ export async function PATCH(req: Request) {
   if (!parsed.success) return NextResponse.json({ error: 'invalid' }, { status: 400 })
 
   // ── THE OWNER CHECK — BEFORE ANY WRITE IS EVEN ASSEMBLED ────────────────────────
-  // A debounced save prepared under account A can leave after the browser has started
-  // attaching B's cookie: the client cannot see that gap, because the cookie is chosen at
-  // send time and the client's own belief lags behind by a broadcast. The server sees both
-  // at once, so it is the only party that can refuse — and it refuses by comparing the
-  // identity the client PREPARED the mutation for with the identity it actually
-  // AUTHENTICATED as. No new owner format: both sides are the raw Operator id.
+  // A save prepared under account A can leave after the browser has started attaching B's
+  // cookie: the client cannot see that gap, because the cookie is chosen at send time and
+  // the client's own belief lags behind by a broadcast. The server sees both at once, so it
+  // is the only party that can refuse — and it refuses by comparing the identity the client
+  // PREPARED the mutation for with the identity it actually AUTHENTICATED as. No new owner
+  // format: both sides are the raw Operator id.
   //
-  // Scoped to `notifPrefs` ON PURPOSE for now: /eat/account/edit still sends name/phone
-  // without the field and is corrected in its own lot. Making it mandatory for those today
-  // would break that screen rather than protect it.
-  if (parsed.data.notifPrefs !== undefined) {
-    if (parsed.data.expectedUserId === undefined) {
-      // A client that cannot say who it is writing for has no business writing.
-      return NextResponse.json({ error: 'expected_user_id_required' }, { status: 400 })
-    }
-    if (parsed.data.expectedUserId !== userId) {
-      // The identity moved between preparing this mutation and sending it. The mutation is
-      // stale, not retryable as-is, and NOTHING is written. `owner_changed` is a stable
-      // code the client keys on to stay silent rather than claim a save that never happened.
-      return NextResponse.json({ error: 'owner_changed' }, { status: 409 })
-    }
+  // UNCONDITIONAL on every PATCH. The field was once scoped to notifPrefs only, as a
+  // deliberate exemption while /eat/account/edit still sent name/phone without it. Both
+  // callers now carry the id; the exemption is lifted so the race on name/phone cannot
+  // open the way it did on notifPrefs.
+  if (parsed.data.expectedUserId === undefined) {
+    // A client that cannot say who it is writing for has no business writing.
+    return NextResponse.json({ error: 'expected_user_id_required' }, { status: 400 })
+  }
+  if (parsed.data.expectedUserId !== userId) {
+    // The identity moved between preparing this mutation and sending it. The mutation is
+    // stale, not retryable as-is, and NOTHING is written. `owner_changed` is a stable code
+    // the client keys on to stay silent rather than claim a save that never happened.
+    return NextResponse.json({ error: 'owner_changed' }, { status: 409 })
   }
 
   const data: { name?: string; phone?: string | null; notifPrefs?: typeof parsed.data.notifPrefs } = {}

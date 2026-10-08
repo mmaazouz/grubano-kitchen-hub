@@ -4081,6 +4081,8 @@
       "saveSoon": "Saving coming soon",
       "saveOk": "Profile saved",
       "saveError": "Could not save, try again",
+      "loadError": "Could not load your profile.",
+      "retry": "Try again",
       "nameRequired": "Name is required",
       "changePhoto": "Change photo",
       "photoSoon": "Photo change coming soon",

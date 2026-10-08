@@ -4081,6 +4081,8 @@
       "saveSoon": "Guardado disponible próximamente",
       "saveOk": "Perfil guardado",
       "saveError": "No se pudo guardar, inténtalo de nuevo",
+      "loadError": "No se pudo cargar tu perfil.",
+      "retry": "Reintentar",
       "nameRequired": "El nombre es obligatorio",
       "changePhoto": "Cambiar la foto",
       "photoSoon": "Cambio de foto disponible próximamente",
