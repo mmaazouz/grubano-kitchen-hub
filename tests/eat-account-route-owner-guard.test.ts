@@ -85,14 +85,25 @@ describe('the server refuses a mutation prepared for another identity', () => {
     }
   })
 
-  it('notifPrefs WITHOUT expectedUserId → refused, and ZERO write', async () => {
+  it('ANY mutation WITHOUT expectedUserId → refused, and ZERO write', async () => {
     // A client that cannot say who it is writing for has no business writing. 400 rather
-    // than 409: this is a malformed caller, not an identity that moved.
+    // than 409: this is a malformed caller, not an identity that moved. The requirement
+    // used to be scoped to notifPrefs — both callers now carry the id, so the exemption on
+    // name/phone is lifted and every mutation is held to the same rule.
     signedInAs(A)
-    const res = await patch({ notifPrefs: PREFS_A })
-    expect(res.status).toBe(400)
-    expect(await res.json()).toEqual({ error: 'expected_user_id_required' })
-    expect(db.operator.update).not.toHaveBeenCalled()
+    for (const body of [
+      { notifPrefs: PREFS_A },
+      { name: 'Mohammed' },
+      { phone: '0600000000' },
+      { name: 'Mohammed', phone: '0600000000' },
+      { name: 'Mohammed', notifPrefs: PREFS_A },
+    ]) {
+      db.operator.update.mockClear()
+      const res = await patch(body)
+      expect(res.status, `body=${JSON.stringify(body)}`).toBe(400)
+      expect(await res.json()).toEqual({ error: 'expected_user_id_required' })
+      expect(db.operator.update, `body=${JSON.stringify(body)}`).not.toHaveBeenCalled()
+    }
   })
 
   it('an empty or non-string expectedUserId is not a pass either', async () => {
@@ -123,12 +134,11 @@ describe('the server refuses a mutation prepared for another identity', () => {
     expect(db.operator.update).not.toHaveBeenCalled()
   })
 
-  it('name/phone still work WITHOUT expectedUserId — /eat/account/edit is not broken today', async () => {
-    // DELIBERATELY CONDITIONAL. Requiring the field for name/phone right now would break the
-    // sibling profile screen, which still sends neither and is corrected in its own lot.
-    // This case exists so that the exemption is visible and deliberate rather than forgotten.
+  it('name/phone WITH expectedUserId A under session A → 200, scoped to A', async () => {
+    // The exemption that used to let the edit screen skip the field is gone: it now carries
+    // the id, so the server can hold name/phone to the same rule as notifPrefs.
     signedInAs(A)
-    const res = await patch({ name: 'Mohammed', phone: '0600000000' })
+    const res = await patch({ expectedUserId: A, name: 'Mohammed', phone: '0600000000' })
     expect(res.status).toBe(200)
     expect(db.operator.update).toHaveBeenCalledTimes(1)
     const arg = db.operator.update.mock.calls[0][0] as { where: unknown; data: Record<string, unknown> }
@@ -136,7 +146,18 @@ describe('the server refuses a mutation prepared for another identity', () => {
     expect(Object.keys(arg.data).sort()).toEqual(['name', 'phone'])
   })
 
-  it('a mixed body is held to the notifPrefs rule — name/phone do not smuggle prefs through', async () => {
+  it('name/phone prepared under A, sent under B → 409 and ZERO write', async () => {
+    // THE RACE THE EDIT SCREEN'S SAVE OPENED. The user typed under A, the cookie became B's
+    // before the click's await resolved, the server authenticates B — and refuses, because
+    // the body says the mutation was prepared for A.
+    signedInAs(B)
+    const res = await patch({ expectedUserId: A, name: 'Alice typed this', phone: '0611111111' })
+    expect(res.status).toBe(409)
+    expect(await res.json()).toEqual({ error: 'owner_changed' })
+    expect(db.operator.update, 'A\'s text did NOT reach B\'s row').not.toHaveBeenCalled()
+  })
+
+  it('a mixed body is held to the owner rule — name does not smuggle through either', async () => {
     signedInAs(B)
     const res = await patch({ name: 'Mohammed', notifPrefs: PREFS_A, expectedUserId: A })
     expect(res.status).toBe(409)
@@ -218,39 +239,40 @@ describe('GET returns the owner it authenticated', () => {
     expect(await res.json()).not.toHaveProperty('ownerId')
   })
 
-  it('6 — /eat/account/edit stays compatible with the enriched response', async () => {
-    // The sibling profile screen reads `name` and `phone` off this same GET. Adding a key
-    // must not change either, and must not make the screen's own load conditional on
-    // something it does not send. It is NOT modified in this lot — this case is what proves
-    // the enrichment did not break it.
+  it('6 — /eat/account/edit now reads ownerId and sends expectedUserId', async () => {
+    // The sibling profile screen reads `name`, `phone` AND `ownerId` off this GET. The ownerId
+    // read is the GET half of the TOCTOU — it was the missing half before this lot — and the
+    // PATCH half is sending `expectedUserId`, which `the server now REQUIRES on every write.
     signedInAs(A)
     const d = await (await GET()).json()
-    expect(typeof d.name, 'the name the edit screen sets into its input').toBe('string')
+    expect(typeof d.name).toBe('string')
     expect(d.name).toBe(OP.name)
-    expect(typeof d.phone, 'and the phone, always a string').toBe('string')
+    expect(typeof d.phone).toBe('string')
     expect(d.phone).toBe(OP.phone)
+    expect(typeof d.ownerId, 'the GET names the identity it authenticated').toBe('string')
+    expect(d.ownerId).toBe(A)
 
-    // what that screen actually does with the body, read off its real source
     const edit = (await import('node:fs'))
       .readFileSync('app/[locale]/eat/account/edit/page.tsx', 'utf8').replace(/\r\n/g, '\n')
-    expect(edit, 'it reads name').toMatch(/if \(typeof d\.name === 'string' && d\.name\) setName\(d\.name\)/)
-    expect(edit, 'and phone').toMatch(/if \(typeof d\.phone === 'string'\) setPhone\(d\.phone\)/)
-    // …and nothing else, so an added key is inert for it. The EXACT SET of its reads of the
-    // response object: an extra one would mean the enrichment had reached its behaviour.
-    const load = edit.slice(edit.indexOf('.then((d) => {'), edit.indexOf('.catch(() => {})'))
-    expect(load.match(/d\.\w+/g)).toEqual(['d.name', 'd.name', 'd.name', 'd.phone', 'd.phone'])
-    // it does NOT send expectedUserId yet, and its PATCH therefore must keep working — the
-    // name/phone exemption is still in force and is corrected in its own lot
-    expect(edit, 'still sends name/phone alone').toMatch(
-      /body: JSON\.stringify\(\{ name: trimmed, phone: phone\.trim\(\) \}\)/,
+    // The screen now reads `ownerId` and refuses an adoption that doesn't match
+    expect(edit).toMatch(/typeof d\?\.ownerId !== 'string' \|\| d\.ownerId !== requestUserId/)
+    expect(edit).toMatch(/const nextName = typeof d\.name === 'string' \? d\.name : ''/)
+    expect(edit).toMatch(/const nextPhone = typeof d\.phone === 'string' \? d\.phone : ''/)
+    // and the PATCH names the identity it was prepared for
+    expect(edit, 'the save carries expectedUserId').toMatch(
+      /body: JSON\.stringify\(\{ expectedUserId: saveUserId, name: trimmed, phone: phone\.trim\(\) \}\)/,
     )
-    expect(edit, 'and has no expectedUserId in this lot').not.toMatch(/expectedUserId/)
+    // …and it keys on 409 to stay silent on a stale mutation
+    expect(edit).toMatch(/if \(res\.status === 409\) return/)
   })
 
-  it('6 bis — and that PATCH still succeeds, unchanged, without expectedUserId', async () => {
+  it('6 bis — and that PATCH succeeds WITH expectedUserId, scoped to the session', async () => {
     signedInAs(A)
-    const res = await patch({ name: 'Mohammed', phone: '0600000000' })
+    const res = await patch({ expectedUserId: A, name: 'Mohammed', phone: '0600000000' })
     expect(res.status).toBe(200)
     expect(db.operator.update).toHaveBeenCalledTimes(1)
+    const arg = db.operator.update.mock.calls[0][0] as { where: unknown; data: Record<string, unknown> }
+    expect(arg.where).toEqual({ id: A })
+    expect(Object.keys(arg.data).sort()).toEqual(['name', 'phone'])
   })
 })

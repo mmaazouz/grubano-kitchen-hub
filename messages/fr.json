@@ -4081,6 +4081,8 @@
       "saveSoon": "Enregistrement bientôt disponible",
       "saveOk": "Profil enregistré",
       "saveError": "Échec de l'enregistrement, réessayez",
+      "loadError": "Impossible de charger votre profil.",
+      "retry": "Réessayer",
       "nameRequired": "Le nom est requis",
       "changePhoto": "Changer la photo",
       "photoSoon": "Changement de photo bientôt disponible",

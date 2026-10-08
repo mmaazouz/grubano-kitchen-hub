@@ -4081,6 +4081,8 @@
       "saveSoon": "Salvataggio presto disponibile",
       "saveOk": "Profilo salvato",
       "saveError": "Salvataggio non riuscito, riprovi",
+      "loadError": "Impossibile caricare il suo profilo.",
+      "retry": "Riprovi",
       "nameRequired": "Il nome è obbligatorio",
       "changePhoto": "Cambi foto",
       "photoSoon": "Cambio foto presto disponibile",
