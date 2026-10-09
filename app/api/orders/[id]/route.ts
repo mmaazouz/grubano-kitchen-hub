@@ -119,7 +119,17 @@ export async function GET(
       console.error('[GET /api/orders/:id] refundSummary unreadable (degraded to empty):', order.id, e instanceof Error ? e.message : e)
     }
 
+    // The response NAMES the identity the server AUTHENTICATED, so a consumer surface can
+    // refuse a body the browser attached a newer cookie to while React still believes the
+    // previous account. `ownerId` is `token.sub` — the raw id of the ACTUAL caller — never
+    // `order.consumerId`: a staff operator or admin can legitimately read someone else's
+    // order here, and stamping the response with the queried consumer's id would hand the
+    // tracking page a false identity match. Additive — existing callers destructure `order`
+    // and ignore the rest.
+    const ownerId: string | null = typeof token?.sub === 'string' ? token.sub : null
+
     return NextResponse.json({
+      ownerId,
       order: {
         id:              order.id,
         status:          order.status,
