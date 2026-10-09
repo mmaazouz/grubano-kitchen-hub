@@ -15,7 +15,10 @@ const base = {
   occurredAt:     '2026-10-08T12:00:00+00:00',
   producedBy:     'system' as const,
   idempotencyKey: 'idem_1',
-  tenancy:        {},
+  // At least one tenancy anchor is required (operatorId / restaurantId / contactId).
+  // The event payload may name the entity, but the envelope-level tenancy is what the
+  // event bus persists and routes on, so an empty object is treated as "unknown tenant".
+  tenancy:        { contactId: 'c_tenant_fixture' },
 }
 
 describe('GROWTH_EVENT_TYPES', () => {
@@ -36,6 +39,44 @@ describe('envelope', () => {
     const bad = { ...base, occurredAt: 'yesterday', type: 'contact.created', payload: { contactId: 'c', audienceType: 'b2b', source: 'form' } }
     const r = safeParseGrowthEvent(bad)
     expect(r.ok).toBe(false)
+  })
+
+  it('tenancy requires at least one non-empty tenant key', () => {
+    // Comment on the tenancy schema says "at least one of operatorId / restaurantId /
+    // contactId", but the implementation marked all three optional, so `{}` passed. An
+    // event bus that routes/isolates on tenancy MUST refuse an unanchored event — it
+    // would otherwise be routed to every tenant.
+    const empty = safeParseGrowthEvent({
+      ...base, tenancy: {},
+      type: 'contact.created',
+      payload: { contactId: 'c_1', audienceType: 'b2b', source: 'form' },
+    })
+    expect(empty.ok).toBe(false)
+
+    // null / empty-string in every slot — also unanchored.
+    const nulls = safeParseGrowthEvent({
+      ...base, tenancy: { operatorId: null, restaurantId: null, contactId: null },
+      type: 'contact.created',
+      payload: { contactId: 'c_1', audienceType: 'b2b', source: 'form' },
+    })
+    expect(nulls.ok).toBe(false)
+
+    const emptyStrings = safeParseGrowthEvent({
+      ...base, tenancy: { operatorId: '', restaurantId: '', contactId: '' },
+      type: 'contact.created',
+      payload: { contactId: 'c_1', audienceType: 'b2b', source: 'form' },
+    })
+    expect(emptyStrings.ok).toBe(false)
+
+    // Each of the three slots, by itself, is enough.
+    for (const t of [{ operatorId: 'op_1' }, { restaurantId: 'r_1' }, { contactId: 'c_1' }]) {
+      const r = safeParseGrowthEvent({
+        ...base, tenancy: t,
+        type: 'contact.created',
+        payload: { contactId: 'c_1', audienceType: 'b2b', source: 'form' },
+      })
+      expect(r.ok, `tenancy ${JSON.stringify(t)} should pass`).toBe(true)
+    }
   })
 })
 
@@ -171,6 +212,16 @@ describe('deriveIdempotencyKey', () => {
 
   it('falls back to the type when nothing identifies the row', () => {
     expect(deriveIdempotencyKey('onboarding.started', {})).toBe('onboarding.started')
+  })
+
+  it('escapes separators inside values so pathological ids cannot forge a collision', () => {
+    // Without escaping, `orderId='a|contactId=b'` + no contactId collides with
+    // `orderId='a'` + `contactId='b'`. There are no persisted keys yet, so changing the
+    // encoding is safe; the dedupe layer must not be forgeable by injecting the
+    // separator character or the `key=value` delimiter into an id value.
+    const injected = deriveIdempotencyKey('consumer.first_order', { orderId: 'a|contactId=b' })
+    const legit    = deriveIdempotencyKey('consumer.first_order', { orderId: 'a', contactId: 'b' })
+    expect(injected).not.toBe(legit)
   })
 })
 
