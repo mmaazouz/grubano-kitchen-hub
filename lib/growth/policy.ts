@@ -300,27 +300,64 @@ export function checkFrequencyCap(
   recentSendTimestampsMs: readonly number[],
   caps: readonly FrequencyCap[],
 ): { allowed: true } | { allowed: false; retryAfterMs: number } {
+  const SAFE_DEFER_MS = 24 * 3_600_000
+
+  // Fail-closed on malformed nowMs: `NaN - windowMs = NaN`, every `t > NaN` is false, every
+  // cap would vanish silently. `Infinity` is equally unsafe (overflowed arithmetic in retry).
+  if (typeof nowMs !== 'number' || !Number.isFinite(nowMs)) {
+    return { allowed: false, retryAfterMs: SAFE_DEFER_MS }
+  }
+
   let worstRetryMs = -1
   for (const cap of caps) {
-    if (cap.channel !== channel) continue
-    if (cap.max <= 0) {
-      // Hard-block cap: a conservative 24h defer. Keep accumulating in case another cap is longer.
-      if (24 * 3_600_000 > worstRetryMs) worstRetryMs = 24 * 3_600_000
+    if (!cap || cap.channel !== channel) continue
+
+    // Fail-closed on malformed `max`. Note `cap.max <= 0` is `false` for NaN (every NaN
+    // comparison is false), for `Infinity`, for strings coerced to NaN, and for undefined.
+    // Without this guard the next check becomes `inWindow.length >= NaN` which is always
+    // false, and the admin's hard cap silently disappears. Integer-only: a fractional max
+    // has no clean semantic and must not slip past as `>= 1.5`.
+    if (
+      typeof cap.max !== 'number' ||
+      !Number.isFinite(cap.max) ||
+      !Number.isInteger(cap.max) ||
+      cap.max <= 0
+    ) {
+      if (SAFE_DEFER_MS > worstRetryMs) worstRetryMs = SAFE_DEFER_MS
       continue
     }
-    // Fail-closed on malformed window: NaN/negative/non-finite silently makes `t > NaN`
-    // false for every timestamp and the cap disappears. Treat as hard-block equivalent.
-    if (!Number.isFinite(cap.windowMs) || cap.windowMs <= 0) {
-      if (24 * 3_600_000 > worstRetryMs) worstRetryMs = 24 * 3_600_000
+
+    // Fail-closed on malformed window.
+    if (typeof cap.windowMs !== 'number' || !Number.isFinite(cap.windowMs) || cap.windowMs <= 0) {
+      if (SAFE_DEFER_MS > worstRetryMs) worstRetryMs = SAFE_DEFER_MS
       continue
     }
+
     const windowStart = nowMs - cap.windowMs
-    const inWindow = recentSendTimestampsMs.filter((t) => t > windowStart)
+
+    // Non-finite history entries cannot be reliably placed in or out of the window — a
+    // past `+Infinity` would stay in every window forever; a `NaN` would be excluded by
+    // `>` and let the cap under-count. Fail-closed on any such entry.
+    let malformedHistory = false
+    const inWindow: number[] = []
+    for (const t of recentSendTimestampsMs) {
+      if (typeof t !== 'number' || !Number.isFinite(t)) { malformedHistory = true; break }
+      if (t > windowStart) inWindow.push(t)
+    }
+    if (malformedHistory) {
+      if (SAFE_DEFER_MS > worstRetryMs) worstRetryMs = SAFE_DEFER_MS
+      continue
+    }
+
     if (inWindow.length >= cap.max) {
       // retry when the oldest in-window send falls out of the window
       const oldest = Math.min(...inWindow)
-      const retry  = Math.max(0, oldest + cap.windowMs - nowMs)
-      if (retry > worstRetryMs) worstRetryMs = retry
+      const retry  = oldest + cap.windowMs - nowMs
+      // Guard against non-finite retry leaking downstream (shouldn't happen now that
+      // nowMs / window / history are all finite, but belt-and-braces: if arithmetic
+      // produces anything non-finite or non-positive, treat as a safe 24h defer).
+      const safeRetry = Number.isFinite(retry) && retry > 0 ? retry : SAFE_DEFER_MS
+      if (safeRetry > worstRetryMs) worstRetryMs = safeRetry
     }
   }
   if (worstRetryMs < 0) return { allowed: true }
