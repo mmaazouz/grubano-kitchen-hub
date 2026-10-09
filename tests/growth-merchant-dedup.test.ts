@@ -140,4 +140,52 @@ describe('explainDedup', () => {
     const r = explainDedup(prospect({}), prospect({}))
     expect(r).toEqual({ same: false, reason: 'no_merge_missing_identifier' })
   })
+
+  // Franchise safety: two unrelated franchisees of a chain brand ("mcdonalds.fr") that
+  // arrive without SIREN must NOT be reported as the same company.
+  it('refuses to merge chain-brand domains when SIREN is missing', () => {
+    const r = explainDedup(
+      prospect({ siren: null, domain: 'mcdonalds.fr' }),
+      prospect({ siren: null, domain: 'mcdonalds.fr' }),
+    )
+    expect(r.same).toBe(false)
+    expect(r.reason).toBe('no_merge_chain_brand_without_siren')
+  })
+})
+
+// ── Chain-brand franchise safety (P1a) ────────────────────────────────────────────────
+//
+// Two franchisees of the same chain often share the brand's web domain but are legally
+// independent companies. Without a SIREN we cannot prove they are the SAME entity;
+// `dedupKeyForProspect` must therefore refuse to produce a shared key for them.
+describe('chain-brand domain franchise safety', () => {
+  it('returns null for a known chain-brand domain when SIREN is missing', () => {
+    expect(dedupKeyForProspect(prospect({ siren: null, domain: 'mcdonalds.fr' }))).toBeNull()
+    expect(dedupKeyForProspect(prospect({ siren: null, domain: 'subway.fr' }))).toBeNull()
+    expect(dedupKeyForProspect(prospect({ siren: null, domain: 'kfc.fr' }))).toBeNull()
+  })
+
+  it('still keys on SIREN when a chain-brand domain is present AND SIREN is valid', () => {
+    const k = dedupKeyForProspect(prospect({ siren: '732829320', domain: 'mcdonalds.fr' }))
+    expect(k).toBe('siren:732829320')
+  })
+
+  it('does NOT merge two franchisees of the same chain when both are missing SIREN', () => {
+    const a = prospect({ id: 'a', siren: null, domain: 'mcdonalds.fr' })
+    const b = prospect({ id: 'b', siren: null, domain: 'MCDONALDS.FR' })
+    expect(isSameCompany(a, b)).toBe(false)
+  })
+
+  it('groupByCompany places chain-brand prospects without SIREN into distinct review buckets', () => {
+    const groups = groupByCompany([
+      prospect({ id: 'f1', siren: null, domain: 'mcdonalds.fr' }),
+      prospect({ id: 'f2', siren: null, domain: 'mcdonalds.fr' }),
+      prospect({ id: 'f3', siren: null, domain: 'mcdonalds.fr' }),
+    ])
+    // Each franchise must land in its own review:<id> bucket, never a shared one.
+    const bucketSizes = [...groups.values()].map((g) => g.length).sort()
+    expect(bucketSizes).toEqual([1, 1, 1])
+    const reviewKeys = [...groups.keys()].filter((k) => k.startsWith('review:'))
+    expect(reviewKeys.length).toBe(3)
+  })
 })

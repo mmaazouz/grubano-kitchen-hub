@@ -110,7 +110,10 @@ function missingEnrichmentFields(p: Pick<MerchantProspect, 'siren' | 'legalName'
  *   - must be b2b
  *   - must share the prospect's tenant isolation (prospect.id OR a central/null tenant)
  *   - email domain must NOT be a personal mailbox
- *   - must not be suppressed on 'email' with scope 'all'
+ *   - must not be suppressed on 'email' with scope 'all' NOR with scope 'commercial'.
+ *     cold_b2b IS a commercial-family purpose (see policy.isSuppressed), so a commercial
+ *     complaint is a hard block for outreach selection; filtering here avoids producing a
+ *     proposal that would only be rejected downstream by the policy gate.
  */
 function selectBestOutreachContact(
   prospect: Pick<MerchantProspect, 'id' | 'domain'>,
@@ -127,7 +130,8 @@ function selectBestOutreachContact(
     if (!parts) continue
     if (isPersonalMailboxDomain(parts.domain)) continue
     const hardSup = suppressions.find((s) =>
-      s.contactId === c.id && s.channel === 'email' && s.scope === 'all')
+      s.contactId === c.id && s.channel === 'email' &&
+      (s.scope === 'all' || s.scope === 'commercial'))
     if (hardSup) continue
     // Prefer a contact whose email domain matches the prospect's canonical domain.
     const preference = prospectCanonical && parts.domain === prospectCanonical ? 2 : 1
@@ -144,8 +148,17 @@ function selectBestOutreachContact(
   return matches[0].c
 }
 
+/**
+ * Escape the composite-key delimiters (`\`, `|`, `=`) in a value. Without this, a value
+ * carrying `|contact=` can forge a collision with a legitimately distinct (prospect,
+ * contact) pair. Backslash first so the subsequent passes don't double-escape.
+ */
+function esc(s: string): string {
+  return s.replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/=/g, '\\=')
+}
+
 function buildIdempotencyKey(prospectId: string, contactId: string, state: MerchantLifecycleState): string {
-  return `merchant_outreach|prospect=${prospectId}|contact=${contactId}|state=${state}`
+  return `merchant_outreach|prospect=${esc(prospectId)}|contact=${esc(contactId)}|state=${esc(state)}`
 }
 
 // ── Main entry point ───────────────────────────────────────────────────────────────────

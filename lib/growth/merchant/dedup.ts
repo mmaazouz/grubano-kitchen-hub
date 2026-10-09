@@ -24,6 +24,34 @@ import type { MerchantProspect } from '../types'
 export type DedupKey = string | null
 
 /**
+ * Known chain-brand domains in the FR footprint. Two franchisees of the same chain are
+ * legally INDEPENDENT companies that both legitimately point mail from the chain's brand
+ * domain. Without a SIREN we cannot prove any two such rows describe the SAME entity, so
+ * the only safe behaviour is to refuse a shared dedupe key and route each franchisee to
+ * review. Fail-closed: a shared chain-brand domain alone must NEVER produce a merge.
+ *
+ * This list is intentionally small; it covers the chains most likely to appear in a
+ * dry-run import. Adding a brand here is a conservative decision — a false positive only
+ * forces one more review step, a false negative merges two legally-distinct companies.
+ */
+export const CHAIN_BRAND_DOMAINS: ReadonlySet<string> = new Set([
+  "mcdonalds.fr",
+  "burgerking.fr",
+  "subway.fr",
+  "kfc.fr",
+  "quick.fr",
+  "dominospizza.fr",
+  "pizzahut.fr",
+  "starbucks.fr",
+  "paulboulangerie.com",
+  "brioche-doree.fr",
+])
+
+export function isChainBrandDomain(canonical: string): boolean {
+  return CHAIN_BRAND_DOMAINS.has(canonical)
+}
+
+/**
  * Compute the single canonical dedupe key for a prospect. SIREN wins over domain. Personal
  * mailbox domains never produce a key.
  *
@@ -39,6 +67,9 @@ export function dedupKeyForProspect(
   const dom = normalizeDomain(p.domain)
   if (!dom.ok) return null
   if (isPersonalMailboxDomain(dom.canonical)) return null
+  // Chain-brand domain without a SIREN: cannot prove franchisees are the same company.
+  // Fail-closed → null key → review bucket, never a merge.
+  if (isChainBrandDomain(dom.canonical)) return null
   return `domain:${dom.canonical}`
 }
 
@@ -87,6 +118,7 @@ export type DedupReason =
   | 'no_merge_different_domain'
   | 'no_merge_mixed_siren_vs_domain'
   | 'no_merge_personal_mailbox'
+  | 'no_merge_chain_brand_without_siren'
   | 'no_merge_missing_identifier'
 
 export function explainDedup(
@@ -111,6 +143,11 @@ export function explainDedup(
   if (daOk && dbOk) {
     if (isPersonalMailboxDomain(daOk) || isPersonalMailboxDomain(dbOk)) {
       return { same: false, reason: 'no_merge_personal_mailbox' }
+    }
+    // Franchise safety: shared chain-brand domain WITHOUT SIREN never merges.
+    // We already know neither side has SIREN (we fell past the sa/sb branches).
+    if (isChainBrandDomain(daOk) || isChainBrandDomain(dbOk)) {
+      return { same: false, reason: 'no_merge_chain_brand_without_siren' }
     }
     return daOk === dbOk
       ? { same: true,  reason: 'merge_domain' }

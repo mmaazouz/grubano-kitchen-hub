@@ -121,6 +121,47 @@ describe('suppression', () => {
   })
 })
 
+describe('commercial-scope suppression (P1e)', () => {
+  // cold_b2b IS a commercial-family purpose. A contact suppressed with scope='commercial'
+  // must not be selected as the outreach candidate — the policy gate would later block it
+  // and the queue would fill with policy_block:suppressed:… noise. Prefer another contact
+  // or route to ops review if no non-suppressed candidate exists.
+  it('skips a commercial-suppressed contact and routes to review when none remain', () => {
+    const sup: Suppression = {
+      contactId: 'c1', channel: 'email', reason: 'complaint', scope: 'commercial',
+      since: '2026-10-01T00:00:00+00:00',
+    }
+    const d = decideNextAction(baseInput({ suppressions: [sup] }))
+    expect(d.kind).toBe('request_review')
+    if (d.kind === 'request_review') {
+      expect(d.reasonCode).toBe('no_professional_contact')
+      expect(d.routeTo).toBe('ops')
+    }
+  })
+
+  it('prefers a non-suppressed contact over a commercial-suppressed one', () => {
+    const sup: Suppression = {
+      contactId: 'c1', channel: 'email', reason: 'complaint', scope: 'commercial',
+      since: '2026-10-01T00:00:00+00:00',
+    }
+    const d = decideNextAction(baseInput({
+      contacts: [
+        contact(), // id c1 — suppressed
+        contact({ id: 'c2', email: 'manager@acme.example.fr' }),
+      ],
+      consents: [
+        legitimateInterestForC1,
+        { ...legitimateInterestForC1, contactId: 'c2' },
+      ],
+      suppressions: [sup],
+    }))
+    expect(d.kind).toBe('propose_outreach')
+    if (d.kind === 'propose_outreach') {
+      expect(d.proposal.contactId).toBe('c2')
+    }
+  })
+})
+
 describe('personal-mailbox contacts are never selected', () => {
   it('rejects the gmail contact and asks for ops review', () => {
     const d = decideNextAction(baseInput({
@@ -174,6 +215,76 @@ describe('replied state', () => {
   it('asks for a meeting', () => {
     const d = decideNextAction(baseInput({ state: 'replied' }))
     expect(d.kind).toBe('request_meeting')
+  })
+})
+
+describe('idempotency key composition (P1b)', () => {
+  // The composite is `merchant_outreach|prospect=…|contact=…|state=…`. Without escaping, an
+  // id that itself contains `|` or `=` can forge a collision with a legitimately distinct
+  // (prospect, contact) pair, letting one prospect's enqueue swallow another's. Escape
+  // `\`, `|`, `=` in every value so the key is injectively derived from its inputs.
+  it('does not let a crafted prospect id collide with a distinct (prospect, contact) pair', () => {
+    const p1 = prospect({ id: 'A|contact=B' })
+    const p2 = prospect({ id: 'A' })
+
+    const d1 = decideNextAction(baseInput({
+      prospect: p1,
+      contacts: [contact({ id: 'ZZZ', email: 'ops@acme.example.fr' })],
+      score: {
+        fit: { prospect: p1, targetCities: ['paris'], targetCuisines: ['italian'] },
+        intent: { nowMs: T, signals: {
+          visitsMs: [T - 86_400_000], opensMs: [T - 86_400_000, T - 2 * 86_400_000],
+          clicksMs: [T - 86_400_000], repliesMs: [], formAbandonsMs: [],
+        } },
+        professionalRelevance: { prospect: p1, contactEmail: 'ops@acme.example.fr' },
+      },
+      consents: [{ ...legitimateInterestForC1, contactId: 'ZZZ' }],
+    }))
+    const d2 = decideNextAction(baseInput({
+      prospect: p2,
+      contacts: [contact({ id: 'B', email: 'ops@acme.example.fr' })],
+      score: {
+        fit: { prospect: p2, targetCities: ['paris'], targetCuisines: ['italian'] },
+        intent: { nowMs: T, signals: {
+          visitsMs: [T - 86_400_000], opensMs: [T - 86_400_000, T - 2 * 86_400_000],
+          clicksMs: [T - 86_400_000], repliesMs: [], formAbandonsMs: [],
+        } },
+        professionalRelevance: { prospect: p2, contactEmail: 'ops@acme.example.fr' },
+      },
+      consents: [{ ...legitimateInterestForC1, contactId: 'B' }],
+    }))
+
+    expect(d1.kind).toBe('propose_outreach')
+    expect(d2.kind).toBe('propose_outreach')
+    if (d1.kind === 'propose_outreach' && d2.kind === 'propose_outreach') {
+      expect(d1.proposal.idempotencyKey).not.toBe(d2.proposal.idempotencyKey)
+    }
+  })
+
+  it('produces distinct keys for prospects whose ids differ only by escape payload', () => {
+    // Three ids that would collide if `|` / `=` / `\` were unescaped:
+    //   - 'A|contact=B' vs 'A' with contact 'B'
+    //   - 'A\\' vs 'A'  (trailing backslash could munge the next field after a naive escape)
+    const ids = ['A|contact=B', 'A', 'A\\', 'A=A']
+    const keys = new Set<string>()
+    for (const id of ids) {
+      const p = prospect({ id })
+      const d = decideNextAction(baseInput({
+        prospect: p,
+        contacts: [contact({ id: 'c1', email: 'ops@acme.example.fr' })],
+        score: {
+          fit: { prospect: p, targetCities: ['paris'], targetCuisines: ['italian'] },
+          intent: { nowMs: T, signals: {
+            visitsMs: [T - 86_400_000], opensMs: [T - 86_400_000, T - 2 * 86_400_000],
+            clicksMs: [T - 86_400_000], repliesMs: [], formAbandonsMs: [],
+          } },
+          professionalRelevance: { prospect: p, contactEmail: 'ops@acme.example.fr' },
+        },
+      }))
+      expect(d.kind).toBe('propose_outreach')
+      if (d.kind === 'propose_outreach') keys.add(d.proposal.idempotencyKey)
+    }
+    expect(keys.size).toBe(ids.length)
   })
 })
 

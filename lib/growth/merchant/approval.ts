@@ -20,6 +20,27 @@ import type { MerchantProspect } from '../types'
 
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected' | 'expired'
 
+/**
+ * The authenticated principal performing an approve/reject. The queue trusts THIS value
+ * and never the caller-supplied tenant id on the item. Construction of an
+ * `AuthenticatedApprover` must happen on a server seam that has already verified the
+ * session; a client-supplied object is a bug.
+ *
+ * `platform_admin` can act on central (null-tenant) items AND any tenant item.
+ * `tenant_admin` can act ONLY on items whose `tenantOperatorId === approver.operatorId`.
+ * Any other role is rejected (`forbidden_role`).
+ */
+export const APPROVER_ROLES = ['platform_admin', 'tenant_admin'] as const
+export type ApproverRole = (typeof APPROVER_ROLES)[number]
+
+export interface AuthenticatedApprover {
+  /** Null iff the approver is a platform admin (central Grubano). */
+  operatorId:  string | null
+  role:        ApproverRole
+  /** Human-readable identifier recorded on the item (email, username). Audit trail only. */
+  displayName: string
+}
+
 export interface ApprovalItem {
   /** Deterministic key: equals the proposal's idempotencyKey. */
   id:              string
@@ -35,11 +56,18 @@ export interface ApprovalItem {
   compositeScoreSnapshot: number
   enqueuedAtMs:    number
   status:          ApprovalStatus
-  /** Who / what approved (null while pending). */
+  /** Human-readable approver identity (displayName at approve-time). Null while pending. */
   approvedBy:      string | null
+  /** The approver's authenticated operatorId at approve-time (null = platform). */
+  approverOperatorId: string | null
+  approverRole:    ApproverRole | null
   approvedAtMs:    number | null
   /** Reason for rejection (null while pending/approved). */
   rejectionReason: string | null
+  /** Approver identity recorded on reject. */
+  rejectedBy:      string | null
+  rejecterOperatorId: string | null
+  rejecterRole:    ApproverRole | null
   rejectedAtMs:    number | null
   /** TTL in ms; items older than enqueuedAt + ttl auto-expire during inspection. */
   ttlMs:           number
@@ -95,8 +123,13 @@ export class ApprovalQueue {
       enqueuedAtMs:    input.nowMs,
       status:          'pending',
       approvedBy:      null,
+      approverOperatorId: null,
+      approverRole:    null,
       approvedAtMs:    null,
       rejectionReason: null,
+      rejectedBy:      null,
+      rejecterOperatorId: null,
+      rejecterRole:    null,
       rejectedAtMs:    null,
       ttlMs:           input.ttlMs ?? DEFAULT_TTL_MS,
     }
@@ -104,30 +137,82 @@ export class ApprovalQueue {
     return { ok: true, item, added: true }
   }
 
-  approve(id: string, approvedBy: string, nowMs: number): { ok: boolean; reason?: string } {
+  /**
+   * Authz gate shared by approve/reject. Returns a reason code on refusal, null when
+   * the approver may act on this item. Fail-closed on unknown roles AND on an operatorId
+   * that is not an explicit `string` or `null` (any other truthy shape).
+   */
+  private authorise(it: ApprovalItem, approver: AuthenticatedApprover):
+    | { ok: true }
+    | { ok: false; reason: 'forbidden_role' | 'forbidden_tenant_mismatch' } {
+    const roleAllowed = APPROVER_ROLES.includes(approver.role as ApproverRole)
+    if (!roleAllowed) return { ok: false, reason: 'forbidden_role' }
+    if (approver.role === 'platform_admin') return { ok: true }
+    // tenant_admin: must match the item's tenant AND must not be null.
+    if (typeof approver.operatorId !== 'string' || approver.operatorId.length === 0) {
+      return { ok: false, reason: 'forbidden_tenant_mismatch' }
+    }
+    if (approver.operatorId !== it.tenantOperatorId) {
+      return { ok: false, reason: 'forbidden_tenant_mismatch' }
+    }
+    return { ok: true }
+  }
+
+  approve(id: string, approver: AuthenticatedApprover, nowMs: number): { ok: boolean; reason?: string } {
     const it = this.items.get(id)
     if (!it) return { ok: false, reason: 'not_found' }
-    if (it.status === 'approved') return { ok: true }  // idempotent
-    if (it.status !== 'pending')   return { ok: false, reason: `wrong_status:${it.status}` }
-    if (nowMs > it.enqueuedAtMs + it.ttlMs) {
+    // Expire first so a past-TTL item never auto-approves on command path.
+    if (it.status === 'pending' && nowMs > it.enqueuedAtMs + it.ttlMs) {
       it.status = 'expired'
       return { ok: false, reason: 'expired' }
     }
+    if (it.status === 'approved') return { ok: true }  // idempotent
+    if (it.status !== 'pending')   return { ok: false, reason: `wrong_status:${it.status}` }
+    const authz = this.authorise(it, approver)
+    if (!authz.ok) return { ok: false, reason: authz.reason }
     it.status = 'approved'
-    it.approvedBy = approvedBy
+    it.approvedBy = approver.displayName
+    it.approverOperatorId = approver.operatorId
+    it.approverRole = approver.role
     it.approvedAtMs = nowMs
     return { ok: true }
   }
 
-  reject(id: string, reason: string, nowMs: number): { ok: boolean; reason?: string } {
+  reject(id: string, approver: AuthenticatedApprover, reason: string, nowMs: number): { ok: boolean; reason?: string } {
     const it = this.items.get(id)
     if (!it) return { ok: false, reason: 'not_found' }
+    // Expiry wins over reject: a past-TTL item is expired, never rejected.
+    if (it.status === 'pending' && nowMs > it.enqueuedAtMs + it.ttlMs) {
+      it.status = 'expired'
+      return { ok: false, reason: 'expired' }
+    }
     if (it.status === 'rejected') return { ok: true }  // idempotent
     if (it.status !== 'pending')   return { ok: false, reason: `wrong_status:${it.status}` }
+    const authz = this.authorise(it, approver)
+    if (!authz.ok) return { ok: false, reason: authz.reason }
     it.status = 'rejected'
     it.rejectionReason = reason
+    it.rejectedBy = approver.displayName
+    it.rejecterOperatorId = approver.operatorId
+    it.rejecterRole = approver.role
     it.rejectedAtMs = nowMs
     return { ok: true }
+  }
+
+  /**
+   * Sweep every tenant and mark past-TTL pending items as expired. Returns the number of
+   * items expired. Fixes P1d: without this, lazy expiry only fires on read/approve/reject
+   * and a tenant that never reads keeps `pending` rows past TTL.
+   */
+  expireAll(nowMs: number): number {
+    let n = 0
+    for (const it of this.items.values()) {
+      if (it.status === 'pending' && nowMs > it.enqueuedAtMs + it.ttlMs) {
+        it.status = 'expired'
+        n += 1
+      }
+    }
+    return n
   }
 
   /** Items for a tenant. Null tenantOperatorId means "central Grubano queue". */
