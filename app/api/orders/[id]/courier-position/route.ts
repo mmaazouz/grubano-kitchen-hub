@@ -94,7 +94,16 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       ? { lat: point.lat, lng: point.lng }
       : coarsenLatLng(point.lat, point.lng)
 
+    // The response NAMES the identity the server AUTHENTICATED (token.sub, never
+    // order.consumerId — an admin may read any order's courier here, and the client guard
+    // needs to recognise the ACTUAL caller). Additive to the existing shape — AdminTracking
+    // destructures a known subset and ignores extras. { available: false } above is still
+    // served without ownerId: it carries no owner-specific data to refuse, and keeping the
+    // shape byte-identical when LOGISTICS_TRACKING_ENABLED is OFF is a non-negotiable gate.
+    const ownerIdOut: string | null = typeof token.sub === 'string' ? token.sub : null
+
     return NextResponse.json({
+      ownerId: ownerIdOut,
       available: true,
       approx: !exact,
       courier,

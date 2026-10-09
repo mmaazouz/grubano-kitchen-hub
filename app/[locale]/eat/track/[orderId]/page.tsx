@@ -1,13 +1,15 @@
 'use client'
 import { orderRef } from '@/lib/order-ref'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
+import { useSession } from 'next-auth/react'
 import { formatEuros, formatMoney } from '@/lib/format-money'
 import { useParams } from 'next/navigation'
 import { useRouter } from '@/navigation'
 import ClaimSection from '@/components/claims/ClaimSection'
 import CourierMap from '@/components/CourierMap'
+import { sessionCartStamp } from '@/lib/eat-cart'
 import '../track.css'
 import '@/app/gb-foundation/gb-tokens.css'
 import '@/app/gb-foundation/gb-components.css'
@@ -110,42 +112,138 @@ export default function OrderTrackingScreen() {
   const locale = useLocale()
   const { orderId } = useParams<{ orderId: string }>()
   const router = useRouter()
-  const [order, setOrder] = useState<Order | null>(null)
+  const { data: session, status } = useSession()
+  // The identity, reused — same shape as EatShell / rewards / account
+  // (lib/eat-cart.sessionCartStamp). `userId` is the raw next-auth id used to compare
+  // the SERVER-echoed `ownerId` against the one the request was issued UNDER.
+  const userId = (session?.user as { id?: string } | undefined)?.id
+
+  // Order + courier are stored WITH the stamp of the identity they were read under. The
+  // page used to keep them in plain state and poll on an effect keyed on `[orderId]`, so
+  // an A → B cross-tab switch — NextAuth broadcasts `setSession` without flipping through
+  // `unauthenticated` — left A's order (refund block included) and A's courier map painted
+  // on B's screen until the poll came round, and even then only until the next poll could
+  // fail silently. The stamp lets a render-time match drop a stale body in the frame it
+  // reappeared under.
+  const [orderState, setOrderState] = useState<{ stamp: string | null; order: Order | null }>(
+    { stamp: null, order: null },
+  )
+  const [courierState, setCourierState] = useState<{ stamp: string | null; pos: CourierPos | null }>(
+    { stamp: null, pos: null },
+  )
   const [loading, setLoading] = useState(true)
-  const [courierPos, setCourierPos] = useState<CourierPos | null>(null)
 
-  const fetchOrder = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/orders/${orderId}`)
-      if (res.status === 401) { router.push('/eat/auth'); return }
-      if (!res.ok) return
-      const data = await res.json()
-      setOrder(data.order)
-    } catch {
-      /* ignore */
-    } finally {
-      setLoading(false)
-    }
-  }, [orderId, router])
+  // FIRST-FRAME GUARD — the stamp the SESSION implies, available in the SAME render as
+  // the new session. The effect below declares the identity, and effects run AFTER the
+  // render that introduced a new session: a switch inside the SPA re-renders with B's
+  // session while `orderState` still holds A's values. Comparing the stamp the value was
+  // read under with the stamp the SESSION implies right now closes that one frame.
+  const sessionStamp = sessionCartStamp(status, userId)
+  // Route-specific render guard: the same person navigating from order X to Y must
+  // never see X's address, refund or courier position in Y's first committed frame.
+  // JSON.stringify is unambiguous even when an order id contains delimiters.
+  const trackStamp = sessionStamp !== null && typeof orderId === 'string' && orderId.length > 0
+    ? JSON.stringify([sessionStamp, orderId]) : null
 
-  // Géoloc ÉTAPE 4 — poll the owner-scoped courier position (coarsened). A 404 (flag OFF) / 403 /
-  // {available:false} → no live map → the inert placeholder stays (byte-identical when OFF).
-  const fetchCourierPos = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/orders/${orderId}/courier-position`, { cache: 'no-store' })
-      if (!res.ok) { setCourierPos(null); return }
-      const data = (await res.json()) as CourierPos
-      setCourierPos(data?.available ? data : null)
-    } catch {
-      setCourierPos(null)
-    }
-  }, [orderId])
-
+  // Order + courier polling, keyed on IDENTITY and `orderId` (not merely `[orderId]`):
+  // `status` stays 'authenticated' across A → B so a dep of `[orderId]` would never re-fire
+  // on identity change. FAIL-CLOSED FIRST: the previous owner's values leave the screen
+  // BEFORE any request. `requestOwner` + `requestUserId` are captured together so the
+  // response is refused unless the server echoed the SAME RAW ID (closes the window where
+  // React still believes A but the browser cookie is already B). `alive` closes the opposite
+  // window — React moved on, but a late response from the previous identity is still inbound.
+  // 401/403/404 FAIL CLOSED without a redirect: a redirect fired from a stale identity would
+  // trampoline a signed-in B user through /eat/auth on A's defunct poll.
   useEffect(() => {
+    setOrderState({ stamp: null, order: null })
+    setCourierState({ stamp: null, pos: null })
+    if (status === 'loading') return
+    // UNAUTHENTICATED → go to /eat/auth, but ONLY off the live session (never off a polled
+    // 401 from a stale A-identity whose cookie now authenticates as B — a redirect there
+    // would trampoline a signed-in B through the login page on A's defunct in-flight call).
+    // Tracking deep-links from post-payment land here too: an actually-signed-out visitor
+    // reaches /eat/auth, authenticates, and bounces back to the track URL.
+    if (status === 'unauthenticated') { setLoading(false); router.push('/eat/auth'); return }
+    if (!userId) { setLoading(false); return }
+    const requestOwner = trackStamp
+    const requestUserId = userId
+    if (requestOwner === null) { setLoading(false); return }
+    setLoading(true)
+    let alive = true
+
+    const fetchOrder = async () => {
+      try {
+        const res = await fetch(`/api/orders/${orderId}`)
+        if (!alive) return
+        // 401/403/404 — fail closed without a redirect: a stale A-identity poll must NOT
+        // trampoline a now-signed-in B through /eat/auth. The « not found » state renders
+        // from `orderState.order === null`, which is already the resting shape.
+        if (!res.ok) return
+        const data = (await res.json()) as { ownerId?: unknown; order?: Order }
+        if (!alive) return
+        // NEVER STAMP A BODY THE SERVER DID NOT ATTRIBUTE TO THE SAME RAW ID. The `typeof`
+        // half matters: a response that OMITS the field (older server, cache, proxy) must
+        // not slip through on `undefined === undefined`. A mismatch is a FAILED load — the
+        // state stays unstamped, so the chrome renders the neutral "not found" view.
+        if (typeof data?.ownerId !== 'string' || data.ownerId !== requestUserId) return
+        if (!data.order) return
+        setOrderState({ stamp: requestOwner, order: data.order })
+      } catch {
+        /* keep neutral — stamp stays null */
+      } finally {
+        if (alive) setLoading(false)
+      }
+    }
+
+    // Géoloc ÉTAPE 4 — poll the owner-scoped courier position (coarsened). A 404 (flag OFF),
+    // 403, or {available:false} → no live map → the inert placeholder stays (byte-identical
+    // when OFF). Same identity contract as the order fetch above: the body is adopted only
+    // under the stamp of the identity the request was issued FOR, and only when the server
+    // echoed the SAME raw id. The feature-OFF `{ available:false, gated:true }` response
+    // carries no owner-specific data, so a missing `ownerId` on it is NOT grounds to retain
+    // a previous owner's position — this handler clears `courierState` on any non-adoptable
+    // body, which keeps the OFF-path visibly identical to a fresh guest tab.
+    const fetchCourierPos = async () => {
+      try {
+        const res = await fetch(`/api/orders/${orderId}/courier-position`, { cache: 'no-store' })
+        if (!alive) return
+        if (!res.ok) { setCourierState({ stamp: requestOwner, pos: null }); return }
+        const data = (await res.json()) as (CourierPos & { ownerId?: unknown }) | null
+        if (!alive) return
+        if (!data || data.available !== true) {
+          setCourierState({ stamp: requestOwner, pos: null }); return
+        }
+        if (typeof data.ownerId !== 'string' || data.ownerId !== requestUserId) {
+          setCourierState({ stamp: requestOwner, pos: null }); return
+        }
+        setCourierState({ stamp: requestOwner, pos: data })
+      } catch {
+        if (alive) setCourierState({ stamp: requestOwner, pos: null })
+      }
+    }
+
     fetchOrder(); fetchCourierPos()
     const poll = setInterval(() => { fetchOrder(); fetchCourierPos() }, 15_000)
-    return () => clearInterval(poll)
-  }, [fetchOrder, fetchCourierPos])
+    return () => { alive = false; clearInterval(poll) }
+    // `userId` AND `orderId` ARE DEPENDENCIES: `status` alone cannot see A → logout → B when
+    // the broadcast moves the id without touching `status`, and switching to another order's
+    // URL on the same mount must also re-fire. Keying on them also makes `alive` load-bearing
+    // — React runs the cleanup on identity or route change, so an in-flight request issued
+    // for A is disowned before it can resolve. `sessionStamp` is derived from `status` +
+    // `userId` already in deps, so pinning the two primitives keeps it current without an
+    // extra dep that would re-fire on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, /* track-deps */ [status, userId, orderId])
+
+  // RENDER-TIME GATE — a value is shown only when its stamp matches the identity the
+  // SESSION implies right now, which changes in the same render as the session. On an
+  // A → B switch inside this component, this is what prevents one committed frame of A's
+  // order (and refund block, and address) painting under B — and the same for the courier
+  // map, which is a RGPD-sensitive datum.
+  const orderStampOk = orderState.stamp !== null && orderState.stamp === trackStamp
+  const order = orderStampOk ? orderState.order : null
+  const courierStampOk = courierState.stamp !== null && courierState.stamp === trackStamp
+  const courierPos = courierStampOk ? courierState.pos : null
 
   // ── Loading skeleton ────────────────────────────────────────────────────────
   if (loading) {
