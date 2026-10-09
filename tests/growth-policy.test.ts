@@ -386,6 +386,104 @@ describe('checkFrequencyCap', () => {
     const neg = checkFrequencyCap(now, 'email', sends, [{ channel: 'email', windowMs: -1_000, max: 1 }])
     expect(neg.allowed).toBe(false)
   })
+
+  it('malformed cap.max (NaN) FAILS CLOSED — defer 24h, cap does not disappear', () => {
+    // `cap.max <= 0` is `NaN <= 0 === false`, so NaN slipped past the guard. Then
+    // `inWindow.length >= NaN` is always false → cap vanishes → send allowed. Doctrine:
+    // a cap we cannot evaluate must defer, not send.
+    const now = Date.UTC(2026, 9, 8, 12, 0)
+    const sends = [now - 3_600_000, now - 2 * 3_600_000, now - 3 * 3_600_000]
+    const r = checkFrequencyCap(now, 'email', sends, [{ channel: 'email', windowMs: 86_400_000, max: Number.NaN }])
+    expect(r.allowed).toBe(false)
+    if (!r.allowed) {
+      expect(Number.isFinite(r.retryAfterMs)).toBe(true)
+      expect(r.retryAfterMs).toBeGreaterThan(0)
+    }
+  })
+
+  it('malformed cap.max (Infinity, -Infinity) FAILS CLOSED', () => {
+    const now = Date.UTC(2026, 9, 8, 12, 0)
+    const sends = [now - 3_600_000]
+    const pos = checkFrequencyCap(now, 'email', sends, [{ channel: 'email', windowMs: 86_400_000, max: Number.POSITIVE_INFINITY }])
+    expect(pos.allowed).toBe(false)
+    const neg = checkFrequencyCap(now, 'email', sends, [{ channel: 'email', windowMs: 86_400_000, max: Number.NEGATIVE_INFINITY }])
+    expect(neg.allowed).toBe(false)
+  })
+
+  it('malformed cap.max (fractional) FAILS CLOSED — integer-only semantics', () => {
+    // A fractional max has no clean semantic ("1.5 sends per day"?). Admin typos must not
+    // decide between `>= 1` and `>= 2`. Fail closed.
+    const now = Date.UTC(2026, 9, 8, 12, 0)
+    const r = checkFrequencyCap(now, 'email', [now - 3_600_000], [{ channel: 'email', windowMs: 86_400_000, max: 1.5 }])
+    expect(r.allowed).toBe(false)
+  })
+
+  it('malformed cap.max (non-number: string, undefined) FAILS CLOSED', () => {
+    const now = Date.UTC(2026, 9, 8, 12, 0)
+    const sends = [now - 3_600_000]
+    // Simulate upstream config that leaks a string / undefined through weak typing.
+    const str = checkFrequencyCap(now, 'email', sends, [{ channel: 'email', windowMs: 86_400_000, max: '5' as unknown as number }])
+    expect(str.allowed).toBe(false)
+    const und = checkFrequencyCap(now, 'email', sends, [{ channel: 'email', windowMs: 86_400_000, max: undefined as unknown as number }])
+    expect(und.allowed).toBe(false)
+  })
+
+  it('malformed cap missing `max` property entirely FAILS CLOSED', () => {
+    const now = Date.UTC(2026, 9, 8, 12, 0)
+    // Admin forgot the field (hand-edited JSON). The row is a cap in intent — refuse it.
+    const r = checkFrequencyCap(now, 'email', [now - 3_600_000], [{ channel: 'email', windowMs: 86_400_000 } as unknown as (typeof twoCapsPerDay)[number]])
+    expect(r.allowed).toBe(false)
+  })
+
+  it('malformed cap must DOMINATE a valid permissive cap on the same channel', () => {
+    // If a malformed cap sits next to a looser-but-valid cap, the final decision must
+    // still fail closed. The sends below satisfy the valid 10/day cap, so the gate would
+    // ordinarily allow — the malformed sibling must veto that.
+    const now = Date.UTC(2026, 9, 8, 12, 0)
+    const sends = [now - 3_600_000]
+    const r = checkFrequencyCap(now, 'email', sends, [
+      { channel: 'email', windowMs: 86_400_000, max: Number.NaN },     // malformed → must veto
+      { channel: 'email', windowMs: 86_400_000, max: 10 },              // permissive, under cap
+    ])
+    expect(r.allowed).toBe(false)
+    if (!r.allowed) {
+      expect(r.retryAfterMs).toBeGreaterThan(0)
+      expect(Number.isFinite(r.retryAfterMs)).toBe(true)
+    }
+  })
+
+  it('malformed nowMs FAILS CLOSED — the gate cannot compute windows from NaN/Infinity', () => {
+    const sends = [1_000_000, 2_000_000]
+    const nan = checkFrequencyCap(Number.NaN, 'email', sends, [{ channel: 'email', windowMs: 86_400_000, max: 1 }])
+    expect(nan.allowed).toBe(false)
+    const inf = checkFrequencyCap(Number.POSITIVE_INFINITY, 'email', sends, [{ channel: 'email', windowMs: 86_400_000, max: 1 }])
+    expect(inf.allowed).toBe(false)
+  })
+
+  it('malformed history timestamp (NaN / Infinity) FAILS CLOSED — cannot place in/out of window', () => {
+    const now = Date.UTC(2026, 9, 8, 12, 0)
+    const nanSend = checkFrequencyCap(now, 'email', [Number.NaN, now - 3_600_000], [{ channel: 'email', windowMs: 86_400_000, max: 10 }])
+    expect(nanSend.allowed).toBe(false)
+    const infSend = checkFrequencyCap(now, 'email', [Number.POSITIVE_INFINITY], [{ channel: 'email', windowMs: 86_400_000, max: 10 }])
+    expect(infSend.allowed).toBe(false)
+  })
+
+  it('retryAfterMs is always finite and > 0 when allowed=false — no NaN/Infinity leaks downstream', () => {
+    const now = Date.UTC(2026, 9, 8, 12, 0)
+    const cases = [
+      { caps: [{ channel: 'email' as const, windowMs: 86_400_000, max: 0 }], sends: [] as number[] },
+      { caps: [{ channel: 'email' as const, windowMs: Number.NaN, max: 1 }], sends: [now - 3_600_000] },
+      { caps: [{ channel: 'email' as const, windowMs: 86_400_000, max: Number.NaN }], sends: [now - 3_600_000] },
+    ]
+    for (const c of cases) {
+      const r = checkFrequencyCap(now, 'email', c.sends, c.caps)
+      expect(r.allowed).toBe(false)
+      if (!r.allowed) {
+        expect(Number.isFinite(r.retryAfterMs)).toBe(true)
+        expect(r.retryAfterMs).toBeGreaterThan(0)
+      }
+    }
+  })
 })
 
 // ── composite canSend ──────────────────────────────────────────────────────────────────

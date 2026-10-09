@@ -74,12 +74,22 @@ export type GrowthEventType = (typeof GROWTH_EVENT_TYPES)[number]
 const iso = () => z.string().datetime({ offset: true })
 const uuid = () => z.string().min(1)   // IDs are opaque; we don't require RFC4122 shape
 
-/** Minimum tenant hint: at least one of operatorId / restaurantId / contactId. */
+/**
+ * Minimum tenant hint: at least one of operatorId / restaurantId / contactId must be a
+ * non-empty string. An unanchored event (all three null/missing/empty) would be routed to
+ * every tenant by the event bus, so the parser refuses it at the gate.
+ */
 const tenancy = z.object({
   operatorId:    uuid().nullable().optional(),
   restaurantId:  uuid().nullable().optional(),
   contactId:     uuid().nullable().optional(),
-})
+}).refine(
+  (t) =>
+    (typeof t.operatorId   === 'string' && t.operatorId.length   > 0) ||
+    (typeof t.restaurantId === 'string' && t.restaurantId.length > 0) ||
+    (typeof t.contactId    === 'string' && t.contactId.length    > 0),
+  { message: 'tenancy_requires_at_least_one_nonempty_id' },
+)
 
 const envelope = z.object({
   eventId:       uuid(),
@@ -240,10 +250,15 @@ const IDEMPOTENCY_KEY_FIELDS = [
  */
 export function deriveIdempotencyKey(type: GrowthEventType, payload: Record<string, unknown>, explicit?: string): string {
   if (explicit && explicit.trim().length > 0) return explicit.trim()
+  // Escape the separator (`|`) and the key/value delimiter (`=`) inside VALUES so that a
+  // malicious or pathological id (e.g. `orderId: 'a|contactId=b'`) cannot forge a collision
+  // with a legitimate `{ orderId: 'a', contactId: 'b' }`. Backslash is also escaped so
+  // the encoding is unambiguous. Field names come from a fixed whitelist and are not escaped.
+  const esc = (s: string) => s.replace(/[\\|=]/g, (c) => '\\' + c)
   const parts: string[] = [type]
   for (const k of IDEMPOTENCY_KEY_FIELDS) {
     const v = payload[k]
-    if (typeof v === 'string' && v.length > 0) parts.push(`${k}=${v}`)
+    if (typeof v === 'string' && v.length > 0) parts.push(`${k}=${esc(v)}`)
     else if (typeof v === 'number' && Number.isFinite(v)) parts.push(`${k}=${v}`)
   }
   return parts.join('|')
