@@ -1,0 +1,169 @@
+// ── Growth / merchant — field normalization + validation ──────────────────────────────
+//
+// PURE. No I/O, no network, no clock. The B2B pipeline relies on exactly ONE source of
+// truth for SIREN validity and ONE canonical form for a company domain. Downstream dedupe
+// (lib/growth/merchant/dedup.ts) depends on these outputs; a drift between a "normalise"
+// used by the enricher and the one used by dedupe is exactly how two rows for the same
+// company become invisible to each other.
+//
+// Rules:
+//   - SIREN = 9 digits, validated by the Luhn/mod-10 variant that INSEE uses (SIREN is
+//     actually mod-10 Luhn on 9 digits — not mod-11). We reject anything else, including
+//     the historical "000000000" placeholder some open-data dumps carry.
+//   - Domain canonicalisation: lower-case, strip `www.`, strip scheme, strip userinfo,
+//     strip port, strip path/query/fragment, strip trailing dot. We INTENTIONALLY do not
+//     strip a `foo.co.uk` eTLD to its registrable form here — that would require a public
+//     suffix list and is out of scope for a dry-run lot.
+//   - Trade-name normalisation is permissive on purpose: it is a DISPLAY string, never a
+//     dedupe key (franchises share display names; see dedup.ts).
+
+export type NormalizedDomainResult =
+  | { ok: true;  canonical: string;  original: string }
+  | { ok: false; reason: 'empty' | 'invalid_syntax' | 'ip_literal'; original: string }
+
+/**
+ * Normalise and validate a 9-digit SIREN using the Luhn mod-10 checksum (official INSEE
+ * algorithm). Returns the SIREN as a 9-char ASCII digit string or `null` for anything
+ * invalid: non-string, non-digits, wrong length, failed checksum, "000000000".
+ *
+ * We deliberately strip spaces and standard separators (space / hyphen / dot / NBSP) before
+ * validating because paper documents and CSV exports routinely contain them. We do NOT
+ * strip other characters: a SIREN with a letter in it is garbage, not a typo.
+ */
+export function normalizeSiren(input: unknown): string | null {
+  if (typeof input !== 'string') return null
+  // Strip whitespace (regular + NBSP + thin NBSP) and hyphen/dot separators
+  const stripped = input.replace(/[\s  .\-]/g, '')
+  if (stripped.length !== 9) return null
+  if (!/^\d{9}$/.test(stripped)) return null
+  if (stripped === '000000000') return null
+  // Luhn mod-10: double every 2nd digit from the right, sum digits of each doubled value,
+  // add remaining digits, result must be ≡ 0 (mod 10).
+  let sum = 0
+  for (let i = 0; i < 9; i++) {
+    const d = stripped.charCodeAt(8 - i) - 48
+    if (d < 0 || d > 9) return null
+    if (i % 2 === 1) {
+      const doubled = d * 2
+      sum += doubled > 9 ? doubled - 9 : doubled
+    } else {
+      sum += d
+    }
+  }
+  return sum % 10 === 0 ? stripped : null
+}
+
+/**
+ * Canonicalise a domain string. Returns the bare registered host in lower-case with no
+ * scheme, path, port, userinfo, or trailing dot. Returns a failure variant for inputs that
+ * are empty, syntactically invalid, or raw IP literals (we do not do outbound outreach to
+ * IP addresses in any case).
+ */
+export function normalizeDomain(input: unknown): NormalizedDomainResult {
+  const original = typeof input === 'string' ? input : ''
+  if (typeof input !== 'string' || input.trim().length === 0) {
+    return { ok: false, reason: 'empty', original }
+  }
+  let s = input.trim().toLowerCase()
+  // Strip scheme
+  const schemeMatch = s.match(/^[a-z][a-z0-9+.\-]*:\/\//)
+  if (schemeMatch) s = s.slice(schemeMatch[0].length)
+  // Strip userinfo (user:pass@)
+  const atIdx = s.indexOf('@')
+  if (atIdx !== -1) s = s.slice(atIdx + 1)
+  // Strip path / query / fragment
+  s = s.split('/')[0].split('?')[0].split('#')[0]
+  // Strip port
+  const colonIdx = s.indexOf(':')
+  if (colonIdx !== -1) s = s.slice(0, colonIdx)
+  // Strip trailing dot
+  while (s.endsWith('.')) s = s.slice(0, -1)
+  // Strip leading www.
+  if (s.startsWith('www.')) s = s.slice(4)
+  if (s.length === 0) return { ok: false, reason: 'empty', original }
+  // Reject IP literals (both v4 and anything that looks like v6 — contains ':').
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(s)) return { ok: false, reason: 'ip_literal', original }
+  // Minimal syntactic sanity: at least one dot separating two non-empty labels, each label
+  // is 1..63 chars of [a-z0-9-] not starting/ending with hyphen; TLD must be alpha ≥ 2.
+  if (!/^(?=.{1,253}$)([a-z0-9](?:[a-z0-9\-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/.test(s)) {
+    return { ok: false, reason: 'invalid_syntax', original }
+  }
+  return { ok: true, canonical: s, original }
+}
+
+/**
+ * Normalise a display name (legal name, trade name). Trim, collapse internal whitespace,
+ * remove non-visible characters, limit length to 200. Never a dedupe key — see dedup.ts.
+ */
+export function normalizeDisplayName(input: unknown): string | null {
+  if (typeof input !== 'string') return null
+  const s = input.replace(/[\x00-  ]+/g, ' ').replace(/\s+/g, ' ').trim()
+  if (s.length === 0) return null
+  return s.length > 200 ? s.slice(0, 200) : s
+}
+
+/**
+ * E.164-lite phone normaliser used ONLY to flag "has phone yes/no" in merchant qualification.
+ * This is NOT a dialer-grade validator and MUST NOT be used for the SMS adapter path —
+ * that one needs a real libphonenumber. Returns null on anything that isn't `+` followed by
+ * 7..15 digits.
+ */
+export function normalizePhoneE164Lite(input: unknown): string | null {
+  if (typeof input !== 'string') return null
+  const s = input.replace(/[\s  .\-()]/g, '')
+  if (!/^\+\d{7,15}$/.test(s)) return null
+  return s
+}
+
+/** Lower-case + trim + reject empty. Used for cuisine tags, city names. */
+export function normalizeTag(input: unknown): string | null {
+  if (typeof input !== 'string') return null
+  const s = input.trim().toLowerCase()
+  return s.length === 0 ? null : s
+}
+
+/**
+ * Domains we never want to treat as "the company's domain" even when a lead claims they do:
+ * generic mailbox providers, URL shorteners, well-known social networks. These are
+ * professionally relevant only as *channels*, never as *identity*.
+ */
+export const PERSONAL_MAILBOX_DOMAINS: ReadonlySet<string> = new Set([
+  'gmail.com', 'googlemail.com', 'yahoo.com', 'yahoo.fr', 'hotmail.com', 'hotmail.fr',
+  'outlook.com', 'outlook.fr', 'live.com', 'live.fr', 'icloud.com', 'me.com',
+  'laposte.net', 'orange.fr', 'wanadoo.fr', 'free.fr', 'sfr.fr', 'bbox.fr', 'aol.com',
+  'proton.me', 'protonmail.com', 'tutanota.com', 'yandex.ru', 'mail.ru', 'gmx.de', 'gmx.fr',
+])
+
+/** True if the canonical domain is a known personal mailbox / shared-tenant provider. */
+export function isPersonalMailboxDomain(canonical: string): boolean {
+  return PERSONAL_MAILBOX_DOMAINS.has(canonical)
+}
+
+/**
+ * Split an email address and return the local part + a normalised domain.
+ * Returns null if the email is syntactically broken or the domain fails normalisation.
+ * We do NOT lowercase the local part (RFC 5321 says local-part is case-sensitive even
+ * though virtually every provider ignores it in practice).
+ */
+export function splitEmail(input: unknown): { local: string; domain: string } | null {
+  if (typeof input !== 'string') return null
+  const at = input.lastIndexOf('@')
+  if (at <= 0 || at === input.length - 1) return null
+  const local = input.slice(0, at)
+  const dom = normalizeDomain(input.slice(at + 1))
+  if (!dom.ok) return null
+  return { local, domain: dom.canonical }
+}
+
+/**
+ * Countries where we are confident the engine can send *cold B2B* under legitimate interest
+ * with the current policy footprint. Everything else should be routed through human review
+ * (see next-action.ts). This is intentionally small: adding a country here is a legal, not
+ * a technical, decision.
+ */
+export const SUPPORTED_COLD_B2B_JURISDICTIONS: ReadonlySet<string> = new Set(['FR'])
+
+/** True if we have made an explicit legal determination for cold outreach in this country. */
+export function isSupportedColdB2BJurisdiction(countryIso2: string | null | undefined): boolean {
+  return typeof countryIso2 === 'string' && SUPPORTED_COLD_B2B_JURISDICTIONS.has(countryIso2.toUpperCase())
+}
