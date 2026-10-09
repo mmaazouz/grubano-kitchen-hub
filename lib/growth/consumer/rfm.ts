@@ -50,6 +50,15 @@ export interface ConsumerRFMOptions {
   reorderMedianDays?: number
   /** Max days after which a contact is 'lost' — no more commercial outreach. Default 365. */
   winbackMaxDays?:    number
+  /**
+   * GDPR Art. 17 — the contact has been erased. Fail-closed when `true`: the snapshot is
+   * emitted empty (no cohort other than 'none', no monetary, no first/last order), so a
+   * downstream NBA cannot build an audience row for an erased contact. The flag is also
+   * carried on the snapshot so `decideNBA` can redundantly enforce the stop.
+   * Caller contract: the field must come from an AUTHORITATIVE source (persisted DB flag),
+   * never a literal; this library never reaches a DB.
+   */
+  gdprErased?:        boolean
 }
 
 // ── Snapshot shape ─────────────────────────────────────────────────────────────────────
@@ -74,6 +83,10 @@ export interface ConsumerRFMSnapshot {
   cohortReasons:   string[]
   /** Rows rejected by the money normaliser, kept for audit (not counted anywhere). */
   rejected:        ConsumerOrderNet[]
+  /** GDPR Art. 17 — propagated from opts.gdprErased so decideNBA/planDryRun can enforce
+   *  the stop at every layer. When true, every other field is normalised to the empty
+   *  state (no cohort other than 'none', zero monetary, no first/last order). */
+  gdprErased:      boolean
 }
 
 // ── Entry point ────────────────────────────────────────────────────────────────────────
@@ -88,8 +101,29 @@ export function buildRFMSnapshot(
   const newWindowDays  = opts.newWindowDays  ?? 14
   const highValueCents = opts.highValueCents ?? 15_000
   const winbackMaxDays = opts.winbackMaxDays ?? 365
+  const gdprErased     = opts.gdprErased === true
 
-  const normalised = normaliseOrderBatch(scope, rows)
+  // ── GDPR Art. 17 fail-closed: emit an empty snapshot regardless of the input rows. ──
+  if (gdprErased) {
+    return {
+      tenantRestaurantId: scope.tenantRestaurantId,
+      contactId:          scope.contactId,
+      nowMs,
+      windowDays,
+      rfm: { recencyDays: Number.POSITIVE_INFINITY, frequency: 0, monetaryCents: 0, score: 0 },
+      lifetimeOrders:         0,
+      lifetimeMonetaryCents:  0,
+      firstOrderAtMs:         null,
+      lastOrderAtMs:          null,
+      reorderMedianDays:      opts.reorderMedianDays ?? 21,
+      cohort:                 'none',
+      cohortReasons:          ['gdpr_erased'],
+      rejected:               [],
+      gdprErased:             true,
+    }
+  }
+
+  const normalised = normaliseOrderBatch(scope, rows, nowMs)
   const countable  = normalised.filter((n) => n.countable)
   const rejected   = normalised.filter((n) => !n.countable)
 
@@ -132,6 +166,7 @@ export function buildRFMSnapshot(
     cohort,
     cohortReasons,
     rejected,
+    gdprErased:         false,
   }
 }
 

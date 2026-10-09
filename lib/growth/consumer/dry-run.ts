@@ -64,11 +64,19 @@ export interface DryRunRecord {
 }
 
 export function planDryRun(input: DryRunInput): DryRunRecord {
+  // ── Fail-closed on an UNKNOWN gdprErased value. The TypeScript signature says boolean,
+  //    but a JS caller (API route handler, cron job) might pass undefined/null/'false'/0.
+  //    We accept ONLY the strict literal `false`; anything else is treated as erased so a
+  //    schema drift or a caller refactor cannot accidentally produce ELIGIBLE. ──
+  const isAuthoritativelyNotErased = input.gdprErased === false
+  const gdprErased = !isAuthoritativelyNotErased
+
+  const rfmOptions = { ...(input.rfmOptions ?? {}), gdprErased }
   const snapshot = buildRFMSnapshot(
     { tenantRestaurantId: input.tenantRestaurantId, contactId: input.contact.id },
     input.orders,
     input.nowMs,
-    input.rfmOptions,
+    rfmOptions,
   )
   const nba = decideNBA(snapshot, input.nbaOptions)
 
@@ -77,7 +85,7 @@ export function planDryRun(input: DryRunInput): DryRunRecord {
   // Order matters: GDPR > kill switch > wait/holdout. GDPR must be first so an erased
   // contact is reported with reason 'gdpr_erased' regardless of whether the kill switch
   // is on, which prevents reporting-channel confusion in the audit log.
-  if (input.gdprErased) {
+  if (gdprErased) {
     return finish('NO_SEND', 'gdpr_erased', { snapshot, nba, policy: null, softOptIn: null, contact: input.contact, tenantRestaurantId: input.tenantRestaurantId })
   }
   if (input.allSendsDisabled) {
@@ -101,7 +109,7 @@ export function planDryRun(input: DryRunInput): DryRunRecord {
     // We need the NORMALISED orders at the correct scope for the soft-opt-in check.
     // Rebuild on the fly from `snapshot.rejected` + inferred countable rows. Cheaper to
     // normalise once here with the same scope guarantees as the RFM step.
-    const normalisedForScope = normalisePreservingScope(input.tenantRestaurantId, input.contact.id, input.orders)
+    const normalisedForScope = normalisePreservingScope(input.tenantRestaurantId, input.contact.id, input.orders, input.nowMs)
     softOptIn = evaluateSoftOptIn({
       contactId:          input.contact.id,
       tenantRestaurantId: input.tenantRestaurantId,
@@ -111,7 +119,7 @@ export function planDryRun(input: DryRunInput): DryRunRecord {
       suppressions:       input.suppressions,
       consents:           input.consents,
       source:             input.softOptInSource ?? '',
-      gdprErased:         input.gdprErased,
+      gdprErased:         gdprErased,
       windowDays:         input.rfmOptions?.windowDays ?? 365,
     })
   }
@@ -171,6 +179,6 @@ function finish(verdict: PlanVerdict, reason: string, parts: FinishParts, retryA
   }
 }
 
-function normalisePreservingScope(tenant: string, contact: string, rows: readonly ConsumerOrderInput[]) {
-  return normaliseOrderBatch({ tenantRestaurantId: tenant, contactId: contact }, rows)
+function normalisePreservingScope(tenant: string, contact: string, rows: readonly ConsumerOrderInput[], nowMs: number) {
+  return normaliseOrderBatch({ tenantRestaurantId: tenant, contactId: contact }, rows, nowMs)
 }

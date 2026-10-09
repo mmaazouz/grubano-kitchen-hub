@@ -24,6 +24,7 @@ function snap(cohort: ConsumerRFMSnapshot['cohort'], extra: Partial<ConsumerRFMS
     cohort,
     cohortReasons:          ['test'],
     rejected:               [],
+    gdprErased:             false,
     ...extra,
   }
 }

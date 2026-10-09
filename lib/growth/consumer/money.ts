@@ -36,16 +36,31 @@ export interface ConsumerOrderInput {
   grossCents:          number
   /**
    * Succeeded Refund.amountCents values applied to THIS order. Caller must have already
-   * filtered to status === 'succeeded' and deduped on refund id. Pending/failed refunds
-   * are not applied — this file does not know the lifecycle.
+   * filtered to status === 'succeeded'. Pending/failed refunds are not applied — this
+   * file does not know the lifecycle.
+   *
+   * PROVIDER CONTRACT:
+   *   - If the caller can provide refund ids, pass `refundIds` positionally paired (same
+   *     length) and the library will dedupe duplicate ids (Stripe webhook replay, retries).
+   *   - If `refundIds` is omitted, the caller is responsible for upstream dedup. A
+   *     glue-code bug that forgets dedup will double-subtract. Prefer providing ids.
    */
   refundCentsList:     readonly number[]
+  /**
+   * Optional refund identifiers paired POSITIONALLY with `refundCentsList`. If present,
+   * must be the same length (`invalid_amount` otherwise). Duplicate ids subtract only the
+   * first-seen cents entry; subsequent same-id entries are ignored. Empty-string ids are
+   * legal and dedupe like any other value — a producer that cannot id its refunds should
+   * omit the field entirely rather than pass '' for every row.
+   */
+  refundIds?:          readonly string[]
 }
 
 export type UncountableReason =
   | 'cancelled'
   | 'not_paid'
-  | 'invalid_amount'       // gross ≤ 0 or any refund < 0 or non-finite
+  | 'invalid_amount'       // gross ≤ 0 or any refund < 0 or non-finite / refundIds length mismatch
+  | 'invalid_atMs'         // atMs non-finite, non-integer, or > nowMs (future-dated / clock-skew)
   | 'fully_refunded'
   | 'duplicate'            // seen a prior row with the same orderId in the same batch
   | 'tenant_mismatch'      // row belongs to a different (tenant, contact) than requested
@@ -71,19 +86,25 @@ const COMPLETED_STATUSES = new Set<ConsumerOrderStatus>(['ready', 'picked_up', '
  * Rules (checked in this exact order so the `reason` is unambiguous):
  *   1. cancelled                         → not countable, reason 'cancelled'
  *   2. paymentStatus !== 'paid'          → not countable, reason 'not_paid'
- *   3. grossCents / refunds not finite,
- *      non-integer, or negative           → not countable, reason 'invalid_amount'
+ *   3. atMs non-finite / non-integer, or
+ *      (if nowMs provided) atMs > nowMs  → not countable, reason 'invalid_atMs'
+ *   4. grossCents / refunds not finite,
+ *      non-integer, or negative, or
+ *      refundIds length mismatch         → not countable, reason 'invalid_amount'
  *      (negative gross cannot be rescued by a refund — bail HERE)
- *   4. status not in {ready,picked_up,
- *      delivered}                         → not countable, reason 'not_completed'
- *   5. Σ refunds ≥ grossCents             → not countable, reason 'fully_refunded'
- *   6. otherwise                          → countable, net = gross − Σ refunds
+ *   5. status not in {ready,picked_up,
+ *      delivered}                        → not countable, reason 'not_completed'
+ *   6. Σ refunds ≥ grossCents            → not countable, reason 'fully_refunded'
+ *   7. otherwise                         → countable, net = gross − Σ refunds
  *
  * Edge: an order that was paid, then cancelled → reason 'cancelled' wins over 'not_paid'.
  * This is intentional: a cancelled order never contributes regardless of payment state,
  * and the refund rail is responsible for returning the money separately.
+ *
+ * `nowMs` is optional for back-compat; when passed, future-dated rows (clock-skew /
+ * malicious producer / backfill bug) are rejected. Prefer always passing it.
  */
-export function orderNet(input: ConsumerOrderInput): ConsumerOrderNet {
+export function orderNet(input: ConsumerOrderInput, nowMs?: number): ConsumerOrderNet {
   const base = {
     orderId:            input.orderId,
     tenantRestaurantId: input.tenantRestaurantId,
@@ -97,13 +118,30 @@ export function orderNet(input: ConsumerOrderInput): ConsumerOrderNet {
   if (input.paymentStatus !== 'paid') {
     return { ...base, netCents: 0, countable: false, reason: 'not_paid' }
   }
+  if (!isSafeAtMs(input.atMs)) {
+    return { ...base, netCents: 0, countable: false, reason: 'invalid_atMs' }
+  }
+  if (typeof nowMs === 'number' && Number.isFinite(nowMs) && input.atMs > nowMs) {
+    return { ...base, netCents: 0, countable: false, reason: 'invalid_atMs' }
+  }
   if (!isSafeCents(input.grossCents) || input.grossCents <= 0) {
     return { ...base, netCents: 0, countable: false, reason: 'invalid_amount' }
   }
+  // refundIds — if present, must match refundCentsList length exactly.
+  if (input.refundIds && input.refundIds.length !== input.refundCentsList.length) {
+    return { ...base, netCents: 0, countable: false, reason: 'invalid_amount' }
+  }
   let refundsSum = 0
-  for (const r of input.refundCentsList) {
+  const seenIds = input.refundIds ? new Set<string>() : null
+  for (let i = 0; i < input.refundCentsList.length; i++) {
+    const r = input.refundCentsList[i]
     if (!isSafeCents(r) || r < 0) {
       return { ...base, netCents: 0, countable: false, reason: 'invalid_amount' }
+    }
+    if (seenIds !== null) {
+      const id = input.refundIds![i]
+      if (seenIds.has(id)) continue
+      seenIds.add(id)
     }
     refundsSum += r
   }
@@ -130,6 +168,7 @@ export function orderNet(input: ConsumerOrderInput): ConsumerOrderNet {
 export function normaliseOrderBatch(
   scope: { tenantRestaurantId: string; contactId: string },
   rows:  readonly ConsumerOrderInput[],
+  nowMs?: number,
 ): ConsumerOrderNet[] {
   const out: ConsumerOrderNet[] = []
   const seen = new Set<string>()
@@ -149,11 +188,15 @@ export function normaliseOrderBatch(
       continue
     }
     seen.add(r.orderId)
-    out.push(orderNet(r))
+    out.push(orderNet(r, nowMs))
   }
   return out
 }
 
 function isSafeCents(n: unknown): n is number {
+  return typeof n === 'number' && Number.isFinite(n) && Number.isInteger(n)
+}
+
+function isSafeAtMs(n: unknown): n is number {
   return typeof n === 'number' && Number.isFinite(n) && Number.isInteger(n)
 }

@@ -165,13 +165,15 @@ describe('buildRFMSnapshot — windowing and determinism', () => {
     expect(snap.lifetimeMonetaryCents).toBe(3_000)
   })
 
-  it('a future-dated order (clock skew) is NOT counted in-window', () => {
+  it('a future-dated order (clock skew / malicious producer) is REJECTED entirely (invalid_atMs)', () => {
+    // Doctrine update (b2c hardening): a future atMs is fail-closed — it cannot land in
+    // either the window OR the lifetime count. It appears only in the `rejected` audit.
     const snap = buildRFMSnapshot(scope, [
       paidOrder({ orderId: 'o1', atMs: NOW + 5 * DAY, grossCents: 9_999 }),
     ], NOW)
-    // Future order is still LIFETIME countable but outside the (past) window.
     expect(snap.rfm.frequency).toBe(0)
-    expect(snap.lifetimeOrders).toBe(1)
+    expect(snap.lifetimeOrders).toBe(0)
+    expect(snap.rejected.some((r) => r.orderId === 'o1' && r.reason === 'invalid_atMs')).toBe(true)
   })
 
   it('calling twice with the same inputs returns identical results (pure)', () => {

@@ -90,9 +90,36 @@ const COHORT_MATRIX: Record<ConsumerCohort, CohortAction> = {
 // ── Entry point ────────────────────────────────────────────────────────────────────────
 
 export function decideNBA(snapshot: ConsumerRFMSnapshot, opts: NBAOptions = {}): NBADraft {
+  const anchorKey = opts.anchorKey ?? utcDayKey(snapshot.nowMs)
+
+  // ── GDPR Art. 17 — redundant library-side fail-closed. Even if the caller somehow
+  //    skipped `planDryRun`, an erased snapshot cannot produce a sendable NBA. ──
+  if (snapshot.gdprErased === true) {
+    return {
+      tenantRestaurantId: snapshot.tenantRestaurantId,
+      contactId:          snapshot.contactId,
+      cohort:             snapshot.cohort,
+      kind:               'wait',
+      channel:            null,
+      purpose:            'lifecycle',
+      templateKey:        null,
+      confidence:         1,
+      rationale:          `gdpr_erased | cohort=${snapshot.cohort}`,
+      idempotencyKey: buildIdempotencyKey({
+        tenantRestaurantId: snapshot.tenantRestaurantId,
+        contactId:          snapshot.contactId,
+        cohort:             snapshot.cohort,
+        kind:               'wait',
+        channel:            null,
+        purpose:            'lifecycle',
+        anchorKey,
+      }),
+      holdout:            false,
+    }
+  }
+
   const action = COHORT_MATRIX[snapshot.cohort]
 
-  const anchorKey = opts.anchorKey ?? utcDayKey(snapshot.nowMs)
   const idempotencyKey = buildIdempotencyKey({
     tenantRestaurantId: snapshot.tenantRestaurantId,
     contactId:          snapshot.contactId,
@@ -156,6 +183,11 @@ export function utcDayKey(ms: number): string {
  * `events.ts.deriveIdempotencyKey` doctrine: multiple fields, never first-match, so two
  * legitimately-distinct NBAs (e.g. same contact, different cohort day) do not collide
  * and two producers of the SAME NBA always converge on the SAME key.
+ *
+ * Delimiter escaping: '\\', '|', and '=' inside a VALUE are escaped so a crafted id
+ * ("c1|cohort=lost") cannot forge a collision with a legitimate record whose cohort
+ * field actually holds the pivoted value. Backslash is escaped first to keep the pass
+ * reversible for audit tools.
  */
 export function buildIdempotencyKey(parts: {
   tenantRestaurantId: string
@@ -168,14 +200,18 @@ export function buildIdempotencyKey(parts: {
 }): string {
   return [
     'nba',
-    `tenant=${parts.tenantRestaurantId}`,
-    `contact=${parts.contactId}`,
-    `cohort=${parts.cohort}`,
-    `kind=${parts.kind}`,
-    `channel=${parts.channel ?? 'none'}`,
-    `purpose=${parts.purpose}`,
-    `day=${parts.anchorKey}`,
+    `tenant=${escKey(parts.tenantRestaurantId)}`,
+    `contact=${escKey(parts.contactId)}`,
+    `cohort=${escKey(parts.cohort)}`,
+    `kind=${escKey(parts.kind)}`,
+    `channel=${escKey(parts.channel ?? 'none')}`,
+    `purpose=${escKey(parts.purpose)}`,
+    `day=${escKey(parts.anchorKey)}`,
   ].join('|')
+}
+
+function escKey(v: string): string {
+  return String(v).replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/=/g, '\\=')
 }
 
 /**
