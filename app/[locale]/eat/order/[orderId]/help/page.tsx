@@ -1,12 +1,13 @@
 'use client'
 import { orderRef } from '@/lib/order-ref'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { useTranslations, useLocale } from 'next-intl'
 import { useRouter } from '@/navigation'
 import { formatEuros, formatAmount } from '@/lib/format-money'
+import { emptyScoped, loadOwnedOrder, orderScopeStamp, scopePending, scopedValue, type Scoped } from '@/lib/eat-order-scope'
 // D′ L10 (§2): the code→key map moved to a shared LEAF so this page and components/claims/ClaimSection
 // cannot drift, and so an unmapped code degrades to a LOCALIZED generic instead of the server's French.
 import { claimRefusalKey } from '@/lib/claim-refusal-labels'
@@ -58,6 +59,23 @@ import '@/app/gb-foundation/gb-components.css'
 //    NOT wire the moderated upload here (future nicety, noted in report).
 //  • `reason` is fixed to 'missing_item' (this entry = « article manquant / erroné »); a
 //    reason picker is a future nicety (the API accepts the full CLAIM_REASONS enum).
+//
+// P1 SAME-TAB ACCOUNT SCOPE (hotfix/order-aux-account-scope, after PR #21 on /eat/track).
+// The order and the claim eligibility lived in plain state under effects keyed on
+// `[authStatus, orderId]`. NextAuth broadcasts an A → B switch WITHOUT flipping `status`
+// through 'unauthenticated', so neither effect re-fired and B inherited A's banner (restaurant,
+// ref, items, total, refund figures) and A's claim scope (per-line unitCents, the existing
+// claim id and its refusal code) — plus A's half-typed refund draft. Now:
+//  • the order AND the claim gate/eligibility are kept WITH the stamp of the (identity,
+//    orderId) PAIR they were read under (lib/eat-order-scope) and are surfaced ONLY through a
+//    render-time match against the stamp the live session + route imply;
+//  • the scope effect is keyed on `[authStatus, userId, orderId]`, FAIL-CLOSES before any
+//    request, RESETS every order-bound draft (view, picked lines, description, submit
+//    lifecycle) with it, and adopts the order only when the server echoed `ownerId === userId`;
+//  • GET /api/claims carries no owner echo, so it is requested ONLY AFTER the order was adopted
+//    under the same scope, stamped with that scope, and disowned with it;
+//  • the claim POST captures the scope it was filed under: a response landing after the
+//    identity or route moved on touches nothing (the server enforces ownership on the write).
 
 interface OrderItem { name: string; qty: number; price: number }
 /**
@@ -145,10 +163,22 @@ export default function OrderHelpScreen() {
   const locale = useLocale()
   const router = useRouter()
   const { orderId } = useParams<{ orderId: string }>()
-  const { status: authStatus } = useSession()
+  const { data: session, status: authStatus } = useSession()
+  // The raw next-auth id the request is issued UNDER — compared with the SERVER-echoed `ownerId`.
+  const userId = (session?.user as { id?: string } | undefined)?.id
+  // FIRST-FRAME GUARD — the PAIR stamp (identity, orderId) the live session + route imply,
+  // derived during render so it moves in the same frame as the session (effects run after).
+  const liveStamp = orderScopeStamp(authStatus, userId, orderId)
 
-  const [order, setOrder] = useState<Order | null>(null)
-  const [loading, setLoading] = useState(true)
+  // The order, kept WITH the stamp it was read under. Read ONLY through `scopedValue` below.
+  const [orderState, setOrderState] = useState<Scoped<Order>>(emptyScoped)
+  // The claims gate + eligibility, kept WITH the same stamp. `enabled` defaults to false →
+  // the inert path is taken until proven otherwise, so a slow/failed GET can NEVER turn an
+  // OFF page into a live one, and a value read for another pair is never shown.
+  const [claimState, setClaimState] = useState<Scoped<{ enabled: boolean; eligibility: ClaimEligibility | null }>>(emptyScoped)
+  // The scope the CURRENT effect run issued its requests under — what the claim POST and the
+  // eligibility refetch stamp with, and what their late responses are checked against.
+  const scopeRef = useRef<{ stamp: string; userId: string; isAlive: () => boolean } | null>(null)
   const [view, setView] = useState<View>('help')
   // refund view local state — which REAL items are flagged + the description.
   /**
@@ -163,52 +193,76 @@ export default function OrderHelpScreen() {
   const [desc, setDesc] = useState('')
   // INERT (flag OFF) fallback flag — exactly the prior behaviour, kept byte-identical.
   const [submitted, setSubmitted] = useState(false)
-  // CLAIMS feature gate + eligibility (driven by GET /api/claims?orderId=).
-  // `claimsEnabled` defaults to false → the inert path is taken until proven otherwise,
-  // so a slow/failed GET can NEVER turn an OFF page into a live one.
-  const [claimsEnabled, setClaimsEnabled] = useState(false)
-  const [eligibility, setEligibility] = useState<ClaimEligibility | null>(null)
   // REAL-claim submit lifecycle (only used when claimsEnabled === true).
   const [submitState, setSubmitState] = useState<SubmitState>('idle')
   const [submitError, setSubmitError] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (authStatus === 'loading') return
-    if (authStatus !== 'authenticated') { setLoading(false); return }
-    let alive = true
-    fetch(`/api/orders/${orderId}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (alive) setOrder(d?.order ?? null) })
-      .catch(() => { if (alive) setOrder(null) })
-      .finally(() => { if (alive) setLoading(false) })
-    return () => { alive = false }
-  }, [authStatus, orderId])
-
-  // Fetch the claim feature-gate + eligibility. On ANY failure (network / non-OK / parse)
-  // we leave claimsEnabled=false → the page stays on the inert path, never exposing a
-  // half-wired live submit. { enabled:false } (flag OFF) does the same. Returns nothing.
-  const refetchEligibility = useCallback(async () => {
+  // Fetch the claim feature-gate + eligibility UNDER A GIVEN SCOPE. On ANY failure (network /
+  // non-OK / parse) the scope reads enabled=false → the page stays on the inert path, never
+  // exposing a half-wired live submit. { enabled:false } (flag OFF) does the same. A response
+  // landing after the scope was disowned (identity or route moved on) writes NOTHING.
+  async function loadEligibility(scope: { stamp: string; isAlive: () => boolean }, forOrderId: string): Promise<void> {
+    let next: { enabled: boolean; eligibility: ClaimEligibility | null } = { enabled: false, eligibility: null }
     try {
-      const r = await fetch(`/api/claims?orderId=${encodeURIComponent(orderId)}`)
-      if (!r.ok) { setClaimsEnabled(false); return }
-      const d = await r.json()
-      if (d?.enabled === true) {
-        setClaimsEnabled(true)
-        setEligibility((d.eligibility as ClaimEligibility) ?? null)
-      } else {
-        setClaimsEnabled(false)
-        setEligibility(null)
+      const r = await fetch(`/api/claims?orderId=${encodeURIComponent(forOrderId)}`, { cache: 'no-store' })
+      if (!scope.isAlive()) return
+      if (r.ok) {
+        const d = await r.json()
+        if (d?.enabled === true) next = { enabled: true, eligibility: (d.eligibility as ClaimEligibility) ?? null }
       }
     } catch {
-      setClaimsEnabled(false)
+      /* enabled stays false */
     }
-  }, [orderId])
+    if (!scope.isAlive()) return
+    setClaimState({ stamp: scope.stamp, value: next })
+  }
 
-  // Load the gate + eligibility once authenticated (and whenever the order changes).
   useEffect(() => {
+    // FAIL CLOSED FIRST — the previous pair's order, claim scope AND every order-bound draft
+    // leave the state BEFORE any request. (On the very first run these are the initial values.)
+    setOrderState(emptyScoped())
+    setClaimState(emptyScoped())
+    setView('help')
+    setPicked({})
+    setDesc('')
+    setSubmitted(false)
+    setSubmitState('idle')
+    setSubmitError(null)
+    scopeRef.current = null
     if (authStatus !== 'authenticated') return
-    void refetchEligibility()
-  }, [authStatus, refetchEligibility])
+    // Same pure derivation as `liveStamp`, from the effect's own deps (no closure over render).
+    const requestStamp = orderScopeStamp(authStatus, userId, orderId)
+    const requestUserId = userId
+    if (requestStamp === null || !requestUserId) return
+    let alive = true
+    const scope = { stamp: requestStamp, userId: requestUserId, isAlive: () => alive }
+    scopeRef.current = scope
+    loadOwnedOrder<Order>({ orderId, requestStamp, requestUserId, isAlive: () => alive })
+      .then((r) => {
+        if (!alive || !r) return
+        setOrderState(r)
+        // The claims GET has NO owner echo of its own: it is issued ONLY once the order was
+        // adopted under this scope (server-echoed ownerId), and it inherits that scope.
+        if (r.value !== null) void loadEligibility(scope, orderId)
+      })
+    // `userId` AND `orderId` ARE DEPENDENCIES: `authStatus` alone cannot see A → B when the
+    // broadcast moves the id without touching the status, and the same mount serving another
+    // order's URL must re-fire too. Keying on them makes `alive` load-bearing: the cleanup
+    // disowns every in-flight request (order, eligibility, claim POST) issued for the previous
+    // pair before it can resolve.
+    return () => { alive = false; if (scopeRef.current === scope) scopeRef.current = null }
+    // `loadEligibility` is a stable function of this render with no captured state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, /* help-deps */ [authStatus, userId, orderId])
+
+  // RENDER-TIME GATE — the order and the claim scope are visible only while their stamp matches
+  // the live pair. `loading` is DERIVED from the same stamps: the frame right after an account
+  // switch reads as loading, never as « not found », never as A's banner or A's claim.
+  const order = scopedValue(orderState, liveStamp)
+  const loading = authStatus === 'loading' || scopePending(orderState, liveStamp)
+  const claims = scopedValue(claimState, liveStamp)
+  const claimsEnabled = order !== null && claims?.enabled === true
+  const eligibility = claimsEnabled ? claims?.eligibility ?? null : null
 
   const items = useMemo<OrderItem[]>(() => (Array.isArray(order?.items) ? order!.items : []), [order])
   const itemsCount = useMemo(() => items.reduce((s, it) => s + (it.qty ?? 1), 0), [items])
@@ -357,6 +411,10 @@ export default function OrderHelpScreen() {
   // 4xx → surface the API error; 403 {gated} → fall back to the inert « bientôt » state.
   async function submitClaim() {
     if (!claimsEnabled || !eligibility?.canClaim || !anySelected || submitState === 'sending') return
+    // The scope this claim is filed UNDER. If the identity or route moves on while the POST is
+    // in flight, the cleanup disowns it and the response below touches nothing.
+    const scope = scopeRef.current
+    if (!scope || scope.stamp !== liveStamp) return
     setSubmitState('sending'); setSubmitError(null)
     try {
       const res = await fetch('/api/claims', {
@@ -380,19 +438,22 @@ export default function OrderHelpScreen() {
             .filter((x) => x.qty > 0),
         }),
       })
+      if (!scope.isAlive()) return
       if (res.status === 201) {
         setSubmitState('done')
         // The claim is filed: the form's content is spent. Leaving it in place invited a second,
         // identical claim built from state the customer had already used.
         setPicked({})
         setDesc('')
-        await refetchEligibility() // reflect the filed claim (active / auto-resolved)
+        await loadEligibility(scope, orderId) // reflect the filed claim (active / auto-resolved)
         return
       }
       const data = await res.json().catch(() => ({} as { error?: string; gated?: boolean }))
+      if (!scope.isAlive()) return
       // Gate flipped off between the GET and the POST → honest inert fallback.
       if (res.status === 403 && data?.gated) {
-        setClaimsEnabled(false); setSubmitState('idle'); setSubmitError(null)
+        setClaimState({ stamp: scope.stamp, value: { enabled: false, eligibility: null } })
+        setSubmitState('idle'); setSubmitError(null)
         return
       }
       setSubmitState('error')
@@ -406,6 +467,7 @@ export default function OrderHelpScreen() {
       const localized = claimRefusalKey(data?.reason)
       setSubmitError(localized ? t(localized) : t('claimError'))
     } catch {
+      if (!scope.isAlive()) return
       setSubmitState('error')
       setSubmitError(t('claimError'))
     }
