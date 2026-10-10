@@ -1,0 +1,32 @@
+# One-shot staging BACKUP ONLY: no deploy, migration, Stripe or prod server.
+# Scope: isolated ops/* branch, no influence on main/develop.
+name: Staging P1 preflight backup - 2026-10-10
+on:
+  push:
+    branches:
+      - ops/staging-p1-backup-gate-20261010
+permissions:
+  contents: read
+jobs:
+  backup:
+    name: Verified staging backup only
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Verify STAGING backup via existing server operator
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 109.234.165.222
+          username: ${{ secrets.O2SWITCH_USER }}
+          key: ${{ secrets.O2SWITCH_SSH_KEY }}
+          port: 22
+          timeout: 45s
+          command_timeout: 9m
+          script_stop: true
+          script: |
+            set -eu
+            cd "$HOME/app.grubano.com"
+            test -f .env.local
+            test -f scripts/server/staging-backup.js
+            test -x "$HOME/nodevenv/app.grubano.com/24/bin/node"
+            "$HOME/nodevenv/app.grubano.com/24/bin/node" scripts/server/staging-backup.js --label pre-p1-isolation-20261010
