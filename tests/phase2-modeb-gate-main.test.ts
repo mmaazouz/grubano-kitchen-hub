@@ -17,10 +17,13 @@
 //   (b) sert les points d'entrée Stripe REST, en DEUX temps (pendant la fenêtre / après fermeture) ;
 //   (c) horodate chaque écriture de `.env.local` et de `tmp/restart.txt` (ENVWRITE / RESTART) : les
 //       tests jugent l'ÉTAT DISQUE, pas une sonde ;
-//   (d) LÈVE sur tout appel réseau inattendu ou tout appel Stripe qui ne serait pas un GET.
+//   (d) LÈVE sur tout appel réseau inattendu ou tout appel Stripe qui ne serait pas un GET ;
+//   (e) sert AUSSI la sonde de l'ENFANT neutraliseur (phase2-backup-neutralize.js, lancé par
+//       neutralizeOwnBackups dans un processus à env RESTREINT, donc SANS ce preload) depuis un faux gate
+//       de boucle locale qui répond d'après le `.env.local` ÉCRIT — voir « FAUX GATE DU NEUTRALISEUR ».
 // Rien ne sort de la machine.
-import { describe, it, expect, afterEach } from 'vitest'
-import { spawnSync } from 'node:child_process'
+import { describe, it, expect, afterEach, beforeAll, afterAll } from 'vitest'
+import { spawn, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -166,6 +169,27 @@ globalThis.fetch = async (input, init) => {
   }
   throw new Error('TEST VIOLATION: unexpected network call ' + method + ' ' + url.href)
 }
+
+// (e) L'ENFANT NEUTRALISEUR. neutralizeOwnBackups (phase2-refund-gate.js) lance phase2-backup-neutralize.js
+// par spawnSync avec un env RESTREINT — sans NODE_OPTIONS ni ce preload, par conception (T-108 : un chargeur
+// hérité faisait pendre l'enfant). Le faux fetch ci-dessus ne le couvre donc PAS : sa sonde
+// « POST /api/admin/refunds/run » partait VRAIMENT vers app.grubano.com, depuis le runner CI comme depuis le
+// poste de dev — hors journal, hors liste blanche, à la merci de la staging (CI 38063444666, tentative 1 :
+// « PROCESS REFUND GATE = UNREACHABLE » ⇒ RESULT = FAIL ; verte à la relance). Ici l'enfant reçoit
+// PHASE2_BASE_URL = le faux gate de boucle locale du test (le neutraliseur accepte 127.0.0.1 par conception) ;
+// l'OPÉRATEUR, lui, ne le reçoit pas : ses sondes visent toujours l'hôte des FICHIERS (liste blanche).
+// Base absente ⇒ port 1, rien n'écoute : l'enfant ÉCHOUE bruyamment plutôt que de sortir de la machine.
+const cp = require('child_process')
+const realSpawnSync = cp.spawnSync
+cp.spawnSync = function (file, argv, opts) {
+  const isNeutralizer = Array.isArray(argv) && argv.some((a) => /phase2-backup-neutralize\\.js$/.test(String(a)))
+  if (isNeutralizer) {
+    log('NEUTRALIZE ' + Date.now())
+    const base = process.env.PHASE2_TEST_NEUTRALIZER_BASE || 'http://127.0.0.1:1'
+    opts = { ...(opts || {}), env: { ...((opts && opts.env) || {}), PHASE2_BASE_URL: base } }
+  }
+  return realSpawnSync.call(cp, file, argv, opts)
+}
 `
 
 const charge = (over: Row = {}) => ({ id: 'ch_test_main', object: 'charge', paid: true, captured: true, amount: 1450, amount_captured: 1450, amount_refunded: 0, refunded: false, disputed: false, application_fee_amount: 116, ...over })
@@ -210,7 +234,58 @@ const NET_ALLOW = [
   /^GET app\.grubano\.com\/version\.json$/, /^POST app\.grubano\.com\/api\/claims$/, /^POST app\.grubano\.com\/api\/admin\/refunds\/run$/,
   new RegExp('^GET api\\.stripe\\.com/v1/(refunds|balance|payment_intents/' + PI_ID + '|accounts/' + DEST + ')$'),
   /^(APPEARED|DBRESOLVED|RESTART|SIGTERM|ENVWRITEFAIL) \d+$/, /^CLAIMSPROBE (OPEN|CLOSED) \d+$/, /^ENVWRITE \d+ /,
+  // (e) lancement de l'enfant neutraliseur, et sa sonde telle que servie par le faux gate de boucle locale.
+  /^NEUTRALIZE \d+$/, /^NEUTRALIZER-PROBE (OPEN|CLOSED) \d+$/,
 ]
+
+// ── (e) FAUX GATE DU NEUTRALISEUR — boucle locale, dans un AUTRE processus ────────────────────────────────
+// runOp bloque ce thread (spawnSync) : un serveur sur CETTE boucle d'événements ne pourrait jamais accepter la
+// connexion de l'enfant, qui pendrait jusqu'à son délai (leçon T-93 (d)). Un processus par rôle. Le serveur
+// relit à CHAQUE sonde la racine active (fichier de contrôle écrit par runOp) et son `.env.local` : même règle
+// que le faux monde (drapeau true ET bail futur ET bail ≤ 30 min ⇒ OPEN/401, sinon CLOSED/403 gated) — c'est
+// l'état DISQUE qui juge, jamais une réponse en dur. Toute autre requête est journalisée « UNEXPECTED » :
+// hors liste blanche, elle fait échouer le test.
+const NEUTRALIZER_GATE = `
+const http = require('http'), fs = require('fs'), path = require('path')
+const CTL = process.env.MODEB_ACTIVE_ROOT_FILE
+const envVal = (file, k) => { let v; try { for (const l of fs.readFileSync(file, 'utf8').split(/\\r?\\n/)) { const m = l.match(/^([A-Z_]+)=(.*)$/); if (m && m[1] === k) v = m[2] } } catch { /* pas de fichier = rien d'ouvert */ } return v }
+const s = http.createServer((req, res) => {
+  let root = ''
+  try { root = fs.readFileSync(CTL, 'utf8').trim() } catch { /* aucune racine active */ }
+  const log = (l) => { if (root) fs.appendFileSync(path.join(root, 'net.log'), l + '\\n') }
+  req.on('data', () => {})
+  req.on('end', () => {
+    if (!root || req.method !== 'POST' || req.url !== '/api/admin/refunds/run') {
+      log('NEUTRALIZER-PROBE UNEXPECTED ' + req.method + ' ' + req.url + ' ' + Date.now())
+      res.writeHead(404, { 'content-type': 'application/json' }); res.end('{}'); return
+    }
+    const envf = path.join(root, '.env.local')
+    const t = new Date(envVal(envf, 'REFUNDS_WINDOW_UNTIL') || 0).getTime()
+    const open = envVal(envf, 'REFUNDS_ENABLED') === 'true' && t > Date.now() && t - Date.now() <= 30 * 60000
+    log('NEUTRALIZER-PROBE ' + (open ? 'OPEN' : 'CLOSED') + ' ' + Date.now())
+    res.writeHead(open ? 401 : 403, { 'content-type': 'application/json' })
+    res.end(JSON.stringify(open ? { error: 'Non autorisé' } : { error: 'x', gated: true }))
+  })
+})
+s.listen(0, '127.0.0.1', () => process.stdout.write('PORT ' + s.address().port + '\\n'))
+`
+let gateProc: ReturnType<typeof spawn> | null = null
+let gateBase = ''
+let ctlDir = ''
+const activeRootFile = () => path.join(ctlDir, 'active-root')
+beforeAll(async () => {
+  ctlDir = fs.mkdtempSync(path.join(os.tmpdir(), 'modeb-main-ctl-'))
+  gateProc = spawn(process.execPath, ['-e', NEUTRALIZER_GATE], { env: { ...process.env, MODEB_ACTIVE_ROOT_FILE: activeRootFile() }, stdio: ['ignore', 'pipe', 'inherit'] })
+  const port = await new Promise<number>((resolve, reject) => {
+    const to = setTimeout(() => reject(new Error('le faux gate du neutraliseur n’a pas démarré')), 10000)
+    gateProc!.stdout!.on('data', (b: Buffer) => { const m = /PORT (\d+)/.exec(String(b)); if (m) { clearTimeout(to); resolve(Number(m[1])) } })
+  })
+  gateBase = 'http://127.0.0.1:' + port
+})
+afterAll(() => {
+  if (gateProc) { try { gateProc.kill() } catch { /* déjà sorti */ } }
+  try { fs.rmSync(ctlDir, { recursive: true, force: true }) } catch { /* best-effort */ }
+})
 
 function runOp(root: string, mode: 'precheck' | 'window', envOver: Record<string, string> = {}) {
   const env: Record<string, string> = {}
@@ -223,7 +298,11 @@ function runOp(root: string, mode: 'precheck' | 'window', envOver: Record<string
     PHASE2_APP_ROOT: root, HOME: path.join(root, 'home'), USERPROFILE: path.join(root, 'home'),
     PHASE2_MODEB_ORDER_ID: ORDER_ID, PHASE2_MODEB_AMOUNT_CENTS: '500', PHASE2_MODEB_EXPECT_SHA: 'abc1234',
     PHASE2_MODEB_POLL_MS: '150', PHASE2_MODEB_GRACE_MS: '300', PHASE2_RELOAD_DEADLINE_MS: '5000', PHASE2_RELOAD_INTERVAL_MS: '100', PHASE2_MODEB_WINDOW_MS: String(WINDOW_MS),
+    // (e) la base que le preload donne à l'ENFANT neutraliseur — jamais à l'opérateur (PHASE2_BASE_URL absent ici).
+    PHASE2_TEST_NEUTRALIZER_BASE: gateBase,
   }, envOver)
+  expect(gateBase, 'faux gate du neutraliseur non démarré').toMatch(/^http:\/\/127\.0\.0\.1:\d+$/)
+  fs.writeFileSync(activeRootFile(), root)
   const t0 = Date.now()
   const r = spawnSync(process.execPath, ['-r', path.join(root, 'preload.js'), OP_PATH, ...(mode === 'window' ? ['window'] : [])], { env: env as NodeJS.ProcessEnv, encoding: 'utf8', timeout: 90000 })
   const out = (r.stdout || '') + (r.stderr || '')
@@ -241,6 +320,8 @@ function runOp(root: string, mode: 'precheck' | 'window', envOver: Record<string
   return {
     status: r.status, out, netLog, t0, envWrites,
     appeared: stamp('APPEARED')[0], dbResolved: stamp('DBRESOLVED')[0], restarts: stamp('RESTART'),
+    neutralizeAt: stamp('NEUTRALIZE')[0],
+    neutralizerProbes: lines.filter((l) => l.startsWith('NEUTRALIZER-PROBE ')).map((l) => ({ state: l.split(' ')[1], ts: Number(l.split(' ')[2]) })),
     envAfter: fs.readFileSync(path.join(root, '.env.local'), 'utf8'),
     lockExists: fs.existsSync(path.join(root, 'home', '.grubano', 'phase2-operator.lock')),
     lockText: fs.existsSync(path.join(root, 'home', '.grubano', 'phase2-operator.lock')) ? fs.readFileSync(path.join(root, 'home', '.grubano', 'phase2-operator.lock'), 'utf8') : null,
@@ -260,6 +341,22 @@ const firstCloseWrite = (r: ReturnType<typeof runOp>) => r.envWrites.find((w) =>
   const t = new Date(String(w.REFUNDS_WINDOW_UNTIL || 0)).getTime()
   return w.REFUNDS_WINDOW_UNTIL && t < Number(w.ts)
 })
+/** (e) Le VRAI neutraliseur a tourné ; son unique sonde a été servie par le faux gate de boucle locale (CLOSED,
+ *  d'après le disque) APRÈS la première écriture de fermeture ; il a rapporté 403 et PASS ; et l'opérateur a
+ *  relu LUI-MÊME la racine : plus rien de restaurable. Un neutraliseur qui sort de la machine, ou qui ne voit
+ *  pas 403, ne passe pas ici. */
+function expectNeutralizedOnLoopback(r: ReturnType<typeof runOp>) {
+  expect(r.neutralizeAt, 'le neutraliseur n’a pas été lancé').toBeGreaterThan(0)
+  expect(r.neutralizerProbes.map((p) => p.state)).toEqual(['CLOSED'])
+  const close = firstCloseWrite(r)
+  expect(close, 'aucune écriture de fermeture trouvée').toBeTruthy()
+  expect(r.neutralizerProbes[0].ts).toBeGreaterThanOrEqual(Number(close!.ts))
+  expect(r.out).toMatch(/\| +PROCESS REFUND GATE = 403$/m)
+  expect(r.out).toMatch(/\| RESULT: PASS$/m)
+  expect(r.out).toMatch(/BACKUP NEUTRALIZER EXIT: 0/)
+  expect(r.out).toMatch(/RESTORABLE TRUE-FLAG BACKUP LEFT BY THIS WINDOW: NO/)
+  expect(r.out).not.toMatch(/7 neutralize:/)
+}
 
 // ══ PRECHECK EXÉCUTÉ ═════════════════════════════════════════════════════════════════════════
 describe('MODE B — main() EXÉCUTÉ en precheck (lecture seule)', () => {
@@ -454,6 +551,23 @@ describe('MODE B — main() EXÉCUTÉ en mode window (ouvre, observe Stripe, ref
     expect(leaseMs).toBeLessThanOrEqual(WINDOW_MS + 2 * 60000 + 2000)                 // fenêtre + 2 min, jamais plus
     expect(leaseMs).toBeLessThanOrEqual(30 * 60000)
     expect(r.netLog).not.toMatch(/^(POST|PUT|DELETE|PATCH) api\.stripe\.com/m)       // l'opérateur ne mute JAMAIS Stripe
+    // (e) la sauvegarde restaurable que cette fenêtre laisse est neutralisée par le VRAI neutraliseur, sondé en boucle locale.
+    expectNeutralizedOnLoopback(r)
+  }, 90000)
+
+  it('⭐ (e) la sonde du neutraliseur ne sort PAS de la machine : servie par le faux gate de boucle locale d’après le `.env.local` refermé, APRÈS la fermeture — et c’est le VRAI neutraliseur qui tourne', () => {
+    const root = mkRoot({ net: netOk({ appear: appear([RE_OK]) }) })
+    const r = runOp(root, 'window', { PHASE2_MODEB_CONFIRM: SENTENCE })
+    expect(r.out).toMatch(/RESULT = PASS/)
+    expectNeutralizedOnLoopback(r)
+    // Exactement UN lancement, exactement UNE sonde ; les copies restaurables ont quitté la racine.
+    expect(r.netLog.match(/^NEUTRALIZE \d+$/gm)).toHaveLength(1)
+    expect(r.netLog.match(/^NEUTRALIZER-PROBE /gm)).toHaveLength(1)
+    expect(fs.readdirSync(root).filter((n) => n.startsWith('.env.local.bak'))).toEqual([])
+    // L'OPÉRATEUR n'a reçu aucune base de substitution : ses sondes visent l'hôte des FICHIERS, et rien dans le
+    // journal ne nomme la boucle locale (la sonde de l'enfant y figure sous son propre nom, servie par le test).
+    expect(r.netLog).toMatch(/^POST app\.grubano\.com\/api\/admin\/refunds\/run$/m)
+    expect(r.netLog).not.toMatch(/127\.0\.0\.1/)
   }, 90000)
 
   it('⭐ GRÂCE, sur le DISQUE : ni écriture de fermeture ni redémarrage dans l’instant où Stripe montre le remboursement', () => {
@@ -497,6 +611,8 @@ describe('MODE B — main() EXÉCUTÉ en mode window (ouvre, observe Stripe, ref
     expect(Number(firstCloseWrite(r)!.ts) - r.dbResolved).toBeGreaterThanOrEqual(2400)   // résolue, PUIS la grâce, PUIS la fermeture
     expect(r.out).toMatch(/STRIPE REFUNDS AFTER: re_test_1…:succeeded:500/)
     expect(r.out).toMatch(/RESULT = PASS/)
+    // (e) le scénario que la CI a vu ROUGE (neutraliseur UNREACHABLE vers la vraie staging) : désormais prouvé en boucle locale.
+    expectNeutralizedOnLoopback(r)
   }, 90000)
 
   it('⭐ une ligne Refund apparue SANS objet Stripe (rejet) ⇒ FAIL « état NON RÉSOLU », jamais NOT EXECUTED', () => {
