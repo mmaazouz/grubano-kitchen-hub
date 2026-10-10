@@ -1,9 +1,11 @@
 'use client'
 import { orderRef } from '@/lib/order-ref'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
+import { useSession } from 'next-auth/react'
 import { useRouter } from '@/navigation'
+import { emptyScoped, loadOwnedOrder, orderScopeStamp, scopePending, scopedValue, type Scoped } from '@/lib/eat-order-scope'
 import { useTranslations, useLocale } from 'next-intl'
 import { formatEuros } from '@/lib/format-money'
 import './post-delivery.css'
@@ -48,6 +50,21 @@ import '@/app/gb-foundation/gb-components.css'
  *     and NO bank delay and NO date is ever promised;
  *   • the rating flow itself is untouched — a customer may rate a refunded order, and taking the
  *     screen away would be a product decision nobody has taken.
+ *
+ * P1 SAME-TAB ACCOUNT SCOPE (hotfix/order-aux-account-scope, after PR #21 on /eat/track).
+ * This screen had NO notion of identity: `fetchOrder` was keyed on `[orderId, router]`, the
+ * order sat in plain state, and a 401 inside the handler pushed /eat/auth. On an A → B switch
+ * inside the same mount (NextAuth broadcasts `setSession` without flipping `status`), B read
+ * A's restaurant, ref, total, tip and refund figures; and a stale A-request answering 401 could
+ * trampoline a signed-in B through the login page. Now:
+ *   • the order is kept WITH the stamp of the (identity, orderId) PAIR it was read under
+ *     (lib/eat-order-scope) and surfaced ONLY through a render-time match against the stamp the
+ *     live session + route imply;
+ *   • the effect is keyed on `[authStatus, userId, orderId]`, FAIL-CLOSES before any request,
+ *     RESETS the rating draft (stars, tags, « Merci » view) with it, and adopts a body only when
+ *     the server echoed `ownerId === userId`;
+ *   • the ONLY /eat/auth redirect is taken off the LIVE session ('unauthenticated'), never off a
+ *     response; 401/403/404 are a stamped EMPTY (« not found »).
  * ───────────────────────────────────────────────────────────────────────────── */
 
 /**
@@ -65,6 +82,17 @@ interface RefundLite {
   isTotal: boolean
   /** Loyalty points TAKEN BACK because of the refund (read from LoyaltyTransaction rows). */
   pointsReversed: number
+}
+
+/** The RAW API object GET /api/orders/[id] serves — only the fields this screen normalises. */
+interface RawOrder {
+  id: string
+  status: string
+  total?: unknown
+  pointsEarned?: unknown
+  tipCents?: unknown
+  refundSummary?: { refundedCents?: unknown; isTotal?: unknown; pointsReversed?: unknown } | null
+  restaurant?: { name?: string | null } | null
 }
 
 interface OrderLite {
@@ -92,49 +120,77 @@ export default function PostDeliveryScreen() {
   const locale = useLocale()
   const { orderId } = useParams<{ orderId: string }>()
   const router = useRouter()
+  const { data: session, status: authStatus } = useSession()
+  // The raw next-auth id the request is issued UNDER — compared with the SERVER-echoed `ownerId`.
+  const userId = (session?.user as { id?: string } | undefined)?.id
+  // FIRST-FRAME GUARD — the PAIR stamp (identity, orderId) the live session + route imply,
+  // derived during render so it moves in the same frame as the session (effects run after).
+  const liveStamp = orderScopeStamp(authStatus, userId, orderId)
 
-  const [order, setOrder] = useState<OrderLite | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [notFound, setNotFound] = useState(false)
+  // The order, kept WITH the stamp it was read under. Read ONLY through `scopedValue` below.
+  const [orderState, setOrderState] = useState<Scoped<OrderLite>>(emptyScoped)
 
   // Local UI state (rating INERT — no review backend; see header). The tip is no
   // longer collected here (it is charged at checkout — P2-TIP), so there is no tip
   // input state: tipCents comes from the order as a read-only recap.
+  // ORDER-BOUND: a draft rating belongs to the (identity, order) pair it was typed for, so
+  // the scope effect below resets all three with the order.
   const [stars, setStars] = useState(4)
   const [tags, setTags] = useState<string[]>(['delicious', 'hot'])
   const [done, setDone] = useState(false)
 
-  const fetchOrder = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/orders/${orderId}`)
-      if (res.status === 401) { router.push('/eat/auth'); return }
-      if (!res.ok) { setNotFound(true); return }
-      const data = await res.json()
-      const o = data?.order
-      if (!o) { setNotFound(true); return }
-      setOrder({
-        id: o.id,
-        status: o.status,
-        total: typeof o.total === 'number' ? o.total : 0,
-        pointsEarned: typeof o.pointsEarned === 'number' ? o.pointsEarned : 0,
-        tipCents: typeof o.tipCents === 'number' ? o.tipCents : 0,
+  useEffect(() => {
+    // FAIL CLOSED FIRST — the previous pair's order AND its rating draft leave the state
+    // BEFORE any request. (On the very first run these are the initial values already.)
+    setOrderState(emptyScoped())
+    setStars(4)
+    setTags(['delicious', 'hot'])
+    setDone(false)
+    if (authStatus === 'loading') return
+    // UNAUTHENTICATED → /eat/auth, but ONLY off the LIVE session (the previous handler
+    // redirected on a polled 401, which a stale A-request could fire under a signed-in B).
+    if (authStatus === 'unauthenticated') { router.push('/eat/auth'); return }
+    // Same pure derivation as `liveStamp`, from the effect's own deps (no closure over render).
+    const requestStamp = orderScopeStamp(authStatus, userId, orderId)
+    const requestUserId = userId
+    if (requestStamp === null || !requestUserId) return
+    let alive = true
+    loadOwnedOrder<RawOrder>({ orderId, requestStamp, requestUserId, isAlive: () => alive })
+      .then((r) => {
+        if (!alive || !r) return
+        const o = r.value
         // D′ L9 — normalised the same way as every other figure on this page: an absent or
         // non-numeric field becomes 0/false, i.e. « nothing to say », never a rendered guess.
-        refundSummary: {
-          refundedCents: typeof o.refundSummary?.refundedCents === 'number' ? o.refundSummary.refundedCents : 0,
-          isTotal: o.refundSummary?.isTotal === true,
-          pointsReversed: typeof o.refundSummary?.pointsReversed === 'number' ? o.refundSummary.pointsReversed : 0,
-        },
-        restaurant: { name: o.restaurant?.name ?? '' },
+        setOrderState({
+          stamp: r.stamp,
+          value: o === null ? null : {
+            id: o.id,
+            status: o.status,
+            total: typeof o.total === 'number' ? o.total : 0,
+            pointsEarned: typeof o.pointsEarned === 'number' ? o.pointsEarned : 0,
+            tipCents: typeof o.tipCents === 'number' ? o.tipCents : 0,
+            refundSummary: {
+              refundedCents: typeof o.refundSummary?.refundedCents === 'number' ? o.refundSummary.refundedCents : 0,
+              isTotal: o.refundSummary?.isTotal === true,
+              pointsReversed: typeof o.refundSummary?.pointsReversed === 'number' ? o.refundSummary.pointsReversed : 0,
+            },
+            restaurant: { name: o.restaurant?.name ?? '' },
+          },
+        })
       })
-    } catch {
-      setNotFound(true)
-    } finally {
-      setLoading(false)
-    }
-  }, [orderId, router])
+    // `userId` AND `orderId` ARE DEPENDENCIES: `authStatus` alone cannot see A → B when the
+    // broadcast moves the id without touching the status, and the same mount serving another
+    // order's URL must re-fire too. Keying on them makes `alive` load-bearing: the cleanup
+    // disowns an in-flight request issued for the previous pair before it can resolve.
+    return () => { alive = false }
+  }, /* rate-deps */ [authStatus, userId, orderId, router])
 
-  useEffect(() => { fetchOrder() }, [fetchOrder])
+  // RENDER-TIME GATE — the order is visible only while its stamp matches the live pair.
+  // `loading` / `notFound` are DERIVED from the same stamps: the frame right after an account
+  // switch reads as loading, never as « not found », never as A's recap.
+  const order = scopedValue(orderState, liveStamp)
+  const loading = authStatus !== 'authenticated' || scopePending(orderState, liveStamp)
+  const notFound = !loading && order === null
 
   function toggleTag(k: string) {
     setTags((prev) => (prev.includes(k) ? prev.filter((x) => x !== k) : [...prev, k]))
