@@ -1,0 +1,165 @@
+// Idempotency keys must be deterministic, collision-resistant and resistant
+// to delimiter-injection attacks. If a caller can craft two distinct
+// (sourceEventId, platform, format) tuples that produce the same key, the
+// future outbox would deduplicate real briefs out of existence.
+
+import { describe, expect, it } from 'vitest';
+
+import {
+  deriveIdempotencyKey,
+  deriveKeysForBrief,
+  IdempotencyInputError,
+} from '@/lib/growth/social-brief/idempotency';
+import { BRAND_GRUBANO } from '@/lib/growth/social-brief/types';
+
+const BASE = {
+  brand: BRAND_GRUBANO,
+  sourceEventId: 'evt_001',
+  pillar: 'plat_du_jour',
+  platform: 'instagram' as const,
+  format: 'post' as const,
+};
+
+describe('deriveIdempotencyKey', () => {
+  it('is deterministic', () => {
+    expect(deriveIdempotencyKey(BASE)).toBe(deriveIdempotencyKey(BASE));
+  });
+
+  it('is namespaced', () => {
+    expect(deriveIdempotencyKey(BASE)).toMatch(/^grubano:social-brief:[0-9a-f]{64}$/);
+  });
+
+  it('differs when sourceEventId differs', () => {
+    const a = deriveIdempotencyKey(BASE);
+    const b = deriveIdempotencyKey({ ...BASE, sourceEventId: 'evt_002' });
+    expect(a).not.toBe(b);
+  });
+
+  it('differs when platform differs', () => {
+    const a = deriveIdempotencyKey(BASE);
+    const b = deriveIdempotencyKey({ ...BASE, platform: 'linkedin' });
+    expect(a).not.toBe(b);
+  });
+
+  it('differs when format differs', () => {
+    const a = deriveIdempotencyKey(BASE);
+    const b = deriveIdempotencyKey({ ...BASE, format: 'carousel' });
+    expect(a).not.toBe(b);
+  });
+
+  it('differs when pillar differs', () => {
+    const a = deriveIdempotencyKey(BASE);
+    const b = deriveIdempotencyKey({ ...BASE, pillar: 'conseils' });
+    expect(a).not.toBe(b);
+  });
+
+  // ---- Delimiter-injection attempts ---------------------------------------
+  //
+  // Each pair below is CLOSE under a naive `${a}|${b}|${c}` encoding but must
+  // produce distinct hashes under the length-prefixed scheme.
+
+  const injectionPairs: ReadonlyArray<readonly [string, typeof BASE, typeof BASE]> = [
+    [
+      'pipe injection',
+      BASE,
+      { ...BASE, sourceEventId: 'evt_001|instagram' },
+    ],
+    [
+      'null byte injection',
+      { ...BASE, sourceEventId: 'evt_a' },
+      { ...BASE, sourceEventId: 'evt\u0000a' },
+    ],
+    [
+      'leading/trailing whitespace',
+      BASE,
+      { ...BASE, sourceEventId: ' evt_001' },
+    ],
+    [
+      'control character',
+      BASE,
+      { ...BASE, sourceEventId: 'evt_001\x1f' },
+    ],
+    [
+      'BOM',
+      BASE,
+      { ...BASE, sourceEventId: '﻿evt_001' },
+    ],
+    [
+      'zero-width space',
+      BASE,
+      { ...BASE, sourceEventId: 'evt_001​' },
+    ],
+    [
+      'line separator',
+      BASE,
+      { ...BASE, sourceEventId: 'evt_001 ' },
+    ],
+    [
+      'pipe + split event',
+      { ...BASE, sourceEventId: 'a', pillar: 'b|c' },
+      { ...BASE, sourceEventId: 'a|b', pillar: 'c' },
+    ],
+  ];
+
+  for (const [label, a, b] of injectionPairs) {
+    it(`collision-resistant: ${label}`, () => {
+      expect(deriveIdempotencyKey(a)).not.toBe(deriveIdempotencyKey(b));
+    });
+  }
+
+  it('rejects a lone high surrogate', () => {
+    expect(() =>
+      deriveIdempotencyKey({ ...BASE, sourceEventId: '\ud83d_broken' }),
+    ).toThrow(IdempotencyInputError);
+  });
+
+  it('rejects empty sourceEventId', () => {
+    expect(() => deriveIdempotencyKey({ ...BASE, sourceEventId: '' })).toThrow(
+      IdempotencyInputError,
+    );
+  });
+
+  it('rejects a wrong brand (should never happen in-process, but the function stands alone)', () => {
+    expect(() =>
+      deriveIdempotencyKey({ ...BASE, brand: 'synkia' as never }),
+    ).toThrow(IdempotencyInputError);
+  });
+
+  it('rejects an over-long component', () => {
+    expect(() =>
+      deriveIdempotencyKey({ ...BASE, sourceEventId: 'x'.repeat(5000) }),
+    ).toThrow(IdempotencyInputError);
+  });
+});
+
+describe('deriveKeysForBrief', () => {
+  it('produces the cartesian product of platforms × formats', () => {
+    const keys = deriveKeysForBrief({
+      brand: BRAND_GRUBANO,
+      sourceEventId: 'evt_abc',
+      pillar: 'plat_du_jour',
+      platforms: ['instagram', 'linkedin'],
+      formats: ['post', 'carousel'],
+    });
+    expect(keys.length).toBe(4);
+    expect(new Set(keys).size).toBe(4);
+  });
+
+  it('is independent of input order', () => {
+    const a = deriveKeysForBrief({
+      brand: BRAND_GRUBANO,
+      sourceEventId: 'evt_abc',
+      pillar: 'plat_du_jour',
+      platforms: ['instagram', 'linkedin'],
+      formats: ['post', 'carousel'],
+    });
+    const b = deriveKeysForBrief({
+      brand: BRAND_GRUBANO,
+      sourceEventId: 'evt_abc',
+      pillar: 'plat_du_jour',
+      platforms: ['linkedin', 'instagram'],
+      formats: ['carousel', 'post'],
+    });
+    expect(a).toEqual(b);
+  });
+});
