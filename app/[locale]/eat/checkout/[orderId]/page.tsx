@@ -1,7 +1,7 @@
 'use client'
 import { orderRef } from '@/lib/order-ref'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { Link, useRouter } from '@/navigation'
@@ -9,6 +9,7 @@ import { useTranslations, useLocale } from 'next-intl'
 import StripeTicketPayment from '@/components/payments/StripeTicketPayment'
 import WalletPaymentButton from '@/components/eat/WalletPaymentButton'
 import { readAddresses, formatAddress, currentAddressStamp, sessionAddressStamp, ADDRESS_EVENT, type EatAddress } from '@/lib/eat-addresses'
+import { sessionCartStamp } from '@/lib/eat-cart'
 import './checkout.css'
 import './confirmed.css'
 import '@/app/gb-foundation/gb-tokens.css'
@@ -73,6 +74,17 @@ interface PayInit {
 
 type Stage = 'loading' | 'review' | 'pay' | 'paid' | 'already-paid' | 'error'
 
+/** Everything on this page that belongs to ONE account on ONE order — the recap, the LIVE
+ *  Stripe PaymentIntent and the stage that mounts the Elements — stored WITH the stamp of
+ *  the identity + route it was obtained under. A null stamp matches nothing (fail closed). */
+interface ScopedState {
+  stamp:   string | null
+  order:   OrderInfo | null
+  payInit: PayInit | null
+  stage:   Stage
+}
+const EMPTY_SCOPE: ScopedState = { stamp: null, order: null, payInit: null, stage: 'loading' }
+
 const orderRefOf = orderRef
 const ADDR_ICON: Record<EatAddress['kind'], string> = { home: 'home', work: 'work', other: 'location_on' }
 
@@ -85,12 +97,27 @@ export default function CheckoutPage() {
   const { data: session, status } = useSession()
   const params = useParams<{ orderId: string }>()
   const orderId = params?.orderId ?? ''
+  // The identity, reused — same shape as EatShell / track / rewards (lib/eat-cart
+  // sessionCartStamp). `userId` is the raw next-auth id compared with the SERVER-echoed
+  // `ownerId` of GET /api/orders/[id] — the identity the request was actually issued UNDER.
+  const userId = (session?.user as { id?: string } | undefined)?.id
 
-  const [stage,   setStage]   = useState<Stage>('loading')
-  const [order,   setOrder]   = useState<OrderInfo | null>(null)
+  // P1 (same-tab A → B switch). The recap, the LIVE PaymentIntent (`payInit.clientSecret`)
+  // and the stage that mounts the Stripe Elements used to sit in plain state behind an
+  // effect keyed on `[orderId]`. NextAuth broadcasts `setSession` without flipping through
+  // 'unauthenticated', so after A → B nothing re-fired: the next account inherited A's
+  // recap AND A's mounted Stripe form — a confirm would have charged B's card for A's order
+  // (the owner check of POST /pay never ran again; the secret was already in the client).
+  // They now live in ONE record stamped with the identity + route they were obtained under,
+  // surfaced only through the render-time gate below.
+  const [scoped, setScoped] = useState<ScopedState>(EMPTY_SCOPE)
   const [error,   setError]   = useState('')
-  const [payInit, setPayInit] = useState<PayInit | null>(null)
   const [starting, setStarting] = useState(false)
+  /** « Réessayer » re-arms the load effect through a tick — never a captured loader. */
+  const [reloadTick, setReloadTick] = useState(0)
+  /** Scope GENERATION — bumped on every run of the load effect (identity, route or retry).
+   *  « Payer » captures it; a /pay response that lands after it moved is discarded. */
+  const scopeGenRef = useRef(0)
 
   // ── Visual-only selections (no money impact — see header note) ───────────────
   // Real saved addresses (Wave 4 localStorage store); the selected address is
@@ -100,24 +127,85 @@ export default function CheckoutPage() {
   /** The identity the saved list was read under (first-frame guard, see below). */
   const [addrStamp, setAddrStamp] = useState<string | null>(null)
 
-  // ── Load the recap ──────────────────────────────────────────────────────────
-  const loadOrder = useCallback(async () => {
-    setStage('loading')
-    setError('')
-    try {
-      const r = await fetch(`/api/orders/${orderId}`, { cache: 'no-store' })
-      if (r.status === 401) { router.push('/eat/auth'); return }
-      if (!r.ok) throw new Error('load_failed')
-      const body = await r.json() as { order: OrderInfo }
-      setOrder(body.order)
-      setStage(body.order.paymentStatus === 'paid' ? 'already-paid' : 'review')
-    } catch {
-      setError(t('errLoad'))
-      setStage('error')
-    }
-  }, [orderId, router, t])
+  // FIRST-FRAME GUARD — the stamp the SESSION implies, available in the SAME render as the
+  // new session (effects run AFTER that render). The route is part of it: the same person
+  // navigating from order X to Y must never see X's recap or X's PaymentIntent in Y's first
+  // committed frame. JSON.stringify is unambiguous even when an id contains delimiters.
+  const identityStamp = sessionCartStamp(status, userId)
+  const checkoutStamp = identityStamp !== null && orderId.length > 0
+    ? JSON.stringify([identityStamp, orderId]) : null
 
-  useEffect(() => { if (orderId) loadOrder() }, [orderId, loadOrder])
+  // ── Load the recap — keyed on IDENTITY + orderId (+ retry tick), FAIL-CLOSED FIRST ──
+  // The previous scope leaves the screen BEFORE any request. `requestOwner`, `requestUserId`
+  // and `requestOrderId` are captured together so the response is refused unless the server
+  // echoed the SAME RAW ID for the SAME order (closes the window where React still believes
+  // A but the browser cookie is already B). `alive` closes the opposite window — React moved
+  // on, but a late response for the previous scope is still inbound. 401/403/404 FAIL CLOSED
+  // without a redirect: a redirect fired from a stale identity would trampoline a signed-in B
+  // through /eat/auth on A's defunct call.
+  useEffect(() => {
+    scopeGenRef.current += 1
+    setScoped(EMPTY_SCOPE)
+    setError('')
+    if (status === 'loading') return
+    // UNAUTHENTICATED → /eat/auth, but ONLY off the live session (never off a polled 401).
+    if (status === 'unauthenticated') { router.push('/eat/auth'); return }
+    if (!userId) return
+    const requestOwner = checkoutStamp
+    const requestUserId = userId
+    const requestOrderId = orderId
+    if (requestOwner === null) return
+    let alive = true
+    const failClosed = () => {
+      if (alive) setScoped({ stamp: requestOwner, order: null, payInit: null, stage: 'error' })
+    }
+    ;(async () => {
+      try {
+        const r = await fetch(`/api/orders/${requestOrderId}`, { cache: 'no-store' })
+        if (!alive) return
+        if (!r.ok) { failClosed(); return }
+        const body = (await r.json()) as { ownerId?: unknown; order?: OrderInfo }
+        if (!alive) return
+        // NEVER STAMP A BODY THE SERVER DID NOT ATTRIBUTE TO THE SAME RAW ID. The `typeof`
+        // half matters: a response that OMITS the field must not slip through on
+        // `undefined === undefined`. The order must also be the ROUTE's order.
+        if (typeof body?.ownerId !== 'string' || body.ownerId !== requestUserId) { failClosed(); return }
+        if (!body.order || body.order.id !== requestOrderId) { failClosed(); return }
+        setScoped({
+          stamp:   requestOwner,
+          order:   body.order,
+          payInit: null,
+          stage:   body.order.paymentStatus === 'paid' ? 'already-paid' : 'review',
+        })
+      } catch {
+        failClosed()
+      }
+    })()
+    return () => { alive = false }
+    // `userId` AND `orderId` ARE DEPENDENCIES: `status` alone cannot see A → logout → B when
+    // the broadcast moves the id without touching `status`; switching to another order's URL
+    // on the same mount must re-fire too. `checkoutStamp` derives from them, so pinning the
+    // primitives keeps it current without an extra dep that would re-fire every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, /* checkout-deps */ [status, userId, orderId, reloadTick])
+
+  // RENDER-TIME GATE — a value is shown only when its stamp matches the identity + route the
+  // SESSION implies right now, which changes in the same render as the session. On an A → B
+  // switch inside this component this is what prevents one committed frame of A's recap — and
+  // A's mounted Stripe Elements — painting under B; the stage falls back to 'loading' on that
+  // very frame. An authenticated session with no usable id fails closed VISIBLY (error).
+  const inScope = scoped.stamp !== null && scoped.stamp === checkoutStamp
+  const order   = inScope ? scoped.order : null
+  const payInit = inScope ? scoped.payInit : null
+  const identityUnusable = status === 'authenticated' && !userId
+  const stage: Stage = inScope ? scoped.stage : (identityUnusable ? 'error' : 'loading')
+  const errorText = inScope ? error : ''
+
+  // Scope-bound stage setter: a closure created in a render carries THAT render's stamp and
+  // can only touch a record still stamped with it. The `onPaid` closure the Stripe Elements
+  // hold therefore cannot flip the NEXT account's record to 'paid' after an A → B switch.
+  const setStage = (next: Stage) =>
+    setScoped((cur) => (cur.stamp !== null && cur.stamp === checkoutStamp ? { ...cur, stage: next } : cur))
 
   // Load the user's real saved addresses (visual delivery selector) — and KEEP THEM LIVE.
   //
@@ -147,13 +235,20 @@ export default function CheckoutPage() {
   }, [])
 
   // ── Start the payment (C1 route — called, never modified) ───────────────────
+  // Only ever issued off the GATED `order` (in scope right now). The response — a LIVE
+  // PaymentIntent — is adopted only if the scope generation has not moved since the click
+  // (identity, route, retry) AND only into a record still carrying the same stamp. POST
+  // /pay does not echo an owner id; the server's own owner check (403) is the other half.
   async function startPayment() {
     if (!order || starting) return
+    const requestOwner = checkoutStamp
+    const requestGen = scopeGenRef.current
     setStarting(true)
     setError('')
     try {
       const r = await fetch(`/api/orders/${order.id}/pay`, { method: 'POST' })
       const body = await r.json().catch(() => null)
+      if (scopeGenRef.current !== requestGen) return
       if (r.status === 409) {
         // P0-29 (vague 2) : un 409 du rail /pay n'est PLUS forcément « déjà
         // payée » — il refuse aussi les commandes héritées NON-CARTE
@@ -173,15 +268,15 @@ export default function CheckoutPage() {
         setError((body?.error as string) || t('errPayInit'))
         return
       }
-      setPayInit({
+      const init: PayInit = {
         clientSecret:   body.clientSecret,
         publishableKey: body.publishableKey,
         amount:         body.amount,
         currency:       body.currency,
-      })
-      setStage('pay')
+      }
+      setScoped((cur) => (cur.stamp !== null && cur.stamp === requestOwner ? { ...cur, payInit: init, stage: 'pay' } : cur))
     } catch {
-      setError(t('errPayInit'))
+      if (scopeGenRef.current === requestGen) setError(t('errPayInit'))
     } finally {
       setStarting(false)
     }
@@ -234,7 +329,7 @@ export default function CheckoutPage() {
   // address book for one committed frame on an A -> B switch in the same tab, which no
   // ADDRESS_EVENT can prevent (the effect that emits it has not run yet). The stamp the
   // list was read under is compared with the stamp this render's session implies.
-  const sessionStamp = sessionAddressStamp(status, (session?.user as { id?: string } | undefined)?.id)
+  const sessionStamp = sessionAddressStamp(status, userId)
   const visibleAddrs = addrStamp !== null && addrStamp === sessionStamp ? addresses : []
   const selAddr = visibleAddrs.find((a) => a.id === addrId) ?? null
 
@@ -291,8 +386,8 @@ export default function CheckoutPage() {
           <div className="panel">
             {/* P0-30bis — no `.ms` ligature next to refusal messages (renders as a
                 glued « error » word when the icon font is unavailable). */}
-            <div className="notice notice--err" role="alert"><span>{error || t('errLoad')}</span></div>
-            <div className="pcta"><button type="button" className="cta" onClick={loadOrder}><span className="ms" aria-hidden="true">refresh</span><span>{t('retry')}</span></button></div>
+            <div className="notice notice--err" role="alert"><span>{errorText || t('errLoad')}</span></div>
+            <div className="pcta"><button type="button" className="cta" onClick={() => setReloadTick((n) => n + 1)}><span className="ms" aria-hidden="true">refresh</span><span>{t('retry')}</span></button></div>
           </div>
         </div>
       )}
@@ -450,8 +545,8 @@ export default function CheckoutPage() {
                   </p>
                 )}
 
-                {error && stage === 'review' && (
-                  <div className="notice notice--err" role="alert"><span>{error}</span></div>
+                {errorText && stage === 'review' && (
+                  <div className="notice notice--err" role="alert"><span>{errorText}</span></div>
                 )}
 
                 {/* desktop CTA (hidden under the sticky mobile bar at ≤820px) */}
@@ -465,7 +560,7 @@ export default function CheckoutPage() {
           {/* mobile sticky pay bar */}
           {stage === 'review' && (
             <div className="mbar">
-              {error && <div className="notice notice--err" role="alert"><span>{error}</span></div>}
+              {errorText && <div className="notice notice--err" role="alert"><span>{errorText}</span></div>}
               <PayCta id="pay-cta-mobile" />
             </div>
           )}
