@@ -1,3 +1,15 @@
 {
-  "extends": "next/core-web-vitals"
+  "extends": "next/core-web-vitals",
+  "overrides": [
+    {
+      // `next/core-web-vitals` registers @typescript-eslint/parser for *.ts files but NOT the
+      // @typescript-eslint plugin, so a `/* eslint-disable @typescript-eslint/<rule> */` directive in a
+      // test file made ESLint fail with "Definition for rule '@typescript-eslint/no-explicit-any' was not
+      // found" (12 files under tests/ carry it; `next lint` never visits tests/, so it only surfaced when
+      // ESLint was pointed at them). Registering the plugin makes the rule names resolvable; it enables
+      // NO rule, so no warning is masked and nothing changes for app/, lib/ or components/.
+      "files": ["tests/**/*.ts"],
+      "plugins": ["@typescript-eslint"]
+    }
+  ]
 }
