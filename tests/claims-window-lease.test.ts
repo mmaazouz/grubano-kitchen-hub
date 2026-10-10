@@ -215,7 +215,10 @@ describe('J-C10 — CLAIMS_ENABLED off: GET /api/claims answers { enabled: false
     expect(cs).toContain('if (!enabled || !el) return null')
     expect(cs).toContain('if (data.enabled) setEl(data.eligibility as Eligibility)')
     const help = strip(read('app/[locale]/eat/order/[orderId]/help/page.tsx'))
-    expect(help).toMatch(/if \(d\?\.enabled === true\) \{\s*setClaimsEnabled\(true\)\s*setEligibility\(/)
+    expect(help).toMatch(/if \(d\?\.enabled === true\) next = \{ enabled: true, eligibility:/)
+    expect(help).toContain('setClaimState({ stamp: scope.stamp, value: next })')
+    expect(help).toContain('const claims = scopedValue(claimState, liveStamp)')
+    expect(help).toContain('const claimsEnabled = order !== null && claims?.enabled === true')
   })
 
   it('BREAK/RESTORE pin — the early { enabled: false } return is the first statement of GET', () => {

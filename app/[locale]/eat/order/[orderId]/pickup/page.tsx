@@ -8,6 +8,7 @@ import { useTranslations, useLocale } from 'next-intl'
 import { useRouter } from '@/navigation'
 import { formatEuros } from '@/lib/format-money'
 import { QRCodeSVG } from 'qrcode.react'
+import { emptyScoped, loadOwnedOrder, orderScopeStamp, scopePending, scopedValue, type Scoped } from '@/lib/eat-order-scope'
 import './pickup.css'
 // gb-* design FOUNDATION (Agent 168) — tokens + Material `.ms` font. The page wraps in
 // `.gb` so the foundation tokens/font resolve; all component CSS lives in pickup.css.
@@ -60,6 +61,20 @@ import '@/app/gb-foundation/gb-components.css'
 //  • « remboursée » n'est écrit que pour de l'argent PROUVÉ revenu (`refundedCents > 0`) ET cumulé
 //    jusqu'à la charge (`isTotal`) — jamais pour un remboursement EN COURS, jamais sur 0 ;
 //  • AUCUN délai bancaire, AUCUNE date estimée.
+//
+// P1 SAME-TAB ACCOUNT SCOPE (hotfix/order-aux-account-scope, after PR #21 on /eat/track).
+// The order used to live in plain state under an effect keyed on `[authStatus, orderId]`.
+// NextAuth broadcasts an A → B switch WITHOUT flipping `status` through 'unauthenticated',
+// so that effect never re-fired and B inherited A's pass: the scannable QR, the ref, the
+// items, the total, the refund line, the restaurateur's name and address. Now:
+//  • the order is kept WITH the stamp of the (identity, orderId) PAIR it was read under
+//    (lib/eat-order-scope) and is surfaced ONLY through a render-time match against the
+//    stamp the live session + route imply — which moves in the SAME frame as the session;
+//  • the effect is keyed on `[authStatus, userId, orderId]`, FAIL-CLOSES before any request,
+//    and adopts a body only when the server echoed `ownerId === userId` (a body naming
+//    nobody is refused too);
+//  • 401/403/404 are a stamped EMPTY, never a redirect; a late answer for a previous
+//    identity or route is disowned by `alive` before it can be committed.
 
 interface OrderItem { name: string; qty: number; price: number }
 /**
@@ -95,22 +110,41 @@ export default function PickupPassScreen() {
   const locale = useLocale()
   const router = useRouter()
   const { orderId } = useParams<{ orderId: string }>()
-  const { status: authStatus } = useSession()
+  const { data: session, status: authStatus } = useSession()
+  // The raw next-auth id the request is issued UNDER — compared with the SERVER-echoed
+  // `ownerId`, never trusted from the client side alone.
+  const userId = (session?.user as { id?: string } | undefined)?.id
+  // FIRST-FRAME GUARD — the PAIR stamp (identity, orderId) the live session + route imply,
+  // derived during render so it changes in the same frame as the session (effects run after).
+  const liveStamp = orderScopeStamp(authStatus, userId, orderId)
 
-  const [order, setOrder] = useState<Order | null>(null)
-  const [loading, setLoading] = useState(true)
+  // The order, kept WITH the stamp it was read under. Read ONLY through `scopedValue` below.
+  const [orderState, setOrderState] = useState<Scoped<Order>>(emptyScoped)
 
   useEffect(() => {
-    if (authStatus === 'loading') return
-    if (authStatus !== 'authenticated') { setLoading(false); return }
+    // FAIL CLOSED FIRST — the previous pair's order leaves the state BEFORE any request.
+    setOrderState(emptyScoped())
+    if (authStatus !== 'authenticated') return
+    // Same pure derivation as `liveStamp`, from the effect's own deps (no closure over render).
+    const requestStamp = orderScopeStamp(authStatus, userId, orderId)
+    const requestUserId = userId
+    if (requestStamp === null || !requestUserId) return
     let alive = true
-    fetch(`/api/orders/${orderId}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (alive) setOrder(d?.order ?? null) })
-      .catch(() => { if (alive) setOrder(null) })
-      .finally(() => { if (alive) setLoading(false) })
+    loadOwnedOrder<Order>({ orderId, requestStamp, requestUserId, isAlive: () => alive })
+      .then((r) => { if (alive && r) setOrderState(r) })
+    // `userId` AND `orderId` ARE DEPENDENCIES: `authStatus` alone cannot see A → B when the
+    // broadcast moves the id without touching the status, and the same mount serving another
+    // order's URL must re-fire too. Keying on them makes `alive` load-bearing: React runs the
+    // cleanup on identity or route change, so an in-flight request issued for the previous
+    // pair is disowned before it can resolve.
     return () => { alive = false }
-  }, [authStatus, orderId])
+  }, /* pickup-deps */ [authStatus, userId, orderId])
+
+  // RENDER-TIME GATE — the order is visible only while its stamp matches the live pair.
+  // `loading` is DERIVED from the same stamps: the frame right after an account switch
+  // (before the effect re-runs) reads as loading, never as « not found », never as A's pass.
+  const order = scopedValue(orderState, liveStamp)
+  const loading = authStatus === 'loading' || scopePending(orderState, liveStamp)
 
   // GARDE MÉTIER (WAVE 1) : le pass n'existe que pour une commande PICKUP dont l'état
   // permet réellement le retrait. Delivery, impayée (awaiting_payment) ou annulée →

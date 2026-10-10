@@ -371,7 +371,10 @@ describe('J-C08 (F07, F06) — help page lines per customer status', () => {
 
   it('the eligibility fetch stays behind the enabled check', () => {
     const code = stripComments(read(HELP))
-    expect(code).toMatch(/if \(d\?\.enabled === true\) \{\s*setClaimsEnabled\(true\)\s*setEligibility\(/)
+    expect(code).toMatch(/if \(d\?\.enabled === true\) next = \{ enabled: true, eligibility:/)
+    expect(code).toContain('setClaimState({ stamp: scope.stamp, value: next })')
+    expect(code).toContain('const claims = scopedValue(claimState, liveStamp)')
+    expect(code).toContain('const claimsEnabled = order !== null && claims?.enabled === true')
     expect(code).toContain('{claimsEnabled && submitState !== \'done\' && eligibility && !eligibility.canClaim && (')
   })
 
